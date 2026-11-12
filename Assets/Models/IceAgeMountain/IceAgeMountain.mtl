@@ -1,0 +1,5 @@
+# Hitori imports Kd, d and map_Kd. Surface settings also supplied in preview scene.
+newmtl SnowAndSlate
+Kd 1.0 1.0 1.0
+d 1.0
+map_Kd Mountain_Albedo.png

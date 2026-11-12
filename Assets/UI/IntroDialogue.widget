@@ -1,0 +1,68 @@
+{
+    "DesignSize": [
+        1920,
+        1080
+    ],
+    "ParentClass": "UUserWidget",
+    "Root": {
+        "Children": [
+            {
+                "Class": "UTextBlock",
+                "Properties": {
+                    "AlignmentX": 0.0,
+                    "AlignmentY": 0.0,
+                    "Anchors": {
+                        "W": 1.0,
+                        "X": 0.5,
+                        "Y": 1.0,
+                        "Z": 0.5
+                    },
+                    "ColorAndOpacity": {
+                        "A": 1.0,
+                        "B": 1.0,
+                        "G": 1.0,
+                        "R": 1.0
+                    },
+                    "FontPath": "Assets/Fonts/Pretendard.json",
+                    "FontSize": 52.0,
+                    "Justification": 1,
+                    "Offsets": {
+                        "W": 90.0,
+                        "X": -800.0,
+                        "Y": -120.0,
+                        "Z": 1600.0
+                    },
+                    "RenderOpacity": 1.0,
+                    "Text": "",
+                    "Visibility": 0,
+                    "WidgetName": "DialogueText",
+                    "ZOrder": 0,
+                    "bAutoSize": false
+                }
+            }
+        ],
+        "Class": "UCanvasPanel",
+        "Properties": {
+            "AlignmentX": 0.0,
+            "AlignmentY": 0.0,
+            "Anchors": {
+                "W": 1.0,
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 1.0
+            },
+            "Offsets": {
+                "W": 0.0,
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "RenderOpacity": 1.0,
+            "Visibility": 0,
+            "WidgetName": "Root",
+            "ZOrder": 0,
+            "bAutoSize": false
+        }
+    },
+    "Version": 2
+}

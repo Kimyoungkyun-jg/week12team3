@@ -1,0 +1,939 @@
+{
+    "Format": "HitoriAnimBlueprint",
+    "Graphs": [
+        {
+            "EditorSettings": "{\"view\":{\"scroll\":{\"x\":-291.3294982910156,\"y\":-610.3692626953125},\"visible_rect\":{\"max\":{\"x\":1145.130126953125,\"y\":830.9134521484375},\"min\":{\"x\":-197.06260681152344,\"y\":-413.0865478515625}},\"zoom\":1.4766881465911865}}",
+            "Id": 1,
+            "Links": [
+                {
+                    "FromNodeId": 4,
+                    "FromPinId": 5,
+                    "Id": 89,
+                    "ToNodeId": 2,
+                    "ToPinId": 3
+                }
+            ],
+            "Name": "AnimGraph",
+            "Nodes": [
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 2,
+                    "InputPosePinId": 3,
+                    "Name": "Output Pose",
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 615.0,
+                        "Y": 71.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 0,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": 6,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 4,
+                    "InputPosePinId": -1,
+                    "Name": "State Machine",
+                    "OutputPosePinId": 5,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 247.0,
+                        "Y": 71.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 4,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                }
+            ],
+            "OwnerNodeId": -1,
+            "ParentGraphId": -1,
+            "Transitions": [],
+            "Type": 0
+        },
+        {
+            "EditorSettings": "{\"view\":{\"scroll\":{\"x\":-449,\"y\":-687.5},\"visible_rect\":{\"max\":{\"x\":1390.5927734375,\"y\":1043.17138671875},\"min\":{\"x\":-407.2903747558594,\"y\":-623.1814575195313}},\"zoom\":1.1024075746536255}}",
+            "Id": 6,
+            "Links": [
+                {
+                    "FromNodeId": 7,
+                    "FromPinId": 8,
+                    "Id": 16,
+                    "ToNodeId": 10,
+                    "ToPinId": 11
+                }
+            ],
+            "Name": "State Machine",
+            "Nodes": [
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 7,
+                    "InputPosePinId": -1,
+                    "Name": "Entry",
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 44.0,
+                        "Y": 55.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": 8,
+                    "Type": 5,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": 13,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 10,
+                    "InputPosePinId": -1,
+                    "Name": "Locomotion",
+                    "OnEnter": {
+                        "Assignments": [],
+                        "EventName": ""
+                    },
+                    "OnExit": {
+                        "Assignments": [],
+                        "EventName": ""
+                    },
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 418.0,
+                        "Y": 58.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": 11,
+                    "TransitionOutputPinId": 12,
+                    "Type": 6,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 17,
+                    "InputPosePinId": -1,
+                    "Name": "Any State",
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": -84.0,
+                        "Y": 391.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": 18,
+                    "Type": 8,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": 22,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 19,
+                    "InputPosePinId": -1,
+                    "Name": "Attack",
+                    "OnEnter": {
+                        "Assignments": [],
+                        "EventName": ""
+                    },
+                    "OnExit": {
+                        "Assignments": [
+                            {
+                                "FloatValue": 0.0,
+                                "Variable": "IsAttacking",
+                                "bBoolValue": false
+                            }
+                        ],
+                        "EventName": ""
+                    },
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 402.0,
+                        "Y": -243.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": 20,
+                    "TransitionOutputPinId": 21,
+                    "Type": 6,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": 33,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 30,
+                    "InputPosePinId": -1,
+                    "Name": "Hit",
+                    "OnEnter": {
+                        "Assignments": [
+                            {
+                                "FloatValue": 0.0,
+                                "Variable": "IsJumping",
+                                "bBoolValue": false
+                            }
+                        ],
+                        "EventName": ""
+                    },
+                    "OnExit": {
+                        "Assignments": [
+                            {
+                                "FloatValue": 0.0,
+                                "Variable": "IsHit",
+                                "bBoolValue": false
+                            }
+                        ],
+                        "EventName": ""
+                    },
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 204.0,
+                        "Y": 394.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": 31,
+                    "TransitionOutputPinId": 32,
+                    "Type": 6,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": 47,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 44,
+                    "InputPosePinId": -1,
+                    "Name": "Jump Start",
+                    "OnEnter": {
+                        "Assignments": [],
+                        "EventName": ""
+                    },
+                    "OnExit": {
+                        "Assignments": [],
+                        "EventName": ""
+                    },
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 802.0,
+                        "Y": 87.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": 45,
+                    "TransitionOutputPinId": 46,
+                    "Type": 6,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": 54,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 51,
+                    "InputPosePinId": -1,
+                    "Name": "Jump Loop",
+                    "OnEnter": {
+                        "Assignments": [],
+                        "EventName": ""
+                    },
+                    "OnExit": {
+                        "Assignments": [],
+                        "EventName": ""
+                    },
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 1154.0,
+                        "Y": 119.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": 52,
+                    "TransitionOutputPinId": 53,
+                    "Type": 6,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": 64,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 61,
+                    "InputPosePinId": -1,
+                    "Name": "Jump Land",
+                    "OnEnter": {
+                        "Assignments": [],
+                        "EventName": ""
+                    },
+                    "OnExit": {
+                        "Assignments": [],
+                        "EventName": ""
+                    },
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 738.0,
+                        "Y": 471.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": 62,
+                    "TransitionOutputPinId": 63,
+                    "Type": 6,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                }
+            ],
+            "OwnerNodeId": 4,
+            "ParentGraphId": 1,
+            "Transitions": [
+                {
+                    "Compare": 2,
+                    "CrossfadeDuration": 0.20000000298023224,
+                    "FromPinId": 12,
+                    "FromStateId": 10,
+                    "Id": 25,
+                    "Priority": 0,
+                    "Rule": 1,
+                    "ToPinId": 20,
+                    "ToStateId": 19,
+                    "Value": 0.0,
+                    "Variable": "IsAttacking",
+                    "bExpected": true
+                },
+                {
+                    "Compare": 2,
+                    "CrossfadeDuration": 0.20000000298023224,
+                    "FromPinId": 21,
+                    "FromStateId": 19,
+                    "Id": 26,
+                    "Priority": 0,
+                    "Rule": 3,
+                    "ToPinId": 11,
+                    "ToStateId": 10,
+                    "Value": 0.0,
+                    "Variable": "",
+                    "bExpected": true
+                },
+                {
+                    "Compare": 2,
+                    "CrossfadeDuration": 0.20000000298023224,
+                    "FromPinId": 18,
+                    "FromStateId": 17,
+                    "Id": 36,
+                    "Priority": 0,
+                    "Rule": 1,
+                    "ToPinId": 31,
+                    "ToStateId": 30,
+                    "Value": 0.0,
+                    "Variable": "IsHit",
+                    "bExpected": true
+                },
+                {
+                    "Compare": 2,
+                    "CrossfadeDuration": 0.20000000298023224,
+                    "FromPinId": 32,
+                    "FromStateId": 30,
+                    "Id": 37,
+                    "Priority": 0,
+                    "Rule": 3,
+                    "ToPinId": 11,
+                    "ToStateId": 10,
+                    "Value": 0.0,
+                    "Variable": "",
+                    "bExpected": true
+                },
+                {
+                    "Compare": 2,
+                    "CrossfadeDuration": 0.20000000298023224,
+                    "FromPinId": 12,
+                    "FromStateId": 10,
+                    "Id": 50,
+                    "Priority": 0,
+                    "Rule": 1,
+                    "ToPinId": 45,
+                    "ToStateId": 44,
+                    "Value": 0.0,
+                    "Variable": "IsJumping",
+                    "bExpected": true
+                },
+                {
+                    "Compare": 2,
+                    "CrossfadeDuration": 0.20000000298023224,
+                    "FromPinId": 46,
+                    "FromStateId": 44,
+                    "Id": 57,
+                    "Priority": 0,
+                    "Rule": 3,
+                    "ToPinId": 52,
+                    "ToStateId": 51,
+                    "Value": 0.0,
+                    "Variable": "",
+                    "bExpected": true
+                },
+                {
+                    "Compare": 2,
+                    "CrossfadeDuration": 0.20000000298023224,
+                    "FromPinId": 53,
+                    "FromStateId": 51,
+                    "Id": 67,
+                    "Priority": 0,
+                    "Rule": 1,
+                    "ToPinId": 62,
+                    "ToStateId": 61,
+                    "Value": 0.0,
+                    "Variable": "IsJumping",
+                    "bExpected": false
+                },
+                {
+                    "Compare": 2,
+                    "CrossfadeDuration": 0.20000000298023224,
+                    "FromPinId": 63,
+                    "FromStateId": 61,
+                    "Id": 68,
+                    "Priority": 0,
+                    "Rule": 3,
+                    "ToPinId": 11,
+                    "ToStateId": 10,
+                    "Value": 0.0,
+                    "Variable": "",
+                    "bExpected": true
+                },
+                {
+                    "Compare": 2,
+                    "CrossfadeDuration": 0.20000000298023224,
+                    "FromPinId": 46,
+                    "FromStateId": 44,
+                    "Id": 75,
+                    "Priority": 0,
+                    "Rule": 1,
+                    "ToPinId": 62,
+                    "ToStateId": 61,
+                    "Value": 0.0,
+                    "Variable": "IsJumping",
+                    "bExpected": false
+                }
+            ],
+            "Type": 1
+        },
+        {
+            "EditorSettings": "{\"view\":{\"scroll\":{\"x\":-868.5333862304688,\"y\":-854.8963623046875},\"visible_rect\":{\"max\":{\"x\":939.9564819335938,\"y\":829.4230346679688},\"min\":{\"x\":-732.3897705078125,\"y\":-720.5770874023438}},\"zoom\":1.1851612329483032}}",
+            "Id": 13,
+            "Links": [
+                {
+                    "FromNodeId": 27,
+                    "FromPinId": 28,
+                    "Id": 29,
+                    "ToNodeId": 14,
+                    "ToPinId": 15
+                }
+            ],
+            "Name": "Locomotion",
+            "Nodes": [
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 14,
+                    "InputPosePinId": 15,
+                    "Name": "State Result",
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 375.0,
+                        "Y": 103.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 7,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "FBX/UAL1_Standard/NewBlendSpace.blendspace",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "GroundSpeed",
+                        "bUseVariable": true
+                    },
+                    "Id": 27,
+                    "InputPosePinId": -1,
+                    "Name": "BlendSpace Player",
+                    "OutputPosePinId": 28,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": -9.0,
+                        "Y": 103.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 2,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                }
+            ],
+            "OwnerNodeId": 10,
+            "ParentGraphId": 6,
+            "Transitions": [],
+            "Type": 0
+        },
+        {
+            "EditorSettings": "{\"view\":{\"scroll\":{\"x\":1.9999388456344604,\"y\":-570.9999389648438},\"visible_rect\":{\"max\":{\"x\":793.60009765625,\"y\":477.60003662109375},\"min\":{\"x\":0.8000000715255737,\"y\":-228.00001525878906}},\"zoom\":2.499999761581421}}",
+            "Id": 22,
+            "Links": [
+                {
+                    "FromNodeId": 41,
+                    "FromPinId": 42,
+                    "Id": 43,
+                    "ToNodeId": 23,
+                    "ToPinId": 24
+                }
+            ],
+            "Name": "Attack",
+            "Nodes": [
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 23,
+                    "InputPosePinId": 24,
+                    "Name": "State Result",
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 359.0,
+                        "Y": 87.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 7,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 41,
+                    "InputPosePinId": -1,
+                    "Name": "Sequence Player",
+                    "OutputPosePinId": 42,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 55.0,
+                        "Y": 103.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "FBX/UAL1_Standard/UAL1_Standard_Armature_Punch_Jab.anim.bin",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 1,
+                    "bLooping": false,
+                    "bResetOnEntry": true
+                }
+            ],
+            "OwnerNodeId": 19,
+            "ParentGraphId": 6,
+            "Transitions": [],
+            "Type": 0
+        },
+        {
+            "EditorSettings": "{\"view\":{\"scroll\":{\"x\":-462.99993896484375,\"y\":-818.0000610351563},\"visible_rect\":{\"max\":{\"x\":1012.6666870117188,\"y\":630.6666870117188},\"min\":{\"x\":-308.66668701171875,\"y\":-545.3333740234375}},\"zoom\":1.5}}",
+            "Id": 33,
+            "Links": [
+                {
+                    "FromNodeId": 38,
+                    "FromPinId": 39,
+                    "Id": 40,
+                    "ToNodeId": 34,
+                    "ToPinId": 35
+                }
+            ],
+            "Name": "Hit",
+            "Nodes": [
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 34,
+                    "InputPosePinId": 35,
+                    "Name": "State Result",
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 359.0,
+                        "Y": 103.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 7,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 38,
+                    "InputPosePinId": -1,
+                    "Name": "Sequence Player",
+                    "OutputPosePinId": 39,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 23.0,
+                        "Y": 103.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "FBX/UAL1_Standard/UAL1_Standard_Armature_Hit_Chest.anim.bin",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 1,
+                    "bLooping": false,
+                    "bResetOnEntry": true
+                }
+            ],
+            "OwnerNodeId": 30,
+            "ParentGraphId": 6,
+            "Transitions": [],
+            "Type": 0
+        },
+        {
+            "EditorSettings": "{\"view\":{\"scroll\":{\"x\":-655.994384765625,\"y\":-813.0206909179688},\"visible_rect\":{\"max\":{\"x\":1343.6146240234375,\"y\":1036.8209228515625},\"min\":{\"x\":-663.2008666992188,\"y\":-823.1791381835938}},\"zoom\":0.9876344203948975}}",
+            "Id": 47,
+            "Links": [
+                {
+                    "FromNodeId": 58,
+                    "FromPinId": 59,
+                    "Id": 60,
+                    "ToNodeId": 48,
+                    "ToPinId": 49
+                }
+            ],
+            "Name": "Jump Start",
+            "Nodes": [
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 48,
+                    "InputPosePinId": 49,
+                    "Name": "State Result",
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 360.0,
+                        "Y": 100.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 7,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 58,
+                    "InputPosePinId": -1,
+                    "Name": "Sequence Player",
+                    "OutputPosePinId": 59,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 19.0,
+                        "Y": 97.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "FBX/UAL1_Standard/UAL1_Standard_Armature_Jump_Start.anim.bin",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 1,
+                    "bLooping": false,
+                    "bResetOnEntry": true
+                }
+            ],
+            "OwnerNodeId": 44,
+            "ParentGraphId": 6,
+            "Transitions": [],
+            "Type": 0
+        },
+        {
+            "EditorSettings": "{\"view\":{\"scroll\":{\"x\":-587,\"y\":-558},\"visible_rect\":{\"max\":{\"x\":930,\"y\":804},\"min\":{\"x\":-391.3333435058594,\"y\":-372}},\"zoom\":1.5}}",
+            "Id": 54,
+            "Links": [
+                {
+                    "FromNodeId": 69,
+                    "FromPinId": 70,
+                    "Id": 71,
+                    "ToNodeId": 55,
+                    "ToPinId": 56
+                }
+            ],
+            "Name": "Jump Loop",
+            "Nodes": [
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 55,
+                    "InputPosePinId": 56,
+                    "Name": "State Result",
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 375.0,
+                        "Y": 103.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 7,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 69,
+                    "InputPosePinId": -1,
+                    "Name": "Sequence Player",
+                    "OutputPosePinId": 70,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 55.0,
+                        "Y": 103.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "FBX/UAL1_Standard/UAL1_Standard_Armature_Jump_Loop.anim.bin",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 1,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                }
+            ],
+            "OwnerNodeId": 51,
+            "ParentGraphId": 6,
+            "Transitions": [],
+            "Type": 0
+        },
+        {
+            "EditorSettings": "{\"view\":{\"scroll\":{\"x\":-633.7305297851563,\"y\":-861.1867065429688},\"visible_rect\":{\"max\":{\"x\":1096.51025390625,\"y\":769.7517700195313},\"min\":{\"x\":-514.5225830078125,\"y\":-699.8482666015625}},\"zoom\":1.2302666902542114}}",
+            "Id": 64,
+            "Links": [
+                {
+                    "FromNodeId": 72,
+                    "FromPinId": 73,
+                    "Id": 74,
+                    "ToNodeId": 65,
+                    "ToPinId": 66
+                }
+            ],
+            "Name": "Jump Land",
+            "Nodes": [
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 65,
+                    "InputPosePinId": 66,
+                    "Name": "State Result",
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 360.0,
+                        "Y": 100.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 7,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 72,
+                    "InputPosePinId": -1,
+                    "Name": "Sequence Player",
+                    "OutputPosePinId": 73,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 39.0,
+                        "Y": 103.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "FBX/UAL1_Standard/UAL1_Standard_Armature_Jump_Land.anim.bin",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 1,
+                    "bLooping": false,
+                    "bResetOnEntry": true
+                }
+            ],
+            "OwnerNodeId": 61,
+            "ParentGraphId": 6,
+            "Transitions": [],
+            "Type": 0
+        }
+    ],
+    "NextId": 90,
+    "PreviewMeshPath": "FBX/UAL1_Standard/UAL1_Standard.fbx.bin",
+    "RootGraphId": 1,
+    "RootMotionMode": 2,
+    "Variables": [
+        {
+            "DefaultFloat": 0.0,
+            "Name": "GroundSpeed",
+            "Type": 0,
+            "bDefaultBool": false
+        },
+        {
+            "DefaultFloat": 0.0,
+            "Name": "IsAttacking",
+            "Type": 1,
+            "bDefaultBool": false
+        },
+        {
+            "DefaultFloat": 0.0,
+            "Name": "IsHit",
+            "Type": 1,
+            "bDefaultBool": false
+        },
+        {
+            "DefaultFloat": 0.0,
+            "Name": "IsJumping",
+            "Type": 1,
+            "bDefaultBool": false
+        }
+    ],
+    "Version": 1
+}

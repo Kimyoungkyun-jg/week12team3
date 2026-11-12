@@ -1,0 +1,3 @@
+local t=0;local restored, scale;FVector=function(x,y,z)return{x=x,y=y,z=z}end
+obj={Location=FVector(0,0,0), GetComponentRelativeScale=function(_,n)assert(n=='EggMesh');return FVector(1,1,1)end, SetComponentRelativeScale=function(_,n,v)assert(n=='EggMesh');scale=v;return true end}
+dofile('Scripts/zerg_egg_breathe.lua'); BeginPlay(); Tick(0.625); assert(math.abs(scale.x-1.02)<0.00001 and math.abs(scale.z-1.015)<0.00001); Tick(1.25);assert(math.abs(scale.x-0.98)<0.00001 and math.abs(scale.z-0.985)<0.00001);EndPlay();assert(scale.x==1 and scale.z==1); print('PASS: breathing extremes and end-play restore')

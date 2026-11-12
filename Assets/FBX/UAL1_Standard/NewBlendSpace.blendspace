@@ -1,0 +1,31 @@
+{
+    "PreviewMesh": "Assets/FBX/UAL1_Standard/UAL1_Standard.fbx.bin",
+    "Properties": {},
+    "Samples": [
+        {
+            "Animation": "FBX/UAL1_Standard/UAL1_Standard_Armature_Idle_Loop.anim.bin",
+            "SampleValue": {
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            }
+        },
+        {
+            "Animation": "FBX/UAL1_Standard/UAL1_Standard_Armature_Walk_Loop.anim.bin",
+            "SampleValue": {
+                "X": 200.0,
+                "Y": 0.0,
+                "Z": 0.0
+            }
+        },
+        {
+            "Animation": "FBX/UAL1_Standard/UAL1_Standard_Armature_Jog_Fwd_Loop.anim.bin",
+            "SampleValue": {
+                "X": 550.0,
+                "Y": 0.0,
+                "Z": 0.0
+            }
+        }
+    ],
+    "Version": 1
+}

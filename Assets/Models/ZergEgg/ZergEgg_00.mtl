@@ -1,0 +1,6 @@
+newmtl Egg
+Kd 1.0 1.0 1.0
+Ks 0.55 0.55 0.55
+Ns 96
+map_Kd ZergEgg_Diffuse_00.dds
+map_bump ZergEgg_Normal_00.png

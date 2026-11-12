@@ -1,0 +1,44 @@
+{
+    "Format": "HitoriAnimBlueprint",
+    "Version": 1,
+    "PreviewMeshPath": "FBX/UAL2_Standard_RM/UAL2_Standard_RM.fbx.bin",
+    "RootMotionMode": 2,
+    "RootGraphId": 1,
+    "NextId": 7,
+    "Variables": [],
+    "Graphs": [
+        {
+            "Id": 1,
+            "Name": "AnimGraph",
+            "Type": 0,
+            "ParentGraphId": -1,
+            "OwnerNodeId": -1,
+            "EditorSettings": "",
+            "Nodes": [
+                {
+                    "Id": 2, "Type": 0, "Name": "Output Pose",
+                    "InputPosePinId": 3, "SecondInputPosePinId": -1, "OutputPosePinId": -1,
+                    "TransitionInputPinId": -1, "TransitionOutputPinId": -1,
+                    "SequencePath": "", "BlendSpacePath": "",
+                    "bLooping": true, "bResetOnEntry": true, "PlayRate": 1.0, "ChildGraphId": -1,
+                    "Position": { "X": 360.0, "Y": 100.0 },
+                    "FloatInput": { "bUseVariable": false, "Variable": "", "Constant": 0.0 }
+                },
+                {
+                    "Id": 4, "Type": 1, "Name": "Zombie_Walk_Fwd_Loop",
+                    "InputPosePinId": -1, "SecondInputPosePinId": -1, "OutputPosePinId": 5,
+                    "TransitionInputPinId": -1, "TransitionOutputPinId": -1,
+                    "SequencePath": "FBX/UAL2_Standard_RM/UAL2_Standard_RM_Armature_Zombie_Walk_Fwd_Loop.anim.bin",
+                    "BlendSpacePath": "",
+                    "bLooping": true, "bResetOnEntry": true, "PlayRate": 1.0, "ChildGraphId": -1,
+                    "Position": { "X": 40.0, "Y": 100.0 },
+                    "FloatInput": { "bUseVariable": false, "Variable": "", "Constant": 0.0 }
+                }
+            ],
+            "Links": [
+                { "Id": 6, "FromNodeId": 4, "FromPinId": 5, "ToNodeId": 2, "ToPinId": 3 }
+            ],
+            "Transitions": []
+        }
+    ]
+}

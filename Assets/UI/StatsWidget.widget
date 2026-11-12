@@ -1,0 +1,227 @@
+{
+    "DesignSize": [
+        1920,
+        1080
+    ],
+    "ParentClass": "UUserWidget",
+    "Root": {
+        "Children": [
+            {
+                "Children": [
+                    {
+                        "Class": "UTextBlock",
+                        "Properties": {
+                            "AlignmentX": 0.0,
+                            "AlignmentY": 0.0,
+                            "Anchors": {
+                                "W": 0.0,
+                                "X": 0.5,
+                                "Y": 0.0,
+                                "Z": 0.5
+                            },
+                            "ColorAndOpacity": {
+                                "A": 1.0,
+                                "B": 1.0,
+                                "G": 1.0,
+                                "R": 1.0
+                            },
+                            "FontPath": "Assets/Fonts/Pretendard.json",
+                            "FontSize": 48.0,
+                            "Justification": 2,
+                            "Offsets": {
+                                "W": 100.0,
+                                "X": -300.0,
+                                "Y": 48.84407043457031,
+                                "Z": 300.0
+                            },
+                            "RenderOpacity": 1.0,
+                            "Text": "사망 횟수:  ",
+                            "Visibility": 0,
+                            "WidgetName": "DeathCountLabel",
+                            "ZOrder": 0,
+                            "bAutoSize": false
+                        }
+                    },
+                    {
+                        "Class": "UTextBlock",
+                        "Properties": {
+                            "AlignmentX": 0.0,
+                            "AlignmentY": 0.0,
+                            "Anchors": {
+                                "W": 0.0,
+                                "X": 0.5,
+                                "Y": 0.0,
+                                "Z": 0.5
+                            },
+                            "ColorAndOpacity": {
+                                "A": 1.0,
+                                "B": 1.0,
+                                "G": 1.0,
+                                "R": 1.0
+                            },
+                            "FontPath": "Assets/Fonts/Pretendard.json",
+                            "FontSize": 48.0,
+                            "Justification": 0,
+                            "Offsets": {
+                                "W": 100.0,
+                                "X": 0.0,
+                                "Y": 50.0,
+                                "Z": 200.0
+                            },
+                            "RenderOpacity": 1.0,
+                            "Text": "NaN",
+                            "Visibility": 0,
+                            "WidgetName": "DeathCount",
+                            "ZOrder": 0,
+                            "bAutoSize": false
+                        }
+                    },
+                    {
+                        "Class": "UTextBlock",
+                        "Properties": {
+                            "AlignmentX": 0.0,
+                            "AlignmentY": 0.0,
+                            "Anchors": {
+                                "W": 1.0,
+                                "X": 0.5,
+                                "Y": 1.0,
+                                "Z": 0.5
+                            },
+                            "ColorAndOpacity": {
+                                "A": 1.0,
+                                "B": 1.0,
+                                "G": 1.0,
+                                "R": 1.0
+                            },
+                            "FontPath": "Assets/Fonts/Pretendard.json",
+                            "FontSize": 48.0,
+                            "Justification": 2,
+                            "Offsets": {
+                                "W": 100.0,
+                                "X": -300.0,
+                                "Y": -100.0,
+                                "Z": 300.0
+                            },
+                            "RenderOpacity": 1.0,
+                            "Text": "걸린 시간:  ",
+                            "Visibility": 0,
+                            "WidgetName": "TimerLabel",
+                            "ZOrder": 0,
+                            "bAutoSize": false
+                        }
+                    },
+                    {
+                        "Class": "UTextBlock",
+                        "Properties": {
+                            "AlignmentX": 0.0,
+                            "AlignmentY": 0.0,
+                            "Anchors": {
+                                "W": 1.0,
+                                "X": 0.5,
+                                "Y": 1.0,
+                                "Z": 0.5
+                            },
+                            "ColorAndOpacity": {
+                                "A": 1.0,
+                                "B": 1.0,
+                                "G": 1.0,
+                                "R": 1.0
+                            },
+                            "FontPath": "Assets/Fonts/Pretendard.json",
+                            "FontSize": 48.0,
+                            "Justification": 0,
+                            "Offsets": {
+                                "W": 100.0,
+                                "X": -0.8170166015625,
+                                "Y": -93.84785461425781,
+                                "Z": 150.0
+                            },
+                            "RenderOpacity": 1.0,
+                            "Text": "NaN",
+                            "Visibility": 0,
+                            "WidgetName": "Timer",
+                            "ZOrder": 0,
+                            "bAutoSize": false
+                        }
+                    },
+                    {
+                        "Class": "UImage",
+                        "Properties": {
+                            "AlignmentX": 0.0,
+                            "AlignmentY": 0.0,
+                            "Anchors": {
+                                "W": 0.5,
+                                "X": 0.5,
+                                "Y": 0.5,
+                                "Z": 0.5
+                            },
+                            "ColorAndOpacity": {
+                                "A": 0.501960813999176,
+                                "B": 0.0,
+                                "G": 0.0,
+                                "R": 0.0
+                            },
+                            "Offsets": {
+                                "W": 257.42767333984375,
+                                "X": -260.608642578125,
+                                "Y": -98.67314147949219,
+                                "Z": 435.8619384765625
+                            },
+                            "RenderOpacity": 1.0,
+                            "TexturePath": "",
+                            "Visibility": 0,
+                            "WidgetName": "Image15242",
+                            "ZOrder": -1,
+                            "bAutoSize": false
+                        }
+                    }
+                ],
+                "Class": "UCanvasPanel",
+                "Properties": {
+                    "AlignmentX": 0.0,
+                    "AlignmentY": 0.0,
+                    "Anchors": {
+                        "W": 0.0,
+                        "X": 1.0,
+                        "Y": 0.0,
+                        "Z": 1.0
+                    },
+                    "Offsets": {
+                        "W": 265.75506591796875,
+                        "X": -441.5694580078125,
+                        "Y": 3.4244956970214844,
+                        "Z": 441.5694580078125
+                    },
+                    "RenderOpacity": 1.0,
+                    "Visibility": 0,
+                    "WidgetName": "CanvasPanel167",
+                    "ZOrder": 0,
+                    "bAutoSize": false
+                }
+            }
+        ],
+        "Class": "UCanvasPanel",
+        "Properties": {
+            "AlignmentX": 0.0,
+            "AlignmentY": 0.0,
+            "Anchors": {
+                "W": 1.0,
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 1.0
+            },
+            "Offsets": {
+                "W": 0.0,
+                "X": 0.0,
+                "Y": 0.0,
+                "Z": 0.0
+            },
+            "RenderOpacity": 1.0,
+            "Visibility": 0,
+            "WidgetName": "Root",
+            "ZOrder": 0,
+            "bAutoSize": false
+        }
+    },
+    "Version": 2
+}

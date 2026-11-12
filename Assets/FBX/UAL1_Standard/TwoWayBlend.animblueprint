@@ -1,0 +1,152 @@
+{
+    "Format": "HitoriAnimBlueprint",
+    "Graphs": [
+        {
+            "EditorSettings": "{\"view\":{\"scroll\":{\"x\":-945,\"y\":-400},\"visible_rect\":{\"max\":{\"x\":691.3333740234375,\"y\":938.6666870117188},\"min\":{\"x\":-630,\"y\":-266.66668701171875}},\"zoom\":1.5}}",
+            "Id": 1,
+            "Links": [
+                {
+                    "FromNodeId": 6,
+                    "FromPinId": 7,
+                    "Id": 8,
+                    "ToNodeId": 2,
+                    "ToPinId": 3
+                },
+                {
+                    "FromNodeId": 11,
+                    "FromPinId": 12,
+                    "Id": 13,
+                    "ToNodeId": 6,
+                    "ToPinId": 5
+                },
+                {
+                    "FromNodeId": 9,
+                    "FromPinId": 10,
+                    "Id": 14,
+                    "ToNodeId": 6,
+                    "ToPinId": 4
+                }
+            ],
+            "Name": "AnimGraph",
+            "Nodes": [
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 2,
+                    "InputPosePinId": 3,
+                    "Name": "Output Pose",
+                    "OutputPosePinId": -1,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": 360.0,
+                        "Y": 100.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 0,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.5,
+                        "Variable": "GroundSpeed",
+                        "bUseVariable": false
+                    },
+                    "Id": 6,
+                    "InputPosePinId": 4,
+                    "Name": "Two Way Blend",
+                    "OutputPosePinId": 7,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": -25.0,
+                        "Y": 42.0
+                    },
+                    "SecondInputPosePinId": 5,
+                    "SequencePath": "",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 3,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 9,
+                    "InputPosePinId": -1,
+                    "Name": "Sequence Player",
+                    "OutputPosePinId": 10,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": -393.0,
+                        "Y": -57.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "FBX/UAL1_Standard/UAL1_Standard_Armature_A_TPose.anim.bin",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 1,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                },
+                {
+                    "BlendSpacePath": "",
+                    "ChildGraphId": -1,
+                    "FloatInput": {
+                        "Constant": 0.0,
+                        "Variable": "",
+                        "bUseVariable": false
+                    },
+                    "Id": 11,
+                    "InputPosePinId": -1,
+                    "Name": "Sequence Player",
+                    "OutputPosePinId": 12,
+                    "PlayRate": 1.0,
+                    "Position": {
+                        "X": -393.0,
+                        "Y": 231.0
+                    },
+                    "SecondInputPosePinId": -1,
+                    "SequencePath": "FBX/UAL1_Standard/UAL1_Standard_Armature_Walk_Loop.anim.bin",
+                    "TransitionInputPinId": -1,
+                    "TransitionOutputPinId": -1,
+                    "Type": 1,
+                    "bLooping": true,
+                    "bResetOnEntry": true
+                }
+            ],
+            "OwnerNodeId": -1,
+            "ParentGraphId": -1,
+            "Transitions": [],
+            "Type": 0
+        }
+    ],
+    "NextId": 15,
+    "PreviewMeshPath": "FBX/UAL1_Standard/UAL1_Standard.fbx.bin",
+    "RootGraphId": 1,
+    "RootMotionMode": 2,
+    "Variables": [
+        {
+            "DefaultFloat": 0.0,
+            "Name": "GroundSpeed",
+            "Type": 0,
+            "bDefaultBool": false
+        }
+    ],
+    "Version": 1
+}

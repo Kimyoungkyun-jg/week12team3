@@ -1,0 +1,5 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><IntDir>$(SolutionDir)Temp\eggverify\obj\$(ProjectName)\</IntDir><OutDir>$(SolutionDir)Temp\eggverify\bin\</OutDir><LinkLibraryDependencies>false</LinkLibraryDependencies></PropertyGroup>
+  <ItemDefinitionGroup><ClCompile><DebugInformationFormat>OldStyle</DebugInformationFormat><MultiProcessorCompilation>false</MultiProcessorCompilation></ClCompile><Link><GenerateDebugInformation>false</GenerateDebugInformation></Link></ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(ProjectName)'=='HitoriEditor'"><Link><AdditionalDependencies>$(SolutionDir)Temp\eggverify\bin\HitoriEngine.lib;$(SolutionDir)Build\Bin\Release-windows-x86_64\ImGui.lib;$(SolutionDir)Build\Bin\Release-windows-x86_64\Lua.lib;%(AdditionalDependencies)</AdditionalDependencies></Link></ItemDefinitionGroup>
+</Project>
