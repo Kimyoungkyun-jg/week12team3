@@ -6,6 +6,15 @@
 #include "Particles/ParticleRenderData.h"
 #include "ParticleSystemComponent.generated.h"
 
+struct FParticleEmitterRuntimeData
+{
+	FParticleEmitterInstance Instance;
+	FDynamicSpriteEmitterData SpriteEmitterData;
+	UParticleModuleTypeDataMesh* MeshTypeDataModule = nullptr;
+	UMaterial* SpriteMaterial = nullptr;
+	FSubUVConstants ParticleParams{};
+};
+
 UCLASS()
 class UParticleSystemComponent : public UBillboardComponent
 {
@@ -24,10 +33,7 @@ private:
 	void InitializeParticleSystem();
 
 private:
-	FParticleEmitterInstance EmitterInstance;
-	FDynamicSpriteEmitterData SpriteEmitterData;
-	UParticleModuleTypeDataMesh* MeshTypeDataModule = nullptr;
-	FSubUVConstants ParticleParams{};
+	TArray<TUniquePtr<FParticleEmitterRuntimeData>> EmitterRuntimeData;
 
 	UPROPERTY(EditAnywhere)
 	UParticleSystem* Template = nullptr;

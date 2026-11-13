@@ -58,7 +58,7 @@ private:
 	UPROPERTY(EditAnywhere)
 	int32 MaxActiveParticles = 1000;
 
-	UPROPERTY(EditAnywhere)
+	UPROPERTY(EditAnywhere, Instanced)
 	UParticleModuleTypeDataMesh* MeshTypeDataModule = nullptr;
 
 	UPROPERTY(EditAnywhere, Instanced)
@@ -75,7 +75,17 @@ public:
 
 	UParticleEmitter* GetEmitter(int32 Index) const { return Emitters.IsValidIndex(Index) ? Emitters[Index] : nullptr; }
 	const TArray<UParticleEmitter*>& GetEmitters() const { return Emitters; }
-
+	UParticleEmitter* CreateEmitter(const FName& InName)
+	{
+		UParticleEmitter* Emitter = CreateDefaultSubobject<UParticleEmitter>(InName);
+		if (!Emitter)
+		{
+			return nullptr;
+		}
+		Emitter->CreateDefaultSetup();
+		Emitters.Add(Emitter);
+		return Emitter;
+	}
 private:
 	UPROPERTY(EditAnywhere, Instanced)
 	TArray<UParticleEmitter*> Emitters;
