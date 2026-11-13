@@ -21,6 +21,7 @@ namespace
         { "EditAnywhere",    "CPF_EditAnywhere" },
         { "VisibleAnywhere", "CPF_VisibleAnywhere" },
         { "Transient",       "CPF_Transient" },
+		{ "Instanced",       "CPF_Instanced" },
     };
 
     // UFUNCTION 지정자 → EFunctionFlags (Runtime/UObject/Function.h)

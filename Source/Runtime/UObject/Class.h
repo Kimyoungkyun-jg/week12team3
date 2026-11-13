@@ -2,6 +2,8 @@
 
 #include "Property.h"
 #include "Object.h"
+#include <type_traits>
+#include <utility>
 
 using ClassConstructor = UObject * (*)(void* Memory);
 
@@ -39,7 +41,23 @@ public:
 			ObjClass = std::remove_pointer_t<T>::StaticClass();
 		}
 
-		Properties.Add({ InName, GetPropertyType<T>(), InOffset, sizeof(T), ObjClass, InFlags });
+		FProperty Property{ InName, GetPropertyType<T>(), InOffset, sizeof(T), ObjClass, InFlags };
+		if constexpr (TArrayPropertyType<T>::Value)
+		{
+			using Element = typename TArrayPropertyType<T>::Element;
+			static_assert(!TArrayPropertyType<Element>::Value, "Nested TArray properties are not supported");
+			static_assert(!std::is_same_v<Element, bool>, "TArray<bool> is not supported by this TArray implementation");
+			Property.ElementType = GetPropertyType<Element>();
+			Property.bUnsignedElement = std::is_same_v<Element, uint32>;
+			if constexpr (TStructPropertyType<Element>::Value)
+				Property.StructFields = &TStructPropertyType<Element>::GetFields;
+			if constexpr (std::is_pointer_v<Element> && std::is_base_of_v<UObject, std::remove_pointer_t<Element>>)
+				Property.ElementClass = std::remove_pointer_t<Element>::StaticClass();
+			Property.ArrayNum = [](const void* Ptr) { return static_cast<const T*>(Ptr)->Num(); };
+			Property.ArraySetNum = [](void* Ptr, int32 Num) { static_cast<T*>(Ptr)->SetNum(Num); };
+			Property.ArrayAt = [](void* Ptr, int32 Index) -> void* { return &(*static_cast<T*>(Ptr))[Index]; };
+		}
+		Properties.Add(std::move(Property));
 	}
 
 	template <typename T>

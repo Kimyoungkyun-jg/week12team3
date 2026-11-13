@@ -2,10 +2,13 @@
 
 class UWorld;
 class AActor;
+class UObject;
 
 class FJsonArchive
 {
 public:
+	static bool SaveObject(UObject* Object, const FString& Path);
+	static bool LoadObject(UObject* Object, const FString& Path);
 	static bool SaveWorld(UWorld* World, const FString& Path);
 	static bool LoadWorld(UWorld* World, const FString& Path);
 	static bool LoadWorldFromBytes(UWorld* World, const TArray<uint8>& Bytes);
