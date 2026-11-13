@@ -14,6 +14,7 @@
 #include "Render/SkeletalMesh.h"
 #include "Components/TextRenderComponent.h"
 #include "Components/ParticleSubUVComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "Editor/EditorUI/ImGuiRenderer.h"
 #include "Components/DirectionalLightComponent.h"
@@ -1300,7 +1301,7 @@ namespace
 			bool bHasVisibleProperty = false;
 			for (const FProperty& Property : Class->GetProperties())
 			{
-				if (Property.HasAnyFlags(CPF_Edit))
+				if (Property.HasAnyFlags(CPF_Edit) && Property.Type != EPropertyType::Array)
 				{
 					bHasVisibleProperty = true;
 					break;
@@ -1316,7 +1317,7 @@ namespace
 			{
 				for (const FProperty& Property : Class->GetProperties())
 				{
-					if (!Property.HasAnyFlags(CPF_Edit))
+					if (!Property.HasAnyFlags(CPF_Edit) || Property.Type == EPropertyType::Array)
 					{
 						continue;
 					}
@@ -1332,6 +1333,130 @@ namespace
 			}
 			ImGui::PopID();
 		}
+	}
+
+	void DrawParticleSystemSection(UParticleSystemComponent* Component, ImFont* CustomFont)
+	{
+		ImGui::SeparatorText("Particle System");
+		if (ImGui::Button("New System"))
+		{
+			UParticleSystem* System = NewObject<UParticleSystem>(Component);
+			UParticleLODLevel* LOD = System->AddEmitter()->AddLODLevel();
+			LOD->AddModule(UParticleModuleLifetime::StaticClass());
+			LOD->AddModule(UParticleModuleLocation::StaticClass());
+			LOD->AddModule(UParticleModuleVelocity::StaticClass());
+			LOD->AddModule(UParticleModuleColor::StaticClass());
+			LOD->AddModule(UParticleModuleSize::StaticClass());
+			Component->SetTemplate(System);
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Reload") && !Component->TemplatePath.empty())
+			Component->SetTemplate(UParticleSystem::LoadFromFile(Component->TemplatePath, Component));
+		ImGui::SameLine();
+		if (ImGui::Button("Save") && Component->GetTemplate() && !Component->TemplatePath.empty())
+			Component->GetTemplate()->SaveToFile(Component->TemplatePath);
+
+		UParticleSystem* System = Component->GetTemplate();
+		if (!System) return;
+		if (Component->TemplatePath.empty()) ImGui::TextDisabled("Set TemplatePath to save this system.");
+		if (ImGui::Button("Add Emitter"))
+		{
+			System->AddEmitter()->AddLODLevel();
+			Component->SetTemplate(System);
+		}
+		for (int32 EmitterIndex = 0; EmitterIndex < static_cast<int32>(System->GetEmitters().Num()); ++EmitterIndex)
+		{
+			UParticleEmitter* Emitter = System->GetEmitters()[EmitterIndex];
+			ImGui::PushID(Emitter);
+			if (ImGui::TreeNode(Emitter, "Emitter %d", EmitterIndex))
+			{
+				if (ImGui::Button("Add LOD"))
+				{
+					Emitter->AddLODLevel();
+					Component->SetTemplate(System);
+				}
+				for (UParticleLODLevel* LOD : Emitter->GetLODLevels())
+				{
+					ImGui::PushID(LOD);
+					if (ImGui::TreeNode(LOD, "LOD %d", LOD->Level))
+					{
+						DrawProperties(LOD, CustomFont);
+						DrawProperties(LOD->GetOrCreateRequired(), CustomFont);
+						UParticleModuleSpawn* Spawn = LOD->GetOrCreateSpawn();
+						DrawProperties(Spawn, CustomFont);
+						if (ImGui::Button("Add Burst")) Spawn->Bursts.Add(FParticleBurst{});
+						for (int32 BurstIndex = 0; BurstIndex < static_cast<int32>(Spawn->Bursts.Num()); ++BurstIndex)
+						{
+							FParticleBurst& Burst = Spawn->Bursts[BurstIndex];
+							ImGui::PushID(BurstIndex);
+							ImGui::DragFloat("Time", &Burst.Time, 0.01f, 0.0f);
+							ImGui::DragInt("Count", &Burst.Count, 1.0f, 0);
+							if (ImGui::SmallButton("Remove Burst"))
+							{
+								Spawn->Bursts.RemoveAt(BurstIndex);
+								ImGui::PopID();
+								break;
+							}
+							ImGui::PopID();
+						}
+						UParticleModuleTypeDataBase* TypeData = LOD->GetOrCreateTypeData();
+						int TypeDataIndex = TypeData->GetEmitterType() == EParticleEmitterType::GpuSprite ? 1 : 0;
+						if (ImGui::Combo("Type Data", &TypeDataIndex, "CPU Sprite\0GPU Sprite\0"))
+						{
+							TypeData = LOD->SetTypeData(TypeDataIndex == 0
+								? UParticleModuleTypeDataSprite::StaticClass()
+								: UParticleModuleTypeDataGpuSprite::StaticClass());
+							Component->SetTemplate(System);
+						}
+						if (TypeDataIndex == 1) ImGui::TextDisabled("GPU Sprite simulation is not implemented yet.");
+						DrawProperties(TypeData, CustomFont);
+						if (ImGui::Button("Add Module")) ImGui::OpenPopup("ParticleModulePopup");
+						if (ImGui::BeginPopup("ParticleModulePopup"))
+						{
+							UClass* Classes[] = { UParticleModuleLifetime::StaticClass(),
+								UParticleModuleLocation::StaticClass(), UParticleModuleVelocity::StaticClass(),
+								UParticleModuleColor::StaticClass(), UParticleModuleSize::StaticClass() };
+							for (UClass* Class : Classes)
+								if (ImGui::MenuItem(Class->Name.c_str())) LOD->AddModule(Class);
+							ImGui::EndPopup();
+						}
+						for (int32 ModuleIndex = 0; ModuleIndex < static_cast<int32>(LOD->Modules.Num()); ++ModuleIndex)
+						{
+							UParticleModule* Module = LOD->Modules[ModuleIndex];
+							ImGui::PushID(Module);
+							if (ImGui::SmallButton("Up") && ModuleIndex > 0)
+							{
+								std::swap(LOD->Modules[ModuleIndex], LOD->Modules[ModuleIndex - 1]);
+								ImGui::PopID();
+								break;
+							}
+							ImGui::SameLine();
+							if (ImGui::SmallButton("Down") && ModuleIndex + 1 < static_cast<int32>(LOD->Modules.Num()))
+							{
+								std::swap(LOD->Modules[ModuleIndex], LOD->Modules[ModuleIndex + 1]);
+								ImGui::PopID();
+								break;
+							}
+							ImGui::SameLine();
+							if (ImGui::SmallButton("Remove"))
+							{
+								LOD->Modules.RemoveAt(ModuleIndex);
+								ImGui::PopID();
+								break;
+							}
+							DrawProperties(Module, CustomFont);
+							ImGui::PopID();
+						}
+						ImGui::TreePop();
+					}
+					ImGui::PopID();
+				}
+				ImGui::TreePop();
+			}
+			ImGui::PopID();
+		}
+		for (const FParticleEmitterInstance& Instance : Component->GetEmitterInstances())
+			ImGui::Text("Active particles: %d", Instance.ActiveParticles);
 	}
 
 	void DrawActorHeader(AActor* Actor, UActorComponent*& OutSelectedComponent)
@@ -1504,6 +1629,8 @@ void FDetailsPanel::OnRender()
 			ImGui::PushID(TargetComponent);
 			ImGui::SeparatorText("Component Properties");
 			DrawProperties(TargetComponent, CustomFont);
+			if (UParticleSystemComponent* Particle = Cast<UParticleSystemComponent>(TargetComponent))
+				DrawParticleSystemSection(Particle, CustomFont);
 			DrawShadowPreview();
 
 			if(SelectCandidateComponent != TargetComponent)

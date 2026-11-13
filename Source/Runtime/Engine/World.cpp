@@ -21,6 +21,7 @@
 #include "Collision/Ray.h"
 #include "Components/BillboardComponent.h"
 #include "Components/ParticleSubUVComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 
@@ -180,6 +181,11 @@ void UWorld::Tick(float RealDeltaTime)
 	}
 	else
 	{
+		for (TObjectIterator<UParticleSystemComponent> Comp; Comp; ++Comp)
+		{
+			if (Comp && Comp->IsRegistered() && Comp->GetWorld() == this && Comp->bPreviewInEditor)
+				Comp->TickComponent(DeltaTime);
+		}
 		// 에디터 월드에서도 파티클 시뮬레이션은 틱이 돌아야 한다
 		for (TObjectIterator<UParticleSubUVComponent> Comp; Comp; ++Comp)
 		{
@@ -234,6 +240,7 @@ void UWorld::ClearWorld()
 	// 액터를 지우기 전에 렌더 프록시와 틱 등록부터 푼다. ClearActors는 액터를 delete만 하므로,
 	// 그대로 두면 지워진 컴포넌트를 가리키는 프록시가 FScene에 남아 다음 프레임에 터진다.
 	Scene.RemoveAllLights();
+	Scene.RemoveAllParticles();
 	Scene.RemoveAllPrimitives();
 	HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
 	bIsClearingWorld = false;

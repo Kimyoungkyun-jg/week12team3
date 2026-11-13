@@ -20,6 +20,7 @@ namespace
 		for (int32 Index = 0; Index < FieldCount; ++Index)
 		{
 			const FStructPropertyField& Field = Fields[Index];
+			if (Field.Flags & CPF_Transient) continue;
 			if (bIsLoading && !Value.contains(Field.Name)) continue;
 			void* Ptr = static_cast<uint8*>(StructPtr) + Field.Offset;
 			json& FieldValue = Value[Field.Name];
@@ -30,8 +31,42 @@ namespace
 				else FieldValue = *static_cast<float*>(Ptr);
 				break;
 			case EPropertyType::Int:
-				if (bIsLoading) *static_cast<int32*>(Ptr) = FieldValue.get<int32>();
+				if (Field.bUnsigned)
+				{
+					if (bIsLoading) *static_cast<uint32*>(Ptr) = FieldValue.get<uint32>();
+					else FieldValue = *static_cast<uint32*>(Ptr);
+				}
+				else if (bIsLoading) *static_cast<int32*>(Ptr) = FieldValue.get<int32>();
 				else FieldValue = *static_cast<int32*>(Ptr);
+				break;
+			case EPropertyType::Bool:
+				if (bIsLoading) *static_cast<bool*>(Ptr) = FieldValue.get<bool>();
+				else FieldValue = *static_cast<bool*>(Ptr);
+				break;
+			case EPropertyType::String:
+				if (bIsLoading) *static_cast<FString*>(Ptr) = FieldValue.get<FString>();
+				else FieldValue = *static_cast<FString*>(Ptr);
+				break;
+			case EPropertyType::Vector:
+				if (bIsLoading) *static_cast<FVector*>(Ptr) = FieldValue.get<FVector>();
+				else FieldValue = *static_cast<FVector*>(Ptr);
+				break;
+			case EPropertyType::Vector4:
+			case EPropertyType::LinearColor:
+				if (bIsLoading) *static_cast<FVector4*>(Ptr) = FieldValue.get<FVector4>();
+				else FieldValue = *static_cast<FVector4*>(Ptr);
+				break;
+			case EPropertyType::Color:
+				if (bIsLoading) static_cast<FColor*>(Ptr)->DWColor() = FieldValue.get<uint32>();
+				else FieldValue = static_cast<FColor*>(Ptr)->DWColor();
+				break;
+			case EPropertyType::Rotator:
+				if (bIsLoading) *static_cast<FRotator*>(Ptr) = FieldValue.get<FRotator>();
+				else FieldValue = *static_cast<FRotator*>(Ptr);
+				break;
+			case EPropertyType::Transform:
+				if (bIsLoading) *static_cast<FTransform*>(Ptr) = FieldValue.get<FTransform>();
+				else FieldValue = *static_cast<FTransform*>(Ptr);
 				break;
 			default: break;
 			}
@@ -46,13 +81,25 @@ namespace
 		for (int32 Index = 0; Index < FieldCount; ++Index)
 		{
 			const FStructPropertyField& Field = Fields[Index];
+			if (Field.Flags & CPF_Transient) continue;
 			TOptional<FStructuredArchive::FSlot> FieldSlot = Record.TryEnterField(Field.Name, true);
 			if (!FieldSlot.IsSet()) continue;
 			void* Ptr = static_cast<uint8*>(StructPtr) + Field.Offset;
 			switch (Field.Type)
 			{
 			case EPropertyType::Float: FieldSlot.GetValue() << *static_cast<float*>(Ptr); break;
-			case EPropertyType::Int: FieldSlot.GetValue() << *static_cast<int32*>(Ptr); break;
+			case EPropertyType::Int:
+				if (Field.bUnsigned) FieldSlot.GetValue() << *static_cast<uint32*>(Ptr);
+				else FieldSlot.GetValue() << *static_cast<int32*>(Ptr);
+				break;
+			case EPropertyType::Bool: FieldSlot.GetValue() << *static_cast<bool*>(Ptr); break;
+			case EPropertyType::String: FieldSlot.GetValue() << *static_cast<FString*>(Ptr); break;
+			case EPropertyType::Vector: FieldSlot.GetValue() << *static_cast<FVector*>(Ptr); break;
+			case EPropertyType::Vector4:
+			case EPropertyType::LinearColor: FieldSlot.GetValue() << *static_cast<FVector4*>(Ptr); break;
+			case EPropertyType::Color: FieldSlot.GetValue() << *static_cast<FColor*>(Ptr); break;
+			case EPropertyType::Rotator: FieldSlot.GetValue() << *static_cast<FRotator*>(Ptr); break;
+			case EPropertyType::Transform: FieldSlot.GetValue() << *static_cast<FTransform*>(Ptr); break;
 			default: break;
 			}
 		}

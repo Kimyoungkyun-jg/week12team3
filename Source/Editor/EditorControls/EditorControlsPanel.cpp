@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include "GameFramework/Actor/ParticleActor.h"
+#include "GameFramework/Actor/ParticleSystemActor.h"
 #include "GameFramework/Actor/StaticMeshActor.h"
 #include "GameFramework/Actor/DirectionalLightActor.h"
 #include "GameFramework/Actor/PointLightActor.h"
@@ -56,6 +57,7 @@ namespace
 		{ "Lights",   "Fake Spot Light",   &AFakeSpotLightActor::StaticClass },
 		{ "Effects",  "Decal",             &ADecalActor::StaticClass },
 		{ "Effects",  "Particle",          &AParticleActor::StaticClass },
+		{ "Effects",  "Particle System",   &AParticleSystemActor::StaticClass },
 		{ "Effects",  "Height Fog",        &AExponentialHeightFogActor::StaticClass },
 		{ "Gameplay", "Projectile",        &AProjectileActor::StaticClass },
 		{ "Gameplay", "Rifle",             &ARifleActor::StaticClass },

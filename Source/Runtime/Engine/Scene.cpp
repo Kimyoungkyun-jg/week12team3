@@ -2,6 +2,8 @@
 #include "Scene.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/SkyLightComponent.h"
+#include "Components/ParticleSystemComponent.h"
+#include "Engine/ParticleSceneProxy.h"
 
 void FScene::AddPrimitive(UPrimitiveComponent* Component)
 {
@@ -77,6 +79,34 @@ void FScene::RemoveAllPrimitives()
 	BVH.Clear();
 	bElementListChanged = true;
 	InvalidateAllShadows();
+}
+
+void FScene::AddParticle(UParticleSystemComponent* Component)
+{
+	if (!Component || Component->SceneProxy) return;
+	FParticleSceneProxy* Proxy = new FParticleSceneProxy(Component);
+	Component->SceneProxy = Proxy;
+	ParticleSceneProxies.Add(Proxy);
+}
+
+void FScene::RemoveParticle(UParticleSystemComponent* Component)
+{
+	if (!Component || !Component->SceneProxy) return;
+	FParticleSceneProxy* Proxy = Component->SceneProxy;
+	const int32 Index = ParticleSceneProxies.Find(Proxy);
+	if (Index != INDEX_NONE) ParticleSceneProxies.RemoveAtSwap(Index);
+	Component->SceneProxy = nullptr;
+	delete Proxy;
+}
+
+void FScene::RemoveAllParticles()
+{
+	for (FParticleSceneProxy* Proxy : ParticleSceneProxies)
+	{
+		if (UParticleSystemComponent* Component = Proxy->GetComponent()) Component->SceneProxy = nullptr;
+		delete Proxy;
+	}
+	ParticleSceneProxies.Reset();
 }
 
 void FScene::AddLight(ULightComponent* Component)

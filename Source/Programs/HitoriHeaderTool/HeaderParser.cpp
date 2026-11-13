@@ -82,9 +82,10 @@ FHeaderParser::FHeaderParser(const std::vector<FToken>& InTokens, const fs::path
 {
 }
 
-bool FHeaderParser::Parse(std::vector<FClassInfo>& OutClasses, std::vector<FEnumInfo>& OutEnums)
+bool FHeaderParser::Parse(std::vector<FClassInfo>& OutClasses, std::vector<FStructInfo>& OutStructs, std::vector<FEnumInfo>& OutEnums)
 {
     Classes = &OutClasses;
+    Structs = &OutStructs;
     Enums = &OutEnums;
     Index = 0;
     Scopes.clear();
@@ -96,6 +97,10 @@ bool FHeaderParser::Parse(std::vector<FClassInfo>& OutClasses, std::vector<FEnum
         if (T.Is("UCLASS"))
         {
             ParseClass();
+        }
+        else if (T.Is("USTRUCT"))
+        {
+            ParseStruct();
         }
         else if (T.Is("GENERATED_BODY"))
         {
@@ -135,6 +140,10 @@ bool FHeaderParser::Parse(std::vector<FClassInfo>& OutClasses, std::vector<FEnum
             {
                 FinishClass(Scopes.back().ClassIndex);
             }
+            if (Scopes.back().StructIndex >= 0 && (*Structs)[Scopes.back().StructIndex].GeneratedBodyLine == 0)
+            {
+                Error((*Structs)[Scopes.back().StructIndex].Line, "USTRUCT has no GENERATED_BODY().");
+            }
             Scopes.pop_back();
             ++Index;
         }
@@ -165,9 +174,51 @@ int FHeaderParser::CurrentClassIndex() const
     return Scopes.empty() ? -1 : Scopes.back().ClassIndex;
 }
 
+int FHeaderParser::CurrentStructIndex() const
+{
+	return Scopes.empty() ? -1 : Scopes.back().StructIndex;
+}
+
 bool FHeaderParser::IsInsideAnyClass() const
 {
     return std::any_of(Scopes.begin(), Scopes.end(), [](const FScope& Scope) { return Scope.ClassIndex >= 0; });
+}
+
+void FHeaderParser::ParseStruct()
+{
+	const int Line = Tok().Line;
+	++Index;
+	std::vector<FSpecifier> Specifiers;
+	if (!ParseSpecifiers("USTRUCT", Specifiers)) return;
+	if (!Specifiers.empty()) Error(Line, "USTRUCT specifiers are not supported yet.");
+	if (!Scopes.empty() && (IsInsideAnyClass() || CurrentStructIndex() >= 0))
+	{
+		Error(Line, "Nested USTRUCT is not supported.");
+		return;
+	}
+	if (AtEnd() || !Tok().Is("struct"))
+	{
+		Error(Line, "USTRUCT() must be followed by a struct definition.");
+		return;
+	}
+	++Index;
+	std::string Name;
+	while (!AtEnd() && !Tok().Is("{") && !Tok().Is(";"))
+	{
+		if (Tok().Type == ETokenType::Identifier) Name = Tok().Text;
+		++Index;
+	}
+	if (AtEnd() || Tok().Is(";") || Name.empty())
+	{
+		Error(Line, "No struct definition after USTRUCT().");
+		return;
+	}
+	FStructInfo Info;
+	Info.Name = Name;
+	Info.Line = Line;
+	Structs->push_back(std::move(Info));
+	Scopes.push_back({ -1, static_cast<int>(Structs->size()) - 1 });
+	++Index;
 }
 
 // UCLASS(지정자) class [API매크로] 이름 [final] : [public] 부모 [, 다른 부모] {
@@ -293,11 +344,19 @@ void FHeaderParser::ParseGeneratedBody()
     }
 
     const int ClassIndex = CurrentClassIndex();
-    if (ClassIndex < 0)
+    const int StructIndex = CurrentStructIndex();
+    if (ClassIndex < 0 && StructIndex < 0)
     {
-        Error(Line, "GENERATED_BODY() must be directly inside a UCLASS() class body.");
+        Error(Line, "GENERATED_BODY() must be directly inside a UCLASS or USTRUCT body.");
         return;
     }
+	if (StructIndex >= 0)
+	{
+		FStructInfo& Struct = (*Structs)[StructIndex];
+		if (Struct.GeneratedBodyLine != 0) Error(Line, Quote(Struct.Name) + " has GENERATED_BODY() twice.");
+		else Struct.GeneratedBodyLine = Line;
+		return;
+	}
 
     FClassInfo& Class = (*Classes)[ClassIndex];
     if (Class.GeneratedBodyLine != 0)
@@ -322,9 +381,10 @@ void FHeaderParser::ParseProperty()
     }
 
     const int ClassIndex = CurrentClassIndex();
-    if (ClassIndex < 0)
+    const int StructIndex = CurrentStructIndex();
+    if (ClassIndex < 0 && StructIndex < 0)
     {
-        Error(Line, "UPROPERTY is only allowed on member variables directly inside a UCLASS() class body.");
+        Error(Line, "UPROPERTY is only allowed on member variables directly inside a UCLASS or USTRUCT body.");
         return;
     }
 
@@ -381,8 +441,8 @@ void FHeaderParser::ParseProperty()
         return;
     }
 
-    FClassInfo& Class = (*Classes)[ClassIndex];
-    const bool bDuplicate = std::any_of(Class.Properties.begin(), Class.Properties.end(),
+    std::vector<FPropertyInfo>& Properties = StructIndex >= 0 ? (*Structs)[StructIndex].Properties : (*Classes)[ClassIndex].Properties;
+    const bool bDuplicate = std::any_of(Properties.begin(), Properties.end(),
         [&](const FPropertyInfo& Other) { return Other.Name == Property.Name; });
     if (bDuplicate)
     {
@@ -391,7 +451,7 @@ void FHeaderParser::ParseProperty()
     }
 
     ResolvePropertySpecifiers(Specifiers, Property);
-    Class.Properties.push_back(std::move(Property));
+    Properties.push_back(std::move(Property));
 }
 
 // UFUNCTION(지정자) [virtual] 반환타입 이름 ( 인자 ) [const] [override] { 본문 } 또는 ;

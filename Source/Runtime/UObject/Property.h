@@ -7,9 +7,12 @@
 #include "Math/Transform.h"
 #include "Math/Color.h"
 #include <cstddef>
+#include <type_traits>
 
 class UMaterial;
 class UFont;
+class UObject;
+class UClass;
 
 enum class EPropertyType { Unknown, Float, Int, String, Bool, Vector, Vector4, Color, LinearColor, Rotator, Transform, Object, Array, Struct};
 
@@ -18,6 +21,8 @@ struct FStructPropertyField
 	const char* Name;
 	EPropertyType Type;
 	size_t Offset;
+	uint32 Flags;
+	bool bUnsigned;
 };
 
 template <typename T> struct TStructPropertyType { static constexpr bool Value = false; };

@@ -2,7 +2,7 @@
 // 사용법: HitoriHeaderTool <모듈 이름> <출력 폴더> <소스 폴더>...
 //   예:   HitoriHeaderTool Runtime Build/Generated/Runtime Source/Runtime
 //
-// 소스 폴더의 헤더 중 UCLASS()나 UENUM()이 있는 것마다 <출력 폴더>/<헤더 이름>.generated.h를 만든다.
+// 소스 폴더의 헤더 중 UCLASS(), USTRUCT(), UENUM()이 있는 것마다 <출력 폴더>/<헤더 이름>.generated.h를 만든다.
 // 오류가 하나라도 있으면 아무 파일도 쓰지 않고 1을 반환해서 빌드를 멈춘다.
 
 #include "CodeGenerator.h"
@@ -30,7 +30,7 @@ namespace
         return Result;
     }
 
-    // .generated.h는 UCLASS/UENUM보다 앞에 있는 #include 중 마지막이어야 한다.
+    // .generated.h는 UCLASS/USTRUCT/UENUM보다 앞에 있는 #include 중 마지막이어야 한다.
     // 뒤에 다른 헤더가 오면 그 헤더의 generated.h가 CURRENT_FILE_ID를 덮어쓴다.
     void CheckGeneratedInclude(const std::string& Source, const FHeaderInfo& Header, FDiagnostics& Diag)
     {
@@ -112,7 +112,7 @@ namespace
                 continue;
             }
             // 대부분의 헤더는 여기서 걸러진다.
-            if (Source.find("UCLASS") == std::string::npos && Source.find("UENUM") == std::string::npos)
+            if (Source.find("UCLASS") == std::string::npos && Source.find("USTRUCT") == std::string::npos && Source.find("UENUM") == std::string::npos)
             {
                 continue;
             }
@@ -126,7 +126,7 @@ namespace
             FHeaderInfo Header;
             Header.Path = Path;
             FHeaderParser Parser(Tokens, Path, Diag);
-            if (!Parser.Parse(Header.Classes, Header.Enums) || (Header.Classes.empty() && Header.Enums.empty()))
+            if (!Parser.Parse(Header.Classes, Header.Structs, Header.Enums) || (Header.Classes.empty() && Header.Structs.empty() && Header.Enums.empty()))
             {
                 continue;
             }

@@ -9,12 +9,13 @@ class FHeaderParser
 public:
 	FHeaderParser(const std::vector<FToken>& InTokens, const fs::path& InFile, FDiagnostics& InDaig);
 
-	bool Parse(std::vector<FClassInfo>& OutClasses, std::vector<FEnumInfo>& OutEnums);
+	bool Parse(std::vector<FClassInfo>& OutClasses, std::vector<FStructInfo>& OutStructs, std::vector<FEnumInfo>& OutEnums);
 
 private:
 	struct FScope
 	{
 		int ClassIndex = -1;
+		int StructIndex = -1;
 	};
 
 	bool AtEnd() const { return Index >= Tokens.size(); }
@@ -22,7 +23,9 @@ private:
 	int CurrentLine() const;
 
 	int CurrentClassIndex() const;
+	int CurrentStructIndex() const;
 	bool IsInsideAnyClass() const;
+	void ParseStruct();
 
 	void ParseClass();
 	void ParseGeneratedBody();
@@ -50,6 +53,7 @@ private:
 	bool bHasError = false;
 	std::vector<FScope> Scopes;
 	std::vector<FClassInfo>* Classes = nullptr;
+	std::vector<FStructInfo>* Structs = nullptr;
 	std::vector<FEnumInfo>* Enums = nullptr;
 	std::vector<std::map<std::string, int>> FunctionNameCounts; // 클래스마다 선언된 함수 이름 개수
 };

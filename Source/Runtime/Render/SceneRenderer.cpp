@@ -7,6 +7,7 @@
 #include "Render/SkyboxRenderer.h"
 #include "Render/RenderResourceManager.h"
 #include "Engine/World.h"
+#include "Engine/ParticleSceneProxy.h"
 #include "Tasks/Tasks.h"
 #include "Core/Stats/LightweightStats.h"
 #include "Core/StatOverlay.h"
@@ -1452,6 +1453,17 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 				RenderStats.LODCounts[L] += GatherChunks[c].LODCounts[L];
 				RenderStats.LODTriangles[L] += GatherChunks[c].LODTriangles[L];
 			}
+
+		for (const FParticleSceneProxy* Proxy : Scene.GetParticleProxies())
+		{
+			if (!Proxy->HasParticles() || !Proxy->IsShown(View.bGameView)) continue;
+			if (Frustum)
+			{
+				uint32 PlaneMask = FrustumAllPlanesMask;
+				if (ClassifyBoxInFrustum(Proxy->GetBounds(), *Frustum, PlaneMask) == EFrustumTest::Outside) continue;
+			}
+			Proxy->SubmitToRenderQueue(RenderQueue, View);
+		}
 
 		if (bPrepareObjectSlots) Data.ObjectConstants.SetNum(NextExtraSlot);
 		RenderStats.DrawCalls = RenderQueue.Num() + StaticDraws;

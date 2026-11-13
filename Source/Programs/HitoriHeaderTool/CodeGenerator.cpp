@@ -60,7 +60,8 @@ std::string GenerateHeader(const FHeaderInfo& Header, const std::string& ModuleN
     Out += "#define " + Guard + "\n";
     Out += "\n";
     // enum만 있는 헤더는 가벼운 Enum.h만 include한다. Class.h는 Object.h까지 끌고 와서 순환 include가 생기기 쉽다.
-    Out += Header.Classes.empty() ? "#include \"UObject/Enum.h\"\n" : "#include \"UObject/Class.h\"\n";
+    Out += !Header.Classes.empty() ? "#include \"UObject/Class.h\"\n"
+        : !Header.Structs.empty() ? "#include \"UObject/Property.h\"\n" : "#include \"UObject/Enum.h\"\n";
     Out += "\n";
 
     for (const FEnumInfo& Enum : Header.Enums)
@@ -87,6 +88,34 @@ std::string GenerateHeader(const FHeaderInfo& Header, const std::string& ModuleN
         Out += "\t}\n";
         Out += "};\n";
         Out += "\n";
+    }
+
+    for (const FStructInfo& Struct : Header.Structs)
+    {
+        Out += "// " + Struct.Name + " (" + std::to_string(Struct.Properties.size()) + " properties)\n";
+        Out += "struct " + Struct.Name + ";\n";
+        Out += "template <> struct TStructPropertyType<" + Struct.Name + ">\n{\n";
+        Out += "\tstatic constexpr bool Value = true;\n";
+        Out += "\ttemplate <typename T = " + Struct.Name + ">\n";
+        Out += "\tstatic const FStructPropertyField* GetFields(int32& Count)\n\t{\n";
+        for (const FPropertyInfo& Property : Struct.Properties)
+        {
+            const std::string Type = "GetPropertyType<decltype(((T*)nullptr)->" + Property.Name + ")>()";
+            Out += "\t\tstatic_assert(" + Type + " != EPropertyType::Array && " + Type
+                + " != EPropertyType::Object && " + Type + " != EPropertyType::Struct, "
+                + "\"USTRUCT field " + Property.Name + " must be a supported value type\");\n";
+        }
+        if (!Struct.Properties.empty()) Out += "\t\tstatic const FStructPropertyField Fields[] = {\n";
+        for (const FPropertyInfo& Property : Struct.Properties)
+        {
+            Out += "\t\t\t{ \"" + Property.Name + "\", GetPropertyType<decltype(((T*)nullptr)->" + Property.Name
+                + ")>(), offsetof(T, " + Property.Name + "), " + JoinFlags(Property.Flags)
+                + ", std::is_same_v<decltype(((T*)nullptr)->" + Property.Name + "), uint32> },\n";
+        }
+        if (!Struct.Properties.empty()) Out += "\t\t};\n";
+        Out += "\t\tCount = " + std::to_string(Struct.Properties.size()) + ";\n";
+        Out += Struct.Properties.empty() ? "\t\treturn nullptr;\n\t}\n};\n" : "\t\treturn Fields;\n\t}\n};\n";
+        Out += "#define " + Header.FileId + "_" + std::to_string(Struct.GeneratedBodyLine) + "_GENERATED_BODY\n\n";
     }
 
     for (const FClassInfo& Class : Header.Classes)
@@ -153,7 +182,7 @@ std::string GenerateHeader(const FHeaderInfo& Header, const std::string& ModuleN
     }
 
     // CURRENT_FILE_ID는 GENERATED_BODY()만 쓴다. enum만 있는 헤더는 건드리지 않는다.
-    if (!Header.Classes.empty())
+    if (!Header.Classes.empty() || !Header.Structs.empty())
     {
         Out += "#undef CURRENT_FILE_ID\n";
         Out += "#define CURRENT_FILE_ID " + Header.FileId + "\n";

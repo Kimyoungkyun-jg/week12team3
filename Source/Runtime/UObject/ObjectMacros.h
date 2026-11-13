@@ -26,7 +26,7 @@ DEFINE_ENUM_OPERATORS(EObjectFlags)
 //   meta=(ClampMin=0, ClampMax=1, UIMin=0, UIMax=1, Delta=0.1)
 //                      숫자 입력의 값 범위, UI 범위, 조절 간격을 지정한다.
 // EditAnywhere와 VisibleAnywhere는 함께 쓸 수 없다. 예: UPROPERTY(EditAnywhere, Transient)
-// TArray<구조체>는 해당 구조체의 TStructPropertyType 등록이 필요하다.
+// TArray<구조체>는 USTRUCT()와 구조체 멤버의 UPROPERTY()가 필요하다.
 #define UFUNCTION(...)
 #define UENUM(...)
 #define UMETA(...)

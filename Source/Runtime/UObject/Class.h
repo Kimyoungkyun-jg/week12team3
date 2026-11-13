@@ -50,7 +50,7 @@ public:
 			Property.ElementType = GetPropertyType<Element>();
 			Property.bUnsignedElement = std::is_same_v<Element, uint32>;
 			if constexpr (TStructPropertyType<Element>::Value)
-				Property.StructFields = &TStructPropertyType<Element>::GetFields;
+				Property.StructFields = [](int32& Count) { return TStructPropertyType<Element>::template GetFields<>(Count); };
 			if constexpr (std::is_pointer_v<Element> && std::is_base_of_v<UObject, std::remove_pointer_t<Element>>)
 				Property.ElementClass = std::remove_pointer_t<Element>::StaticClass();
 			Property.ArrayNum = [](const void* Ptr) { return static_cast<const T*>(Ptr)->Num(); };

@@ -72,6 +72,14 @@ struct FClassInfo
 	std::vector<FFunctionInfo> Functions;
 };
 
+struct FStructInfo
+{
+	std::string Name;
+	int Line = 0;
+	int GeneratedBodyLine = 0;
+	std::vector<FPropertyInfo> Properties;
+};
+
 struct FEnumEntryInfo
 {
 	std::string Name;
@@ -93,13 +101,15 @@ struct FHeaderInfo
 	std::string FileId;         // FID_Runtime_Components_BoxComponent_h
 	std::string GeneratedName;   // BoxComponent.generated.h
 	std::vector<FClassInfo> Classes;
+	std::vector<FStructInfo> Structs;
 	std::vector<FEnumInfo> Enums;
 
-	// UCLASS / UENUM 중 파일에서 처음 나오는 줄. .generated.h는 이보다 앞에 include해야 한다.
+	// UCLASS / USTRUCT / UENUM 중 파일에서 처음 나오는 줄. .generated.h는 이보다 앞에 include해야 한다.
 	int GetFirstDeclarationLine() const
 	{
 		int Line = 0;
 		for (const FClassInfo& Class : Classes) Line = (Line == 0 || Class.Line < Line) ? Class.Line : Line;
+		for (const FStructInfo& Struct : Structs) Line = (Line == 0 || Struct.Line < Line) ? Struct.Line : Line;
 		for (const FEnumInfo& Enum : Enums) Line = (Line == 0 || Enum.Line < Line) ? Enum.Line : Line;
 		return Line;
 	}
