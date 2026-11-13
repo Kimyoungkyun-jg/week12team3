@@ -57,7 +57,7 @@ struct FEngineConfig
 	bool bCreateDepthBuffer = true;   // 백버퍼에 3D를 직접 그리지 않는 엔진(에디터)은 끈다.
 	bool bExitOnEscape = true;        // 테두리 없는 창에는 닫기 버튼이 없다.
 	const char* SplashImage = nullptr;
-	const char* SkyPanorama = "Assets/SkySphere/IceEscapeSnowPanorama-v2.png";
+	const char* SkyPanorama = "Resources/SkySphere/UnrealDefaultSky.hdr";
 };
 
 // 모든 엔진 모드의 베이스. 플랫폼·루프·Present는 FEngineLoop가 맡고,

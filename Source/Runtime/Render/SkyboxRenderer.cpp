@@ -4,6 +4,7 @@
 #include "RenderCommand.h"
 #include "RenderResourceManager.h"
 #include "ImageLoader.h"
+#include "Core/Misc/Paths.h"
 
 namespace
 {
@@ -44,7 +45,7 @@ bool FSkyboxRenderer::Init(const FString& PanoramaPath)
 		return false;
 	}
 
-	FImageData Image = ImageLoader::LoadAuto(PanoramaPath);
+	FImageData Image = ImageLoader::LoadAuto(FPaths::ToUtf8(FPaths::ResolveEngineRelative(PanoramaPath)));
 	if (!Image.IsValid())
 	{
 		HTR_LOG(Error, "[Skybox] panorama load failed: {}", PanoramaPath);
