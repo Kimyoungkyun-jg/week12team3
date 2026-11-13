@@ -14,7 +14,12 @@ UParticleSystemComponent::UParticleSystemComponent()
 void UParticleSystemComponent::TickComponent(float DeltaTime)
 {
 	Super::TickComponent(DeltaTime);
+	const int32 PreviousCount = EmitterInstance.GetActiveParticleCount();
 	EmitterInstance.Tick(DeltaTime);
+	if (PreviousCount != EmitterInstance.GetActiveParticleCount() || EmitterInstance.GetActiveParticleCount() > 0)
+	{
+		OnTransformDirty();
+	}
 }
 
 FBox UParticleSystemComponent::CalcLocalBounds() const
