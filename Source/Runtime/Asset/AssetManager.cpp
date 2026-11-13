@@ -160,6 +160,7 @@ void UAssetManager::Init(const FAssetLoadProgress& OnProgress)
 	Get().CreateDefaultMeshes();
 	Get().CreateBillboardMaterial();
 	Get().CreateParticleMaterial();
+	Get().CreateParticleSpriteMaterial();
 	Get().CreateEditorArrowMaterial();
 	Get().CreateBoneWeightHeatmapMaterial();
 }
@@ -410,6 +411,20 @@ void UAssetManager::CreateParticleMaterial()
 	ParticleMat->ParamLayout = EMaterialParamLayout::ParticleSubUV;
 	ParticleMat->ParamBuffer = RenderCommand::CreateConstantBuffer(256);
 	RegisterAsset("SubUVMaterial", ParticleMat);
+}
+
+void UAssetManager::CreateParticleSpriteMaterial()
+{
+	UMaterial* ParticleSpriteMat = NewObject<UMaterial>();
+	ParticleSpriteMat->PSOType = EPSOType::Particle_Sprite;
+	ParticleSpriteMat->Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/ParticleSpriteShader.hlsl");
+	ParticleSpriteMat->Textures.Add(GetAssetByPath<UTexture2D>("WhiteTexture"));
+	ParticleSpriteMat->BlendState = EBlendState::AlphaBlend;
+	ParticleSpriteMat->DepthStencilState = EDepthStencilState::ReadOnly;
+	ParticleSpriteMat->SamplerState = ESamplerState::LinearClamp;
+	ParticleSpriteMat->ParamLayout = EMaterialParamLayout::ParticleSprite;
+	ParticleSpriteMat->ParamBuffer = RenderCommand::CreateConstantBuffer(256);
+	RegisterAsset("ParticleSpriteMaterial", ParticleSpriteMat);
 }
 
 void UAssetManager::CreateEditorArrowMaterial() {

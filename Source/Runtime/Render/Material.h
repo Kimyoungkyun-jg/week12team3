@@ -14,7 +14,8 @@ enum class EMaterialParamLayout
 {
 	None,
 	StaticMesh,
-	ParticleSubUV
+	ParticleSubUV,
+	ParticleSprite
 };
 
 struct FStaticMeshMaterialParams

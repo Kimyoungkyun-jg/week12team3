@@ -146,9 +146,9 @@ void UParticleSystemComponent::InitializeParticleSystem()
 	UParticleModuleRequired* RequiredModule = LODLevel->GetRequiredModule();
 	Material = RequiredModule ? Cast<UMaterial>(RequiredModule->Material) : nullptr;
 
-	if (!Material)
+	if (!Material || Material->PSOType != EPSOType::Particle_Sprite)
 	{
-		Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");
+		Material = UAssetManager::GetAssetByPath<UMaterial>("ParticleSpriteMaterial");
 		if (RequiredModule && Material)
 		{
 			RequiredModule->Material = Material;

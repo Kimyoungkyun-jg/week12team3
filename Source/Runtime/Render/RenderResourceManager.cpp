@@ -72,7 +72,8 @@ constexpr FPipelineTableEntry PipelineTable[] =
 	{ EPSOType::ShadowProjection, "Resources/Shader/ShadowProjection.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::ShadowMaskR, EDepthStencilState::Disabled },
 	{ EPSOType::ShadowMaskVisualize, "Resources/Shader/ShadowMaskVisualize.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque, EDepthStencilState::Disabled },
 	{ EPSOType::StaticMesh_DBufferDecal, "Resources/Shader/ProjectedDecal.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::DecalPremultiplied, EDepthStencilState::DecalEqualReadOnly },
-	{ EPSOType::DBufferDecal_DepthReconstruction, "Resources/Shader/ProjectedDecalDepth.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::DecalPremultiplied, EDepthStencilState::Disabled }
+	{ EPSOType::DBufferDecal_DepthReconstruction, "Resources/Shader/ProjectedDecalDepth.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::DecalPremultiplied, EDepthStencilState::Disabled },
+	{ EPSOType::Particle_Sprite, "Resources/Shader/ParticleSpriteShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly }
 };
 
 static_assert(sizeof(PipelineTable) / sizeof(PipelineTable[0]) == static_cast<size_t>(EPSOType::Count));

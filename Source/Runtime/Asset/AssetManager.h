@@ -51,6 +51,7 @@ public:
 	void CreateDefaultMaterial();
 	void CreateBillboardMaterial();
 	void CreateParticleMaterial();
+	void CreateParticleSpriteMaterial();
 	void CreateEditorArrowMaterial();
 	void CreateBoneWeightHeatmapMaterial();
 
