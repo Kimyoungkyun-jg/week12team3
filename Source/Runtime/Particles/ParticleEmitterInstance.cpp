@@ -84,10 +84,22 @@ FBaseParticle* FParticleEmitterInstance::SpawnParticle()
 	{
 		return nullptr;
 	}
-	const uint16 DataIndex = DataContainer.ParticleIndices[ActiveParticles++];
+
+	const uint16 DataIndex = DataContainer.ParticleIndices[ActiveParticles];
 	uint8* ParticleAddress = DataContainer.ParticleData + static_cast<size_t>(DataIndex) * ParticleStride;
 	FBaseParticle* Particle = ::new (static_cast<void*>(ParticleAddress)) FBaseParticle();
+
+	for (UParticleModule* Module : Modules)
+	{
+		if (Module)
+		{
+			Module->Spawn(*Particle, FVector::ZeroVector);
+		}
+	}
+
+	++ActiveParticles;
 	++ParticleCounter;
+
 	return Particle;
 }
 
@@ -150,6 +162,19 @@ void FParticleEmitterInstance::Tick(float DeltaTime)
 				continue;
 			}
 		}
+		for (UParticleModule* Module : Modules)
+		{
+			if (Module)
+			{
+				Module->Update(*Particle, DeltaTime);
+			}
+		}
 		++ActiveIndex;
 	}
+}
+
+void FParticleEmitterInstance::SetModules(const TArray<UParticleModule*>& InModules)
+{
+	Modules.Reset();
+	Modules.Append(InModules);
 }

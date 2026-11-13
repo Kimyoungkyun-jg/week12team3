@@ -35,19 +35,24 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 
 void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext)
 {
-	const TArray<FBaseParticle>& Particles = EmitterInstance.GetActiveParticles();
-	if (!QuadMesh || !Material || Particles.IsEmpty())
+	const int32 ParticleCount = EmitterInstance.GetActiveParticleCount();
+
+	if (!QuadMesh || !Material || ParticleCount == 0)
 	{
 		return;
 	}
 
 	const FMatrix ComponentWorldMatrix = GetWorldMatrix();
 	const FVector ComponentScale = GetWorldScale3D();
+
 	ParticleConstants.Reset();
-	ParticleConstants.Reserve(Particles.Num());
-	for (const FBaseParticle& Particle : Particles)
+	ParticleConstants.Reserve(ParticleCount);
+
+	for (int32 Index = 0; Index < ParticleCount; ++Index)
 	{
-		if (!Particle.bActive)
+		const FBaseParticle* Particle = EmitterInstance.GetParticle(Index);
+
+		if (!Particle)
 		{
 			continue;
 		}
@@ -56,14 +61,13 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 		Params.CurrentFrame = 0.0f;
 		Params.AtlasRowSize = 1.0f;
 		Params.AtlasColSize = 1.0f;
-		Params.Alpha = Particle.Color.A;
-		Params.Tint = FVector4(Particle.Color.R, Particle.Color.G, Particle.Color.B, 1.0f);
+		Params.Alpha = Particle->Color.A;
+		Params.Tint = FVector4(Particle->Color.R, Particle->Color.G, Particle->Color.B, 1.0f);
 		Params.DecodeSRGB = 0.0f;
 
-		const FVector WorldPosition = ComponentWorldMatrix.TransformPosition(Particle.Location);
-
-		const float Width = Particle.Size.X * ComponentScale.Y;
-		const float Height = Particle.Size.Y * ComponentScale.Z;
+		const FVector WorldPosition = ComponentWorldMatrix.TransformPosition(Particle->Location);
+		const float Width = Particle->Size.X * ComponentScale.Y;
+		const float Height = Particle->Size.Y * ComponentScale.Z;
 
 		const FMatrix BillboardMatrix = ViewContext.BuildBillboardMatrix(WorldPosition, Width, Height);
 		const FVector Delta = WorldPosition - ViewContext.CameraPosition;
