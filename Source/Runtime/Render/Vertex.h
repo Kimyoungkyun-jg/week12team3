@@ -27,11 +27,11 @@ struct FTextVertex
 	FVector2 UV;
 };
 
-// Todo: subuv
 struct FParticleVertex
 {
 	FVector Position;
 	FVector2 UV;
+	FVector4 Color = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
 };
 
 struct FSkeletalVertex

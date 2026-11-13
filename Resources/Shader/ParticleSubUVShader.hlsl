@@ -31,12 +31,14 @@ struct VS_INPUT
 {
     float3 position : POSITION;
     float2 uv : TEXCOORD0;
+    float4 particleColor : COLOR;
 };
 
 struct PS_INPUT
 {
     float4 position : SV_POSITION;
     float2 uv : TEXCOORD0;
+    float4 particleColor : COLOR;
 };
 
 // Todo: VS shader code duplicated
@@ -45,7 +47,8 @@ PS_INPUT mainVS(VS_INPUT input)
     PS_INPUT output;
     output.position = mul(mul(float4(input.position, 1.0f), World), VP);
     output.uv = input.uv;
-
+    output.particleColor = input.particleColor;
+    
     return output;
 }
 
@@ -61,7 +64,7 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
     cellUV += cellStartOffsetUV;
 
     float4 color = AtlasTexture.Sample(AtlasSampler, cellUV);
-    color.a *= ParticleAlpha;
+    color.a *= ParticleAlpha * input.particleColor.a;
     if (DecodeSRGB > 0.5f)
     {
         // 텍스처와 Tint를 각각 선형으로 바꾼 뒤 곱한다. 알파는 색이 아니므로 그대로.
@@ -69,7 +72,7 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
     }
     else
     {
-        color.rgb *= Tint.rgb;
+        color.rgb *= Tint.rgb * input.particleColor.rgb;
     }
 
     return color;

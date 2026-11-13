@@ -4,6 +4,8 @@
 #include "Particles/Particle.h"
 #include "Particles/ParticleModule.h"
 
+struct FDynamicEmitterReplayDataBase;
+
 struct FParticleDataContainer
 {
 	int32 MemBlockSize = 0;
@@ -36,6 +38,8 @@ public:
 	const FBaseParticle* GetParticle(int32 ActiveIndex) const;
 
 	void Tick(float DeltaTime, const FVector& EmitterOrigin = FVector::ZeroVector);
+
+	void GetReplayData(FDynamicEmitterReplayDataBase& OutData) const;
 
 	int32 GetActiveParticleCount() const { return ActiveParticles; }
 	int32 GetMaxActiveParticleCount() const { return MaxActiveParticles; }

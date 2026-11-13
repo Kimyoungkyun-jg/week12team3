@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "ParticleEmitterInstance.h"
+#include "Particles/ParticleRenderData.h"
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -225,6 +226,20 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& EmitterOrigi
 	for (int32 Index = 0; Index < SpawnCount; ++Index)
 	{
 		SpawnParticle(EmitterOrigin);
+	}
+}
+
+void FParticleEmitterInstance::GetReplayData(FDynamicEmitterReplayDataBase& OutData) const
+{
+	OutData.ActiveParticles.Reset();
+	OutData.ActiveParticles.Reserve(ActiveParticles);
+	for (int32 Index = 0; Index < ActiveParticles; ++Index)
+	{
+		const FBaseParticle* Particle = GetParticle(Index);
+		if (Particle)
+		{
+			OutData.ActiveParticles.Add(*Particle);
+		}
 	}
 }
 

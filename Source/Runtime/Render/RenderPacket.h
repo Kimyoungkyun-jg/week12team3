@@ -19,6 +19,8 @@ struct FRenderPacket
 	UStaticMesh* Mesh = nullptr;
 	USkeletalMesh* SkeletalMesh = nullptr;
 	FVertexBuffer* SkeletalVertexBuffer = nullptr;
+	FVertexBuffer* VertexBufferOverride = nullptr;
+	FIndexBuffer* IndexBufferOverride = nullptr;
 	FStructuredBuffer* SkinningMatricesBuffer = nullptr;
 	UMaterial* Material = nullptr;
 	const void* MaterialParamData = nullptr;

@@ -3,6 +3,7 @@
 #include "BillboardComponent.h"
 #include "Particles/ParticleEmitterInstance.h"
 #include "Particles/ParticleSystem.h"
+#include "Particles/ParticleRenderData.h"
 #include "ParticleSystemComponent.generated.h"
 
 UCLASS()
@@ -24,7 +25,8 @@ private:
 
 private:
 	FParticleEmitterInstance EmitterInstance;
-	TArray<FSubUVConstants> ParticleConstants;
+	FDynamicSpriteEmitterData SpriteEmitterData;
+	FSubUVConstants ParticleParams{};
 
 	UPROPERTY(EditAnywhere)
 	UParticleSystem* Template = nullptr;

@@ -18,6 +18,7 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 
 	Template = InTemplate;
 	EmitterInstance.Reset();
+	SpriteEmitterData = FDynamicSpriteEmitterData();
 	bEmitterInitialized = false;
 	OnTransformDirty();
 }
@@ -61,56 +62,49 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 	return FBox{ FVector(-Extent, -Extent, -Extent), FVector(Extent, Extent, Extent) };
 }
 
+
 void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext)
 {
 	const int32 ParticleCount = EmitterInstance.GetActiveParticleCount();
 
-	if (!QuadMesh || !Material || ParticleCount == 0)
+	if (!QuadMesh || !Material || ParticleCount == 0 || !bEmitterInitialized)
 	{
 		return;
 	}
 
-	const FMatrix ComponentWorldMatrix = GetWorldMatrix();
-	const FVector ComponentScale = GetWorldScale3D();
+	FDynamicSpriteEmitterReplayData ReplayData;
+	EmitterInstance.GetReplayData(ReplayData);
 
-	ParticleConstants.Reset();
-	ParticleConstants.Reserve(ParticleCount);
+	ReplayData.ComponentToWorld = GetWorldMatrix();
+	ReplayData.ComponentScale = GetWorldScale3D();
+	ReplayData.Material = Material;
 
-	for (int32 Index = 0; Index < ParticleCount; ++Index)
+	if (!SpriteEmitterData.BuildVertexData(ReplayData, ViewContext))
 	{
-		const FBaseParticle* Particle = EmitterInstance.GetParticle(Index);
-
-		if (!Particle)
-		{
-			continue;
-		}
-
-		FSubUVConstants& Params = ParticleConstants.AddDefaulted_GetRef();
-		Params.CurrentFrame = 0.0f;
-		Params.AtlasRowSize = 1.0f;
-		Params.AtlasColSize = 1.0f;
-		Params.Alpha = Particle->Color.A;
-		Params.Tint = FVector4(Particle->Color.R, Particle->Color.G, Particle->Color.B, 1.0f);
-		Params.DecodeSRGB = 0.0f;
-
-		const FVector WorldPosition = ComponentWorldMatrix.TransformPosition(Particle->Location);
-		const float Width = Particle->Size.X * ComponentScale.Y;
-		const float Height = Particle->Size.Y * ComponentScale.Z;
-
-		const FMatrix BillboardMatrix = ViewContext.BuildBillboardMatrix(WorldPosition, Width, Height);
-		const FVector Delta = WorldPosition - ViewContext.CameraPosition;
-
-		FRenderPacket Packet;
-		Packet.Model = RenderQueue.StoreWorldMatrix(BillboardMatrix);
-		Packet.Mesh = QuadMesh;
-		Packet.Material = Material;
-		Packet.CameraToParticleDistance = Delta.Dot(Delta);
-		Packet.MaterialParamData = &Params;
-		Packet.MaterialParamDataSize = sizeof(FSubUVConstants);
-
-		RenderQueue.Add(Packet);
+		return;
 	}
+
+	ParticleParams.CurrentFrame = 0.0f;
+	ParticleParams.AtlasRowSize = 1.0f;
+	ParticleParams.AtlasColSize = 1.0f;
+	ParticleParams.Alpha = 1.0f;
+	ParticleParams.Tint = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	ParticleParams.DecodeSRGB = 0.0f;
+
+	FRenderPacket Packet;
+	Packet.Mesh = QuadMesh;
+	Packet.Material = Material;
+	Packet.Model = RenderQueue.StoreWorldMatrix(FMatrix::Identity);
+	Packet.VertexBufferOverride = SpriteEmitterData.GetVertexBuffer();
+	Packet.IndexBufferOverride = SpriteEmitterData.GetIndexBuffer();
+	Packet.IndexCount = SpriteEmitterData.GetIndexCount();
+	Packet.CameraToParticleDistance = SpriteEmitterData.GetSortDistance();
+	Packet.MaterialParamData = &ParticleParams;
+	Packet.MaterialParamDataSize = sizeof(FSubUVConstants);
+
+	RenderQueue.Add(Packet);
 }
+
 
 void UParticleSystemComponent::InitializeParticleSystem()
 {
@@ -136,6 +130,7 @@ void UParticleSystemComponent::InitializeParticleSystem()
 	const int32 MaxParticles = std::clamp(Emitter->GetMaxActiveParticles(), 1, 65536);
 	if (!EmitterInstance.Initialize(static_cast<uint32>(MaxParticles)))
 	{
+		EmitterInstance.Reset();
 		return;
 	}
 

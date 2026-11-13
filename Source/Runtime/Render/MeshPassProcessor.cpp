@@ -361,6 +361,17 @@ bool FMeshPassProcessor::Build(const FSceneView& View, const FRenderQueue& Queue
 				Batch.bComputeSkinned = Packet.bComputeSkinned;
 			}
 		}
+
+		if (Packet.VertexBufferOverride)
+		{
+			Batch.VertexBuffer = Packet.VertexBufferOverride;
+		}
+
+		if (Packet.IndexBufferOverride)
+		{
+			Batch.IndexBuffer = Packet.IndexBufferOverride;
+		}
+
 		if (!bBatchBuilt) return false;
 
 		const uint32 IndexCount = Packet.IndexCount ? Packet.IndexCount : Batch.IndexBuffer->GetIndexCount();
