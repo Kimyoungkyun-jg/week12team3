@@ -21,6 +21,7 @@
 #include "Collision/Ray.h"
 #include "Components/BillboardComponent.h"
 #include "Components/ParticleSubUVComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 
@@ -46,7 +47,7 @@
 #include "Physics/Collision.h"
 #include "Components/ShapeComponent.h"
 #include "Components/CapsuleComponent.h"
-
+#include "Components/ParticleSubUVComponent.h"
 namespace
 {
 	inline void WritePerObjectConstants(uint8* Dest, const FMatrix& LocalToWorld, const FMatrix& WorldToLocal, bool bReceiveShadow, bool bReceiveDecal)
@@ -191,6 +192,15 @@ void UWorld::Tick(float RealDeltaTime)
 			{
 				Comp->SetParticles(10);
 			}
+			Comp->TickComponent(DeltaTime);
+		}
+		for (TObjectIterator<UParticleSystemComponent> Comp; Comp; ++Comp)
+		{
+			if (!Comp || !Comp->IsRegistered() || Comp->GetWorld() != this)
+			{
+				continue;
+			}
+
 			Comp->TickComponent(DeltaTime);
 		}
 		// 스프링 암 컴포넌트도 에디터에서 틱이 돌아야 한다

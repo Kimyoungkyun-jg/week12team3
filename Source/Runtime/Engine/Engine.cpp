@@ -9,6 +9,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/IceVolumeComponent.h"
 #include "Components/SlidingMovementComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Audio/AudioDevice.h"
 #include "Components/AudioComponent.h"
 
@@ -26,7 +27,7 @@ bool UEngine::Init()
 	UIceVolumeComponent::StaticClass();
 	USlidingMovementComponent::StaticClass();
 	UAudioComponent::StaticClass();   // Add Component 목록에 뜨도록 (다른 컴포넌트와 동일)
-
+	UParticleSystemComponent::StaticClass();
 
 	AssetManager = NewObject<UAssetManager>();
 	InitializeAudioDevice();          // 실패해도 엔진은 계속 (UE도 장치가 없으면 Null 디바이스로 돈다)
