@@ -134,6 +134,12 @@ void UParticleSystemComponent::InitializeParticleSystem()
 		return;
 	}
 
+	if (!SpriteEmitterData.Initialize(static_cast<uint32>(MaxParticles)))
+	{
+		EmitterInstance.Reset();
+		return;
+	}
+
 	EmitterInstance.SetSpawnModule(LODLevel->GetSpawnModule());
 	EmitterInstance.SetModules(LODLevel->GetModules());
 

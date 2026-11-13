@@ -2,6 +2,7 @@
 
 #include "GameFramework/Actor.h"
 #include "Components/ParticleSubUVComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "ParticleActor.generated.h"
 
 // Todo: subuv
@@ -16,5 +17,5 @@ public:
 	//UParticleSubUVComponent* GetParticleComponent() const;
 
 private:
-	UParticleSubUVComponent* ParticleComponent;
+	UParticleSystemComponent* ParticleComponent = nullptr;
 };
