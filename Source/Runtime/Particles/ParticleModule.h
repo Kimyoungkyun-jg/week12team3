@@ -2,7 +2,7 @@
 
 #include "UObject/Object.h"
 #include "Particles/Particle.h"
-#include "Render/Material.h"
+#include "Render/MaterialInterface.h"
 #include "ParticleModule.generated.h"
 
 UCLASS()
@@ -22,7 +22,7 @@ class UParticleModuleRequired : public UParticleModule
 
 public:
 	UPROPERTY(EditAnywhere)
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 
 	UPROPERTY(EditAnywhere)
 	bool bUseLocalSpace = false;

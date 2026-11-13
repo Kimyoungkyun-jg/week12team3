@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MaterialInterface.h"
+#include "Render/Buffer.h"
 #include "Render/ImportedMaterialProperties.h"
 #include "RenderResourceManager.h"
 #include "Render/RenderStates.h"
