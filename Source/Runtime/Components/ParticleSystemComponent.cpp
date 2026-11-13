@@ -1,7 +1,10 @@
 #include "EnginePCH.h"
 #include "ParticleSystemComponent.h"
 #include "Asset/AssetManager.h"
+#include "Render/Mesh.h"
+#include "Math/Transform.h"
 
+#include <cmath>
 #include <algorithm>
 
 UParticleSystemComponent::UParticleSystemComponent()
@@ -19,6 +22,7 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 	Template = InTemplate;
 	EmitterInstance.Reset();
 	SpriteEmitterData = FDynamicSpriteEmitterData();
+	MeshTypeDataModule = nullptr;
 	bEmitterInitialized = false;
 	OnTransformDirty();
 }
@@ -49,6 +53,29 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 FBox UParticleSystemComponent::CalcLocalBounds() const
 {
 	float Extent = 0.5f;
+
+	if (MeshTypeDataModule && MeshTypeDataModule->Mesh)
+	{
+		const FBox& MeshBounds = MeshTypeDataModule->Mesh->GetRenderBounds();
+		const FVector Scale = MeshTypeDataModule->MeshScale;
+		const FVector ScaledMin = MeshBounds.Min * Scale;
+		const FVector ScaledMax = MeshBounds.Max * Scale;
+		const float MeshRadius = std::max(ScaledMin.Size(), ScaledMax.Size());
+
+		for (int32 Index = 0; Index < EmitterInstance.GetActiveParticleCount(); ++Index)
+		{
+			const FBaseParticle* Particle = EmitterInstance.GetParticle(Index);
+			if (!Particle)
+			{
+				continue;
+			}
+
+			Extent = std::max(Extent, Particle->Location.Size() + MeshRadius);
+		}
+
+		return FBox{ FVector(-Extent, -Extent, -Extent), FVector(Extent, Extent, Extent) };
+	}
+
 	for (int32 Index = 0; Index < EmitterInstance.GetActiveParticleCount(); ++Index)
 	{
 		const FBaseParticle* Particle = EmitterInstance.GetParticle(Index);
@@ -56,9 +83,11 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 		{
 			continue;
 		}
+
 		const float ParticleRadius = std::max(Particle->Size.X, Particle->Size.Y) * 0.5f;
 		Extent = std::max(Extent, Particle->Location.Size() + ParticleRadius);
 	}
+
 	return FBox{ FVector(-Extent, -Extent, -Extent), FVector(Extent, Extent, Extent) };
 }
 
@@ -67,7 +96,88 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 {
 	const int32 ParticleCount = EmitterInstance.GetActiveParticleCount();
 
-	if (!QuadMesh || !Material || ParticleCount == 0 || !bEmitterInitialized)
+	if (!bEmitterInitialized || ParticleCount == 0)
+	{
+		return;
+	}
+
+	// Mesh Emitter
+	if (MeshTypeDataModule)
+	{
+		UStaticMesh* Mesh = MeshTypeDataModule->Mesh;
+
+		if (!Mesh || !Mesh->GetVertexBuffer(0) || !Mesh->GetIndexBuffer(0))
+		{
+			return;
+		}
+
+		const FStaticMeshData& MeshData = Mesh->GetMeshData();
+		if (MeshData.Indices.IsEmpty())
+		{
+			return;
+		}
+
+		const FMatrix ComponentWorld = GetWorldMatrix();
+
+		for (int32 ParticleIndex = 0; ParticleIndex < ParticleCount; ++ParticleIndex)
+		{
+			const FBaseParticle* Particle = EmitterInstance.GetParticle(ParticleIndex);
+			if (!Particle)
+			{
+				continue;
+			}
+
+			const FVector WorldPosition = ComponentWorld.TransformPosition(Particle->Location);
+			const FVector ToCamera = WorldPosition - ViewContext.CameraPosition;
+			const float DistanceSquared = ToCamera.Dot(ToCamera);
+			const float Rotation = std::isfinite(Particle->Rotation) ? Particle->Rotation : 0.0f;
+
+			const FRotator ParticleRotation(0.0f, FMath::RadiansToDegrees(Rotation), 0.0f);
+			const FMatrix ParticleLocalMatrix = FTransform(Particle->Location, MeshTypeDataModule->MeshScale, ParticleRotation).GetLocalMatrix();
+			const FMatrix* ParticleWorldMatrix = RenderQueue.StoreWorldMatrix(ParticleLocalMatrix * ComponentWorld);
+
+			const auto AddMeshSection = [&](uint32 StartIndex, uint32 IndexCount, uint32 MaterialSlotIndex)
+			{
+				if (IndexCount == 0)
+				{
+					return;
+				}
+
+				UMaterial* SectionMaterial = Mesh->GetMaterial(MaterialSlotIndex);
+				if (!SectionMaterial)
+				{
+					return;
+				}
+
+				FRenderPacket Packet;
+				Packet.Mesh = Mesh;
+				Packet.Material = SectionMaterial;
+				Packet.Model = ParticleWorldMatrix;
+				Packet.StartIndex = StartIndex;
+				Packet.IndexCount = IndexCount;
+				Packet.CameraToParticleDistance = DistanceSquared;
+
+				RenderQueue.Add(Packet);
+			};
+
+			if (MeshData.Sections.IsEmpty())
+			{
+				AddMeshSection(0, static_cast<uint32>(MeshData.Indices.Num()), 0);
+			}
+			else
+			{
+				for (const FStaticMeshSection& Section : MeshData.Sections)
+				{
+					AddMeshSection(Section.StartIndex, Section.IndexCount, Section.MaterialSlotIndex);
+				}
+			}
+		}
+
+		return;
+	}
+
+	// Sprite Emitter
+	if (!QuadMesh || !Material)
 	{
 		return;
 	}
@@ -121,12 +231,21 @@ void UParticleSystemComponent::InitializeParticleSystem()
 	Template->CreateDefaultSetup();
 
 	UParticleEmitter* Emitter = Template->GetEmitter(0);
+
+	if (Emitter)
+	{
+		UParticleModuleTypeDataMesh* MeshTypeData = Emitter->CreateMeshTypeData();
+		MeshTypeData->Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Cube");
+		MeshTypeData->MeshScale = FVector(10.0f, 10.0f, 10.0f);
+	}
+
 	UParticleLODLevel* LODLevel = Emitter ? Emitter->GetLODLevel(0) : nullptr;
 	if (!Emitter || !LODLevel)
 	{
 		return;
 	}
 
+	MeshTypeDataModule = Emitter->GetMeshTypeDataModule();
 	const int32 MaxParticles = std::clamp(Emitter->GetMaxActiveParticles(), 1, 65536);
 	if (!EmitterInstance.Initialize(static_cast<uint32>(MaxParticles)))
 	{
@@ -134,7 +253,7 @@ void UParticleSystemComponent::InitializeParticleSystem()
 		return;
 	}
 
-	if (!SpriteEmitterData.Initialize(static_cast<uint32>(MaxParticles)))
+	if (!MeshTypeDataModule && !SpriteEmitterData.Initialize(static_cast<uint32>(MaxParticles)))
 	{
 		EmitterInstance.Reset();
 		return;
@@ -143,15 +262,22 @@ void UParticleSystemComponent::InitializeParticleSystem()
 	EmitterInstance.SetSpawnModule(LODLevel->GetSpawnModule());
 	EmitterInstance.SetModules(LODLevel->GetModules());
 
-	UParticleModuleRequired* RequiredModule = LODLevel->GetRequiredModule();
-	Material = RequiredModule ? Cast<UMaterial>(RequiredModule->Material) : nullptr;
-
-	if (!Material || Material->PSOType != EPSOType::Particle_Sprite)
+	if (MeshTypeDataModule)
 	{
-		Material = UAssetManager::GetAssetByPath<UMaterial>("ParticleSpriteMaterial");
-		if (RequiredModule && Material)
+		Material = nullptr;
+	}
+	else
+	{
+		UParticleModuleRequired* RequiredModule = LODLevel->GetRequiredModule();
+		Material = RequiredModule ? Cast<UMaterial>(RequiredModule->Material) : nullptr;
+
+		if (!Material || Material->PSOType != EPSOType::Particle_Sprite)
 		{
-			RequiredModule->Material = Material;
+			Material = UAssetManager::GetAssetByPath<UMaterial>("ParticleSpriteMaterial");
+			if (RequiredModule && Material)
+			{
+				RequiredModule->Material = Material;
+			}
 		}
 	}
 

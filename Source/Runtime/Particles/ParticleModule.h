@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UObject/Object.h"
+#include "Render/Mesh.h"
 #include "Particles/Particle.h"
 #include "Render/MaterialInterface.h"
 #include "ParticleModule.generated.h"
@@ -13,6 +14,18 @@ class UParticleModule : public UObject
 public:
 	virtual void Spawn(FBaseParticle& Particle, const FVector& EmitterOrigin) const;
 	virtual void Update(FBaseParticle& Particle, float DeltaTime) const;
+};
+
+UCLASS()
+class UParticleModuleTypeDataMesh : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditAnywhere)
+	UStaticMesh* Mesh = nullptr;
+
+	UPROPERTY(EditAnywhere)
+	FVector MeshScale = FVector::OneVector;
 };
 
 UCLASS()

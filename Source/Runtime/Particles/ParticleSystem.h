@@ -39,11 +39,27 @@ public:
 	int32 GetMaxActiveParticles() const { return MaxActiveParticles; }
 	UParticleLODLevel* GetLODLevel(int32 Index) const { return LODLevels.IsValidIndex(Index) ? LODLevels[Index] : nullptr; }
 
+	UParticleModuleTypeDataMesh* GetMeshTypeDataModule() const { return MeshTypeDataModule; }
+
+	UParticleModuleTypeDataMesh* CreateMeshTypeData()
+	{
+		if (!MeshTypeDataModule)
+		{
+			MeshTypeDataModule = CreateDefaultSubobject<UParticleModuleTypeDataMesh>(FName("MeshTypeData"));
+		}
+		return MeshTypeDataModule;
+	}
+
+	void SetMeshTypeDataModule(UParticleModuleTypeDataMesh* InModule) { MeshTypeDataModule = InModule; }
+
 	const TArray<UParticleLODLevel*>& GetLODLevels() const { return LODLevels; }
 
 private:
 	UPROPERTY(EditAnywhere)
 	int32 MaxActiveParticles = 1000;
+
+	UPROPERTY(EditAnywhere)
+	UParticleModuleTypeDataMesh* MeshTypeDataModule = nullptr;
 
 	UPROPERTY(EditAnywhere, Instanced)
 	TArray<UParticleLODLevel*> LODLevels;

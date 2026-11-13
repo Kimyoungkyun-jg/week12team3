@@ -26,10 +26,12 @@ private:
 private:
 	FParticleEmitterInstance EmitterInstance;
 	FDynamicSpriteEmitterData SpriteEmitterData;
+	UParticleModuleTypeDataMesh* MeshTypeDataModule = nullptr;
 	FSubUVConstants ParticleParams{};
 
 	UPROPERTY(EditAnywhere)
 	UParticleSystem* Template = nullptr;
+
 
 	bool bEmitterInitialized = false;
 };
