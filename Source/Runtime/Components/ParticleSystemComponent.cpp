@@ -7,15 +7,38 @@
 UParticleSystemComponent::UParticleSystemComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
-	Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");
-	CreateInitialParticle();
+}
+
+void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
+{
+	if (Template == InTemplate)
+	{
+		return;
+	}
+
+	Template = InTemplate;
+	EmitterInstance.Reset();
+	bEmitterInitialized = false;
+	OnTransformDirty();
 }
 
 void UParticleSystemComponent::TickComponent(float DeltaTime)
 {
 	Super::TickComponent(DeltaTime);
+
+	if (!bEmitterInitialized)
+	{
+		InitializeParticleSystem();
+	}
+
+	if (!bEmitterInitialized)
+	{
+		return;
+	}
+
 	const int32 PreviousCount = EmitterInstance.GetActiveParticleCount();
-	EmitterInstance.Tick(DeltaTime);
+	EmitterInstance.Tick(DeltaTime, FVector::ZeroVector);
+
 	if (PreviousCount != EmitterInstance.GetActiveParticleCount() || EmitterInstance.GetActiveParticleCount() > 0)
 	{
 		OnTransformDirty();
@@ -89,21 +112,47 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 	}
 }
 
-void UParticleSystemComponent::CreateInitialParticle()
+void UParticleSystemComponent::InitializeParticleSystem()
 {
-	if (!EmitterInstance.Initialize(1))
+	if (!Template)
+	{
+		Template = NewObject<UParticleSystem>(this, FName("ParticleSystemTemplate"));
+	}
+
+	if (!Template)
 	{
 		return;
 	}
-	FBaseParticle* Particle = EmitterInstance.SpawnParticle();
-	if (!Particle)
+
+	Template->CreateDefaultSetup();
+
+	UParticleEmitter* Emitter = Template->GetEmitter(0);
+	UParticleLODLevel* LODLevel = Emitter ? Emitter->GetLODLevel(0) : nullptr;
+	if (!Emitter || !LODLevel)
 	{
 		return;
 	}
-	Particle->Location = FVector::ZeroVector;
-	Particle->Velocity = FVector::ZeroVector;
-	Particle->Size = FVector(40.0f, 40.0f, 1.0f);
-	Particle->Color = FColor(255, 255, 255, 255);
-	Particle->RelativeTime = 0.0f;
-	Particle->Lifetime = 5.0f;
+
+	const int32 MaxParticles = std::clamp(Emitter->GetMaxActiveParticles(), 1, 65536);
+	if (!EmitterInstance.Initialize(static_cast<uint32>(MaxParticles)))
+	{
+		return;
+	}
+
+	EmitterInstance.SetSpawnModule(LODLevel->GetSpawnModule());
+	EmitterInstance.SetModules(LODLevel->GetModules());
+
+	UParticleModuleRequired* RequiredModule = LODLevel->GetRequiredModule();
+	Material = RequiredModule ? Cast<UMaterial>(RequiredModule->Material) : nullptr;
+
+	if (!Material)
+	{
+		Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");
+		if (RequiredModule && Material)
+		{
+			RequiredModule->Material = Material;
+		}
+	}
+
+	bEmitterInitialized = true;
 }

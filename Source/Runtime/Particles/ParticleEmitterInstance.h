@@ -29,18 +29,20 @@ public:
 	bool Initialize(uint32 InMaxActiveParticles);
 	void Reset();
 
-	FBaseParticle* SpawnParticle();
+	FBaseParticle* SpawnParticle(const FVector& EmitterOrigin = FVector::ZeroVector);
 	void KillParticle(int32 ActiveIndex);
 
 	FBaseParticle* GetParticle(int32 ActiveIndex);
 	const FBaseParticle* GetParticle(int32 ActiveIndex) const;
 
-	void Tick(float DeltaTime);
+	void Tick(float DeltaTime, const FVector& EmitterOrigin = FVector::ZeroVector);
 
 	int32 GetActiveParticleCount() const { return ActiveParticles; }
 	int32 GetMaxActiveParticleCount() const { return MaxActiveParticles; }
 
 	void SetModules(const TArray<UParticleModule*>& InModules);
+
+	void SetSpawnModule(UParticleModuleSpawn* InSpawnModule);
 
 private:
 	FParticleDataContainer DataContainer;
@@ -54,4 +56,8 @@ private:
 	uint32 ParticleCounter = 0;
 
 	TArray<UParticleModule*> Modules;
+
+	UParticleModuleSpawn* SpawnModule = nullptr;
+	float SpawnAccumulator = 0.0f;
+	bool bHasSpawnedInitialBurst = false;
 };

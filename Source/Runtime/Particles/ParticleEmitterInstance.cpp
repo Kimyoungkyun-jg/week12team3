@@ -76,9 +76,13 @@ void FParticleEmitterInstance::Reset()
 	ParticleCounter = 0;
 	ParticleSize = sizeof(FBaseParticle);
 	ParticleStride = ParticleSize;
+	Modules.Reset();
+	SpawnModule = nullptr;
+	SpawnAccumulator = 0.0f;
+	bHasSpawnedInitialBurst = false;
 }
 
-FBaseParticle* FParticleEmitterInstance::SpawnParticle()
+FBaseParticle* FParticleEmitterInstance::SpawnParticle(const FVector& EmitterOrigin)
 {
 	if (!DataContainer.ParticleIndices || ActiveParticles >= MaxActiveParticles)
 	{
@@ -93,7 +97,7 @@ FBaseParticle* FParticleEmitterInstance::SpawnParticle()
 	{
 		if (Module)
 		{
-			Module->Spawn(*Particle, FVector::ZeroVector);
+			Module->Spawn(*Particle, EmitterOrigin);
 		}
 	}
 
@@ -102,6 +106,7 @@ FBaseParticle* FParticleEmitterInstance::SpawnParticle()
 
 	return Particle;
 }
+
 
 void FParticleEmitterInstance::KillParticle(int32 ActiveIndex)
 {
@@ -136,12 +141,14 @@ const FBaseParticle* FParticleEmitterInstance::GetParticle(int ActiveIndex) cons
 	return reinterpret_cast<const FBaseParticle*>(ParticleAddress);
 }
 
-void FParticleEmitterInstance::Tick(float DeltaTime)
+
+void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& EmitterOrigin)
 {
 	if (!std::isfinite(DeltaTime) || DeltaTime <= 0.0f)
 	{
 		return;
 	}
+
 	int32 ActiveIndex = 0;
 	while (ActiveIndex < ActiveParticles)
 	{
@@ -151,8 +158,10 @@ void FParticleEmitterInstance::Tick(float DeltaTime)
 			++ActiveIndex;
 			continue;
 		}
+
 		Particle->Location += Particle->Velocity * DeltaTime;
 		Particle->Rotation += Particle->RotationRate * DeltaTime;
+
 		if (Particle->Lifetime > 0.0f)
 		{
 			Particle->RelativeTime += DeltaTime / Particle->Lifetime;
@@ -162,6 +171,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime)
 				continue;
 			}
 		}
+
 		for (UParticleModule* Module : Modules)
 		{
 			if (Module)
@@ -169,12 +179,65 @@ void FParticleEmitterInstance::Tick(float DeltaTime)
 				Module->Update(*Particle, DeltaTime);
 			}
 		}
+
 		++ActiveIndex;
 	}
+
+	if (!SpawnModule || MaxActiveParticles <= 0)
+	{
+		return;
+	}
+
+	if (!bHasSpawnedInitialBurst)
+	{
+		bHasSpawnedInitialBurst = true;
+		const int32 BurstCount = std::clamp(SpawnModule->BurstCount, 0, MaxActiveParticles - ActiveParticles);
+		for (int32 Index = 0; Index < BurstCount; ++Index)
+		{
+			SpawnParticle(EmitterOrigin);
+		}
+	}
+
+	if (ActiveParticles >= MaxActiveParticles)
+	{
+		return;
+	}
+
+	const float SpawnRate = std::isfinite(SpawnModule->SpawnRate) ? std::max(0.0f, SpawnModule->SpawnRate) : 0.0f;
+	if (SpawnRate <= 0.0f)
+	{
+		return;
+	}
+
+	const double SpawnProgress = static_cast<double>(SpawnAccumulator) + static_cast<double>(SpawnRate) * static_cast<double>(DeltaTime);
+	if (!std::isfinite(SpawnProgress))
+	{
+		SpawnAccumulator = 0.0f;
+		return;
+	}
+
+	const int32 RequestedSpawnCount = static_cast<int32>(std::clamp(std::floor(SpawnProgress), 0.0, static_cast<double>(MaxActiveParticles)));
+	const int32 AvailableParticles = MaxActiveParticles - ActiveParticles;
+	const int32 SpawnCount = std::min(RequestedSpawnCount, AvailableParticles);
+
+	SpawnAccumulator = (RequestedSpawnCount > SpawnCount || SpawnProgress >= static_cast<double>(MaxActiveParticles)) ? 0.0f : static_cast<float>(SpawnProgress - RequestedSpawnCount);
+
+	for (int32 Index = 0; Index < SpawnCount; ++Index)
+	{
+		SpawnParticle(EmitterOrigin);
+	}
 }
+
 
 void FParticleEmitterInstance::SetModules(const TArray<UParticleModule*>& InModules)
 {
 	Modules.Reset();
 	Modules.Append(InModules);
+}
+
+void FParticleEmitterInstance::SetSpawnModule(UParticleModuleSpawn* InSpawnModule)
+{
+	SpawnModule = InSpawnModule;
+	SpawnAccumulator = 0.0f;
+	bHasSpawnedInitialBurst = false;
 }
