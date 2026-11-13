@@ -9,7 +9,6 @@ FName::FName(const char* Name)
 }
 
 FName::FName(const FString& Name)
-	: Number(0)
 {
 	if (Name.empty())
 		return;

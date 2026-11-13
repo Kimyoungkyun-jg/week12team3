@@ -2,146 +2,82 @@
 #include "UI/WidgetSerializer.h"
 
 #include "UObject/UObjectHash.h"
-#include "Serialization/MemoryWriter.h"
-#include "Serialization/MemoryReader.h"
-#include "Serialization/StructuredArchiveSlots.h"
-#include "Serialization/MathSerialization.h"
-#include "Serialization/Formatter/JsonArchiveOutputFormatter.h"
-#include "Serialization/Formatter/JsonArchiveInputFormatter.h"
 
 #include <fstream>
 
-namespace
+json FWidgetSerializer::SaveWidget(const UWidget* Widget)
 {
-	constexpr int32 WidgetAssetVersion = 2;   // 2: FStructuredArchive 형식 (벡터·색이 {X,Y,Z,W} / {R,G,B,A} 레코드)
+	json Node;
+	if (!Widget) return Node;
+
+	Node["Class"] = Widget->GetClass()->Name;
+
+	json Properties = json::object();
+	const_cast<UWidget*>(Widget)->Serialize(Properties, false);   // 리플렉션 속성 전부
+	Node["Properties"] = std::move(Properties);
+
+	if (const UPanelWidget* Panel = Cast<UPanelWidget>(Widget))
+	{
+		json Children = json::array();
+		for (const UWidget* Child : Panel->GetChildren())
+			Children.push_back(SaveWidget(Child));
+		Node["Children"] = std::move(Children);
+	}
+	return Node;
 }
 
-void FWidgetSerializer::SaveWidget(FStructuredArchive::FRecord Record, UWidget* Widget)
+UWidget* FWidgetSerializer::LoadWidget(const json& Node)
 {
-	FString ClassName = Widget->GetClass()->Name;
-	Record << SA_VALUE("Class", ClassName);
-	Widget->Serialize(Record);   // "Properties", 패널이면 "Children"까지
-}
+	if (!Node.is_object() || !Node.contains("Class")) return nullptr;
 
-UWidget* FWidgetSerializer::LoadWidget(FStructuredArchive::FRecord Record)
-{
-	FString ClassName;
-	Record << SA_VALUE("Class", ClassName);   // 없으면 빈 문자열
-
-	UClass* Class = FindClass(ClassName);
+	UClass* Class = FindClass(Node["Class"].get<std::string>());
 	if (!Class || !Class->IsChildOf(UWidget::StaticClass()) || !Class->Constructor)
 	{
-		HTR_LOG(Warning, "Unknown widget class: '{}'", ClassName);
+		HTR_LOG(Warning, "Unknown widget class: {}", Node["Class"].dump());
 		return nullptr;
 	}
 
 	UWidget* Widget = NewObject<UWidget>(nullptr, Class);
-	Widget->Serialize(Record);
+	if (Node.contains("Properties"))
+	{
+		json Properties = Node["Properties"];        // Serialize가 non-const json&를 받는다
+		Widget->Serialize(Properties, true);
+	}
 	Widget->OnLoaded();
+
+	if (UPanelWidget* Panel = Cast<UPanelWidget>(Widget); Panel && Node.contains("Children"))
+	{
+		for (const json& ChildNode : Node["Children"])
+			if (UWidget* Child = LoadWidget(ChildNode))
+				Panel->AddChild(Child);
+	}
 	return Widget;
 }
 
-bool FWidgetSerializer::SaveAssetToBytes(FWidgetAssetData& Asset, TArray<uint8>& OutBytes)
+TMap<FString, json>& FWidgetAssetCache::GetMap()
 {
-	FMemoryWriter Writer(OutBytes);
-	Writer.SetIsPersistent(true);   // 파일에는 Transient를 쓰지 않는다
-	{
-		// 선언 순서 = 소멸 역순: Ar(Close) → Formatter(dump → Writer)
-		FJsonArchiveOutputFormatter Formatter(Writer);
-		FStructuredArchive Ar(Formatter);
-
-		FStructuredArchive::FRecord File = Ar.Open().EnterRecord();
-		int32 Version = WidgetAssetVersion;
-		File << SA_VALUE("Version", Version);
-		File << SA_VALUE("ParentClass", Asset.ParentClass);
-		File << SA_VALUE("DesignSize", Asset.DesignSize);
-		if (Asset.Root)
-			SaveWidget(File.EnterRecord("Root"), Asset.Root);
-
-		Ar.Close();
-	}
-	return !Writer.IsError();
-}
-
-bool FWidgetSerializer::LoadAssetFromBytes(const TArray<uint8>& Bytes, FWidgetAssetData& OutAsset)
-{
-	FMemoryReader Reader(Bytes, true);
-	FJsonArchiveInputFormatter Formatter(Reader);
-	if (Reader.IsError())
-	{
-		HTR_LOG(Error, "Load: invalid widget data");
-		return false;
-	}
-
-	FStructuredArchive Ar(Formatter);
-	FStructuredArchive::FRecord File = Ar.Open().EnterRecord();
-
-	int32 Version = 0;
-	File << SA_VALUE("Version", Version);
-	if (Version != WidgetAssetVersion)
-	{
-		HTR_LOG(Error, "Load: widget version {} is not supported (expected {})", Version, WidgetAssetVersion);
-		return false;
-	}
-
-	File << SA_VALUE("ParentClass", OutAsset.ParentClass);
-	File << SA_VALUE("DesignSize", OutAsset.DesignSize);
-
-	UWidget* Root = LoadWidget(File.EnterRecord("Root"));
-	OutAsset.Root = Cast<UPanelWidget>(Root);
-	if (Root && !OutAsset.Root)
-	{
-		HTR_LOG(Warning, "Widget asset root must be a panel");
-		delete Root;
-	}
-	Ar.Close();
-
-	return !Reader.IsError();
-}
-
-bool FWidgetSerializer::SaveAsset(FWidgetAssetData& Asset, const FString& Path)
-{
-	TArray<uint8> Bytes;
-	if (!SaveAssetToBytes(Asset, Bytes))
-		return false;
-
-	std::ofstream File(Path, std::ios::binary);
-	if (!File.is_open())
-		return false;
-	File.write(reinterpret_cast<const char*>(Bytes.GetData()), Bytes.Num());
-	return !File.fail();
-}
-
-bool FWidgetSerializer::ReadFileBytes(const FString& Path, TArray<uint8>& OutBytes)
-{
-	std::ifstream File(Path, std::ios::binary | std::ios::ate);
-	if (!File.is_open())
-		return false;
-
-	OutBytes.SetNum(static_cast<int32>(File.tellg()));
-	File.seekg(0);
-	File.read(reinterpret_cast<char*>(OutBytes.GetData()), OutBytes.Num());
-	return !File.fail();
-}
-
-TMap<FString, TArray<uint8>>& FWidgetAssetCache::GetMap()
-{
-	static TMap<FString, TArray<uint8>> Map;
+	static TMap<FString, json> Map;
 	return Map;
 }
 
-const TArray<uint8>* FWidgetAssetCache::Find(const FString& Path)
+const json* FWidgetAssetCache::Find(const FString& Path)
 {
-	if (const TArray<uint8>* Cached = GetMap().Find(Path))
+	if (const json* Cached = GetMap().Find(Path))
 		return Cached;
 
-	TArray<uint8> Bytes;
-	if (!FWidgetSerializer::ReadFileBytes(Path, Bytes))
+	std::ifstream In(Path);
+	if (!In)
 	{
 		HTR_LOG(Error, "Cannot open widget asset: {}", Path);
 		return nullptr;
 	}
-	GetMap().Add(Path, std::move(Bytes));
+	json Data = json::parse(In, nullptr, false);
+	if (Data.is_discarded() || !Data.contains("Root"))
+	{
+		HTR_LOG(Error, "Invalid widget asset: {}", Path);
+		return nullptr;
+	}
+	GetMap().Add(Path, std::move(Data));
 	return GetMap().Find(Path);
 }
 
@@ -152,17 +88,10 @@ void FWidgetAssetCache::Invalidate(const FString& Path)
 
 UUserWidget* CreateWidget(UWorld* World, const FString& AssetPath)
 {
-	const TArray<uint8>* Bytes = FWidgetAssetCache::Find(AssetPath);
-	if (!Bytes) return nullptr;
+	const json* Data = FWidgetAssetCache::Find(AssetPath);
+	if (!Data) return nullptr;
 
-	FWidgetAssetData Asset;
-	if (!FWidgetSerializer::LoadAssetFromBytes(*Bytes, Asset))
-	{
-		HTR_LOG(Error, "Invalid widget asset: {}", AssetPath);
-		return nullptr;
-	}
-
-	UClass* Class = FindClass(Asset.ParentClass);
+	UClass* Class = FindClass(Data->value("ParentClass", std::string("UUserWidget")));
 	if (!Class || !Class->IsChildOf(UUserWidget::StaticClass()))
 		Class = UUserWidget::StaticClass();
 
@@ -170,8 +99,9 @@ UUserWidget* CreateWidget(UWorld* World, const FString& AssetPath)
 	Widget->SetOwningWorld(World);
 	Widget->AssetPath = AssetPath;
 
-	if (!Asset.Root)
+	UPanelWidget* Root = Cast<UPanelWidget>(FWidgetSerializer::LoadWidget((*Data)["Root"]));
+	if (!Root)
 		HTR_LOG(Warning, "Widget asset root must be a panel: {}", AssetPath);
-	Widget->SetRootWidget(Asset.Root);
+	Widget->SetRootWidget(Root);
 	return Widget;
 }

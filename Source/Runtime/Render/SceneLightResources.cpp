@@ -19,6 +19,8 @@ namespace
 	static_assert(offsetof(FDeferredLightConstants, SkyColorIntensity) == 160);
 	static_assert(offsetof(FDeferredLightConstants, bSingleLightPass) == 176);
 	static_assert(offsetof(FDeferredLightConstants, SingleLightIndex) == 180);
+	static_assert(offsetof(FDeferredLightConstants, ReflectionModel) == 184);
+	static_assert(offsetof(FDeferredLightConstants, bOverrideMaterialLighting) == 188);
 	static_assert(sizeof(FDeferredLightConstants) == 192);
 
 	// 용량이 모자랄 때만 두 배로 키우고 Map 한 번으로 채운다.

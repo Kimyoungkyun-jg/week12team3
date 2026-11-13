@@ -1,20 +1,34 @@
-#pragma once
+#pragma once 
 
 #include "GameFramework/Actor.h"
-#include "Components/BillboardComponent.h"
 #include "Components/DecalComponent.h"
-#include "DecalActor.generated.h"
+#include "Components/BillboardComponent.h"
 
+#include "DecalActor.generated.h"
 
 UCLASS()
 class ADecalActor : public AActor
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
+
 public:
-    ADecalActor();
-    UDecalComponent* GetDecalComponent() const { return DecalComponent; }
+	ADecalActor();
+	~ADecalActor() override = default;
+	void Tick(float DeltaTime) override;
+	void SetTemporaryLifetime(float Seconds);
+
+	UDecalComponent* GetDecalComponent() const
+	{
+		return DecalComponent;
+	}
+
+	UBillboardComponent* GetBillboardComponent() const
+	{
+		return BillboardComponent;
+	}
 
 private:
-    UDecalComponent* DecalComponent = nullptr;
-    UBillboardComponent* BillboardComponent = nullptr;
+	float RemainingLifetime = 0.0f;
+	UDecalComponent* DecalComponent = nullptr;
+	UBillboardComponent* BillboardComponent = nullptr;
 };

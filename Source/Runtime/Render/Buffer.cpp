@@ -28,8 +28,8 @@ FConstantBuffer::FConstantBuffer(ID3D11Device* Device, const D3D11_BUFFER_DESC& 
 {
 }
 
-FStructuredBuffer::FStructuredBuffer(ID3D11Device* Device, const D3D11_BUFFER_DESC& Desc, uint32 InCapacity)
-	: FBuffer(Device, Desc), Capacity(InCapacity)
+FStructuredBuffer::FStructuredBuffer(ID3D11Device* Device, const D3D11_BUFFER_DESC& Desc, uint32 InCapacity, const void* InitialData)
+	: FBuffer(Device, Desc, InitialData), Capacity(InCapacity)
 {
 	if (!Buffer) return;
 	D3D11_SHADER_RESOURCE_VIEW_DESC ViewDesc{};

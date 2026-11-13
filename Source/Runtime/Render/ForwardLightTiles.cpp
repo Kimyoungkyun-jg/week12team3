@@ -29,10 +29,10 @@ bool FForwardLightTileGrid::Init()
 	LightingInfoCB = RenderCommand::CreateConstantBuffer(sizeof(FGridConstants));
 	if (!CullingCB || !LightingInfoCB || !EnsureCapacity(Allocator, 2, sizeof(uint32))) return false;
 	ComputeShader = RenderCommand::CreateComputeShader(
-		RenderUtil::CompileShader("Resources/Shader/TileBasedLightCulling.hlsl", "mainCS", EShaderType::Compute));
-	Tiled25DComputeShader = RenderCommand::CreateComputeShader(
-		RenderUtil::CompileShader("Resources/Shader/TiledLightCulling25D.hlsl", "mainCS", EShaderType::Compute));
-	return ComputeShader && ComputeShader->IsValid() && Tiled25DComputeShader && Tiled25DComputeShader->IsValid();
+		RenderUtil::CompileShader("Resources/Shader/TileLightCullingCS.hlsli", "mainCS", EShaderType::Compute));
+	ClusterComputeShader = RenderCommand::CreateComputeShader(
+		RenderUtil::CompileShader("Resources/Shader/TileLightCullingCS.hlsli", "mainClusterCS", EShaderType::Compute));
+	return ComputeShader && ComputeShader->IsValid() && ClusterComputeShader && ClusterComputeShader->IsValid();
 }
 
 bool FForwardLightTileGrid::PrepareBuild(const FSceneView& View, const FForwardLightingConstants& Lighting, 
@@ -58,9 +58,8 @@ bool FForwardLightTileGrid::PrepareBuild(const FSceneView& View, const FForwardL
 		return true;
 
 	const bool bClustered = InMode == ELightCullingMode::Clustered;
-	const bool bTiled25D = InMode == ELightCullingMode::Tiled25D;
-	FComputeShader* Shader = bTiled25D ? Tiled25DComputeShader.get() : ComputeShader.get();
-	if (!Shader || !SceneLights || !SceneLights->GetSRV() || (bTiled25D && !Depth->GetSRV()))
+	FComputeShader* Shader = bClustered ? ClusterComputeShader.get() : ComputeShader.get();
+	if (!Shader || !SceneLights || !SceneLights->GetSRV() || (!bClustered && !Depth->GetSRV()))
 		return false;
 
 
@@ -74,7 +73,6 @@ bool FForwardLightTileGrid::PrepareBuild(const FSceneView& View, const FForwardL
 		return false;
 	Constants.GridProjectionParams = FVector4(1.0f / Projection.M[1][0], 1.0f / Projection.M[2][1],
 		Projection.M[0][2], Projection.M[3][2]);
-	Constants.GridProjection = Projection;
 	Constants.GridSliceCount = bClustered ? ClusterDepthSlices : 1;
 
 	// 원근은 log2(depth), 직교는 선형 depth에 scale과 bias를 적용한다.
@@ -114,13 +112,13 @@ bool FForwardLightTileGrid::PrepareBuild(const FSceneView& View, const FForwardL
 
 bool FForwardLightTileGrid::ExecuteBuild(FRenderer* Renderer, FTexture2D* Depth, const FStructuredBuffer* SceneLights)
 {
-	// 깊이 텍스처는 2.5D만 읽는다. Tiled와 Clustered는 고정 깊이 구간의 경계를 만든다.
-	const bool bTiled25D = Constants.GridMode == static_cast<uint32>(ELightCullingMode::Tiled25D);
-	FComputeShader* Shader = bTiled25D ? Tiled25DComputeShader.get() : ComputeShader.get();
+	// Clustered는 깊이 텍스처 없이 고정 깊이 구간의 경계를 만든다.
+	const bool bClustered = Constants.GridMode == static_cast<uint32>(ELightCullingMode::Clustered);
+	FComputeShader* Shader = bClustered ? ClusterComputeShader.get() : ComputeShader.get();
 	if (Constants.GridMode == static_cast<uint32>(ELightCullingMode::Off) ||
 		!Renderer || !SceneLights || !SceneLights->GetSRV() || !Shader ||
 		!Ranges || !PointIndices || !SpotIndices || !Allocator ||
-		(bTiled25D && (!Depth || !Depth->GetSRV())))
+		(!bClustered && (!Depth || !Depth->GetSRV())))
 		return false;
 
 	RenderCommand::UpdateBufferData(CullingCB.get(), &Constants, sizeof(Constants));
@@ -129,14 +127,15 @@ bool FForwardLightTileGrid::ExecuteBuild(FRenderer* Renderer, FTexture2D* Depth,
 	// 기존 입력·출력 슬롯과 목록 버퍼를 유지한다.
 	RenderCommand::BindComputeShader(Shader);
 	RenderCommand::BindConstantBuffer(0, CullingCB.get(), EShaderBindFlagBits::Compute);
-	RenderCommand::BindShaderResource(0, bTiled25D ? Depth : nullptr, EShaderBindFlagBits::Compute);
+	RenderCommand::BindShaderResource(0, bClustered ? nullptr : Depth, EShaderBindFlagBits::Compute);
 	RenderCommand::BindShaderResource(1, SceneLights, EShaderBindFlagBits::Compute);
 	RenderCommand::BindUnorderedAccess(0, Ranges.get());
 	RenderCommand::BindUnorderedAccess(1, PointIndices.get());
 	RenderCommand::BindUnorderedAccess(2, SpotIndices.get());
 	RenderCommand::BindUnorderedAccess(3, Allocator.get());
 
-	RenderCommand::Dispatch(Constants.GridTileCountX, Constants.GridTileCountY, Constants.GridSliceCount);
+	const uint32 DispatchDepth = bClustered ? Constants.GridSliceCount : 1u;
+	RenderCommand::Dispatch(Constants.GridTileCountX, Constants.GridTileCountY, DispatchDepth);
 
 	RenderCommand::UnbindShaderResources(0, 2, EShaderBindFlagBits::Compute);
 	RenderCommand::BindConstantBuffer(0, nullptr, EShaderBindFlagBits::Compute);

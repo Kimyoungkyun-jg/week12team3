@@ -20,6 +20,8 @@ public:
 
 	virtual void InitializeComponent() { bIsInitialized = true; }
 	virtual void BeginPlay() {};
+	// 소유 액터의 EndPlay에서 불린다. 플레이 중에 컴포넌트만 지울 때는 불리지 않는다.
+	virtual void EndPlay() {}
 	void BeginPlayComponent();
 	bool HasBegunPlay() const { return bHasBegunPlay; }
 	virtual void TickComponent(float DeltaTime)
@@ -65,6 +67,11 @@ public:
 	bool IsRenderStateCreated() const { return bRenderStateCreated; }
 
 	UWorld* GetWorld() const { return WorldPrivate; }
+
+	// 에디터 Add Component나 씬 불러오기로 만든 컴포넌트인지 (TEAM5). 생성자가 만든 기본 컴포넌트는 이름을 바꾸면
+	// 씬을 다시 불러올 때 이름으로 찾지 못해 같은 클래스가 하나 더 생기므로 이름 변경을 막는다.
+	void MarkUserCreated() { bUserCreated = true; }
+	bool IsUserCreated() const { return bUserCreated; }
 protected:
 
 	virtual void OnRegister();
@@ -88,6 +95,7 @@ protected:
 	void ExecuteUnregisterEvents();
 
 private:
+	bool bUserCreated = false;
 	AActor* Owner = nullptr;
 	bool bHiddenInDetails = false;
 	bool bIsActive = false;

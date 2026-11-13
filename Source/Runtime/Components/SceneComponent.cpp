@@ -6,6 +6,24 @@
 
 namespace
 {
+	FRotator RotationFromMatrix(const FMatrix& Matrix)
+	{
+		const float Horizontal = sqrtf(Matrix[0][0] * Matrix[0][0] + Matrix[0][1] * Matrix[0][1]);
+		if (Horizontal > 1.0e-6f) return MatrixToRotator(Matrix);
+		// Pitch가 ±90도일 때 Roll·Yaw를 각각 atan2(0, 0)로 구하면 원래 방향을 잃는다.
+		return FRotator(FMath::RadiansToDegrees(atan2f(-Matrix[0][2], Horizontal)),
+			FMath::RadiansToDegrees(atan2f(-Matrix[1][0], Matrix[1][1])), 0.0f);
+	}
+
+	FVector DivideScale(const FVector& Scale, const FVector& ParentScale, const FVector& Fallback)
+	{
+		FVector Result = Fallback;
+		for (int Axis = 0; Axis < 3; ++Axis)
+			if (std::fabs(ParentScale.V[Axis]) > SMALL_NUMBER)
+				Result.V[Axis] = Scale.V[Axis] / ParentScale.V[Axis];
+		return Result;
+	}
+
 	void UpdateChildVisibility(USceneComponent* Root, bool bPropagate, bool bVisible, bool bHidden)
 	{
 		TArray<USceneComponent*> Pending = Root->GetAttachChildren();
@@ -41,7 +59,7 @@ USceneComponent::~USceneComponent()
 void USceneComponent::SetRelativeLocationAndRotation(const FVector& NewLocation, const FRotator& NewRotation)
 {
 	Transform.Location = NewLocation;
-	Transform.Rotation = RelativeRotationCache.RotatorToQuat(NewRotation);
+	Transform.Rotation = NewRotation;
 	MarkTransformDirty();
 }
 
@@ -87,14 +105,23 @@ void USceneComponent::SetupAttachment(USceneComponent* InParent, EAttachmentRule
 
 	if (Rule == EAttachmentRule::KeepWorld)
 	{
-		FMatrix WorldMatrix = GetWorldMatrix();
-		DetachFromParent(Rule);
+		if (InParent)
+		{
+			const FVector ParentScale = InParent->GetWorldScale3D();
+			// 스케일이 0인 부모에는 기존 월드 TRS를 나타낼 수 없으므로 원래 계층을 유지한다.
+			for (int Axis = 0; Axis < 3; ++Axis)
+				if (std::fabs(ParentScale.V[Axis]) <= SMALL_NUMBER) return;
+		}
+		const FVector WorldLocation = GetWorldLocation();
+		const FQuat WorldRotation = GetWorldRotationQuat();
+		const FVector WorldScale = GetWorldScale3D();
+		DetachFromParent(EAttachmentRule::KeepRelative);
 		AttachParent = InParent;
 		if (AttachParent)
 		{
 			AttachParent->AttachChildren.Add(this);
 		}
-		SetWorldTransform(WorldMatrix, false);
+		ApplyWorldTRS(WorldLocation, WorldRotation, WorldScale);
 	}
 	else
 	{
@@ -120,51 +147,41 @@ void USceneComponent::DetachFromParent(EAttachmentRule Rule)
 {
 	if (!AttachParent) return;
 
-	if (Rule == EAttachmentRule::KeepWorld)
+	const bool bKeepWorld = Rule == EAttachmentRule::KeepWorld;
+	const FVector WorldLocation = bKeepWorld ? GetWorldLocation() : FVector();
+	const FQuat WorldRotation = bKeepWorld ? GetWorldRotationQuat() : FQuat();
+	const FVector WorldScale = bKeepWorld ? GetWorldScale3D() : FVector();
+	TArray<USceneComponent*>& Siblings = AttachParent->AttachChildren;
+	for (uint32 i = 0; i < Siblings.Num(); ++i)
 	{
-		FMatrix WorldMatrix = GetWorldMatrix();
-		TArray<USceneComponent*>& Siblings = AttachParent->AttachChildren;
-		for (uint32 i = 0;i < Siblings.Num(); ++i)
+		if (Siblings[i] == this)
 		{
-			if (Siblings[i] == this)
-			{
-				Siblings.RemoveAt(i, 1);
-				break;
-			}
+			Siblings.RemoveAt(i, 1);
+			break;
 		}
-		AttachParent = nullptr;
-		SetWorldTransform(WorldMatrix, false);
 	}
-	else
-	{
-		TArray<USceneComponent*>& Siblings = AttachParent->AttachChildren;
-		for (uint32 i = 0;i < Siblings.Num(); ++i)
-		{
-			if (Siblings[i] == this)
-			{
-				Siblings.RemoveAt(i, 1);
-				break;
-			}
-		}
-		AttachParent = nullptr;
-	}
+	AttachParent = nullptr;
+	if (bKeepWorld)
+		ApplyWorldTRS(WorldLocation, WorldRotation, WorldScale);
 	
 	MarkTransformDirty();
 	MarkRenderStateDirty();
 	UpdateChildVisibility(this, false, false, false);
 }
 
-FRotator USceneComponent::GetWorldRotation() const
+FQuat USceneComponent::GetWorldRotationQuat() const
 {
 	if (AttachParent)
 	{
-		FQuat ParentQuat = AttachParent->GetWorldRotation().Quaternion();
-		FQuat LocalQuat = Transform.GetOrientation();
-
-		return (ParentQuat * LocalQuat).ToFRotator();
+		return (AttachParent->GetWorldRotationQuat() * Transform.GetOrientation()).Normalized();
 	}
 
-	return GetRelativeRotation();
+	return Transform.GetOrientation();
+}
+
+FRotator USceneComponent::GetWorldRotation() const
+{
+	return AttachParent ? GetWorldRotationQuat().ToFRotator() : Transform.Rotation;
 }
 
 FVector USceneComponent::GetWorldLocation() const
@@ -201,46 +218,61 @@ FMatrix USceneComponent::GetWorldMatrix() const
 		AttachParent->GetWorldMatrix().TransformPosition(Transform.Location);
 
 	const FQuat WorldRotation = 
-		AttachParent->GetWorldRotation().Quaternion() * Transform.GetOrientation();
+		GetWorldRotationQuat();
 
 	const FVector WorldScale =
 		Transform.Scale * AttachParent->GetWorldScale3D();
 
-	return FTransform(WorldRotation, WorldLocation, WorldScale).GetLocalMatrix();
+	// Keep the composed rotation as a quaternion: editor arrows have a local 90-degree
+	// pitch, where an Euler round trip makes their world direction unstable.
+	FMatrix WorldMatrix = WorldRotation.ToFMatrix();
+	for (int32 Axis = 0; Axis < 3; ++Axis)
+	{
+		for (int32 Component = 0; Component < 3; ++Component)
+		{
+			WorldMatrix[Axis][Component] *= WorldScale.V[Axis];
+		}
+	}
+	WorldMatrix.SetOrigin(WorldLocation);
+	return WorldMatrix;
 }
 
 void USceneComponent::SetWorldTransform(const FMatrix& InWorldMatrix, bool bSweep)
 {
-	FMatrix LocalMatrix = InWorldMatrix;
-	if (AttachParent)
-	{
-		FMatrix ParentWorldMatrix = AttachParent->GetWorldMatrix();
-		LocalMatrix = InWorldMatrix * ParentWorldMatrix.Inverse();
-	}
-
-	Transform.Location = FVector(LocalMatrix[3][0], LocalMatrix[3][1], LocalMatrix[3][2]);
-
-	FVector XAxis(LocalMatrix[0][0], LocalMatrix[0][1], LocalMatrix[0][2]);
-	FVector YAxis(LocalMatrix[1][0], LocalMatrix[1][1], LocalMatrix[1][2]);
-	FVector ZAxis(LocalMatrix[2][0], LocalMatrix[2][1], LocalMatrix[2][2]);
-
-	const float XAxisSize = XAxis.Size();
-	const float YAxisSize = YAxis.Size();
-	const float ZAxisSize = ZAxis.Size();
-
-	Transform.Scale = FVector(XAxisSize, YAxisSize, ZAxisSize);
-
-	XAxis = XAxis.Normalized();
-	YAxis = YAxis.Normalized();
-	ZAxis = ZAxis.Normalized();
+	// 월드 TRS를 먼저 분리한다. World * Parent^-1을 분해하면 비균일 부모 스케일이
+	// 상대 회전에 섞여, GetWorldMatrix가 쓰는 성분별 스케일 합성을 역산하지 못한다.
+	FVector Axes[3] = {
+		FVector(InWorldMatrix[0][0], InWorldMatrix[0][1], InWorldMatrix[0][2]),
+		FVector(InWorldMatrix[1][0], InWorldMatrix[1][1], InWorldMatrix[1][2]),
+		FVector(InWorldMatrix[2][0], InWorldMatrix[2][1], InWorldMatrix[2][2])
+	};
+	FVector WorldScale(Axes[0].Size(), Axes[1].Size(), Axes[2].Size());
+	// 행렬만 받은 경우 반사 부호를 X축에 둬 오른손 회전 기저를 복원한다.
+	if (Axes[0].Dot(Axes[1].Cross(Axes[2])) < 0.0f)
+		WorldScale.X = -WorldScale.X;
 
 	FMatrix RotationMatrix = FMatrix::Identity;
-	RotationMatrix.SetAxis(0, XAxis);
-	RotationMatrix.SetAxis(1, YAxis);
-	RotationMatrix.SetAxis(2, ZAxis);
+	for (int Axis = 0; Axis < 3; ++Axis)
+		if (std::fabs(WorldScale.V[Axis]) > SMALL_NUMBER)
+			RotationMatrix.SetAxis(Axis, Axes[Axis] / WorldScale.V[Axis]);
+	ApplyWorldTRS(FVector(InWorldMatrix[3][0], InWorldMatrix[3][1], InWorldMatrix[3][2]),
+		RotationFromMatrix(RotationMatrix).Quaternion(), WorldScale);
+}
 
-	Transform.Rotation = RelativeRotationCache.RotatorToQuat(MatrixToRotator(RotationMatrix));
-		
+void USceneComponent::ApplyWorldTRS(const FVector& Location, const FQuat& Rotation, const FVector& Scale)
+{
+	if (AttachParent)
+	{
+		Transform.Location = AttachParent->GetWorldMatrix().Inverse().TransformPosition(Location);
+		Transform.Rotation = RotationFromMatrix((AttachParent->GetWorldRotationQuat().Inverse() * Rotation).Normalized().ToFMatrix());
+		Transform.Scale = DivideScale(Scale, AttachParent->GetWorldScale3D(), Transform.Scale);
+	}
+	else
+	{
+		Transform.Location = Location;
+		Transform.Rotation = RotationFromMatrix(Rotation.ToFMatrix());
+		Transform.Scale = Scale;
+	}
 	MarkTransformDirty();
 }
 
@@ -262,7 +294,7 @@ void USceneComponent::SetWorldRotation(FRotator NewRotation, bool bSweep)
 
 	if (GetAttachParent() != nullptr)
 	{
-		FQuat NewRelQuat = GetAttachParent()->GetWorldRotation().Quaternion().Inverse() * NewRelRotation.Quaternion();
+		FQuat NewRelQuat = GetAttachParent()->GetWorldRotationQuat().Inverse() * NewRelRotation.Quaternion();
 		NewRelRotation = NewRelQuat.ToFRotator();
 	}
 
@@ -278,7 +310,7 @@ void USceneComponent::SetWorldLocationAndRotation(FVector NewLocation, FRotator 
 	{
 		NewRelLocation = GetAttachParent()->GetWorldMatrix().Inverse().TransformPosition(NewRelLocation);
 
-		FQuat NewRelQuat = GetAttachParent()->GetWorldRotation().Quaternion().Inverse() * NewRelRotation.Quaternion();
+		FQuat NewRelQuat = GetAttachParent()->GetWorldRotationQuat().Inverse() * NewRelRotation.Quaternion();
 		NewRelRotation = NewRelQuat.ToFRotator();
 	}
 
@@ -287,6 +319,7 @@ void USceneComponent::SetWorldLocationAndRotation(FVector NewLocation, FRotator 
 
 void USceneComponent::SetWorldScale3D(FVector NewScale)
 {
+	SetRelativeScale3D(AttachParent ? DivideScale(NewScale, AttachParent->GetWorldScale3D(), Transform.Scale) : NewScale);
 }
 
 bool USceneComponent::MoveComponent(const FVector& Delta, const FRotator& NewRotation, bool bSweep, FHitResult* Hit)

@@ -1,163 +1,194 @@
 #include "EnginePCH.h"
-#include "SkeletalMesh.h"
-#include "Render/RenderCommand.h"
+#include "Render/SkeletalMesh.h"
+#include "Render/Renderer.h"
 #include "Asset/AssetManager.h"
+#include "Engine/PrimitiveSceneProxy.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace
 {
-	TArray<FBox> BuildBoneBounds(const FSkeletalMeshLODRenderData& LOD, int32 NumBones)
-	{
-		TArray<FBox> Bounds;
-		Bounds.SetNum(NumBones);
-		for (FBox& Box : Bounds)
-			Box = FBox{ FVector(FLT_MAX, FLT_MAX, FLT_MAX), FVector(-FLT_MAX, -FLT_MAX, -FLT_MAX) };
-
-		for (int32 V = 0; V < LOD.BindVertices.Num(); ++V)
-		{
-			const FVector& Position = LOD.BindVertices[V].Position;
-			const FSkinWeight& Weight = LOD.SkinWeights[V];
-			for (int32 K = 0; K < MaxBoneInfluences; ++K)
-			{
-				if (Weight.Weight[K] <= 0.0f) continue;
-				FBox& Box = Bounds[Weight.BoneIndex[K]];
-				for (int Axis = 0; Axis < 3; ++Axis)
-				{
-					Box.Min[Axis] = std::min(Box.Min[Axis], Position[Axis]);
-					Box.Max[Axis] = std::max(Box.Max[Axis], Position[Axis]);
-				}
-			}
-		}
-		return Bounds;
-	}
+    FBox MakeEmptyBounds()
+    {
+        const float Limit = std::numeric_limits<float>::max();
+        return { FVector(Limit, Limit, Limit), FVector(-Limit, -Limit, -Limit) };
+    }
 }
 
-bool USkeletalMesh::Build(FSkeletalMeshData&& ImportData, FString& OutError)
+USkeletalMesh::~USkeletalMesh()
 {
-	// CreateStaticMesh와 같은 기본값: 슬롯/섹션이 없으면 하나씩 채운다
-	if (ImportData.MaterialSlots.IsEmpty())
-	{
-		FSkeletalMaterialSlot DefaultSlot;
-		DefaultSlot.Name = "Default";
-		ImportData.MaterialSlots.Add(DefaultSlot);
-	}
-	if (ImportData.Sections.IsEmpty())
-	{
-		FSkeletalMeshSection DefaultSection;
-		DefaultSection.StartIndex = 0;
-		DefaultSection.IndexCount = static_cast<uint32>(ImportData.Indices.Num());
-		DefaultSection.MaterialSlotIndex = 0;
-		ImportData.Sections.Add(DefaultSection);
-	}
-
-	if (!ImportData.Validate(OutError))
-	{
-		return false;
-	}
-
-	// 공유 IB. VB는 인스턴스마다 FSkeletalMeshObjectCPUSkin이 동적으로 만든다
-	TUniquePtr<FIndexBuffer> IB = RenderCommand::CreateStaticIndexBuffer(ImportData.Indices.GetData(), static_cast<uint32>(ImportData.Indices.Num()));
-	if (!IB)
-	{
-		OutError = "SkeletalMesh: index buffer creation failed";
-		return false;
-	}
-
-	TArray<UMaterial*> NewMaterials;
-	if (!UAssetManager::BuildMaterialsFromSlots(ImportData.MaterialSlots, NewMaterials))
-	{
-		OutError = "SkeletalMesh: material creation failed";
-		return false;
-	}
-
-	FSkeletalMeshLODRenderData LOD;
-	LOD.BindVertices = std::move(ImportData.BindVertices);
-	LOD.SkinWeights = std::move(ImportData.SkinWeight);
-	LOD.Indices = std::move(ImportData.Indices);
-	LOD.Sections = std::move(ImportData.Sections);
-	LOD.IndexBuffer = std::move(IB);
-
-	// 임포터가 채운 값에 의존하지 않고 바인드 정점에서 다시 계산
-	LOD.BindAABB.Min = LOD.BindAABB.Max = LOD.BindVertices[0].Position;
-	for (const FVertex& Vertex : LOD.BindVertices)
-	{
-		for (int Axis = 0; Axis < 3; ++Axis)
-		{
-			LOD.BindAABB.Min[Axis] = std::min(LOD.BindAABB.Min[Axis], Vertex.Position[Axis]);
-			LOD.BindAABB.Max[Axis] = std::max(LOD.BindAABB.Max[Axis], Vertex.Position[Axis]);
-		}
-	}
-
-	TArray<FGpuSkinVertex> GpuSkinVertices;
-	GpuSkinVertices.SetNum(LOD.BindVertices.Num());
-	for (int32 V = 0; V < GpuSkinVertices.Num(); ++V)
-	{
-		GpuSkinVertices[V].Vertex = LOD.BindVertices[V];
-		for (int32 K = 0; K < MaxBoneInfluences; ++K)
-		{
-			GpuSkinVertices[V].BoneIndex[K] = LOD.SkinWeights[V].BoneIndex[K];
-			GpuSkinVertices[V].Weight[K] = LOD.SkinWeights[V].Weight[K];
-		}
-	}
-	LOD.GpuSkinVertexBuffer = RenderCommand::CreateStaticVertexBuffer(GpuSkinVertices.GetData(),
-		sizeof(FGpuSkinVertex) * static_cast<uint32>(GpuSkinVertices.Num()), sizeof(FGpuSkinVertex));
-	LOD.BoneBounds = BuildBoneBounds(LOD, ImportData.Bones.Num());
-
-	RefSkeleton = std::move(ImportData.Bones);
-	MaterialSlots = std::move(ImportData.MaterialSlots);
-	Materials = std::move(NewMaterials);
-	RenderData.LODRenderData.Empty();
-	RenderData.LODRenderData.Add(std::move(LOD));
-	RenderStates.Reset();
-	return true;
-}
-
-int32 USkeletalMesh::FindBoneIndex(const FString& Name) const
-{
-	for (int32 I = 0; I < RefSkeleton.Num(); ++I)
-	{
-		if (RefSkeleton[I].Name == Name)
-			return I;
-	}
-	return -1;
+    for (FPrimitiveSceneProxy* Proxy : RenderProxies)
+    {
+        Proxy->OnMeshDestroyed();
+    }
+    VertexBuffer = nullptr;
+    IndexBuffer = nullptr;
 }
 
 UMaterial* USkeletalMesh::GetMaterial(uint32 SlotIndex) const
 {
-	if (SlotIndex < Materials.size() && Materials[SlotIndex])
-	{
-		return Materials[SlotIndex];
-	}
-	return UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
+    if (SlotIndex < Materials.size() && Materials[SlotIndex])
+    {
+        return Materials[SlotIndex];
+    }
+    return UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
 }
 
-size_t USkeletalMesh::FMaterialSlotsHash::operator()(const TArray<UMaterial*>& Slots) const
+void USkeletalMesh::RebuildRenderData()
 {
-	size_t Hash = 0;
-	for (const UMaterial* Material : Slots)
-		Hash ^= std::hash<const UMaterial*>{}(Material) + 0x9e3779b9u + (Hash << 6) + (Hash >> 2);
-	return Hash;
+    ComputeSkinningSources.Reset();
+    ++RenderDataRevision;
+    RefSkeleton.BuildFromBones(MeshData.Bones);
+	RefBasesInvMatrix.Reset();
+	for (const auto& Bone : MeshData.Bones) RefBasesInvMatrix.Add(Bone.InverseBindPose);
+    {
+        // 행렬 -> TRS -> 행렬 왕복 오차. 크면 전단이 있거나 분해 규약이 어긋난 것이다.
+        float MaxError = 0.0f;
+        for (int32 Index = 0; Index < RefSkeleton.GetNum(); ++Index)
+        {
+            const FMatrix Rebuilt = RefSkeleton.RefBonePose[Index].ToMatrix();
+            for (int32 Row = 0; Row < 4; ++Row)
+                for (int32 Col = 0; Col < 4; ++Col)
+                    MaxError = std::max(MaxError, std::abs(Rebuilt.M[Row][Col] - MeshData.Bones[Index].LocalBindPose.M[Row][Col]));
+        }
+        FString Error;
+        if (RefSkeleton.GetNum() > 0 && !RefSkeleton.Validate(Error))
+            HTR_LOG(Warning, "[Skeleton] {}: {}", GetPath(), Error);
+        else if (MaxError > 1.0e-3f)
+            HTR_LOG(Warning, "[Skeleton] {}: bind pose TRS round-trip error {:.6f}", GetPath(), MaxError);
+#ifdef ENGINE_DEBUG
+        else
+            HTR_LOG(Info, "[Skeleton] {}: {} bones, TRS round-trip error {:.6f}", GetPath(), RefSkeleton.GetNum(), MaxError);
+#endif
+    }
+
+    RenderBounds = MeshData.AABB;
+    RebuildSkinningBounds();
+    LocalLODSphere.Center = (RenderBounds.Min + RenderBounds.Max) * 0.5f;
+
+    double RadiusSquared = 0.0;
+    for (const FSkeletalVertex& Vertex : MeshData.SkinnedVertices)
+    {
+        const double X = static_cast<double>(Vertex.Position.X) - LocalLODSphere.Center.X;
+        const double Y = static_cast<double>(Vertex.Position.Y) - LocalLODSphere.Center.Y;
+        const double Z = static_cast<double>(Vertex.Position.Z) - LocalLODSphere.Center.Z;
+        RadiusSquared = std::max(RadiusSquared, X * X + Y * Y + Z * Z);
+    }
+
+    LocalLODSphere.RadiusSquared = std::nextafter(
+        static_cast<float>(RadiusSquared * (1.0 + 2e-5)), std::numeric_limits<float>::infinity());
+
+    for (FPrimitiveSceneProxy* Proxy : RenderProxies)
+    {
+        Proxy->OnMeshRenderDataChanged();
+    }
 }
 
-TSharedPtr<const FMeshRenderState> USkeletalMesh::GetRenderState(const TArray<UMaterial*>& InMaterials)
+FStructuredBuffer* USkeletalMesh::GetOrCreateComputeSkinningSource(uint32 LOD, ID3D11Device* Device)
 {
-	auto& WeakState = RenderStates[InMaterials];
-	if (auto State = WeakState.lock()) return State;
+    if (LOD >= GetLODCount()) return nullptr;
+    ComputeSkinningSources.SetNum(GetLODCount());
+    auto& Source = ComputeSkinningSources[LOD];
+    if (Source) return Source.get();
 
-	// LOD는 하나뿐이라 임계값 없이 LOD 0 범위만 채운다
-	auto State = MakeShared<FMeshRenderState>();
-	State->LODCount = 1;
-	if (!RenderData.LODRenderData.IsEmpty())
-	{
-		auto& Range = State->LODs[0];
-		Range.FirstSection = 0;
-		for (const FSkeletalMeshSection& Section : RenderData.LODRenderData[0].Sections)
-		{
-			UMaterial* Material = Section.MaterialSlotIndex < InMaterials.size()
-				? InMaterials[Section.MaterialSlotIndex] : GetMaterial(Section.MaterialSlotIndex);
-			if (Material) State->Sections.Add({ Material, Section.StartIndex, Section.IndexCount });
-		}
-		Range.NumSections = State->Sections.Num();
-	}
-	WeakState = State;
-	return State;
+    const auto& Vertices = GetMeshData(LOD).SkinnedVertices;
+    if (Vertices.IsEmpty()) return nullptr;
+    static_assert(sizeof(FSkeletalVertex) == 96 && offsetof(FSkeletalVertex, BoneIndices) == 64
+        && offsetof(FSkeletalVertex, BoneWeights) == 80);
+
+    const uint32 Count = static_cast<uint32>(Vertices.Num());
+    D3D11_BUFFER_DESC Desc{};
+    Desc.ByteWidth = Count * sizeof(FSkeletalVertex);
+    Desc.Usage = D3D11_USAGE_IMMUTABLE;
+    Desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    Desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+    Desc.StructureByteStride = sizeof(FSkeletalVertex);
+    auto Buffer = std::make_unique<FStructuredBuffer>(Device, Desc, Count, Vertices.GetData());
+    if (!Buffer->GetSRV()) return nullptr;
+    Source = std::move(Buffer);
+    return Source.get();
+}
+
+void USkeletalMesh::RebuildSkinningBounds()
+{
+    const FBox EmptyBounds = MakeEmptyBounds();
+    BoneInfluenceBounds.SetNum(MeshData.Bones.Num());
+    for (FBox& Bounds : BoneInfluenceBounds)
+        Bounds = EmptyBounds;
+    UnweightedVertexBounds = EmptyBounds;
+    MinSkinWeightSum = MaxSkinWeightSum = 1.0f;
+
+    for (uint32 LOD = 0; LOD < GetLODCount(); ++LOD)
+    {
+        for (const FSkeletalVertex& Vertex : GetMeshData(LOD).SkinnedVertices)
+        {
+            const FBox Point{ Vertex.Position, Vertex.Position };
+            float WeightSum = 0.0f;
+            for (int32 Influence = 0; Influence < 4; ++Influence)
+            {
+                const int32 BoneIndex = Vertex.BoneIndices[Influence];
+                const float Weight = Vertex.BoneWeights[Influence];
+                if (BoneIndex < 0 || BoneIndex >= BoneInfluenceBounds.Num() || Weight <= 0.0f)
+                    continue;
+                BoneInfluenceBounds[BoneIndex].Expand(Point);
+                WeightSum += Weight;
+            }
+            if (WeightSum > 0.0f)
+            {
+                MinSkinWeightSum = std::min(MinSkinWeightSum, WeightSum);
+                MaxSkinWeightSum = std::max(MaxSkinWeightSum, WeightSum);
+            }
+            else
+            {
+                UnweightedVertexBounds.Expand(Point);
+            }
+        }
+    }
+}
+
+const FBox* USkeletalMesh::GetBoneInfluenceBounds(int32 BoneIndex) const
+{
+    if (BoneIndex < 0 || BoneIndex >= BoneInfluenceBounds.Num())
+        return nullptr;
+    const FBox& Bounds = BoneInfluenceBounds[BoneIndex];
+    return Bounds.Min.X <= Bounds.Max.X ? &Bounds : nullptr;
+}
+
+FBox USkeletalMesh::CalcSkinnedBounds(const TArray<FMatrix>& SkinningMatrices) const
+{
+    if (BoneInfluenceBounds.Num() != SkinningMatrices.Num())
+        return MeshData.AABB;
+
+    FBox Bounds = MakeEmptyBounds();
+    for (int32 BoneIndex = 0; BoneIndex < BoneInfluenceBounds.Num(); ++BoneIndex)
+    {
+        if (const FBox* BoneBounds = GetBoneInfluenceBounds(BoneIndex))
+            Bounds.Expand(BoneBounds->GetWorldAABB(SkinningMatrices[BoneIndex]));
+    }
+
+    if (Bounds.Min.X <= Bounds.Max.X)
+    {
+        // SkinVertex uses the original weights. Cover sums that differ from one.
+        const FBox NormalizedBounds = Bounds;
+        Bounds.Expand({ NormalizedBounds.Min * MinSkinWeightSum, NormalizedBounds.Max * MinSkinWeightSum });
+        Bounds.Expand({ NormalizedBounds.Min * MaxSkinWeightSum, NormalizedBounds.Max * MaxSkinWeightSum });
+    }
+    if (UnweightedVertexBounds.Min.X <= UnweightedVertexBounds.Max.X)
+        Bounds.Expand(UnweightedVertexBounds);
+    return Bounds.Min.X <= Bounds.Max.X ? Bounds : MeshData.AABB;
+}
+
+void USkeletalMesh::RegisterProxy(FPrimitiveSceneProxy* Proxy)
+{
+    RenderProxies.Add(Proxy);
+}
+
+void USkeletalMesh::UnregisterProxy(FPrimitiveSceneProxy* Proxy)
+{
+    const auto It = std::find(RenderProxies.begin(), RenderProxies.end(), Proxy);
+    if (It != RenderProxies.end())
+    {
+        RenderProxies.RemoveAtSwap(static_cast<uint32>(It - RenderProxies.begin()));
+    }
 }

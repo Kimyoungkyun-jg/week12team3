@@ -1,6 +1,11 @@
 #pragma once
 #include "MovementComponent.h"
+#include "Core/Delegate/Delegate.h"
 #include "ProjectileMovementComponent.generated.h"
+
+class AActor;
+struct FHitResult;
+DECLARE_DELEGATE(FProjectileImpactSignature, AActor*, const FHitResult&);
 
 UCLASS()
 class UProjectileMovementComponent : public UMovementComponent
@@ -10,6 +15,7 @@ class UProjectileMovementComponent : public UMovementComponent
 
 public:
 	UProjectileMovementComponent();
+	FProjectileImpactSignature OnProjectileImpact;
 
 	// Projectile
 	UPROPERTY(EditAnywhere)

@@ -1,9 +1,9 @@
 #include "EnginePCH.h"
 #include "Editor/EditorUI/ImGuiRenderer.h"
+#include "Editor/HitoriEd/EditorResourcePaths.h"
 
 #include "Core/Window.h"
 #include "Input/InputSystem.h"
-#include "Core/Misc/Paths.h"
 
 #include <backends/imgui_impl_dx11.h>
 #include <backends/imgui_impl_win32.h>
@@ -223,7 +223,11 @@ bool FImGuiRenderer::Init(HWND WindowHandle, ID3D11Device* Device, ID3D11DeviceC
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 
-	ImGuiIO& io = ImGui::GetIO();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	// ImGui는 설정 폴더를 만들지 않으므로 먼저 만든다.
+	std::error_code SettingsDirError;
+	std::filesystem::create_directories(EditorResourcePaths::SettingsFolder, SettingsDirError);
+	io.IniFilename = EditorResourcePaths::ImGuiLayoutFile;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 	io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
@@ -244,7 +248,7 @@ bool FImGuiRenderer::Init(HWND WindowHandle, ID3D11Device* Device, ID3D11DeviceC
 	// Reuse ImGui's vertex shader and draw commands; only array-depth sampling differs.
 	ComPtr<ID3DBlob> Bytecode;
 	ComPtr<ID3DBlob> Errors;
-	HRESULT PreviewResult = D3DCompileFromFile(FPaths::EngineFile(L"Resources/Shader/ShadowPreview.hlsl").c_str(), nullptr,
+	HRESULT PreviewResult = D3DCompileFromFile(L"Resources/Shader/ShadowPreview.hlsl", nullptr,
 		D3D_COMPILE_STANDARD_FILE_INCLUDE, "mainPS", "ps_5_0", D3DCOMPILE_ENABLE_STRICTNESS, 0,
 		Bytecode.GetAddressOf(), Errors.GetAddressOf());
 	if (FAILED(PreviewResult))
@@ -274,14 +278,8 @@ bool FImGuiRenderer::Init(HWND WindowHandle, ID3D11Device* Device, ID3D11DeviceC
 	}
 	FWindow::SetWndProcHook(&ImGuiWndProcHook);
 
-	ApplyDefaultStyle();
-
-	//// 프로세스가 Per-Monitor DPI Aware라 창이 실제 픽셀 크기로 잡힌다. 모니터 배율(예: 150%)만큼 UI를 키운다.
-	//// 1.92+ 동적 폰트 아틀라스라 FontScaleDpi로 키워도 글자가 해당 크기로 다시 래스터화되어 흐려지지 않는다.
-	const float DpiScale = ImGui_ImplWin32_GetDpiScaleForHwnd(WindowHandle);
-	ImGuiStyle& Style = ImGui::GetStyle();
-	Style.ScaleAllSizes(DpiScale);     // 패딩·간격·스크롤바 등 크기 (ApplyDefaultStyle 이후에 적용)
-	Style.FontScaleDpi = DpiScale;     // 글자 크기
+	MainWindowHandle = WindowHandle;
+	ApplyDpiScale(ImGui_ImplWin32_GetDpiScaleForHwnd(WindowHandle));
 	//// 다른 배율의 모니터로 창을 옮기면 글자 배율을 자동으로 갱신한다.
 	io.ConfigDpiScaleFonts = true;
 	io.ConfigDpiScaleViewports = true;
@@ -289,16 +287,46 @@ bool FImGuiRenderer::Init(HWND WindowHandle, ID3D11Device* Device, ID3D11DeviceC
 	return true;
 }
 
+// 프로세스가 Per-Monitor DPI Aware라 창이 실제 픽셀 크기로 잡힌다. 모니터 배율(예: 150%)만큼 UI를 키운다.
+// 1.92+ 동적 폰트 아틀라스라 FontScaleDpi로 키워도 글자가 해당 크기로 다시 래스터화되어 흐려지지 않는다.
+// ScaleAllSizes는 누적되므로 스타일을 기본값으로 되돌린 뒤 다시 적용한다 (TEAM5).
+void FImGuiRenderer::ApplyDpiScale(float DpiScale)
+{
+	ImGuiStyle& Style = ImGui::GetStyle();
+	const float FontSizeBase = Style.FontSizeBase;
+	const float FontScaleMain = Style.FontScaleMain;
+
+	Style = ImGuiStyle();
+	Style.FontSizeBase = FontSizeBase;
+	Style.FontScaleMain = FontScaleMain;
+	ApplyDefaultStyle();
+	Style.ScaleAllSizes(DpiScale);   // 패딩·간격·스크롤바 등 크기 (ApplyDefaultStyle 이후에 적용)
+	Style.FontScaleDpi = DpiScale;   // 글자 크기
+	AppliedDpiScale = DpiScale;
+}
+
 void FImGuiRenderer::Begin()
 {
+	// 메인 창이 배율이 다른 모니터로 옮겨 가면 여백도 글자와 함께 바꾼다.
+	if (MainWindowHandle)
+	{
+		const float DpiScale = ImGui_ImplWin32_GetDpiScaleForHwnd(MainWindowHandle);
+		if (DpiScale != AppliedDpiScale)
+			ApplyDpiScale(DpiScale);
+	}
+
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 
 	ImGui::NewFrame();
+
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
 }
 
 void FImGuiRenderer::End()
 {
+	ImGuiIO& io = ImGui::GetIO();
+
 	ImGui::Render();
 	ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
@@ -362,6 +390,9 @@ void FImGuiRenderer::RestoreShadowPreview(const ImDrawList*, const ImDrawCmd* Co
 
 void FImGuiRenderer::Shutdown()
 {
+	// 자동 저장 대기 중에 종료해도 마지막 레이아웃과 패널 열림 상태를 남긴다.
+	if (ImGui::GetIO().IniFilename)
+		ImGui::SaveIniSettingsToDisk(ImGui::GetIO().IniFilename);
 	PreviewTextures.clear();
 	PreviousPSConstants.Reset();
 	ShadowPreviewSampler.Reset();

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  모든 exe(Editor·Game·HeaderTool)에 들어가는 공용 매니페스트.
+  - activeCodePage UTF-8: 프로세스의 ANSI 코드페이지(CP_ACP)를 UTF-8로 바꾼다.
+    FString(std::string)을 UTF-8로 쓰므로 std::ifstream(std::string), fs::path(std::string), path::string(),
+    fopen, *A Win32 API가 모두 같은 UTF-8 규칙을 따르게 된다. (Windows 10 1903 이상)
+  - longPathAware: MAX_PATH(260자)를 넘는 경로를 허용한다.
+    OS에서 HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled = 1 일 때만 실제로 효과가 있다.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+    </windowsSettings>
+  </application>
+</assembly>

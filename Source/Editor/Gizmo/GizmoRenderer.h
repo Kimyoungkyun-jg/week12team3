@@ -4,8 +4,6 @@
 #include "Render/PipelineState.h"
 #include "Editor/Gizmo/Gizmo.h"
 
-class UCameraComponent;
-
 struct FGizmoData
 {
 	// Gizmo 한 Draw에 필요한 월드·ViewProjection 행렬과 축 색상을 담는다.
@@ -46,6 +44,7 @@ private:
 	UStaticMesh* RotationMesh;
 	UStaticMesh* ScaleMesh;
 	UStaticMesh* SphereMesh;
+	UStaticMesh* PlaneHandleMesh;
 	TUniquePtr<FConstantBuffer> CB;
 
 	//EGizmoMode Mode = EGizmoMode::Scale;

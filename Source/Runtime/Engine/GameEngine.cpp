@@ -1,22 +1,25 @@
 #include "EnginePCH.h"
+#include "Core/ResourcePaths.h"
 #include "GameEngine.h"
 
 #include "Launch/LaunchEngineLoop.h"
-#include "Core/CoreGlobals.h"
 #include "Core/Window.h"
 #include "Core/Stats/LightweightStats.h"
 #include "Engine/GameInstance.h"
 #include "Engine/GameViewportClient.h"
 #include "Input/InputSystem.h"
+#include "Input/MouseCapture.h"
+#include "GameFramework/PlayerController.h"
 #include "Render/RenderCommand.h"
 #include "Render/Renderer.h"
 #include "Render/SceneRenderer.h"
 #include "Render/Swapchain.h"
 #include "Render/Texture2D.h"
 #include "Audio/AudioDevice.h"
+#include "Components/SkeletalMeshComponent.h"
 namespace
 {
-	constexpr const char* GameConfigPath = "Config/DefaultGame.ini";
+	constexpr const char* GameConfigPath = ContentPaths::GameConfigFile;
 }
 
 FEngineConfig UGameEngine::GetConfig() const
@@ -24,7 +27,7 @@ FEngineConfig UGameEngine::GetConfig() const
 	Settings = FGameSettings::Load(GameConfigPath);
 
 	FEngineConfig Desc;
-	Desc.Title = Settings.WindowTitle.c_str();   // 이 객체(클래스 기본 객체)가 살아 있는 동안 유효하다.
+	Desc.Title = Settings.WindowTitle.c_str();   // GEngine이 살아 있는 동안 유효하다.
 	Desc.Width = Settings.Width;
 	Desc.Height = Settings.Height;
 	Desc.bBorderless = Settings.bBorderless;
@@ -33,7 +36,7 @@ FEngineConfig UGameEngine::GetConfig() const
 	Desc.bCreateDepthBuffer = false;
 	// Esc는 FGameViewportClient가 받아 종료 요청으로 바꾼다. 나중에 게임 UI가 가로챌 수 있다.
 	Desc.bExitOnEscape = false;
-	Desc.SplashImage = "Engine/Splash/Splash.png";
+	Desc.SplashImage = ResourcePaths::SplashImage;
 	Desc.SkyPanorama = Settings.SkyPanorama.c_str();   // 2-2단계에서 추가한 항목
 	return Desc;
 }
@@ -42,21 +45,13 @@ bool UGameEngine::Init()
 {
 	if (!Super::Init()) return false;
 
-	// GetConfig는 GEngine이 생기기 전에 클래스 기본 객체에서 불린다. 실제 엔진 객체는 여기서 설정을 읽는다.
-	Settings = FGameSettings::Load(GameConfigPath);
-
 	UIRenderer = MakeUnique<FUIRenderer>();
 	UIRenderer->Init();
 
-	return true;
-}
-
-bool UGameEngine::Start()
-{
-	if (!OpenStartupMap(Settings.StartupMap))
+	if(!OpenStartupMap(Settings.StartupMap))
 	{
 		const FString Message = "Cannot open startup map:\n" + Settings.StartupMap +
-			"\n\nCheck GameDefaultMap in Config/DefaultGame.ini and the Scenes folder.";
+			"\n\nCheck GameDefaultMap in GameConfig/DefaultGame.ini and the Assets/Scenes folder.";
 		MessageBoxA(GetEngineLoop().GetMainWindow()->GetHandle(), Message.c_str(), "Hitori", MB_OK | MB_ICONERROR);
 		return false;
 	}
@@ -64,20 +59,18 @@ bool UGameEngine::Start()
 	return true;
 }
 
-// 한 프레임의 순서: 맵 전환, 뷰포트 영역, 입력, 월드, 오디오, UI, 렌더.
 void UGameEngine::Tick(float DeltaTime)
 {
 	FWorldContext* Context = GetWorldContextFromType(EWorldType::Game);
 	if (!Context) return;
-
-	// 지난 프레임에 요청된 맵 전환을 월드 Tick 전에 처리한다.
 	TickWorldTravel(*Context);
 	if (!Context->World() || !Context->GameViewport)
 		return;
 	FGameViewportClient& Viewport = *Context->GameViewport;
 	UWorld* World = Context->World();
 
-	HWND WindowHandle = GetEngineLoop().GetMainWindow()->GetHandle();
+	FEngineLoop& Loop = GetEngineLoop();
+	HWND WindowHandle = Loop.GetMainWindow()->GetHandle();
 
 	RECT ClientRect{};
 	POINT ClientOrigin{ 0, 0 };
@@ -96,9 +89,13 @@ void UGameEngine::Tick(float DeltaTime)
 	DispatchInput(Viewport, DeltaTime);
 	if (Viewport.ConsumeExitRequest())
 	{
-		RequestEngineExit("game viewport");
+		FMouseCapture::Release();
+		GetEngineLoop().RequestExit();
 		return;
 	}
+	// 창이 포커스를 잃었다 돌아와도 잠금이 다시 걸리게 프레임마다 맞춘다.
+	if (APlayerController* PC = World->GetPlayerController(); PC && PC->GetCursorMode() == ECursorMode::Locked)
+		SetGameMouseCapture(World, true);
 
 	World->Tick(DeltaTime);
 	if (FAudioDevice* AudioDevice = GetMainAudioDevice())
@@ -112,8 +109,21 @@ void UGameEngine::Tick(float DeltaTime)
 		AudioDevice->Update(true);
 	}
 	Viewport.TickUI(DeltaTime);
-	RedrawViewports(Viewport);
+	RenderFrame(Viewport, World);
 	FStatRegistry::EndFrame();
+	USkeletalMeshComponent::EndSkinningStatsFrame();
+}
+
+bool UGameEngine::SetGameMouseCapture(const UWorld* InWorld, bool bEnabled)
+{
+	FWindow* Window = GetEngineLoop().GetMainWindow();
+	FWorldContext* Context = GetWorldContextFromType(EWorldType::Game);
+	if (!Window || !InWorld || !Context || InWorld != Context->World())
+		return false;
+	RECT Bounds{};
+	::GetClientRect(Window->GetHandle(), &Bounds);
+	::MapWindowPoints(Window->GetHandle(), nullptr, reinterpret_cast<POINT*>(&Bounds), 2);
+	return FMouseCapture::Update(Window->GetHandle(), Bounds, bEnabled);
 }
 
 bool UGameEngine::OpenStartupMap(const FString& MapPath)
@@ -165,9 +175,7 @@ void UGameEngine::DispatchInput(FGameViewportClient& Viewport, float DeltaTime)
 	Viewport.InputAxis(nullptr, 0, EGameInputAxis::MouseY, static_cast<float>(FInputSystem::GetMouseDeltaY()), DeltaTime);
 }
 
-// 게임 뷰포트를 다시 그린다. UE의 UGameEngine::RedrawViewports와 같은 자리다.
-// 그리는 일은 뷰포트 클라이언트의 Draw가 하고, 여기서는 크기를 맞추고 결과를 백버퍼로 옮긴다.
-void UGameEngine::RedrawViewports(FGameViewportClient& Viewport)
+void UGameEngine::RenderFrame(FGameViewportClient& Viewport, UWorld* World)
 {
 	FEngineLoop& Loop = GetEngineLoop();
 	const uint32 Width = Loop.GetViewportWidth();
@@ -177,10 +185,23 @@ void UGameEngine::RedrawViewports(FGameViewportClient& Viewport)
 	// 크기가 같으면 아무것도 하지 않으므로 매 프레임 불러도 된다. 창 크기 변경도 여기서 따라간다.
 	Viewport.Resize(Width, Height);
 
-	// 게임 설정 파일에서 읽은 렌더 설정을 뷰포트에 넘긴다.
-	Viewport.EngineShowFlags = Settings.RenderOptions;
+	const FSceneRenderOptions& Options = Settings.RenderOptions;
+	const FRect ViewRect{ 0.0f, 0.0f, static_cast<float>(Width), static_cast<float>(Height) };
+	const FSceneView SceneView = Viewport.CalcSceneView(ViewRect);
 
-	if (!Viewport.Draw(Loop.GetRenderer(), UIRenderer.get()))
+	FSceneRenderer SceneRenderer(World, SceneView, Viewport.GetRenderData());
+	SceneRenderer.InitViews(Loop.GetRenderer(), Options);
+	// 에디터와 같은 FSceneRenderer::Render. 에디터 전용 패스가 없으니 ExtraPasses는 넘기지 않는다.
+	if (!SceneRenderer.Render(Loop.GetRenderer(), Viewport.GetViewTargets(), Options, 
+		[this, &Viewport, Width, Height](FScenePassCallbacks& Callbacks)
+		{
+			Callbacks.Overlays.GameUI = [this, &Viewport, Width, Height]
+				{
+					if (!UIRenderer) return;
+					Viewport.PaintUI(UIDrawList);
+					UIRenderer->Render(UIDrawList, Width, Height);
+				};
+		}))
 		return;
 
 	// FXAA를 켜면 SceneColor가 FXAA 결과로 바뀌어 있다. PIE 별도 창과 같은 방식으로 복사한다.

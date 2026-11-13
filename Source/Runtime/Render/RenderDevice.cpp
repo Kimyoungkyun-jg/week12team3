@@ -362,22 +362,48 @@ void FRenderDevice::CreateStates()
 		Device->CreateDepthStencilState(&Desc, DepthStencilStates[(uint8)EDepthStencilState::Disabled].GetAddressOf());
 
 		// 깊이 없이 선택 메시 영역의 스텐실을 올린다 (참조값 0 기준).
-		Desc.StencilEnable = TRUE;
-		Desc.StencilReadMask = D3D11_DEFAULT_STENCIL_READ_MASK;
-		Desc.StencilWriteMask = D3D11_DEFAULT_STENCIL_WRITE_MASK;
-		Desc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
-		Desc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
-		Desc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_INCR_SAT;
-		Desc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
-		Desc.BackFace = Desc.FrontFace;
-		Device->CreateDepthStencilState(&Desc, DepthStencilStates[(uint8)EDepthStencilState::StencilMask].GetAddressOf());
+		// Outline 마스크: bit 0만 1로 기록
+		{
+			D3D11_DEPTH_STENCIL_DESC Desc{};
+
+			Desc.DepthEnable = FALSE;
+			Desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+			Desc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+
+			Desc.StencilEnable = TRUE;
+			Desc.StencilReadMask = StencilBits::Outline;
+			Desc.StencilWriteMask = StencilBits::Outline;
+
+			Desc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+			Desc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+			Desc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+			Desc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_REPLACE;
+			Desc.BackFace = Desc.FrontFace;
+
+			Device->CreateDepthStencilState(&Desc, DepthStencilStates[(uint8)EDepthStencilState::StencilMask].GetAddressOf());
+		}
 
 		// 스텐실이 0인 픽셀(선택 메시 바깥)에만 그린다.
-		Desc.StencilWriteMask = 0;
-		Desc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
-		Desc.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL;
-		Desc.BackFace = Desc.FrontFace;
-		Device->CreateDepthStencilState(&Desc, DepthStencilStates[(uint8)EDepthStencilState::StencilOutline].GetAddressOf());
+		// Outline 그리기: bit 0이 0인 픽셀만 통과
+		{
+			D3D11_DEPTH_STENCIL_DESC Desc{};
+
+			Desc.DepthEnable = FALSE;
+			Desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+			Desc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+
+			Desc.StencilEnable = TRUE;
+			Desc.StencilReadMask = StencilBits::Outline;
+			Desc.StencilWriteMask = 0;
+
+			Desc.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL;
+			Desc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+			Desc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+			Desc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+			Desc.BackFace = Desc.FrontFace;
+
+			Device->CreateDepthStencilState(&Desc, DepthStencilStates[(uint8)EDepthStencilState::StencilOutline].GetAddressOf());
+		}
 
 		// 기존 깊이와 상관없이 덮어쓴다. 그림자 아틀라스의 타일 하나만 지울 때 쓴다.
 		D3D11_DEPTH_STENCIL_DESC AlwaysDesc = {};
@@ -386,6 +412,122 @@ void FRenderDevice::CreateStates()
 		AlwaysDesc.DepthFunc = D3D11_COMPARISON_ALWAYS;
 		AlwaysDesc.StencilEnable = FALSE;
 		Device->CreateDepthStencilState(&AlwaysDesc, DepthStencilStates[(uint8)EDepthStencilState::AlwaysWrite].GetAddressOf());
+
+		// 데칼
+		// 깊이: 이미 보이는 표면과 같은 깊이만 통과
+		// 깊이 쓰기: 하지 않음
+		D3D11_DEPTH_STENCIL_DESC DecalDesc = {};
+		DecalDesc.DepthEnable = TRUE;
+		DecalDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+		DecalDesc.DepthFunc = D3D11_COMPARISON_EQUAL;
+		DecalDesc.StencilEnable = FALSE;
+
+		Device->CreateDepthStencilState(&DecalDesc, DepthStencilStates[(uint8)EDepthStencilState::DecalEqualReadOnly].GetAddressOf());
+		
+		// Detph Prepass:
+		// 최종적으로 보이는 표면의 수신 여부를 기록한다.
+		{
+			D3D11_DEPTH_STENCIL_DESC Desc{};
+
+			Desc.DepthEnable = TRUE;
+			Desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+			Desc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+
+			Desc.StencilEnable = TRUE;
+			Desc.StencilReadMask = StencilBits::ReceiveDecal;
+			Desc.StencilWriteMask = StencilBits::ReceiveDecal;
+
+			Desc.FrontFace.StencilFunc = D3D11_COMPARISON_ALWAYS;
+			Desc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+			Desc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+			Desc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_REPLACE;
+			Desc.BackFace = Desc.FrontFace;
+
+			const HRESULT Result = Device->CreateDepthStencilState(
+				&Desc,
+				DepthStencilStates[
+					static_cast<uint8>(
+						EDepthStencilState::DecalReceiverWrite)
+				].GetAddressOf());
+
+			if (FAILED(Result))
+			{
+				HTR_LOG(Error, "Create DecalReceiverWrite failed: 0x{:08x}", static_cast<uint32>(Result));
+			}
+		}
+
+		// Depth Reconstruction:
+		// 수신 비트가 1인 픽셀만 통과시킨다.
+		{
+			D3D11_DEPTH_STENCIL_DESC Desc{};
+
+			Desc.DepthEnable = TRUE;
+			Desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+			Desc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+
+			Desc.StencilEnable = TRUE;
+			Desc.StencilReadMask = StencilBits::ReceiveDecal;
+			Desc.StencilWriteMask = 0;
+
+			Desc.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL;
+			Desc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+			Desc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+			Desc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+			Desc.BackFace = Desc.FrontFace;
+
+			const HRESULT Result = Device->CreateDepthStencilState(
+				&Desc,
+				DepthStencilStates[
+					static_cast<uint8>(
+						EDepthStencilState::DecalReceiverTest)
+				].GetAddressOf());
+
+			if (FAILED(Result))
+			{
+				HTR_LOG(Error, "Create DecalReceiverTest failed: 0x{:08x}", static_cast<uint32>(Result));
+			}
+		}
+
+		// Decal Volume
+		{
+			auto CreateDecalVolumeState =
+				[&](EDepthStencilState State, bool bUseReceiverStencil)
+				{
+					D3D11_DEPTH_STENCIL_DESC Desc{};
+
+					Desc.DepthEnable = TRUE;
+					Desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+					Desc.DepthFunc = D3D11_COMPARISON_GREATER_EQUAL;
+
+					Desc.StencilEnable = bUseReceiverStencil;
+					Desc.StencilReadMask = StencilBits::ReceiveDecal;
+					Desc.StencilWriteMask = 0;
+
+					Desc.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL;
+					Desc.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+					Desc.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+					Desc.FrontFace.StencilPassOp = D3D11_STENCIL_OP_KEEP;
+
+					Desc.BackFace = Desc.FrontFace;
+
+					const HRESULT Result = Device->CreateDepthStencilState(
+						&Desc,
+						DepthStencilStates[
+							static_cast<uint8>(State)
+						].GetAddressOf());
+
+					if (FAILED(Result))
+					{
+						HTR_LOG(Error, "Create DecalVolumeState failed: 0x{:08x}", static_cast<uint32>(Result));
+					}
+				};
+
+			CreateDecalVolumeState(
+				EDepthStencilState::DecalVolumeGreaterEqual, false);
+
+			CreateDecalVolumeState(
+				EDepthStencilState::DecalVolumeGreaterEqualReceiver, true);
+		}
 	}
 
 	// ---------- Blend ----------
@@ -441,6 +583,26 @@ void FRenderDevice::CreateStates()
 			Desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
 			Device->CreateBlendState(&Desc, BlendStates[(uint8)EBlendState::ShadowMaskFadeR + Channel].GetAddressOf());
 		}
+
+		// 데칼: 알파 블렌드 + 프리멀티
+		// DBuffer RGB = 새 RGB + 기존 RGB * (1 - 새 Alpha)
+		// DBuffer A = 새 Alpha + 기존 Alpha * (1 - 새 Alpha)
+		D3D11_BLEND_DESC DecalBlendDesc = {};
+
+		auto& DecalRT = DecalBlendDesc.RenderTarget[0];
+
+		DecalRT.BlendEnable = TRUE;
+		DecalRT.SrcBlend = D3D11_BLEND_ONE;
+		DecalRT.DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+		DecalRT.BlendOp = D3D11_BLEND_OP_ADD;
+
+		DecalRT.SrcBlendAlpha = D3D11_BLEND_ONE;
+		DecalRT.DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+		DecalRT.BlendOpAlpha = D3D11_BLEND_OP_ADD;
+
+		DecalRT.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+
+		Device->CreateBlendState(&DecalBlendDesc, BlendStates[(uint8)EBlendState::DecalPremultiplied].GetAddressOf());
 	}
 
 	// ---------- Sampler ----------

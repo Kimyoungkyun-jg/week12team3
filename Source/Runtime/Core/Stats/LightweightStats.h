@@ -79,29 +79,14 @@ public:
 		PendingStatCycles[StatId.GetName()] += Cycles;
 	}
 
-	// GPU 프로파일러가 결과를 읽은 시점에 부른다. 몇 프레임 전 값
-	static void AddGPUSeconds(TStatId StatId, double Seconds)
-	{
-		PendingGPUCycles[StatId.GetName()] += FPlatformTime::SecondsToCycles64(Seconds);
-	}
-
-	// GPU 한 프레임의 결과를 다 넣은 뒤 부름 (CPU의 EndFrame과 호출 시점이 다름)
-	static void EndGPUFrame()
-	{
-		for (const auto& [Name, Cycles] : PendingGPUCycles) GPUStats[Name].PushFrame(Cycles);
-		PendingGPUCycles.Reset();
-	}
-
 	static void Reset()
 	{
 		PendingStatCycles.Reset();
-		PendingGPUCycles.Reset();
-		for (auto& [Name, Data] : Stats)    Data = FCycleStatData{};
-		for (auto& [Name, Data] : GPUStats) Data = FCycleStatData{};
+		for (auto& [Name, Data] : Stats)
+		{
+			Data = FCycleStatData{};
+		}
 	}
-
-	static const FCycleStatData* FindGPU(TStatId StatId) { return GPUStats.Find(StatId.GetName()); }
-	static const TMap<const char*, FCycleStatData>& GetAllGPU() { return GPUStats; }
 
 	static const FCycleStatData* Find(TStatId StatId) { return Stats.Find(StatId.GetName()); }
 	static const TMap<const char*, FCycleStatData>& GetAll() { return Stats; }
@@ -114,9 +99,6 @@ private:
 	inline static bool bEnabled = true;
 	inline static TMap<const char*, FCycleStatData> Stats;
 	inline static TMap<const char*, uint64> PendingStatCycles;
-
-	inline static TMap<const char*, FCycleStatData> GPUStats;
-	inline static TMap<const char*, uint64> PendingGPUCycles;
 };
 
 // 생성 시 시작 사이클을 기록하고, 스코프를 벗어날 때 경과 사이클을 FStatRegistry에 보고한다.

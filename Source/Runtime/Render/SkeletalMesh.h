@@ -1,62 +1,80 @@
 #pragma once
 
 #include "Asset/RenderAsset.h"
-#include "Math/Box.h"
-#include "Vertex.h"
-#include "SkeletalMeshData.h"
-#include "MeshRenderData.h"
-#include "Buffer.h"
-#include "Material.h"
+#include "Render/Buffer.h"
+#include "Render/SkeletalMeshData.h"
+#include "Render/MeshRenderData.h"
+#include "Animation/ReferenceSkeleton.h"
 #include <unordered_map>
 #include <vector>
+#include <array>
 #include "SkeletalMesh.generated.h"
 
-struct FSkeletalMeshLODRenderData
+class FPrimitiveSceneProxy;
+class USkeleton;
+
+struct FSkeletalMeshLODResource
 {
-	TArray<FVertex> BindVertices;
-	TArray<FSkinWeight> SkinWeights;
-	TArray<uint32> Indices;
-	TArray<FSkeletalMeshSection> Sections;
+	FSkeletalMeshData Data;
+	TUniquePtr<FVertexBuffer> VertexBuffer;
 	TUniquePtr<FIndexBuffer> IndexBuffer;
-	FBox BindAABB;
-
-	// GPU 스키닝 입력. 포즈와 무관하므로 에셋이 갖고 인스턴스끼리 공유한다
-	TUniquePtr<FVertexBuffer> GpuSkinVertexBuffer;
-	// 본마다 가중치가 있는 정점의 바인드 바운드. 정점이 없는 본은 Min > Max
-	TArray<FBox> BoneBounds;
-};
-
-struct FSkeletalMeshRenderData
-{
-	TArray<FSkeletalMeshLODRenderData> LODRenderData;
 };
 
 UCLASS()
 class USkeletalMesh : public URenderAsset
 {
-	GENERATED_BODY()
+    GENERATED_BODY()
+
 public:
-	bool Build(FSkeletalMeshData&& ImportData, FString& OutError);
+    USkeletalMesh() : SortID(NextSortID++) {}
+    virtual ~USkeletalMesh() override;
 
-	const TArray<FBoneInfo>& GetRefSkeleton() const { return RefSkeleton; }
-	int32 GetNumBones() const { return RefSkeleton.Num(); }
-	int32 FindBoneIndex(const FString& Name) const;
-	const FSkeletalMeshRenderData& GetRenderData() const { return RenderData; }
-	const TArray<FSkeletalMaterialSlot>& GetMaterialSlots() const { return MaterialSlots; }
-	UMaterial* GetMaterial(uint32 SlotIndex) const;
+    FSkeletalMeshData MeshData;
+	TArray<FSkeletalMeshLODResource> AdditionalLODs;
+	std::array<float, 3> ScreenThresholds{ .30f, .10f, .03f };
+	USkeleton* Skeleton = nullptr;
+	TArray<FMatrix> RefBasesInvMatrix;
+	uint32 GetLODCount() const { return 1u + static_cast<uint32>(AdditionalLODs.Num()); }
+	const FSkeletalMeshData& GetMeshData(uint32 LOD) const { return LOD == 0 ? MeshData : AdditionalLODs[LOD - 1].Data; }
+	FVertexBuffer* GetVertexBuffer(uint32 LOD) const { return LOD == 0 ? VertexBuffer.get() : AdditionalLODs[LOD - 1].VertexBuffer.get(); }
+	FIndexBuffer* GetIndexBuffer(uint32 LOD) const { return LOD == 0 ? IndexBuffer.get() : AdditionalLODs[LOD - 1].IndexBuffer.get(); }
 
-	TSharedPtr<const FMeshRenderState> GetRenderState(const TArray<UMaterial*>& Materials);
+    // MeshData.Bones에서 만든 TRS 본 테이블. 애니메이션 포즈 계산은 이것을 쓴다. RebuildRenderData가 갱신한다.
+    FReferenceSkeleton RefSkeleton;
+    const FReferenceSkeleton& GetRefSkeleton() const { return RefSkeleton; }
+
+    // Renderer가 바인드할 런타임 머티리얼 목록
+    TArray<UMaterial*> Materials;
+
+    TUniquePtr<FVertexBuffer> VertexBuffer;
+    TUniquePtr<FIndexBuffer> IndexBuffer;
+
+    const FSkeletalMeshData& GetMeshData() const { return MeshData; }
+    UMaterial* GetMaterial(uint32 SlotIndex) const;
+
+    void RebuildRenderData();
+    const FLODSphere& GetLocalLODSphere() const { return LocalLODSphere; }
+    const FBox& GetRenderBounds() const { return RenderBounds; }
+    FBox CalcSkinnedBounds(const TArray<FMatrix>& SkinningMatrices) const;
+    const FBox* GetBoneInfluenceBounds(int32 BoneIndex) const;
+    FStructuredBuffer* GetOrCreateComputeSkinningSource(uint32 LOD, ID3D11Device* Device);
+    uint64 GetRenderDataRevision() const { return RenderDataRevision; }
+    void RegisterProxy(FPrimitiveSceneProxy* Proxy);
+    void UnregisterProxy(FPrimitiveSceneProxy* Proxy);
+
+    const uint16 SortID;
 
 private:
-	struct FMaterialSlotsHash
-	{
-		size_t operator()(const TArray<UMaterial*>& Slots) const;
-	};
+    static inline uint16 NextSortID = 0;
 
-	TArray<FBoneInfo> RefSkeleton;
-	TArray<FSkeletalMaterialSlot> MaterialSlots;
-	TArray<UMaterial*> Materials;
-	FSkeletalMeshRenderData RenderData;
-	// UStaticMesh와 같은 캐시: 같은 머티리얼 조합의 컴포넌트끼리 섹션 목록 공유
-	TMap<TArray<UMaterial*>, TWeakPtr<const FMeshRenderState>, FMaterialSlotsHash> RenderStates;
+    FLODSphere LocalLODSphere;
+    FBox RenderBounds;
+    TArray<TUniquePtr<FStructuredBuffer>> ComputeSkinningSources;
+    uint64 RenderDataRevision = 0;
+    void RebuildSkinningBounds();
+    TArray<FBox> BoneInfluenceBounds;
+    FBox UnweightedVertexBounds;
+    float MinSkinWeightSum = 1.0f;
+    float MaxSkinWeightSum = 1.0f;
+    TArray<FPrimitiveSceneProxy*> RenderProxies;
 };

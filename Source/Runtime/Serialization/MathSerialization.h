@@ -40,9 +40,5 @@ inline void operator<<(FStructuredArchiveSlot Slot, FRotator& R)
 inline void operator<<(FStructuredArchiveSlot Slot, FTransform& T)
 {
 	FStructuredArchiveRecord Record = Slot.EnterRecord();
-	// 씬 파일 호환을 위해 디스크에는 기존과 같이 Pitch/Yaw/Roll로 저장한다
-	FRotator Rotation = T.Rotation.ToFRotator();
-	Record << SA_VALUE("Location", T.Location) << SA_VALUE("Rotation", Rotation) << SA_VALUE("Scale", T.Scale);
-	if (Record.GetUnderlyingArchive().IsLoading())
-		T.Rotation = Rotation.Quaternion();
+	Record << SA_VALUE("Location", T.Location) << SA_VALUE("Rotation", T.Rotation) << SA_VALUE("Scale", T.Scale);
 }

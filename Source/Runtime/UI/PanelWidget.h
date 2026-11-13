@@ -30,10 +30,6 @@ public:
 	virtual void Tick(float DeltaTime) override;
 	virtual UWidget* HitTest(float X, float Y) override;
 
-	// "Properties" 뒤에 "Children" 배열을 쓴다 (UE는 Slots UPROPERTY가 대신한다)
-	using Super::Serialize;
-	virtual void Serialize(FStructuredArchive::FRecord Record) override;
-
 protected:
 	TArray<UWidget*> Children;
 };

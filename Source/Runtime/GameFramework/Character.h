@@ -1,34 +1,38 @@
 #pragma once
 
-#include "Pawn.h"
-#include <Math/Vector.h>
+#include "GameFramework/Pawn.h"
 #include "Character.generated.h"
 
-class USkeletalMeshComponent;
 class UCapsuleComponent;
+class UCameraComponent;
 class UCharacterMovementComponent;
-struct FHitResult;
+class USkeletalMeshComponent;
+class USpringArmComponent;
 
 UCLASS()
 class ACharacter : public APawn
 {
 	GENERATED_BODY()
-
 public:
 	ACharacter();
-	virtual void AddControllerYawInput(float Value) override;
-	virtual void AddControllerPitchInput(float Value) override;
-
-	USkeletalMeshComponent* SkeletalMeshComponent = nullptr;
-	UCapsuleComponent* CapsuleComponent = nullptr;
-	UCharacterMovementComponent* CharacterMovementComponent = nullptr;
-
-	virtual FVector GetVelocity() const override;
-
-	// UE ACharacter::Jump: 바닥에 있으면 CharacterMovementComponent::JumpZVelocity로 뛴다
+	void BeginPlay() override;
+	void AddMovementInput(const FVector& WorldDirection, float ScaleValue) override;
+	void AddControllerYawInput(float Value) override;
+	void AddControllerPitchInput(float Value) override;
 	virtual void Jump();
-	virtual bool CanJump() const;
-	bool IsFalling() const;
-	// 공중에서 바닥에 닿은 순간 (점프 착지, 떨어진 뒤 착지 모두)
-	virtual void Landed(const FHitResult& Hit) {}
+	virtual void StopJumping();
+	void LaunchCharacter(const FVector& Direction, float Strength);
+	virtual void Attack() {}
+	float PlayAnimMontage(const FString& MontagePath, float InPlayRate = 1.0f, const FString& StartSection = "");
+	UCapsuleComponent* GetCapsuleComponent() const { return CapsuleComponent; }
+	UCameraComponent* GetCameraComponent() const { return CameraComponent; }
+	UCharacterMovementComponent* GetCharacterMovement() const { return CharacterMovement; }
+	USkeletalMeshComponent* GetSkeletalMeshComponent() const { return SkeletalMeshComponent; }
+	USpringArmComponent* GetSpringArmComponent() const { return SpringArmComponent; }
+private:
+	UCapsuleComponent* CapsuleComponent = nullptr;
+	UCameraComponent* CameraComponent = nullptr;
+	UCharacterMovementComponent* CharacterMovement = nullptr;
+	USkeletalMeshComponent* SkeletalMeshComponent = nullptr;
+	USpringArmComponent* SpringArmComponent = nullptr;
 };

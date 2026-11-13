@@ -26,13 +26,13 @@ public:
 	FEngineLoop();
 	~FEngineLoop();
 
-	// 프로젝트 경로를 정하고 Device·Window·Swapchain·에셋을 준비한다. GEngine은 아직 없다.
+	// EngineClass로 GEngine을 만들고 플랫폼 자원을 준비한다.
 	bool PreInit(HINSTANCE hInstance, UClass* EngineClass);
-	// PreInit에서 받은 EngineClass로 GEngine을 만들고 초기화한다.
-	bool Init();
-	// 한 프레임을 진행한다. 종료 여부는 IsEngineExitRequested()로 확인한다.
-	void Tick();
+	// 한 프레임을 진행한다. 종료 요청이 들어오면 false를 반환한다.
+	bool Tick();
 	void Exit();
+
+	inline void RequestExit() { bIsRunning = false; }
 
 	// 백버퍼(+깊이 버퍼)를 렌더 타깃으로 열고 불투명 3D 기본 상태를 설정한다.
 	void BeginBackbufferPass();
@@ -64,13 +64,8 @@ private:
 	TUniquePtr<FTexture2D> DepthBuffer = nullptr;
 
 	FEngineConfig Config;
-	// PreInit에서 받아 두었다가 Init에서 GEngine을 만들 때 쓴다.
-	UClass* PendingEngineClass = nullptr;
-	// 시작 시간 측정의 시작점. PreInit에서 기록하고 Init 끝에서 읽는다.
-	uint64 StartupBeginCycles = 0;
 
-	// GEngine->Init()이 성공했는지. 실패한 엔진에는 Exit에서 PreExit를 부르지 않는다.
-	bool bEngineInitialized = false;
+	bool bIsRunning = false;
 
 	FFrameStats FrameStats;
 	uint64 PrevFrameCycles = 0;

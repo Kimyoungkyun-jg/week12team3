@@ -163,6 +163,19 @@ namespace
 					return false;
 				}
 			}
+			else if (Keyword == "Ks")
+			{
+				Stream >> MtlInfo.SpecularColor.X >> MtlInfo.SpecularColor.Y >> MtlInfo.SpecularColor.Z;
+			}
+			else if (Keyword == "Ke")
+			{
+				Stream >> MtlInfo.EmissiveColor.X >> MtlInfo.EmissiveColor.Y >> MtlInfo.EmissiveColor.Z;
+			}
+			else if (Keyword == "Ns")
+			{
+				Stream >> MtlInfo.Shininess;
+				MtlInfo.Shininess = std::max(1.0f, MtlInfo.Shininess);
+			}
 			else if (Keyword == "map_Kd")
 			{
 				FString MapKd;
@@ -395,7 +408,8 @@ bool FObjImporter::Cook(const FObjInfo& Raw, FStaticMeshData& Out)
 	{
 		FStaticMaterialSlot CookedMtl{};
 		CookedMtl.Name = RawMtl.Name;
-		CookedMtl.BaseColor.Set(RawMtl.Kd, RawMtl.D);
+		static_cast<FImportedMaterialProperties&>(CookedMtl) = RawMtl;
+        CookedMtl.BaseColor.Set(RawMtl.Kd, RawMtl.D);
 		CookedMtl.DiffuseTexturePath = RawMtl.MapKd;
 		CookedMtl.NormalTexturePath = RawMtl.MapBump;
 		Cooked.MaterialSlots.Add(std::move(CookedMtl));

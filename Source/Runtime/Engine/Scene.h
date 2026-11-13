@@ -6,7 +6,6 @@
 #include "Components/PrimitiveComponent.h"
 #include "Components/LightComponent.h"
 #include "Components/SkyLightComponent.h"
-#include "Components/DecalComponent.h"
 #include "Math/Frustum.h"
 #include "Math/BVH.h"
 #include "Render/Renderer.h"
@@ -25,11 +24,8 @@ public:
 
 	void AddLight(ULightComponent* Component);
 	void RemoveLight(ULightComponent* Component);
-	void RemoveAllLights();
 
-	void AddDecal(UDecalComponent* Component);
-	void RemoveDecal(UDecalComponent* Component);
-	void RemoveAllDecals();
+	void RemoveAllLights();
 
 	const class FAmbientLightSceneProxy* GetActiveAmbientLight(bool bGameView) const { return nullptr; }
 	FAmbientLightRenderData GetSkyAmbientLight(bool bGameView) const;
@@ -47,8 +43,6 @@ public:
 
 	void MarkDirty(FPrimitiveSceneProxy* Proxy);
 	void MarkRenderStateDirty(FPrimitiveSceneProxy* Proxy);
-
-	void InvalidateShadowsInBounds(const FAABB& Bounds) { RecordShadowInvalidation(Bounds); }
 
 	// 그림자 캐시 무효화 기록. 뷰마다 처리한 Version이 다르므로 지우지 않고 쌓다가 한도를 넘으면 오래된 절반을 버린다.
 	FShadowInvalidationList GetShadowInvalidations() const
@@ -77,8 +71,6 @@ public:
 	TArray<FLocalLightSceneProxy*>        LocalLightProxies;      // ↔ PackedIndex ↔
 	TArray<FDirectionalLightSceneProxy*>  DirectionalLightProxies;
 	TArray<USkyLightComponent*>           SkyLights;               // 프록시 없음
-
-	TArray<UDecalComponent*>			  Decals;
 
 private:
 	void RecordShadowInvalidation(const FAABB& Bounds);

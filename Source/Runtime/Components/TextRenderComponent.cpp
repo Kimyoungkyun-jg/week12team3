@@ -8,7 +8,7 @@
 
 UTextRenderComponent::UTextRenderComponent()
 {
-	Font = UAssetManager::GetAssetByPath<UFont>("Engine/Fonts/CookieRun.json");
+	Font = UAssetManager::GetAssetByPath<UFont>("Fonts/CookieRun.json");
 }
 
 UTextRenderComponent::~UTextRenderComponent()

@@ -3,7 +3,7 @@
 #include "Core/EngineString.h"
 #include <thread>
 
-// 에디터에서 Package.bat을 자식 프로세스로 돌리고 출력을 Output Log로 옮긴다.
+// 에디터에서 Setup/Package.bat을 자식 프로세스로 돌리고 출력을 Output Log로 옮긴다.
 // UE 에디터가 Package Project에서 UAT를 별도 프로세스로 띄우는 것과 같은 구조다.
 class FGamePackager
 {
@@ -15,7 +15,7 @@ public:
 	void Tick();
 	bool IsRunning() const { return Process != nullptr || CopyThread.joinable(); }
 private:
-	bool StartBuildAndPackage(const std::filesystem::path& Root, const FString& Config); // 기존 Start 본문 (Package.bat 실행)
+	bool StartBuildAndPackage(const std::filesystem::path& Root, const FString& Config); // Setup/Package.bat 실행
 	bool StartCopyOnly(const std::filesystem::path& Root);                               // 배포본: 복사만
 
 	std::thread CopyThread;

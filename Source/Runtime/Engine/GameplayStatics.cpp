@@ -1,4 +1,5 @@
 #include "EnginePCH.h"
+#include "Core/ResourcePaths.h"
 #include "GameplayStatics.h"
 
 #include "Audio/AudioDevice.h"
@@ -13,7 +14,7 @@ FString UGameplayStatics::ResolveLevelPath(const FString& LevelName)
 		return LevelName;
 	constexpr const char* Ext = ".scene";
 	const bool bHasExt = LevelName.size() >= 6 && LevelName.compare(LevelName.size() - 6, 6, Ext) == 0;
-	return "Scenes/" + LevelName + (bHasExt ? "" : Ext);
+	return FString(ContentPaths::SceneFolder) + "/" + LevelName + (bHasExt ? "" : Ext);
 }
 
 

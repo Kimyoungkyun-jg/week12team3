@@ -28,6 +28,9 @@ public:
 	void SetMaterial(int32 SlotIndex, UMaterial* InMaterial) override;
 	void ClearOverrideMaterials() { OverrideMaterials.Reset(); MarkRenderStateDirty(); }
 
+	// 리플렉션 프로퍼티에 더해 슬롯별 덮어쓰기를 저장/로드한다
+	virtual void Serialize(json& Handle, bool bIsLoading) override;
+
 	using Super::Serialize;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 protected:

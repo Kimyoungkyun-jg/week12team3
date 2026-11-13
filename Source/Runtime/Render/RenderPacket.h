@@ -1,6 +1,7 @@
 #pragma once
 #include "Math/Transform.h"
 #include "Mesh.h"
+#include "SkeletalMesh.h"
 #include "Shader.h"
 #include "Material.h"
 #include <array>
@@ -10,18 +11,15 @@
 
 class FPrimitiveSceneProxy;
 inline constexpr uint32 InvalidObjectSlot = ~0u;
-inline constexpr uint32 BoneMatrixBufferSlot = 14; // GpuSkinCommon.hlsli의 t14
 
 struct FRenderPacket
 {
 	const FPrimitiveSceneProxy* Proxy = nullptr;
 	const FMatrix* Model = nullptr;
-
-	UStaticMesh* Mesh = nullptr; // static
-	FVertexBuffer* VertexBuffer = nullptr; // dynamic
-	FIndexBuffer* IndexBuffer= nullptr; // dynamic
-	const FStructuredBuffer* BoneBuffer = nullptr; // GPU 스킨
-
+	UStaticMesh* Mesh = nullptr;
+	USkeletalMesh* SkeletalMesh = nullptr;
+	FVertexBuffer* SkeletalVertexBuffer = nullptr;
+	FStructuredBuffer* SkinningMatricesBuffer = nullptr;
 	UMaterial* Material = nullptr;
 	const void* MaterialParamData = nullptr;
 	float CameraToParticleDistance = 0.0f;
@@ -31,7 +29,7 @@ struct FRenderPacket
 	uint32 Slot = InvalidObjectSlot;
 	uint8 LODIndex = 0;
 	bool bOccludedByGpu = false;
-	int32 DebugWeightBone = -1; // 웨이트 히트맵 본 번호. -1이면 끔
+	bool bComputeSkinned = false;
 };
 
 struct FViewContext
@@ -45,7 +43,7 @@ struct FViewContext
 	float NearZ = 0.0f;
 	bool bOrthographic = false;
 	bool bGameView = false;
-	bool bShowSkeletalMesh = true;
+	bool bShowSkeletalMeshes = true;
 	float CameraDepth = 0.0f;
 	FMatrix ViewProjection = FMatrix::Identity;
 	void Prepare()
@@ -113,9 +111,10 @@ class FRenderQueue : public TArray<FRenderPacket>
 			return (1ull << 63) | (~DistanceBits & 0xFFFFFFFFull);
 		}
 
-		const uint64 MeshKey = Packet.Mesh ? Packet.Mesh->SortID : 0xFFFFu;
+		uint16 MeshSortID = Packet.Mesh ? Packet.Mesh->SortID : (Packet.SkeletalMesh ? Packet.SkeletalMesh->SortID : 0);
+
 		return (static_cast<uint64>(Packet.Material->SortID) << 47)
-			| (static_cast<uint64>(MeshKey) << 31)
+			| (static_cast<uint64>(MeshSortID) << 31)
 			| (static_cast<uint64>(Packet.LODIndex & 0x3) << 29);
 	}
 
@@ -170,7 +169,7 @@ public:
 		for (int32 Index = 0; Index < TotalPackets; ++Index)
 		{
 			const FRenderPacket& Packet = (*this)[Index];
-			if ((!Packet.Mesh && (!Packet.VertexBuffer || !Packet.IndexBuffer)) || !Packet.Material) continue;
+			if ((!Packet.Mesh && !Packet.SkeletalMesh) || !Packet.Material) continue;
 			SortItems.Add({ MakeSortKey(Packet), Index });
 		}
 

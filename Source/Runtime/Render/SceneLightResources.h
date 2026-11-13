@@ -20,7 +20,8 @@ struct FDeferredLightConstants
 	// 1: SingleLightIndex 광원 하나만 ScreenShadowMask를 곱해 더한다 (언리얼 RenderLights의 그림자 광원 루프)
 	uint32 bSingleLightPass = 0;
 	uint32 SingleLightIndex = 0;
-	uint32 LightPassPadding[2]{};
+	uint32 ReflectionModel = 1; // EReflectionModel: Phong=0, BlinnPhong=1, Lambert=2
+	uint32 bOverrideMaterialLighting = 0;
 };
 
 // 뷰별 조명 GPU 리소스. 패스나 드로우는 실행하지 않는다.

@@ -1,92 +1,49 @@
 #include "EnginePCH.h"
-#include "AnimSingleNodeInstance.h"
-#include "UObject/Casts.h"
+#include "Animation/AnimSingleNodeInstance.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Render/SkeletalMesh.h"
+
+#include <algorithm>
 #include <cmath>
 
-void UAnimSingleNodeInstance::SetAnimationAsset(UAnimationAsset* InAsset, bool bLoop, float InPlayRate)
+bool UAnimSingleNodeInstance::SetAnimationAsset(UAnimSequence* InSequence)
 {
-	if (InAsset && !Cast<UAnimSequence>(InAsset) && !Cast<UBlendSpace1D>(InAsset))
+	if (!Player) InitializeAnimation();
+	USkeletalMeshComponent* Component = GetOwningComponent();
+	USkeletalMesh* Mesh = Component ? Component->GetSkeletalMesh() : nullptr;
+	if (InSequence && (!InSequence->Skeleton || !InSequence->GetDataModel() ||
+		(Mesh && Mesh->Skeleton != InSequence->Skeleton))) return false;
+	Player->Sequence = InSequence;
+	Player->Reset();
+	Player->bPlaying = false;
+	return true;
+}
+
+void UAnimSingleNodeInstance::Play(bool bInLooping)
+{
+	if (!Player) return;
+	Player->bLoop = bInLooping;
+	Player->bPlaying = Player->Sequence != nullptr;
+}
+
+void UAnimSingleNodeInstance::SetPosition(float InSeconds)
+{
+	if (!std::isfinite(InSeconds)) return;
+	const UAnimDataModel* Model = GetAnimationAsset() ? GetAnimationAsset()->GetDataModel() : nullptr;
+	if (Player)
 	{
-		return;
+		Player->CurrentTime = Model ? std::clamp(InSeconds, 0.0f, Model->PlayLength) : 0.0f;
+		Player->bHasPendingRootMotion = false;
 	}
-
-	CurrentAsset = InAsset;
-	bLooping = bLoop;
-	PlayRate = InPlayRate;
-	SingleNode.bPlaying = false;
-
-	InitializeAnimation();
-}
-
-void UAnimSingleNodeInstance::NativeInitializeAnimation()
-{
-	SingleNode.SetAnimationAsset(CurrentAsset, bLooping, PlayRate);
-	SingleNode.SetLooping(bLooping);
-	RootNode = &SingleNode;
-}
-
-void UAnimSingleNodeInstance::SetBlendSpaceAsset(UBlendSpace1D* InBlendSpace, float InPlayRate)
-{
-    SetAnimationAsset(InBlendSpace, true, InPlayRate);
-}
-
-void UAnimSingleNodeInstance::SetBlendSpaceInput(float Value)
-{
-	if (std::isfinite(Value))
-	{
-		SingleNode.SetBlendSpaceInput(Value);
-	}
-}
-
-void UAnimSingleNodeInstance::SetPlaying(bool bInPlaying)
-{
-	SingleNode.bPlaying = bInPlaying && CurrentAsset != nullptr;
-}
-
-bool UAnimSingleNodeInstance::IsPlaying() const
-{
-	return SingleNode.bPlaying;
-}
-
-void UAnimSingleNodeInstance::SetLooping(bool bInLooping)
-{
-	bLooping = bInLooping;
-	SingleNode.SetLooping(bLooping);
 }
 
 void UAnimSingleNodeInstance::SetPlayRate(float InPlayRate)
 {
-	if (std::isfinite(InPlayRate))
-	{
-		PlayRate = InPlayRate;
-		SingleNode.SetPlayRate(PlayRate);
-	}
+	if (Player && std::isfinite(InPlayRate) && InPlayRate >= 0.0f) Player->PlayRate = InPlayRate;
 }
 
-float UAnimSingleNodeInstance::GetPlayRate() const
+void UAnimSingleNodeInstance::NativeInitializeAnimation()
 {
-	return PlayRate;
-}
-
-void UAnimSingleNodeInstance::SetPosition(float InPosition)
-{
-	if (std::isfinite(InPosition))
-	{
-		SingleNode.SetPosition(InPosition);
-	}
-}
-
-float UAnimSingleNodeInstance::GetCurrentTime() const
-{
-	return SingleNode.GetCurrentTime();
-}
-
-float UAnimSingleNodeInstance::GetLength() const
-{
-	return SingleNode.GetLength();
-}
-
-UAnimationAsset* UAnimSingleNodeInstance::GetCurrentAsset() const
-{
-	return CurrentAsset;
+	Player = CreateNode<FAnimNode_SequencePlayer>();
+	RootNode = Player;
 }

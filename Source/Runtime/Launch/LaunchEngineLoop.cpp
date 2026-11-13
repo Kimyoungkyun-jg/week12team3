@@ -1,14 +1,7 @@
 #include "EnginePCH.h"
 #include "Launch/LaunchEngineLoop.h"
 
-#include <shellapi.h>
-
-#include "Launch/EntryPoint.h"
-#include "Core/Misc/Paths.h"
-#include "Core/CoreGlobals.h"
-
 #include "Asset/AssetManager.h"
-#include "Asset/AssetLoadProfiler.h"
 #include "Core/EngineTimer.h"
 #include "Core/Window.h"
 #include "Core/Windows/WindowsPlatformTime.h"
@@ -24,9 +17,8 @@
 #include "Core/SplashScreen.h"
 #include "Core/Stats/LightweightStats.h"
 #include "Core/Async/TaskPool.h"
-#include "Tasks/Tasks.h"
-
-#include "Render/RealtimeGPUProfiler.h"
+#include "Core/StatOverlay.h"
+#include "Render/GpuProfiler.h"
 
 #include "UObject/UObjectGlobals.h"
 
@@ -38,49 +30,6 @@ namespace
 
 	// 이 간격마다 FPS 평균을 갱신한다.
 	constexpr double FrameStatsWindowSeconds = 0.5;
-
-	// UE처럼 첫 인자로 프로젝트 파일을 받는다. "Path/To/Game.hproject" 또는 -project=Path/To/Game.hproject
-	std::filesystem::path FindProjectInCommandLine()
-	{
-		int32 Count = 0;
-		LPWSTR* Args = CommandLineToArgvW(GetCommandLineW(), &Count);
-		if (!Args) return {};
-
-		std::filesystem::path Result;
-		for (int32 i = 1; i < Count && Result.empty(); ++i)
-		{
-			std::wstring Arg = Args[i];
-			constexpr std::wstring_view Prefix = L"-project=";
-			if (Arg.size() > Prefix.size() && _wcsnicmp(Arg.c_str(), Prefix.data(), Prefix.size()) == 0)
-				Arg = Arg.substr(Prefix.size());
-			const std::filesystem::path Candidate(Arg);
-			if (_wcsicmp(Candidate.extension().c_str(), FPaths::ProjectExtension) == 0)
-				Result = Candidate;
-		}
-		LocalFree(Args);
-		return Result;
-	}
-
-	// 엔진 폴더와 프로젝트를 정하고 작업 디렉터리를 프로젝트 폴더로 옮긴다.
-	bool InitProjectPaths(HINSTANCE hInstance)
-	{
-		if (!FPaths::InitEngineDir())
-		{
-			MessageBoxW(nullptr, L"Cannot find the engine folder (Resources/Shader).", L"Hitori", MB_OK | MB_ICONERROR);
-			return false;
-		}
-
-		const std::filesystem::path ProjectFile = ResolveProjectFile(hInstance, FindProjectInCommandLine());
-		if (ProjectFile.empty()) return false;
-
-		FString Error;
-		if (!FPaths::SetProject(ProjectFile, &Error))
-		{
-			MessageBoxA(nullptr, ("Cannot open project:\n" + Error).c_str(), "Hitori", MB_OK | MB_ICONERROR);
-			return false;
-		}
-		return true;
-	}
 }
 
 // 엔진 생성자에서도 사이클 카운터를 쓸 수 있게 가장 먼저 초기화한다.
@@ -94,30 +43,19 @@ FEngineLoop::~FEngineLoop() = default;
 
 bool FEngineLoop::PreInit(HINSTANCE hInstance, UClass* EngineClass)
 {
-	// PreInit의 첫 일은 어느 프로젝트를 열지 정하는 것이다. 이후의 모든 상대 경로가 여기에 달려 있다.
-	// 프로젝트 브라우저에서 고르는 시간이 시작 시간 측정에 섞이지 않도록 타이머보다 앞에 둔다.
-	if (!InitProjectPaths(hInstance))
-	{
-		return false;
-	}
-
-	// 시작 시간 전체(Phase/Total)는 PreInit에서 재기 시작해 Init 끝에서 기록한다.
-	StartupBeginCycles = FPlatformTime::GetCycles64();
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 	if (!EngineClass || !EngineClass->IsChildOf(UEngine::StaticClass()))
 	{
 		return false;
 	}
-	PendingEngineClass = EngineClass;
 
-	// GEngine은 Init에서 만든다. 창 크기 같은 실행 설정은 클래스 기본 객체(CDO)에서 읽는다.
-	// UE에서는 이 값들을 ini에서 읽는다.
-	const UEngine* DefaultEngine = EngineClass->GetDefaultObject<UEngine>();
-	if (!DefaultEngine)
+	GEngine = NewObject<UEngine>(nullptr, EngineClass);
+	if (!GEngine)
 	{
 		return false;
 	}
-	Config = DefaultEngine->GetConfig();
+	GEngine->EngineLoop = this;
+	Config = GEngine->GetConfig();
 
 	if (Config.SplashImage)
 	{
@@ -127,7 +65,6 @@ bool FEngineLoop::PreInit(HINSTANCE hInstance, UClass* EngineClass)
 	FSplashScreen::SetText(L"Initializing Renderer...");
 	FSplashScreen::SetProgress(0.1f);
 
-	FLoadStageTimer RendererTimer{ "Phase/Device+Renderer+Window" };
 	// 0이면 주 모니터 해상도
 	const uint32 Width = Config.Width != 0 ? Config.Width : static_cast<uint32>(GetSystemMetrics(SM_CXSCREEN));
 	const uint32 Height = Config.Height != 0 ? Config.Height : static_cast<uint32>(GetSystemMetrics(SM_CYSCREEN));
@@ -151,68 +88,26 @@ bool FEngineLoop::PreInit(HINSTANCE hInstance, UClass* EngineClass)
 		CreateDepthBuffer(MainWindow->GetWidth(), MainWindow->GetHeight());
 	}
 
-	RendererTimer.Stop();
-
 	FSplashScreen::SetText(L"Loading Assets...");
-	{
-		FLoadStageTimer Timer{ "Phase/RenderResourceManager::Init" };
-		FRenderResourceManager::Init();
-	}
+	FRenderResourceManager::Init();
 
 	constexpr float AssetStart = 0.1f;
 	constexpr float AssetEnd = 0.8f;
-	{
-		FLoadStageTimer Timer{ "Phase/AssetManager::Init" };
-		UAssetManager::Init([](int32 Loaded, int32 Total, const FString& Path)
-			{
-				FSplashScreen::SetText("Loading " + Path);
-				FSplashScreen::SetProgress(AssetStart + (AssetEnd - AssetStart) * Loaded / Total);
-			});
-	}
+	UAssetManager::Init([](int32 Loaded, int32 Total, const FString& Path)
+		{
+			FSplashScreen::SetText("Loading " + Path);
+			FSplashScreen::SetProgress(AssetStart + (AssetEnd - AssetStart) * Loaded / Total);
+		});
 
-	{
-		FLoadStageTimer Timer{ "Phase/InitScenePasses" };
-		Renderer->InitScenePasses(Config.SkyPanorama ? Config.SkyPanorama : "");
-	}
+	Renderer->InitScenePasses(Config.SkyPanorama ? Config.SkyPanorama : "");
 
-	return true;
-}
-
-// PreInit이 준비한 Device·Window·Swapchain·에셋 위에 GEngine을 만들고 초기화한 뒤 루프를 돌 준비를 끝낸다.
-// UE의 FEngineLoop::Init과 같은 자리다.
-bool FEngineLoop::Init()
-{
 	FSplashScreen::SetText(L"Initializing Engine...");
 	FSplashScreen::SetProgress(0.8f);
-
-	// 워커 스레드는 에셋 로드가 끝난 뒤, 엔진이 생기기 전에 켠다. 끄는 것도 이 클래스의 Exit가 한다.
-	Tasks::FTaskScheduler::Get().Initialize();
-
-	GEngine = NewObject<UEngine>(nullptr, PendingEngineClass);
-	if (!GEngine)
-	{
-		FSplashScreen::Hide();
-		return false;
-	}
-	GEngine->EngineLoop = this;
-
-	FLoadStageTimer EngineInitTimer{ "Phase/GEngine::Init" };
 	if (!GEngine->Init())
 	{
 		FSplashScreen::Hide();
 		return false;
 	}
-	bEngineInitialized = true;
-
-	// 초기화가 끝난 엔진에게 게임을 시작하라고 알린다. 게임 엔진은 여기서 시작 맵을 연다.
-	if (!GEngine->Start())
-	{
-		FSplashScreen::Hide();
-		return false;
-	}
-	EngineInitTimer.Stop();
-	FAssetLoadProfiler::AddStage("Phase/Total", FPlatformTime::ToMilliseconds64(FPlatformTime::GetCycles64() - StartupBeginCycles));
-	FAssetLoadProfiler::WriteReport();
 
 	FSplashScreen::SetProgress(1.0f);
 	FSplashScreen::Hide();
@@ -225,31 +120,24 @@ bool FEngineLoop::Init()
 
 	const uint32 Cores = std::max(1u, std::thread::hardware_concurrency());
 	FTaskPool::Get().Init(std::min(Cores - 1, 15u));
+	bIsRunning = true;
 	return true;
 }
 
-void FEngineLoop::Tick()
+bool FEngineLoop::Tick()
 {
 	EngineTimer::Tick();
 	FInputSystem::UpdateInputStates();
-
-	// 창이 닫히면 WM_QUIT이 온다. 종료는 여기서 직접 하지 않고 요청만 남긴다.
-	bool bWindowAlive = true;
-	MainWindow->ProcessMessage(bWindowAlive);
-	if (!bWindowAlive)
-	{
-		RequestEngineExit("main window closed");
-	}
+	MainWindow->ProcessMessage(bIsRunning);
 
 	if (Config.bExitOnEscape && FInputSystem::IsKeyPressed(EKeyCode::Escape))
 	{
-		RequestEngineExit("escape key");
+		RequestExit();
 	}
 
-	// 종료가 요청됐으면 이번 프레임은 그리지 않는다. 루프는 GuardedMain이 끝낸다.
-	if (IsEngineExitRequested())
+	if (!bIsRunning)
 	{
-		return;
+		return false;
 	}
 
 	HandleResize();
@@ -257,15 +145,20 @@ void FEngineLoop::Tick()
 	// 최소화 중에는 그릴 대상이 없다.
 	if (MainWindow->GetWidth() == 0 || MainWindow->GetHeight() == 0)
 	{
-		return;
+		return true;
 	}
+
+	FGpuProfiler& GpuProfiler = FGpuProfiler::Get();
+	GpuProfiler.BeginFrame(
+		FStatOverlay::IsEnabled(EStatFlags::Decal) ||
+		FStatOverlay::IsEnabled(EStatFlags::Skinning));
 
 	{
 		SCOPE_CYCLE_COUNTER(STAT_EngineTick);
-		FRealtimeGPUProfiler::BeginFrame();          
-		GEngine->Tick(EngineTimer::GetDeltaTime());  
-		FRealtimeGPUProfiler::EndFrame();           
+		GEngine->Tick(EngineTimer::GetDeltaTime());
+		GEngine->FlushPendingDestruction();
 	}
+	GpuProfiler.EndFrame();
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Present);
 		Swapchain->SwapBuffers(Config.SyncInterval);
@@ -275,23 +168,20 @@ void FEngineLoop::Tick()
 	const uint64 CurrentCycles = FPlatformTime::GetCycles64();
 	UpdateFrameStats(CurrentCycles - PrevFrameCycles);
 	PrevFrameCycles = CurrentCycles;
+
+	return bIsRunning;
 }
 
 // UObject(에셋 포함)의 GPU 자원은 Device가 살아 있을 때 해제한다.
 void FEngineLoop::Exit()
 {
-	FRealtimeGPUProfiler::Shutdown();
 	FTaskPool::Get().Shutdown();
-	Tasks::FTaskScheduler::Get().Shutdown();
+	FGpuProfiler::Get().Shutdown();
 
 	if (GEngine)
 	{
-		// PreExit는 Init이 만든 것을 정리하므로 Init이 성공했을 때만 부른다.
-		if (bEngineInitialized)
-		{
-			GEngine->PreExit();
-		}
-		GEngine->ShutdownAudioDevice();   // 믹서 스레드를 먼저 멈춘 뒤 USoundWave를 지운다
+		GEngine->PreExit();
+		GEngine->FlushPendingDestruction();
 	}
 
 	// UAssetManager도 UObject이므로 일괄 삭제 전에 종료한다.

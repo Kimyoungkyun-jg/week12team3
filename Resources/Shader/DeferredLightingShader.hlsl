@@ -5,7 +5,9 @@
 Texture2D<float4> BaseColorMetallic : register(t0);
 Texture2D<float4> NormalRoughness : register(t1); // w < 0이면 bReceiveShadow가 꺼진 물체 (Roughness = -w - 1)
 Texture2D<float> SceneDepth : register(t2);
-Texture2D<float4> ScreenShadowMask : register(t3); // 단일 광원 패스에서만 묶인다. R = 이 광원의 그림자 (1 = 빛 받음)
+Texture2D<float4> EmissiveModel : register(t3);
+Texture2D<float4> SpecularShininess : register(t4);
+Texture2D<float4> ScreenShadowMask : register(t5); // single light shadow
 
 cbuffer DeferredLightConstants : register(b0)
 {
@@ -21,10 +23,11 @@ cbuffer DeferredLightConstants : register(b0)
     // 1: SingleLightIndex 광원 하나만 ScreenShadowMask를 곱해 가산 블렌드로 더한다 (언리얼 RenderLights)
     uint bSingleLightPass;
     uint SingleLightIndex;
-    uint2 LightPassPadding;
+    uint ReflectionModel; // EReflectionModel: Phong=0, Blinn-Phong=1, Lambert=2
+    uint bOverrideMaterialLighting;
 };
 
-StructuredBuffer<FLightRenderParameters> SceneLights : register(t4);
+StructuredBuffer<FLightRenderParameters> SceneLights : register(t6);
 
 struct FPSInput
 {
@@ -40,7 +43,7 @@ FPSInput mainVS(uint VertexID : SV_VertexID)
 }
 
 void AccumulateLocalLight(inout float3 Diffuse, inout float3 Specular,
-    float3 Albedo, float Metallic, float Roughness,
+    float3 Albedo, float Metallic, float Roughness, float4 SpecularData,
     float3 N, float3 V, float3 L, float3 Radiance)
 {
     float NdotL = saturate(dot(N, L));
@@ -48,27 +51,36 @@ void AccumulateLocalLight(inout float3 Diffuse, inout float3 Specular,
 
     Diffuse += Albedo * (1.0f - saturate(Metallic)) * Radiance * NdotL;
 
-    float3 H = L + V;
-    float HLengthSquared = dot(H, H);
-    if (HLengthSquared <= 1.0e-8f) return;
-    H *= rsqrt(HLengthSquared);
-
-    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), Albedo, saturate(Metallic));
-    float Gloss = 1.0f - saturate(Roughness);
-    float Shininess = lerp(2.0f, 128.0f, Gloss * Gloss);
-    Specular += F0 * Radiance * pow(saturate(dot(N, H)), Shininess) * NdotL;
+    if (ReflectionModel == 2u) return; // Lambert has no specular term.
+    float SpecularTerm;
+    if (ReflectionModel == 0u)
+    {
+        SpecularTerm = saturate(dot(reflect(-L, N), V));
+    }
+    else
+    {
+        float3 H = L + V;
+        float HLengthSquared = dot(H, H);
+        if (HLengthSquared <= 1.0e-8f) return;
+        H *= rsqrt(HLengthSquared);
+        SpecularTerm = saturate(dot(N, H));
+    }
+    Specular += SpecularData.rgb * Radiance * pow(saturate(SpecularTerm), max(1.0f, SpecularData.a));
 }
 
 // 광원 하나의 기여 (그림자 제외). Directional은 확산광만 쓴다.
 float3 EvaluateLight(FLightRenderParameters Light, float3 WorldPosition, float3 N, float3 V,
-    float3 Albedo, float Metallic, float Roughness)
+    float3 Albedo, float Metallic, float Roughness, float4 SpecularData)
 {
     if (Light.Intensity <= 0.0f) return 0.0f;
 
     if (Light.Type == LIGHT_TYPE_DIRECTIONAL)
     {
         const float3 LightDir = normalize(Light.Direction);
-        return Albedo * Light.Color * Light.Intensity * saturate(dot(N, -LightDir));
+        float3 Diffuse = 0.0f, Specular = 0.0f;
+        AccumulateLocalLight(Diffuse, Specular, Albedo, Metallic, Roughness, SpecularData,
+            N, V, -LightDir, Light.Color * Light.Intensity);
+        return Diffuse + Specular;
     }
 
     float3 Diffuse = 0.0f;
@@ -87,7 +99,7 @@ float3 EvaluateLight(FLightRenderParameters Light, float3 WorldPosition, float3 
         float x = Distance / Light.Radius;
         float Attenuation = pow(saturate(1.0 - x), max(Light.FalloffExponent, 0.0f));
         float3 Radiance = Light.Color * Light.Intensity * Attenuation;
-        AccumulateLocalLight(Diffuse, Specular, Albedo, Metallic, Roughness, N, V, L, Radiance);
+        AccumulateLocalLight(Diffuse, Specular, Albedo, Metallic, Roughness, SpecularData, N, V, L, Radiance);
     }
     else if (Light.Type == LIGHT_TYPE_SPOT)
     {
@@ -105,7 +117,7 @@ float3 EvaluateLight(FLightRenderParameters Light, float3 WorldPosition, float3 
         float DistanceFactor = saturate(1.0f - Distance / Light.Radius);
         float RadiusFade = DistanceFactor * DistanceFactor;
         float3 Radiance = Light.Color * Light.Intensity * ConeFade * RadiusFade;
-        AccumulateLocalLight(Diffuse, Specular, Albedo, Metallic, Roughness, N, V, L, Radiance);
+        AccumulateLocalLight(Diffuse, Specular, Albedo, Metallic, Roughness, SpecularData, N, V, L, Radiance);
     }
     else if (Light.Type == LIGHT_TYPE_RECT)
     {
@@ -144,14 +156,14 @@ float3 EvaluateLight(FLightRenderParameters Light, float3 WorldPosition, float3 
         }
 
         float3 Radiance = Light.Color * Light.Intensity * Attenuation * FrontFace * BarnDoorMask;
-        AccumulateLocalLight(Diffuse, Specular, Albedo, Metallic, Roughness, N, V, L, Radiance);
+        AccumulateLocalLight(Diffuse, Specular, Albedo, Metallic, Roughness, SpecularData, N, V, L, Radiance);
     }
     return Diffuse + Specular;
 }
 
 // 그림자 없는 광원만 더한다. 그림자 광원은 단일 광원 패스가 마스크를 곱해 따로 더한다.
 float3 AccumulateUnshadowedLights(uint Offset, uint Count, float3 WorldPosition, float3 N, float3 V,
-    float3 Albedo, float Metallic, float Roughness)
+    float3 Albedo, float Metallic, float Roughness, float4 SpecularData)
 {
     float3 Result = 0.0f;
     [loop]
@@ -159,7 +171,7 @@ float3 AccumulateUnshadowedLights(uint Offset, uint Count, float3 WorldPosition,
     {
         FLightRenderParameters Light = SceneLights[Offset + i];
         if (Light.ShadowMapChannel != INVALID_SHADOW_CHANNEL) continue;
-        Result += EvaluateLight(Light, WorldPosition, N, V, Albedo, Metallic, Roughness);
+        Result += EvaluateLight(Light, WorldPosition, N, V, Albedo, Metallic, Roughness, SpecularData);
     }
     return Result;
 }
@@ -173,7 +185,12 @@ float4 mainPS(FPSInput Input) : SV_Target
 
     float4 MaterialData = BaseColorMetallic.Load(int3(Pixel, 0));
     float4 NormalData = NormalRoughness.Load(int3(Pixel, 0));
+    float4 EmissiveData = EmissiveModel.Load(int3(Pixel, 0));
+    float4 SpecularData = SpecularShininess.Load(int3(Pixel, 0));
+    if (bOverrideMaterialLighting == 0u && EmissiveData.a > 0.5f && EmissiveData.a < 2.5f) SpecularData.rgb = 0.0f;
     float3 Albedo = MaterialData.rgb;
+    if (bOverrideMaterialLighting == 0u && EmissiveData.a > 3.5f)
+        return bSingleLightPass != 0 ? 0.0f : float4(Albedo + EmissiveData.rgb, 1.0f);
     float Metallic = MaterialData.a;
     // GBuffer가 bReceiveShadow를 w 부호에 넣는다 (StaticMeshGBufferShader.hlsl)
     const bool bReceiveShadow = NormalData.a >= 0.0f;
@@ -196,19 +213,19 @@ float4 mainPS(FPSInput Input) : SV_Target
     {
         // 가산 블렌드로 이 광원만 더한다. 알파는 블렌드 상태가 기존 값을 유지한다.
         const float Shadow = bReceiveShadow ? ScreenShadowMask.Load(int3(Pixel, 0)).r : 1.0f;
-        return float4(EvaluateLight(SceneLights[SingleLightIndex], WorldPosition, N, V, Albedo, Metallic, Roughness) * Shadow, 0.0f);
+        return float4(EvaluateLight(SceneLights[SingleLightIndex], WorldPosition, N, V, Albedo, Metallic, Roughness, SpecularData) * Shadow, 0.0f);
     }
 
     float3 AmbientColor = AmbientColorIntensity.rgb * max(AmbientColorIntensity.a, 0.0f);
     float3 BaseLighting = AmbientColor;
     if (SkyColorIntensity.a > 0.0f)
         BaseLighting += SkyColorIntensity.rgb * SkyColorIntensity.a;
-    float3 Lighting = Albedo * BaseLighting;
+    float3 Lighting = Albedo * BaseLighting + EmissiveData.rgb;
 
-    Lighting += AccumulateUnshadowedLights(LightOffsets.z, LightCounts.z, WorldPosition, N, V, Albedo, Metallic, Roughness);
-    Lighting += AccumulateUnshadowedLights(LightOffsets.x, LightCounts.x, WorldPosition, N, V, Albedo, Metallic, Roughness);
-    Lighting += AccumulateUnshadowedLights(LightOffsets.y, LightCounts.y, WorldPosition, N, V, Albedo, Metallic, Roughness);
-    Lighting += AccumulateUnshadowedLights(LightOffsets.w, LightCounts.w, WorldPosition, N, V, Albedo, Metallic, Roughness);
+    Lighting += AccumulateUnshadowedLights(LightOffsets.z, LightCounts.z, WorldPosition, N, V, Albedo, Metallic, Roughness, SpecularData);
+    Lighting += AccumulateUnshadowedLights(LightOffsets.x, LightCounts.x, WorldPosition, N, V, Albedo, Metallic, Roughness, SpecularData);
+    Lighting += AccumulateUnshadowedLights(LightOffsets.y, LightCounts.y, WorldPosition, N, V, Albedo, Metallic, Roughness, SpecularData);
+    Lighting += AccumulateUnshadowedLights(LightOffsets.w, LightCounts.w, WorldPosition, N, V, Albedo, Metallic, Roughness, SpecularData);
     return float4(Lighting, 1.0f);
 }
 

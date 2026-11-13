@@ -96,13 +96,13 @@ struct FLinearColor
 		return true;
 	}
 
-	friend void operator<<(FStructuredArchive::FSlot Slot, FLinearColor& Color)
+	friend void operator<<(FStructuredArchiveSlot Slot, FLinearColor& Color)
 	{
-		FStructuredArchive::FRecord Record = Slot.EnterRecord();
+		FStructuredArchiveRecord Record = Slot.EnterRecord();
 		Record << SA_VALUE("R", Color.R) << SA_VALUE("G", Color.G) << SA_VALUE("B", Color.B) << SA_VALUE("A", Color.A);
 	}
 
-	bool Serialize(FStructuredArchive::FSlot Slot)
+	bool Serialize(FStructuredArchiveSlot Slot)
 	{
 		Slot << *this;
 		return true;
@@ -148,7 +148,7 @@ struct FColor
 	}
 
 	// Serializer.
-	friend void operator<< (FStructuredArchive::FSlot Slot, FColor& Color)
+	friend void operator<< (FStructuredArchiveSlot Slot, FColor& Color)
 	{
 		return Slot << Color.DWColor();
 	}

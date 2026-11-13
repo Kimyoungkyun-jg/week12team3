@@ -1,0 +1,17 @@
+{
+  "BlendInTime": 0.10000000149011612,
+  "BlendOutTime": 0.15000000596046448,
+  "Loop": false,
+  "Notifies": [
+    {
+      "Name": "Fire",
+      "Time": 0.1326904594898224
+    }
+  ],
+  "PlayRate": 1.0,
+  "Sections": [],
+  "Sequence": "Models/UnrealModel/AS_MM_Rifle_Fire.fbxbin",
+  "Skeleton": "Models/UnrealModel/SKEL_SKM_Quinn_Simple_root.fbxbin",
+  "Slot": "UpperBody",
+  "Version": 1
+}

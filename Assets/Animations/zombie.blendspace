@@ -1,0 +1,21 @@
+{
+  "Samples": [
+    {
+      "Sequence": "Models/Zombie/AS_Zombie Idle.fbxbin",
+      "X": 0.0
+    },
+    {
+      "Sequence": "Models/Zombie/AS_Zombie Running.fbxbin",
+      "X": 400.0
+    }
+  ],
+  "Skeleton": "Models/Zombie/SKEL_Zombie Idle_mixamorig_Hips.fbxbin",
+  "Type": "BlendSpace1D",
+  "XAxis": {
+    "Divisions": 4,
+    "Max": 400.0,
+    "Min": 0.0,
+    "Name": "Speed",
+    "Snap": true
+  }
+}

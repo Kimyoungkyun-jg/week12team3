@@ -1,0 +1,35 @@
+{
+  "EntryState": 1,
+  "InvertDirection": false,
+  "RootPoseConnected": true,
+  "Skeleton": "Models/AnimationTest/AniCube/SKEL_AnimCube_binary_AnimCube.fbxbin",
+  "States": [
+    {
+      "Asset": "Models/AnimationTest/AniCube/AS_AnimCube_binary.fbxbin",
+      "ConstantX": 0.0,
+      "ConstantY": 0.0,
+      "DirectionOffsetX": 0.0,
+      "DirectionOffsetY": 0.0,
+      "Id": 1,
+      "InputX": 0,
+      "InputY": 0,
+      "Loop": true,
+      "Name": "Idle",
+      "OutputOffsetX": 0.0,
+      "OutputOffsetY": 0.0,
+      "OutputPlayerId": 0,
+      "PlayRate": 1.0,
+      "PlayerOffsetX": 0.0,
+      "PlayerOffsetY": 0.0,
+      "Players": [],
+      "Pose": 0,
+      "PoseConnected": true,
+      "SpeedOffsetX": 0.0,
+      "SpeedOffsetY": 0.0,
+      "X": 80.0,
+      "Y": 120.0
+    }
+  ],
+  "Transitions": [],
+  "Version": 1
+}

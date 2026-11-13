@@ -42,6 +42,7 @@ struct FRenderGraphDepthAttachment // 패스에 필요한 DepthTextrue 핸들
 	float ClearDepth = 1.0f;
 	uint8 ClearStencil = 0;
 	uint32 DSVIndex = 0;
+	bool bReadOnlyDepthStencil = false;
 };
 
 struct FShadowAtlasRect
@@ -59,6 +60,9 @@ struct FRenderGraphRasterPassDesc // draw pass용
 	std::vector<FRenderGraphColorAttachment> ColorAttachments;
 	FRenderGraphDepthAttachment DepthAttachment;
 	FShadowAtlasRect Viewport{}; // 0 크기면 출력 전체. Atlas 타일은 부분 영역을 지정한다.
+	uint32 ReadTextureStartSlot = 0;
+	std::function<void()> OnBeforeExecute;
+	std::function<void()> OnAfterExecute;
 };
 
 struct FRenderGraphComputePassDesc // compute pass용

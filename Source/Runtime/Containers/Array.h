@@ -204,8 +204,6 @@ public:
 
 	uint32 Add(const T& data);
 	uint32 Add(T&& data);
-	uint32 AddUnique(const T& data);
-	uint32 AddUnique(T&& data);
 
 	void Push(const ElementType& Item)
 	{
@@ -299,16 +297,6 @@ public:
 	void Swap(TArray<T>& Other)
 	{
 		mDatas.swap(Other.mDatas);
-	}
-
-	[[nodiscard]] bool operator==(const TArray& Other) const
-	{
-		if (Num() != Other.Num()) return false;
-		for (int32 I = 0; I < Num(); ++I)
-		{
-			if (!((*this)[I] == Other[I])) return false;
-		}
-		return true;
 	}
 
 private:
@@ -432,22 +420,6 @@ inline uint32 TArray<T>::Add(T&& data)
 
 	return static_cast<uint32>(mDatas.size()) - 1;
 }
-
-template<typename T>
-inline uint32 TArray<T>::AddUnique(const T& data)
-{
-	int32 lIndex = Find(data);
-	return (lIndex == -1) ? Add(data) : lIndex;
-}
-
-template<typename T>
-inline uint32 TArray<T>::AddUnique(T&& data)
-{
-	int32 lIndex = Find(data);
-	return (lIndex == -1) ? Add(std::move(data)) : lIndex;
-}
-
-
 
 template <typename T>
 template <typename ... Args>

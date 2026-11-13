@@ -10,7 +10,7 @@ static_assert(sizeof(FFXAAData) == 16);
 void FFXAARenderer::Init(FRenderer* InRenderer)
 {
 	Renderer = InRenderer;
-	Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/FXAAShader.hlsl");
+	Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/FxaaShader.hlsl");
 
 	// depth buffer를 사용하지 않고, 별도의 shader를 통해 렌더링을 처리한다.
 	FXAAPipelineState.Shader = Shader;
@@ -33,27 +33,45 @@ bool FFXAARenderer::PrepareOutput(FTexture2D* ColorTarget)
 	const uint32 Width = ColorTarget->GetWidth();
 	const uint32 Height = ColorTarget->GetHeight();
 
-	// 캐시는 같은 크기에서 재사용하고, 생성에 실패하면 원래 화면을 유지한다.
-	if (!CachedColorBuffer || CachedColorBuffer->GetWidth() != Width ||
-		CachedColorBuffer->GetHeight() != Height ||
-		CachedColorBuffer->GetFormat() != ColorTarget->GetFormat())
+	// 같은 크기·포맷 캐시를 찾아 재사용하고, 없으면 가장 오래 안 쓴 칸에 새로 만든다.
+	// 생성에 실패하면 원래 화면을 유지한다.
+	++UseCounter;
+	uint32 OldestIndex = 0;
+	for (uint32 Index = 0; Index < MaxCachedBuffers; ++Index)
 	{
-		FTextureDesc Desc{};
-		Desc.Width = Width;
-		Desc.Height = Height;
-		Desc.Format = ColorTarget->GetTextureFormat();
-		Desc.BindFlags = ETextureBindFlags::RenderTarget | ETextureBindFlags::ShaderResource;
-		auto NewTarget = RenderCommand::CreateTexture2D(Desc);
-		if (!NewTarget || !NewTarget->GetRawPtr() || !NewTarget->GetRTV() || !NewTarget->GetSRV())
-			return false;
-		CachedColorBuffer = std::move(NewTarget);
+		FCachedBuffer& Entry = CachedColorBuffers[Index];
+		if (Entry.Buffer && Entry.Buffer->GetWidth() == Width &&
+			Entry.Buffer->GetHeight() == Height &&
+			Entry.Buffer->GetFormat() == ColorTarget->GetFormat())
+		{
+			Entry.LastUse = UseCounter;
+			ActiveIndex = Index;
+			return true;
+		}
+		// 빈 칸(나이 0으로 취급)이 있으면 그 칸을, 없으면 가장 오래 안 쓴 칸을 고른다.
+		const uint64 EntryAge = Entry.Buffer ? Entry.LastUse : 0;
+		const FCachedBuffer& Oldest = CachedColorBuffers[OldestIndex];
+		if (EntryAge < (Oldest.Buffer ? Oldest.LastUse : 0))
+			OldestIndex = Index;
 	}
+
+	FTextureDesc Desc{};
+	Desc.Width = Width;
+	Desc.Height = Height;
+	Desc.Format = ColorTarget->GetTextureFormat();
+	Desc.BindFlags = ETextureBindFlags::RenderTarget | ETextureBindFlags::ShaderResource;
+	auto NewTarget = RenderCommand::CreateTexture2D(Desc);
+	if (!NewTarget || !NewTarget->GetRawPtr() || !NewTarget->GetRTV() || !NewTarget->GetSRV())
+		return false;
+	CachedColorBuffers[OldestIndex].Buffer = std::move(NewTarget);
+	CachedColorBuffers[OldestIndex].LastUse = UseCounter;
+	ActiveIndex = OldestIndex;
 	return true;
 }
 
 bool FFXAARenderer::OnRender(FTexture2D* ColorTarget)
 {
-	if (!ColorTarget || !CachedColorBuffer || !ConstantBuffer) return false;
+	if (!ColorTarget || !GetOutputTarget() || !ConstantBuffer) return false;
 	const uint32 Width = ColorTarget->GetWidth();
 	const uint32 Height = ColorTarget->GetHeight();
 	FFXAAData Data{};

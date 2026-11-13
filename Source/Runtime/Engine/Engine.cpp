@@ -4,7 +4,13 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/Level.h"
 #include "Camera/CameraActor.h"
+#include "Components/BoxComponent.h"
+#include "Components/SphereComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/IceVolumeComponent.h"
+#include "Components/SlidingMovementComponent.h"
 #include "Audio/AudioDevice.h"
+#include "Components/AudioComponent.h"
 
 #include "Serialization/JsonArchive.h"
 
@@ -12,9 +18,23 @@ UEngine* GEngine = nullptr;
 
 bool UEngine::Init()
 {
-	// 모든 엔진 모드가 공통으로 쓰는 것만 여기서 준비한다. 월드와 뷰포트는 서브클래스의 Init이 만든다.
+	// Keep reflected shape classes linked even when no actor references them yet.
+	// Add Component and scene loading both discover these classes by registration.
+	UBoxComponent::StaticClass();
+	USphereComponent::StaticClass();
+	UCapsuleComponent::StaticClass();
+	UIceVolumeComponent::StaticClass();
+	USlidingMovementComponent::StaticClass();
+	UAudioComponent::StaticClass();   // Add Component 목록에 뜨도록 (다른 컴포넌트와 동일)
+
+
+	AssetManager = NewObject<UAssetManager>();
 	InitializeAudioDevice();          // 실패해도 엔진은 계속 (UE도 장치가 없으면 Null 디바이스로 돈다)
-	return true;
+	/*World = FObjectFactory::ConstructObject<UWorld>();
+
+	if (!World || !World->Init()) return false;*/
+
+ 	return true;
 }
 
 void UEngine::InitializeAudioDevice()
@@ -106,11 +126,7 @@ void UEngine::DestroyWorldContext(UWorld* InWorld)
 			}
 			WorldContextlist[idx].SetCurrentWorld(nullptr);
 			WorldContextlist.RemoveAt(idx);
-			if (
-				ContextType == EWorldType::PIE ||
-				ContextType == EWorldType::Game ||
-				ContextType == EWorldType::EditorPreview
-			)
+			if (ContextType == EWorldType::PIE || ContextType == EWorldType::Game)
 			{
 				if (MainAudioDevice) MainAudioDevice->Flush(InWorld);
 				DestroyWorld(InWorld);
@@ -127,9 +143,16 @@ void UEngine::DestroyWorld(UWorld* InWorld)
 	const bool bOwnsCamera = Camera && !Camera->GetLevel();
 	InWorld->SetMainCamera(nullptr);
 	InWorld->ClearWorld();
+	InWorld->FlushPendingDestruction();
 	for (ULevel* Level : InWorld->GetLevels()) delete Level;
 	if (bOwnsCamera) delete Camera;
 	delete InWorld;
+}
+
+void UEngine::FlushPendingDestruction()
+{
+	for (FWorldContext& Context : WorldContextlist)
+		if (UWorld* World = Context.World()) World->FlushPendingDestruction();
 }
 
 void UEngine::SetClientTravel(UWorld* InWorld, const FString& MapPath)

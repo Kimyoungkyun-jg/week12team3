@@ -8,6 +8,7 @@
 #include "Math/QuadTree.h"
 #include "Render/RenderResourceManager.h"
 #include "Render/RenderCommand.h"
+#include "Render/SkinningStats.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -50,7 +51,8 @@ namespace
 	constexpr uint32 MinTileSize = ShadowBorder * 4;
 
 	// Spot/Point 그림자 타일 크기(테두리 포함, 2의 거듭제곱). 0이면 너무 작아서 그림자를 만들지 않는다.
-	uint32 ComputeWholeSceneShadowResolution(const FSceneView& View, const FSphere& LightBounds, float ResolutionScale, float& OutFadeAlpha)
+	uint32 ComputeWholeSceneShadowResolution(const FSceneView& View, const FSphere& LightBounds, float ResolutionScale,
+		uint32 MaxLightResolution, float& OutFadeAlpha)
 	{
 		const FShadowConsoleVariables& CVars = GShadowCVars;
 		const float ScreenRadius = ComputeScreenRadius(View, LightBounds);
@@ -59,18 +61,38 @@ namespace
 		OutFadeAlpha = CalculateShadowFadeAlpha(Unclamped, CVars.FadeResolution, CVars.MinResolution);
 		if (OutFadeAlpha < 1.0f / 256.0f) return 0;
 
-		const uint32 MaxResolution = std::min(CVars.MaxResolution, ShadowAtlasSize);
+		const uint32 MaxResolution = std::clamp(MaxLightResolution, CVars.MinResolution, ShadowAtlasSize);
 		const float Clamped = std::clamp(Unclamped, static_cast<float>(CVars.MinResolution), static_cast<float>(MaxResolution));
 		return std::max(RoundDownToPowerOfTwo(static_cast<uint32>(Clamped)), MinTileSize);
 	}
 
 	// 캐스케이드 타일 크기(테두리 포함, 2의 거듭제곱). 카메라를 따라가므로 화면 크기와 무관하다.
-	uint32 ComputeCSMResolution(float ResolutionScale)
+	uint32 ComputeCSMResolution(float ResolutionScale, uint32 MaxCSMResolution)
 	{
 		const FShadowConsoleVariables& CVars = GShadowCVars;
-		const float Desired = CVars.MaxCSMResolution * ResolutionScale;
+		const float Desired = MaxCSMResolution * ResolutionScale;
 		const float Clamped = std::clamp(Desired, static_cast<float>(CVars.MinResolution), static_cast<float>(ShadowAtlasSize));
 		return std::max(RoundDownToPowerOfTwo(static_cast<uint32>(Clamped)), MinTileSize);
+	}
+
+	// 설정 패널 Shadow Filter(EPcfMode) -> ShadowProjection.hlsl PcfQuality. Off는 필터 없이 하드웨어 비교 1회.
+	uint32 PcfModeToQuality(EPcfMode Mode)
+	{
+		switch (Mode)
+		{
+		case EPcfMode::Off:      return 1;
+		case EPcfMode::Sample8:  return 2;   // 3x3 (4 탭)
+		case EPcfMode::Sample16: return 3;   // 5x5 (9 탭)
+		case EPcfMode::Sample32: return 4;   // 7x7 (16 탭)
+		case EPcfMode::PCSS:     return 4;   // PCSS를 못 쓰는 Point 면은 7x7 PCF
+		default:                 return 4;
+		}
+	}
+
+	// 0이면(설정이 안 들어온 경로) 콘솔 변수 기본값을 쓴다.
+	uint32 ResolveShadowMapSize(uint32 OptionSize, uint32 Fallback)
+	{
+		return OptionSize > 0 ? OptionSize : Fallback;
 	}
 }
 
@@ -173,13 +195,21 @@ void FSceneRenderer::InitDynamicShadows(const FSceneRenderOptions& Options)
 	RenderData.VisibleLightInfos.Reset();
 	RenderData.ProjectedShadows.Reset();
 	RenderData.ShadowAtlasSliceCount = 0;
+
+	// 설정 패널(에디터)·DefaultGame.ini(게임)의 그림자 맵 크기와 Shadow Filter를 이번 뷰에 적용한다.
+	ShadowSettings.MaxCSMResolution = ResolveShadowMapSize(Options.DirectionalShadowMapSize, GShadowCVars.MaxCSMResolution);
+	ShadowSettings.MaxSpotResolution = ResolveShadowMapSize(Options.SpotShadowMapSize, GShadowCVars.MaxResolution);
+	ShadowSettings.MaxPointResolution = ResolveShadowMapSize(Options.PointShadowMapSize, GShadowCVars.MaxResolution);
+	ShadowSettings.PcfQuality = std::clamp(std::min(PcfModeToQuality(Options.PcfMode), GShadowCVars.ShadowQuality), 1u, 5u);
+	ShadowSettings.FilterMethod = (Options.PcfMode == EPcfMode::PCSS || GShadowCVars.FilterMethod == 1) ? 1u : 0u;
+
 	if (!World) return;
 
 	FScene& Scene = World->GetScene();
 	RenderData.VisibleLightInfos.SetNum(Scene.Lights.Num());
 
 	// Unlit은 조명을 계산하지 않으므로 그림자도 만들지 않는다 (언리얼 EngineShowFlags.Lighting).
-	if (Options.LightingModel == ELightingModel::Unlit) return;
+	if (Options.bUnlit) return;
 	// r.ShadowQuality 0: 그림자를 끈다
 	if (GShadowCVars.ShadowQuality == 0) return;
 
@@ -247,9 +277,8 @@ void FSceneRenderer::AddInteractingPrimitives(FScene& Scene, FProjectedShadowInf
 		},
 		[&](FPrimitiveSceneProxy* Proxy)
 		{
-			if (!Proxy->bCastsShadow || !Proxy->IsShown(View.bGameView)) return;
-			if (Proxy->IsSkinned() && !CachedViewContext.bShowSkeletalMesh) return;
-			if ((!Proxy->GetMesh() && !Proxy->HasDynamicMeshElements()) || !Proxy->GetRenderState()) return;
+			if (!Proxy->bCastsShadow || !Proxy->IsShown(View.bGameView, View.bShowSkeletalMeshes)) return;
+			if (!Proxy->GetRenderState()) return;
 
 			// 카메라에서 너무 작게 보이는 Caster는 그림자도 눈에 띄지 않는다 (r.Shadow.RadiusThreshold).
 			const FAABB& Bounds = Proxy->GetBounds();
@@ -336,7 +365,16 @@ void FSceneRenderer::RenderShadowDepthMaps(FRenderer* Renderer, FTexture2DArray*
 		FMatrix ShadowRotation = Shadow.ShadowView;
 		ShadowRotation.M[3][0] = ShadowRotation.M[3][1] = ShadowRotation.M[3][2] = 0.0f;
 		Renderer->UploadViewMatrix(ShadowRotation * Shadow.ShadowProjection);
-		Renderer->DrawMeshes(Batches);
+		if (FSkinningStats::IsCollecting())
+		{
+			auto& Timing = RenderData.ShadowSkeletalDrawGpu;
+			if (!Timing) Timing = std::make_shared<FGpuTimingHistory>();
+			Renderer->DrawMeshes(Batches, Timing, RenderData.SkeletalDrawGpuMode);
+		}
+		else
+		{
+			Renderer->DrawMeshes(Batches);
+		}
 		++RenderData.RenderStats.ShadowDepthDraws;   // 단계 9 stat에 추가할 필드
 	}
 	RenderCommand::BindConstantBuffer(3, nullptr, EShaderBindFlagBits::Vertex);
@@ -389,9 +427,9 @@ void FSceneRenderer::RenderShadowProjection(const FProjectedShadowInfo& Shadow, 
 	Constants.AtlasIndex = Shadow.AtlasIndex;
 	Constants.bPerspective = Shadow.IsPerspective() ? 1u : 0u;
 	Constants.bUseFadePlane = bUseFadePlane ? 1u : 0u;
-	Constants.PcfQuality = std::clamp(GShadowCVars.ShadowQuality, 1u, 5u);
+	Constants.PcfQuality = ShadowSettings.PcfQuality;
 	// UE처럼 PCSS는 Directional·Spot만. Point 면은 PCF
-	Constants.FilterMethod = GShadowCVars.FilterMethod == 1 && !Shadow.IsWholeScenePointLightShadow() ? 1u : 0u;
+	Constants.FilterMethod = ShadowSettings.FilterMethod == 1 && !Shadow.IsWholeScenePointLightShadow() ? 1u : 0u;
 	Constants.LightSourceSize = LightParameters.SourceSize;
 	Constants.MaxSoftKernelTexels = static_cast<float>(std::max(GShadowCVars.MaxSoftKernelSize, 1u));
 	// 투영 행렬의 가로 배율(M[1][0])은 Ortho면 2 / 폭, Perspective면 1 / tan(반각). 둘 다 2 / (배율 x 해상도)가 텍셀 하나의 크기다.
@@ -463,9 +501,13 @@ void FSceneRenderer::CreateWholeSceneProjectedShadow(FLightSceneInfo* LightScene
 	TArray<FWholeSceneProjectedShadowInitializer> Initializers;
 	if (!Proxy->GetWholeSceneProjectedShadowInitializer(View, Initializers)) return;
 
+	// Point는 6면이 각각 한 장이므로 면 하나의 크기 상한이다.
+	const bool bPointLight = Initializers.Num() > 1;
+	const uint32 MaxLightResolution = bPointLight ? ShadowSettings.MaxPointResolution : ShadowSettings.MaxSpotResolution;
+
 	float FadeAlpha = 1.0f;
 	const uint32 Resolution = ComputeWholeSceneShadowResolution(View, LightSceneInfo->GetBoundingSphere(),
-		Proxy->GetShadowResolutionScale(), FadeAlpha);
+		Proxy->GetShadowResolutionScale(), MaxLightResolution, FadeAlpha);
 	if (Resolution == 0) return;   // 화면에서 너무 작음
 
 	FVisibleLightInfo& VisibleLightInfo = RenderData.VisibleLightInfos[LightSceneInfo->Id];
@@ -483,7 +525,7 @@ void FSceneRenderer::CreateWholeSceneProjectedShadow(FLightSceneInfo* LightScene
 void FSceneRenderer::AddViewDependentWholeSceneShadowsForView(FLightSceneInfo* LightSceneInfo)
 {
 	const FLightSceneProxy* Proxy = LightSceneInfo->Proxy;
-	const uint32 Resolution = ComputeCSMResolution(Proxy->GetShadowResolutionScale());
+	const uint32 Resolution = ComputeCSMResolution(Proxy->GetShadowResolutionScale(), ShadowSettings.MaxCSMResolution);
 
 	FVisibleLightInfo& VisibleLightInfo = RenderData.VisibleLightInfos[LightSceneInfo->Id];
 	const uint32 NumCascades = Proxy->GetNumViewDependentWholeSceneShadows(View);
@@ -511,7 +553,7 @@ void FSceneRenderer::FinalizeShadowLights(const FSceneRenderOptions& Options)
 
 	const bool bForward = Options.RenderingPath != ERenderingPath::Deferred;
 	// Gouraud는 정점에서 조명을 끝내므로 화면 마스크를 광원별로 곱할 수 없다.
-	const bool bAllowChannels = !(bForward && Options.LightingModel == ELightingModel::Gouraud);
+	const bool bAllowChannels = !(bForward && Options.ShadingModel == EShadingModel::Gouraud);
 
 	// Forward 채널 배정 (언리얼 AssignAvailableShadowMapChannelForLight): 영향 범위가 겹치는 광원끼리만 다른 채널을 받는다.
 	struct FAssignedChannel { FSphere Bounds; bool bDirectional; uint32 Channel; };

@@ -1,8 +1,8 @@
 // HitoriHeaderTool (HHT)
 // 사용법: HitoriHeaderTool <모듈 이름> <출력 폴더> <소스 폴더>...
-//   예:   HitoriHeaderTool Runtime Intermediate/Generated/Runtime Source/Runtime
+//   예:   HitoriHeaderTool Runtime Build/Generated/Runtime Source/Runtime
 //
-// 소스 폴더의 헤더 중 UCLASS(), USTRUCT(), UENUM()이 있는 것마다 <출력 폴더>/<헤더 이름>.generated.h를 만든다.
+// 소스 폴더의 헤더 중 UCLASS()나 UENUM()이 있는 것마다 <출력 폴더>/<헤더 이름>.generated.h를 만든다.
 // 오류가 하나라도 있으면 아무 파일도 쓰지 않고 1을 반환해서 빌드를 멈춘다.
 
 #include "CodeGenerator.h"
@@ -30,7 +30,7 @@ namespace
         return Result;
     }
 
-	// .generated.h는 UCLASS/USTRUCT/UENUM보다 앞에 있는 #include 중 마지막이어야 한다.
+    // .generated.h는 UCLASS/UENUM보다 앞에 있는 #include 중 마지막이어야 한다.
     // 뒤에 다른 헤더가 오면 그 헤더의 generated.h가 CURRENT_FILE_ID를 덮어쓴다.
     void CheckGeneratedInclude(const std::string& Source, const FHeaderInfo& Header, FDiagnostics& Diag)
     {
@@ -71,7 +71,7 @@ namespace
         }
         else if (GeneratedLine > FirstClassLine)
         {
-            Diag.Error(Header.Path, GeneratedLine, Header.GeneratedName + "는 UCLASS()/USTRUCT()/UENUM()보다 앞에 include해야 해요.");
+            Diag.Error(Header.Path, GeneratedLine, Header.GeneratedName + "는 UCLASS()/UENUM()보다 앞에 include해야 해요.");
         }
         else if (LastIncludeLine > GeneratedLine)
         {
@@ -112,7 +112,7 @@ namespace
                 continue;
             }
             // 대부분의 헤더는 여기서 걸러진다.
-			if (Source.find("UCLASS") == std::string::npos && Source.find("USTRUCT") == std::string::npos && Source.find("UENUM") == std::string::npos)
+            if (Source.find("UCLASS") == std::string::npos && Source.find("UENUM") == std::string::npos)
             {
                 continue;
             }
@@ -166,7 +166,7 @@ namespace
             const auto [It, bInserted] = GeneratedNames.emplace(Header.GeneratedName, Header.Path);
             if (!bInserted)
             {
-                Diag.Error(Header.Path, 1, Header.GeneratedName + " Name " + ToUtf8(It->second) + " Already Exists. 모듈 안에서 UCLASS/USTRUCT/UENUM 헤더 이름은 달라야 해요.");
+                Diag.Error(Header.Path, 1, Header.GeneratedName + " Name " + ToUtf8(It->second) + " Already Exists. 모듈 안에서 UCLASS/UENUM 헤더 이름은 달라야 해요.");
             }
         }
 
@@ -189,7 +189,7 @@ namespace
             WrittenCount += bWritten ? 1 : 0;
         }
 
-		// UCLASS/USTRUCT/UENUM이 사라진 헤더의 생성 파일은 지운다.
+        // UCLASS/UENUM이 사라진 헤더의 생성 파일은 지운다.
         int RemovedCount = 0;
         for (const fs::directory_entry& Entry : fs::directory_iterator(OutputDir))
         {

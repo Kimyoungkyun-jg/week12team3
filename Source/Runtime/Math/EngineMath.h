@@ -15,11 +15,6 @@
 #define INDEX_NONE -1
 #define WORLD_MAX 8796093022208.0f
 
-// 월드 단위는 m(1유닛 = 1m)다. 게임플레이 수치(속도·가속도, BlendSpace 축 등)는 UE와 같은 cm 기준으로
-// 다루고 경계에서 이 상수로 변환한다. 엔진 전체를 cm로 바꾸게 되면 CmToWorld를 1로 바꾸면 된다.
-inline constexpr float CmToWorld = 0.01f;
-inline constexpr float WorldToCm = 1.0f / CmToWorld;
-
 namespace FMath
 {
 	//static float PI = std::acosf(-1);
@@ -148,21 +143,6 @@ namespace FMath
 	{
 		return A + (B - A) * Alpha;
 	}
-
-	template<class T>
-	inline float InverseLerp(const T& A, const T& B, const T& X)
-	{
-		return (X - A) / (B - A);
-	}
-
-	template<>
-	inline float InverseLerp(const FVector& A, const FVector& B, const FVector& X)
-	{
-		const FVector AB = B - A;
-		const float LengthSq = AB.Dot(AB);
-		return LengthSq > 0.0f ? (X - A).Dot(AB) / LengthSq : 0.0f;
-	}
-
 
 	// Hermite 큐빅: P0, P1: 위치, T0, T1: 접선(속도), A: 0~1
 	// 접선 0이면 smoothstep(3t^2 - 2t^3)와 동일
@@ -304,36 +284,4 @@ namespace FMath
 			A.Yaw + FMath::UnwindDegrees(B.Yaw - A.Yaw) * Alpha,
 			A.Roll + FMath::UnwindDegrees(B.Roll - A.Roll) * Alpha);
 	}
-
-	// 헤더에 정의하는 함수는 inline이어야 여러 .cpp에서 include해도 중복 정의(LNK2005)가 나지 않는다
-	inline void FmodReportError(double X, double Y)
-	{
-		// assert는 인자를 하나만 받는다
-		assert(Y != 0 && "FMath::Fmod : Y is zero, this is invalid and would result in NaN!");
-	}
-
-	inline float Fmod(float X, float Y)
-	{
-		const float AbsY = std::abs(Y);
-		if (AbsY <= SMALL_NUMBER) // Note: this constant should match that used by VectorMod() implementations
-		{
-			FmodReportError(X, Y);
-			return 0.0;
-		}
-
-		return fmodf(X, Y);
-	}
-
-	inline double Fmod(double X, double Y)
-	{
-		const double AbsY = std::abs(Y);
-		if (AbsY <= DOUBLE_SMALL_NUMBER) // Note: this constant should match that used by VectorMod() implementations
-		{
-			FmodReportError(X, Y);
-			return 0.0;
-		}
-
-		return fmod(X, Y);
-	}
-
 }

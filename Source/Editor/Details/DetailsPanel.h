@@ -61,6 +61,7 @@ private:
 	DetailsDeleteComponentCallback DeleteCallback;
 
 	UActorComponent* PendingDeleteComponent = nullptr;
+	USceneComponent* PendingRootComponent = nullptr;
 	UActorComponent* EditingNameComponent = nullptr;
 	char ComponentNameEditBuffer[256] = {};
 	bool bFocusNameEdit = false;

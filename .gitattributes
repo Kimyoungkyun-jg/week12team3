@@ -61,3 +61,6 @@
 #*.PDF   diff=astextplain
 #*.rtf   diff=astextplain
 #*.RTF   diff=astextplain
+
+# FBX 임포트 결과는 바이너리다. 줄바꿈 변환과 텍스트 병합을 하지 않는다.
+*.fbxbin binary

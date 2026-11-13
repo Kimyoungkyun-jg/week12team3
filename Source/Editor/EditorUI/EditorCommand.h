@@ -45,7 +45,7 @@ struct FEditorCommand
 namespace EditorCommandUI
 {
 	// 툴바용 버튼. 보이지 않으면 아무것도 그리지 않고 false.
-	bool ToolbarButton(const char* Id, const FEditorCommand& Command, float IconSize = 20.0f);
+	bool ToolbarButton(const char* Id, const FEditorCommand& Command, float IconSize = 0.0f);
 	// 메뉴용 항목 (MainMenuBar 등에서 재사용)
 	bool MenuItem(const FEditorCommand& Command);
 	// 등록된 커맨드들의 단축키를 검사해 실행

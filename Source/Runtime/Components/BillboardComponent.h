@@ -44,12 +44,16 @@ public:
 
 	virtual const FStaticMeshData* GetMeshData() const override { return QuadMesh ? &QuadMesh->GetMeshData() : nullptr; }
 	virtual FBox CalcLocalBounds() const override;
+	virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
+	UStaticMesh* GetQuadMesh() const { return QuadMesh; }
 
 	void GetWorldTransformedMatrix(FMatrix* OutWorldMatrix) const;
 	// 뷰 컨텍스트 기준 월드 행렬로 Billboard 렌더 패킷을 제출한다.
 	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext) override;
 	// View별 ViewportLayout가 계산한 Billboard 행렬을 사용해 같은 렌더 패킷 형식으로 제출한다.
 	void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FMatrix& BillboardWorldMatrix);
+
+	virtual void Serialize(json& Handle, bool bIsLoading) override;
 
 	using Super::Serialize;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;

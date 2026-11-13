@@ -1,19 +1,28 @@
 #pragma pack_matrix(row_major)
 
+// Reflection equation and shading frequency are orthogonal compile-time axes.
+#if !defined(SHADING_MODEL_GOURAUD) && !defined(SHADING_MODEL_PHONG) && !defined(VIEW_MODE_UNLIT) && !defined(VIEW_MODE_WORLD_NORMAL)
+    #define SHADING_MODEL_PHONG 1
+#endif
+#if !defined(REFLECTION_MODEL_PHONG) && !defined(REFLECTION_MODEL_BLINN_PHONG) && !defined(REFLECTION_MODEL_LAMBERT)
+    #define REFLECTION_MODEL_LAMBERT 1
+#endif
+#ifndef REFLECTION_MODEL_LAMBERT
+    #define REFLECTION_MODEL_LAMBERT 0
+#endif
+#if (SHADING_MODEL_GOURAUD + SHADING_MODEL_PHONG + VIEW_MODE_UNLIT + VIEW_MODE_WORLD_NORMAL) != 1
+    #error Exactly one shading model or view mode must be enabled.
+#endif
+#if (REFLECTION_MODEL_PHONG + REFLECTION_MODEL_BLINN_PHONG + REFLECTION_MODEL_LAMBERT) != 1
+    #error Exactly one reflection model must be enabled.
+#endif
+
 #include "LightData.hlsli"
 #include "LightEvaluation.hlsli"
 #include "LightGridCommon.hlsli"
-#include "GpuSkinCommon.hlsli"
-
-// 셰이더 스캐너는 매크로 정의 없이 이 파일을 컴파일하므로 기본 변형에는 Lambert를 쓴다.
-// 명시적인 변형은 조명 모델 또는 뷰 모드 하나만 1로 설정한다.
-#if !defined(LIGHTING_MODEL_GOURAUD) && !defined(LIGHTING_MODEL_LAMBERT) && !defined(LIGHTING_MODEL_PHONG) && !defined(LIGHTING_MODEL_UNLIT) && !defined(VIEW_MODE_WORLD_NORMAL)
-    #define LIGHTING_MODEL_LAMBERT 1
-#endif
-
-#if (LIGHTING_MODEL_GOURAUD + LIGHTING_MODEL_LAMBERT + LIGHTING_MODEL_PHONG + LIGHTING_MODEL_UNLIT + VIEW_MODE_WORLD_NORMAL) != 1
-    #error Exactly one lighting model or view mode must be enabled.
-#endif
+#include "NormalMapCommon.hlsli"
+#include "Skinning.hlsli"
+#include "MaterialUV.hlsli"
 
 struct FAmbientLightInfo
 {
@@ -47,6 +56,11 @@ StructuredBuffer<uint> TileSpotIndices : register(t12);
 // 언리얼 ScreenShadowMask: 그림자 광원마다 배정된 채널(R~A)에 Projection 결과가 들어 있다. 1 = 빛 받음.
 Texture2D<float4> ScreenShadowMask : register(t13);
 
+// 데칼
+Texture2D<float4> DBufferLit : register(t14);
+Texture2D<float4> DBufferUnlit : register(t15);
+Texture2D<float4> DBufferNormal : register(t16);
+
 cbuffer MaterialParams : register(b2)
 {
     float4 BaseColor;
@@ -54,6 +68,7 @@ cbuffer MaterialParams : register(b2)
     float4 SurfaceParams; // x: 노멀맵 Y 반전, y: 예약, z: 컬러 텍스처 사용, w: 노멀맵 인코딩
     float4 UVTransform; // xy: 이동량, zw: 배율
     float4 SpecularColorShininess; // rgb: 정반사 색상, w: 광택 지수
+    float4 WorldUVParams; // xy: tile size, z: local axes, w: opaque
 };
 
 Texture2D ColorTexture : register(t0);
@@ -69,7 +84,10 @@ struct VS_IN
 	float4 Tangent : TANGENT;
 	float2 UV : TEXCOORD;
 	float4 Color : COLOR;
-	GPU_SKIN_VS_INPUT
+#if GPU_SKINNING
+	int4 BoneIndices : BLENDINDICES;
+	float4 BoneWeights : BLENDWEIGHT;
+#endif
 };
 
 struct VS_OUT
@@ -79,7 +97,10 @@ struct VS_OUT
     float2 UV : TEXCOORD0;
     float3 WorldNormal : TEXCOORD4;
     float4 WorldTangent : TEXCOORD5;
-#if LIGHTING_MODEL_GOURAUD
+    float3 MaterialWorldPos : TEXCOORD6;
+    float3 MaterialLocalPos : TEXCOORD7;
+    float3 MaterialLocalNormal : TEXCOORD8;
+#if SHADING_MODEL_GOURAUD
     float3 VertexDiffuse : TEXCOORD1;
     float3 VertexSpecular : TEXCOORD2;
 #elif !VIEW_MODE_WORLD_NORMAL
@@ -100,23 +121,16 @@ struct FUberOutput
 // Gouraud는 채널을 받지 않으므로 정점 셰이더에서 불려도 마스크를 읽지 않는다.
 float GetLightShadow(FLightRenderParameters Light, float3 PixelPosition)
 {
+#if SHADING_MODEL_GOURAUD
+    return 1.0f;
+#else
     if (Light.ShadowMapChannel == INVALID_SHADOW_CHANNEL || ShadowFlags.x < 0.5f) return 1.0f;
     return ScreenShadowMask.Load(int3(int2(PixelPosition.xy), 0))[Light.ShadowMapChannel];
-}
-
-
-float3 DecodeMapNormal(float3 Sample, float Encoding)
-{
-    if (Encoding > 1.5f)
-    {
-        float2 XY = Encoding > 2.5f ? Sample.xy : Sample.xy * 2.0f - 1.0f;
-        return float3(XY, sqrt(saturate(1.0f - dot(XY, XY))));
-    }
-    return Sample * 2.0f - 1.0f;
+#endif
 }
 
 // 조명과 World Normal 보기가 같은 노멀맵 해석 및 TBN 변환을 사용한다.
-float3 GetShadingNormal(VS_OUT Input)
+float3 GetShadingNormal(VS_OUT Input, float3 ProjectedT, float3 ProjectedB)
 {
     float LengthSquared = dot(Input.WorldNormal, Input.WorldNormal);
     float3 N = LengthSquared > 1.0e-8f
@@ -127,11 +141,13 @@ float3 GetShadingNormal(VS_OUT Input)
         float3 MapNormal = DecodeMapNormal(NormalTexture.Sample(ColorSampler, Input.UV).xyz, SurfaceParams.w);
         if (SurfaceParams.x > 0.5f) MapNormal.y = -MapNormal.y;
         float3 T = Input.WorldTangent.xyz - N * dot(N, Input.WorldTangent.xyz);
+        if (WorldUVParams.x > 0.0f) T = ProjectedT - N * dot(N, ProjectedT);
         float TangentLengthSquared = dot(T, T);
         if (TangentLengthSquared > 1.0e-8f)
         {
             T *= rsqrt(TangentLengthSquared);
             float3 B = cross(N, T) * Input.WorldTangent.w;
+            if (WorldUVParams.x > 0.0f) B = normalize(ProjectedB);
             float3 MappedNormal = T * MapNormal.x + B * MapNormal.y + N * MapNormal.z;
             float MappedLengthSquared = dot(MappedNormal, MappedNormal);
             if (MappedLengthSquared > 1.0e-8f)
@@ -402,20 +418,18 @@ FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDe
 
 VS_OUT Uber_VS(VS_IN Input)
 {
+#if GPU_SKINNING
+    SkinVertex(Input.Position, Input.Normal, Input.Tangent, Input.BoneIndices, Input.BoneWeights);
+#endif
     VS_OUT Output;
-    GPU_SKIN_APPLY(Input, Input.Position, Input.Normal, Input.Tangent);
     float4 WorldPosition = mul(float4(Input.Position, 1.0f), World);
     float4 ViewPosition = mul(WorldPosition, View);
     Output.Position = mul(ViewPosition, Projection);
     Output.Color = Input.Color;
-#if GPU_SKIN
-    if (ShadowFlags.y > 0.5f)
-    {
-        const uint Bone = (uint)(ShadowFlags.y - 0.5f);   // 본 번호 + 1로 실은 값을 되돌린다
-        Output.Color = float4(GpuSkinWeightColor(GpuSkinWeightForBone(Input.BlendIndices, Input.BlendWeights, Bone)), 1.0f);
-    }
-#endif
-    Output.UV = Input.UV * UVTransform.zw + UVTransform.xy;
+    Output.UV = Input.UV;
+    Output.MaterialWorldPos = WorldPosition.xyz;
+    Output.MaterialLocalPos = Input.Position;
+    Output.MaterialLocalNormal = Input.Normal;
 
     float3 N = mul(float4(Input.Normal, 0.0f), NormalMatrix).xyz;
     Output.WorldNormal = N;
@@ -423,8 +437,8 @@ VS_OUT Uber_VS(VS_IN Input)
     // CPU가 구한 로컬 공간 부호에 월드 변환의 거울 반전만 반영한다.
     float Handedness = Input.Tangent.w * (determinant((float3x3)World) < 0.0f ? -1.0f : 1.0f);
     Output.WorldTangent = float4(T, Handedness);
-#if LIGHTING_MODEL_GOURAUD
-    FLightResult Lit = CalculateLighting(float3(0.0f, 0.0f, 0.0f), WorldPosition.xyz, ViewPosition.x, N, true);
+#if SHADING_MODEL_GOURAUD
+    FLightResult Lit = CalculateLighting(float3(0.0f, 0.0f, 0.0f), WorldPosition.xyz, ViewPosition.x, N, !REFLECTION_MODEL_LAMBERT);
     Output.VertexDiffuse = Lit.Diffuse;
     Output.VertexSpecular = Lit.Specular;
 #elif !VIEW_MODE_WORLD_NORMAL
@@ -437,16 +451,14 @@ VS_OUT Uber_VS(VS_IN Input)
 FUberOutput Uber_PS(VS_OUT Input)
 {
     FUberOutput Output;
-    float3 ShadingNormal = GetShadingNormal(Input);
+    float3 ProjectedT, ProjectedB;
+    Input.UV = ResolveMaterialUV(Input.UV, Input.MaterialWorldPos, Input.WorldNormal,
+        Input.MaterialLocalPos, Input.MaterialLocalNormal, World,
+        UVTransform.zw, UVTransform.xy, WorldUVParams.xy, WorldUVParams.z > 0.5f, ProjectedT, ProjectedB);
+    float3 ShadingNormal = GetShadingNormal(Input, ProjectedT, ProjectedB);
 #if VIEW_MODE_WORLD_NORMAL
     Output.LitColor = float4(ShadingNormal * 0.5f + 0.5f, 1.0f);
 #else
-    if (ShadowFlags.y > 0.5f)
-    {
-        Output.LitColor = float4(Input.Color.rgb, 1.0f);
-        Output.NormalRoughness = float4(ShadingNormal, 0.8f); // SV_Target1도 반드시 채운다
-        return Output;
-    }
     float4 SurfaceColor;
     if (SurfaceParams.z > 0.5f)
     {
@@ -458,27 +470,61 @@ FUberOutput Uber_PS(VS_OUT Input)
         SurfaceColor = Input.Color;
     }
     float3 Albedo = SurfaceColor.rgb * BaseColor.rgb;
-    float3 Diffuse;
+    
+    int3 PixelCoord = int3(int2(Input.Position.xy), 0);
+    
+    bool bReceiveDecal = ShadowFlags.y > 0.5f;
+    
+    if (bReceiveDecal)
+    {
+        float4 LitDecal = DBufferLit.Load(PixelCoord);
+        
+        Albedo = Albedo * (1.0f - LitDecal.a) + LitDecal.rgb;
+    }
+
+#if SHADING_MODEL_PHONG
+    if (bReceiveDecal)
+    {
+        float4 DecalNormal =
+            DBufferNormal.Load(PixelCoord);
+        
+        float3 Combined =
+            ShadingNormal * (1.0f - DecalNormal.a) +
+            DecalNormal.rgb;
+        
+        float LengthSquared = dot(Combined, Combined);
+        
+        if (LengthSquared > 1.0e-8f)
+        {
+            ShadingNormal = Combined * rsqrt(LengthSquared);
+        }
+
+    }
+#endif
+      
+        float3 Diffuse;
     float3 Specular = 0.0f;
 
-#if LIGHTING_MODEL_GOURAUD
+#if SHADING_MODEL_GOURAUD
     Diffuse = Input.VertexDiffuse;
     Specular = Input.VertexSpecular;
-#elif LIGHTING_MODEL_LAMBERT
-    // 픽셀 위치와 깊이를 함께 전달한다.
-    Diffuse = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, false).Diffuse;
-#elif LIGHTING_MODEL_PHONG
-    // 같은 목록 선택 경로에서 기존 Blinn-Phong 조명을 계산한다.
-    FLightResult Lit = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, true);
+#elif SHADING_MODEL_PHONG
+    FLightResult Lit = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, !REFLECTION_MODEL_LAMBERT);
     Diffuse = Lit.Diffuse;
     Specular = Lit.Specular;
-#elif LIGHTING_MODEL_UNLIT
+#elif VIEW_MODE_UNLIT
     // 조명·그림자를 계산하지 않고 표면 색을 그대로 낸다.
     Diffuse = 1.0f;
 #endif
+    float3 FinalColor = Albedo * Diffuse + Specular + Emissive.rgb;
+    float4 UnlitDecal = DBufferUnlit.Load(PixelCoord);
 
-    Output.LitColor = float4(Albedo * Diffuse + Specular + Emissive.rgb,
-        SurfaceColor.a * BaseColor.a);
+    if (bReceiveDecal)
+    {
+        FinalColor = FinalColor * (1.0f - UnlitDecal.a) + UnlitDecal.rgb;
+    }
+
+    Output.LitColor = float4(FinalColor, WorldUVParams.w > 0.5f ? 1.0f : SurfaceColor.a * BaseColor.a);
     Output.NormalRoughness = float4(ShadingNormal, 0.8f);
 #endif
     return Output;

@@ -1,6 +1,8 @@
 #include "EnginePCH.h"
 #include "EngineTimer.h"
 
+#include <algorithm>
+
 void EngineTimer::Init()
 {
 	PrevTime = Clock::now();
@@ -9,11 +11,11 @@ void EngineTimer::Init()
 void EngineTimer::Tick()
 {
 	Clock::time_point Current = Clock::now();
-	std::chrono::duration<float> Elapsed = Current - PrevTime;
-
-	DeltaTime = Elapsed.count();
+	// 경과 시간은 double로 구해 clamp하고, 공개하는 DeltaTime만 float로 변환한다.
+	const std::chrono::duration<double> Elapsed = Current - PrevTime;
 	PrevTime = Current;
 
-	if (DeltaTime > 0.1f) DeltaTime = 0.1f;
-	TotalTime += DeltaTime;
+	const double Delta = std::min(Elapsed.count(), 0.1);
+	DeltaTime = static_cast<float>(Delta);
+	TotalTime += Delta;
 }

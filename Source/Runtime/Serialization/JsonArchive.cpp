@@ -30,7 +30,6 @@ bool FJsonArchive::SaveWorldToBytes(UWorld* World, TArray<uint8>& OutBytes)
 		return false;
 
 	FMemoryWriter Writer(OutBytes);
-	Writer.SetIsPersistent(true);   // 파일에는 Transient를 쓰지 않는다
 	{
 		// 선언 순서 = 소멸 역순: Ar(Close) → Formatter(dump → Writer)
 		FJsonArchiveOutputFormatter Formatter(Writer);
@@ -52,7 +51,7 @@ bool FJsonArchive::LoadWorldFromBytes(UWorld* World, const TArray<uint8>& Bytes)
 	if (!World)
 		return false;
 
-	FMemoryReader Reader(Bytes, true);
+	FMemoryReader Reader(Bytes);
 	FJsonArchiveInputFormatter Formatter(Reader);   
 	if (Reader.IsError())
 	{
@@ -73,6 +72,77 @@ bool FJsonArchive::LoadWorldFromBytes(UWorld* World, const TArray<uint8>& Bytes)
 
 	World->ClearWorld();
 	World->Serialize(Root.EnterRecord("World"));
+	Ar.Close();
+
+	World->GetScene().BuildBVH();
+	return !Reader.IsError();
+}
+
+bool FJsonArchive::SaveActorsToBytes(const TArray<AActor*>& Actors, TArray<uint8>& OutBytes)
+{
+	TArray<AActor*> SavedActors;
+	for (AActor* Actor : Actors)
+	{
+		if (Actor && !Actor->HasAnyFlags(EObjectFlags::RF_Transient))
+			SavedActors.Add(Actor);
+	}
+	if (SavedActors.IsEmpty())
+		return false;
+
+	OutBytes.Reset();
+	FMemoryWriter Writer(OutBytes);
+	{
+		FJsonArchiveOutputFormatter Formatter(Writer);
+		FStructuredArchive Ar(Formatter);
+
+		FStructuredArchive::FRecord Root = Ar.Open().EnterRecord();
+		int32 Version = SceneVersion;
+		Root << SA_VALUE("Version", Version);
+
+		int32 Num = SavedActors.Num();
+		FStructuredArchive::FArray ActorArray = Root.EnterArray("Actors", Num);
+		for (AActor* Actor : SavedActors)
+			ULevel::SaveActorRecord(ActorArray.EnterElement().EnterRecord(), Actor);
+
+		Ar.Close();
+	}
+	return !Writer.IsError();
+}
+
+bool FJsonArchive::SpawnActorsFromBytes(UWorld* World, const TArray<uint8>& Bytes, TArray<AActor*>& OutActors)
+{
+	OutActors.Reset();
+	if (!World || !World->GetPersistentLevel() || Bytes.IsEmpty())
+		return false;
+
+	FMemoryReader Reader(Bytes);
+	FJsonArchiveInputFormatter Formatter(Reader);
+	if (Reader.IsError())
+		return false;
+
+	FStructuredArchive Ar(Formatter);
+	FStructuredArchive::FRecord Root = Ar.Open().EnterRecord();
+
+	int32 Version = 0;
+	Root << SA_VALUE("Version", Version);
+	if (Version != SceneVersion)
+		return false;
+
+	int32 Num = 0;
+	FStructuredArchive::FArray ActorArray = Root.EnterArray("Actors", Num);
+	ULevel* Level = World->GetPersistentLevel();
+	TArray<ULevel::FPendingActorAttachment> PendingAttachments;
+	TArray<FString> SavedNames;
+	for (int32 i = 0; i < Num; ++i)
+	{
+		FString SavedName;
+		if (AActor* Actor = Level->SpawnActorFromRecord(ActorArray.EnterElement().EnterRecord(), &PendingAttachments, &SavedName))
+		{
+			OutActors.Add(Actor);
+			SavedNames.Add(SavedName);
+		}
+	}
+	Level->ResolveActorAttachments(PendingAttachments, OutActors, SavedNames);
 	Ar.Close();
 
 	World->GetScene().BuildBVH();

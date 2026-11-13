@@ -68,13 +68,30 @@ bool FStatOverlay::ExecCommand(const FString& CommandLine, FString& OutMessage)
 	if (Tokens.Num() == 0 || !EqualsIgnoreCase(Tokens[0], "stat"))
 		return false;
 
-	if (Tokens.Num() < 2)
+	constexpr const char* Usage = "Usage: stat <fps|memory|profile|light|decal|skinning|all|none> [on|off]";
+	if (Tokens.Num() < 2 || Tokens.Num() > 3)
 	{
-		OutMessage = "Usage: stat <fps|memory|profile|all|none>";
+		OutMessage = Usage;
 		return true;
 	}
 
 	const FString& Arg = Tokens[1];
+
+	// 세 번째 토큰(on/off, 1/0)이 있으면 토글하지 않고 그 값으로 정한다. "stat all off", "stat fps on"
+	int32 Explicit = -1;
+	if (Tokens.Num() == 3)
+	{
+		const FString& State = Tokens[2];
+		if (EqualsIgnoreCase(State, "on") || EqualsIgnoreCase(State, "1") || EqualsIgnoreCase(State, "true"))
+			Explicit = 1;
+		else if (EqualsIgnoreCase(State, "off") || EqualsIgnoreCase(State, "0") || EqualsIgnoreCase(State, "false"))
+			Explicit = 0;
+		else
+		{
+			OutMessage = Usage;
+			return true;
+		}
+	}
 
 	if (EqualsIgnoreCase(Arg, "none"))
 	{
@@ -85,8 +102,10 @@ bool FStatOverlay::ExecCommand(const FString& CommandLine, FString& OutMessage)
 
 	if (EqualsIgnoreCase(Arg, "all"))
 	{
-		Flags = EStatFlags::FPS | EStatFlags::Memory | EStatFlags::Profile | EStatFlags::Light | EStatFlags::Decal;
-		OutMessage = "stat all: all overlays enabled";
+		const bool bEnable = Explicit != 0;
+		Flags = bEnable ? (EStatFlags::FPS | EStatFlags::Memory | EStatFlags::Profile | EStatFlags::Light | EStatFlags::Decal | EStatFlags::Skinning)
+			: EStatFlags::None;
+		OutMessage = bEnable ? "stat all: all overlays enabled" : "stat all: all overlays disabled";
 		return true;
 	}
 
@@ -101,18 +120,19 @@ bool FStatOverlay::ExecCommand(const FString& CommandLine, FString& OutMessage)
 		Target = EStatFlags::Light;
 	else if (EqualsIgnoreCase(Arg, "decal"))
 		Target = EStatFlags::Decal;
-	else if (EqualsIgnoreCase(Arg, "skinning"))
+	else if (EqualsIgnoreCase(Arg, "skinning") || EqualsIgnoreCase(Arg, "skin"))
 		Target = EStatFlags::Skinning;
-
 
 	if (Target == EStatFlags::None)
 	{
-		OutMessage = std::format("stat: unknown stat '{}'. Available: fps, memory, profile, light, decal, all, none", Arg);
+		OutMessage = std::format(
+			"stat: unknown stat '{}'. Available: "
+			"fps, memory, profile, light, decal, skinning, all, none", Arg);
 		return true;
 	}
 
-	// UE와 같이 같은 명령을 다시 입력하면 해당 항목만 꺼진다.
-	const bool bEnable = !HasFlag(Flags, Target);
+	// UE와 같이 같은 명령을 다시 입력하면 해당 항목만 꺼진다. on/off를 주면 그 값으로 정한다.
+	const bool bEnable = Explicit >= 0 ? Explicit == 1 : !HasFlag(Flags, Target);
 	if (bEnable)
 		Flags |= Target;
 	else

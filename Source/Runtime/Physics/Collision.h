@@ -4,6 +4,7 @@ class UShapeComponent;
 class USphereComponent;
 class UCapsuleComponent;
 class UBoxComponent;
+struct FRay;
 
 struct FWorldSphere { FVector Center; float Radius; };
 struct FWorldCapsule { FVector A; FVector B; float Radius; }; // A·B = 위·아래 반구 중심
@@ -22,6 +23,8 @@ namespace FCollision
 	bool CapsuleCapsule(const FWorldCapsule& A, const FWorldCapsule& B);
 	bool BoxBox(const FWorldBox& A, const FWorldBox& B);
 	bool CapsuleBox(const FWorldCapsule& C, const FWorldBox& B);
+	bool SweepSphereCapsule(const FRay& Ray, float MaxDistance, float SphereRadius,
+		const FWorldCapsule& Capsule, float& OutDistance, FVector& OutNormal);
 
 	// 두 도형이 겹치면 true를 반환
 	bool Overlap(const UShapeComponent* A, const UShapeComponent* B);

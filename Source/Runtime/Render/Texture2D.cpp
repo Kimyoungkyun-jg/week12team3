@@ -93,6 +93,31 @@ void FTexture2D::CreateViews(ID3D11Device* Device, const D3D11_TEXTURE2D_DESC& I
 		if (FAILED(hr))
 			HTR_LOG(Error, "[Texture2D] CreateDepthStencilView failed (hr=0x{:08X})", (uint32)hr);
 	}
+
+	if ((InDesc.BindFlags & D3D11_BIND_DEPTH_STENCIL) &&
+		InDesc.Format == DXGI_FORMAT_R24G8_TYPELESS &&
+		InDesc.SampleDesc.Count == 1 &&
+		InDesc.ArraySize == 1)
+	{
+		D3D11_DEPTH_STENCIL_VIEW_DESC Desc{};
+
+		Desc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		Desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+
+		Desc.Flags =
+			D3D11_DSV_READ_ONLY_DEPTH |
+			D3D11_DSV_READ_ONLY_STENCIL;
+
+		const HRESULT Result = Device->CreateDepthStencilView(
+			Texture.Get(),
+			&Desc,
+			ReadOnlyDSV.GetAddressOf());
+
+		if (FAILED(Result))
+		{
+			HTR_LOG(Error, "[Texture2D] Create ReadOnlyDSV failed (hr=0x{:08X})", (uint32)Result);
+		}
+	}
 }
 
 UTexture2D::UTexture2D()

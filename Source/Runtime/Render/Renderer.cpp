@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "Render/Renderer.h"
 #include "Render/RenderCommand.h"
+#include "Render/GpuProfiler.h"
 #include <algorithm>
 #include <chrono>
 #include <unordered_map>
@@ -9,9 +10,8 @@
 #include "Render/PostProcess/HeightFogRenderer.h"
 #include "Render/PostProcess/FXAARenderer.h"
 #include "Render/PostProcess/ToneMapData.h"
-#include "Render/DecalData.h"
-
 #include "Render/PostProcess/CameraOverlayRenderer.h"
+#include "Render/Decal/ProjectedDecalRenderer.h"
 #include "Text/TextRenderer.h"
 
 namespace
@@ -47,9 +47,8 @@ void FRenderer::BindBatch(const FMeshDrawBatch& Batch)
 	
 	RenderCommand::BindVertexBuffer(Batch.VertexBuffer);
 	RenderCommand::BindIndexBuffer(Batch.IndexBuffer);
-	if (Batch.BoneBuffer)
-		RenderCommand::BindShaderResource(BoneMatrixBufferSlot, Batch.BoneBuffer, EShaderBindFlagBits::Vertex);
-
+	RenderCommand::BindShaderResource(16, Batch.SkinningMatricesBuffer, EShaderBindFlagBits::Vertex);
+	
 	if (Batch.bBindViewConstants)
 		RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex);
 	for (uint32 Index = 0; Index < Batch.Textures.Num(); ++Index)
@@ -80,11 +79,31 @@ void FRenderer::BindObject(const FMeshDrawBatch& Batch, const FMeshDrawBatch::FI
 	}
 }
 
-void FRenderer::DrawMeshes(std::span<const FMeshDrawBatch> Batches)
+void FRenderer::DrawMeshes(std::span<const FMeshDrawBatch> Batches,
+	const std::shared_ptr<FGpuTimingHistory>& SkeletalTiming, ESkinningMode MeasuredMode)
 {
 	uint32 PreviousTextureCount = 0;
+	using EScopeKind = FGpuProfiler::EScopeKind;
+	FGpuProfiler* Profiler = SkeletalTiming ? &FGpuProfiler::Get() : nullptr;
+	EScopeKind ActiveKind = EScopeKind::Pass;
+	int32 TimingHandle = -1;
 	for (const FMeshDrawBatch& Batch : Batches)
 	{
+		if (Profiler && !Batch.Items.IsEmpty())
+		{
+			EScopeKind Kind = EScopeKind::Pass;
+			const bool bGpuSkinned = Batch.SkinningMatricesBuffer != nullptr || Batch.bComputeSkinned;
+			if (Batch.bSkeletalMesh && bGpuSkinned == (MeasuredMode != ESkinningMode::CPU))
+				Kind = bGpuSkinned ? EScopeKind::GpuSkinnedDraw : EScopeKind::SkeletalDraw;
+
+			// Group adjacent draws without changing their order or including static meshes.
+			if (Kind != ActiveKind)
+			{
+				Profiler->EndScope(TimingHandle);
+				TimingHandle = Kind == EScopeKind::Pass ? -1 : Profiler->BeginScope(SkeletalTiming, Kind);
+				ActiveKind = Kind;
+			}
+		}
 		BindBatch(Batch);
 		if (PreviousTextureCount > Batch.Textures.Num())
 			RenderCommand::UnbindShaderResources(static_cast<uint32>(Batch.Textures.Num()),
@@ -92,12 +111,29 @@ void FRenderer::DrawMeshes(std::span<const FMeshDrawBatch> Batches)
 				EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 		
 		PreviousTextureCount = static_cast<uint32>(Batch.Textures.Num());
+
+		// BindBatch(Batch)는 Pipeline의 기본 StencilRef를 바인딩한다.
+		uint32 CurrentStencilRef = Batch.Pipeline.StencilRef;
 		for (const FMeshDrawBatch::FItem& Item : Batch.Items)
 		{
+			const uint32 DesiredStencilRef =
+				Item.bOverrideStencilRef
+				? Item.StencilRef
+				: Batch.Pipeline.StencilRef;
+
+			if (DesiredStencilRef != CurrentStencilRef)
+			{
+				RenderCommand::SetDepthStencilState(
+					Batch.Pipeline.DepthStencilState,
+					DesiredStencilRef);
+				CurrentStencilRef = DesiredStencilRef;
+			}
 			BindObject(Batch, Item);
 			RenderCommand::DrawIndexed(Item.IndexCount, Item.StartIndex);
 		}
 	}
+	if (Profiler)
+		Profiler->EndScope(TimingHandle);
 }
 
 void FRenderer::EnsurePerObjectSlotCapacity(uint32 SlotCount)
@@ -149,9 +185,16 @@ void FRenderer::InitScenePasses(const FString& SkyPanoramaPath)
 	CameraOverlay = MakeUnique<FCameraOverlayRenderer>();   // FXAA->Init(this); 아래
 	CameraOverlay->Init(this);
 	ToneMapConstants = RenderCommand::CreateConstantBuffer(sizeof(FToneMapData));
-	DecalConstants = RenderCommand::CreateConstantBuffer(sizeof(FDecalData));
 	SceneText = MakeUnique<FTextRenderer>();
 	SceneText->Init();
+	ProjectedDecal = MakeUnique<FProjectedDecalRenderer>();
+
+	if (!ProjectedDecal->Init(this))
+	{
+		HTR_LOG(Error, "Projected decal renderer init failed");
+		ProjectedDecal.reset();
+	}
+
 }
 
 FOcclusionMeasureResult FRenderer::MeasureDrawVisibility(std::span<const FMeshDrawBatch> Batches)

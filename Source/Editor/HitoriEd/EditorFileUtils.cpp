@@ -1,41 +1,17 @@
 #include "EnginePCH.h"
+#include "Core/ResourcePaths.h"
 #include "Editor/HitoriEd/EditorFileUtils.h"
 
 #include "Core/EngineLog.h"
 #include <commdlg.h>
 #include "Serialization/JsonArchive.h"
-#include "Editor/Asset/FbxImporter/FbxImporter.h"
  
 FString FEditorFileUtils::CurrentScenePath = "";
 
-void FEditorFileUtils::ImportFbx(EFbxImportMode Mode)
+namespace
 {
-	wchar_t FilePath[32768] = {};
-	OPENFILENAMEW Dialog = {};
-	Dialog.lStructSize = sizeof(Dialog);
-	Dialog.hwndOwner = GetActiveWindow();
-	Dialog.lpstrFile = FilePath;
-	Dialog.nMaxFile = static_cast<DWORD>(std::size(FilePath));
-	Dialog.lpstrFilter = L"FBX Files (*.fbx)\0*.fbx\0";
-	Dialog.lpstrTitle = Mode == EFbxImportMode::Static ? L"Import Static Mesh" : L"Import Skeletal Mesh";
-	Dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-	if (!GetOpenFileNameW(&Dialog))
-	{
-		const DWORD Error = CommDlgExtendedError();
-		if (Error != 0) HTR_LOG(Error, "FBX file dialog failed: {}", Error);
-		return;
-	}
-
-	// 파일 선택의 UTF-16 경로를 Importer가 받는 UTF-8로 변환한다.
-	const auto Utf8 = std::filesystem::path(FilePath).generic_u8string();
-	FFbxImportResult Result;
-	FString Error;
-	if (!FFbxImporter::ImportToAssets(FString(Utf8.begin(), Utf8.end()), Mode, Result, Error))
-	{
-		HTR_LOG(Error, "FBX Import failed: {}", Error);
-		MessageBoxW(Dialog.hwndOwner, L"FBX를 가져오지 못했습니다. Output Log에서 오류를 확인하세요.", L"FBX Import", MB_OK | MB_ICONERROR);
-	}
-	// 성공·skip·경고는 Importer가 기록하므로 여기서 다시 출력하지 않는다.
+	// 파일 대화상자 버퍼 크기(바이트). UTF-8 한글은 글자당 3바이트이고 긴 경로도 받아야 하므로 MAX_PATH보다 크게 잡는다.
+	constexpr DWORD DialogPathCapacity = 32768;
 }
 
 bool FEditorFileUtils::NewScene(UWorld* World)
@@ -136,17 +112,20 @@ bool FEditorFileUtils::LoadScene(UWorld* World)
 
 FString FEditorFileUtils::OpenSaveSceneDialog()
 {
-	char FilePath[MAX_PATH] = {};
+	// 긴 경로를 받을 수 있도록 MAX_PATH 대신 넉넉한 버퍼를 쓴다. 매니페스트 덕분에 *A API는 UTF-8이다.
+	char FilePath[DialogPathCapacity] = {};
 
 	OPENFILENAMEA ofn = {};
 	ofn.lStructSize = sizeof(OPENFILENAMEA);
 	ofn.hwndOwner = nullptr;
 	ofn.lpstrFile = FilePath;
-	ofn.nMaxFile = MAX_PATH;
+	ofn.nMaxFile = DialogPathCapacity;
 
 	ofn.lpstrFilter = "Scene Files (*.scene)\0*.scene\0";
 	ofn.lpstrDefExt = "scene";
-	ofn.lpstrInitialDir = "Scene/";
+	// 상대 경로는 대화상자가 무시할 수 있어 절대 경로로 넘긴다.
+	const std::string InitialDir = std::filesystem::absolute(ContentPaths::SceneFolder).make_preferred().string();
+	ofn.lpstrInitialDir = InitialDir.c_str();
 
 	ofn.Flags =
 		OFN_PATHMUSTEXIST |
@@ -161,23 +140,49 @@ FString FEditorFileUtils::OpenSaveSceneDialog()
 	return FString();
 }
 
+FString FEditorFileUtils::OpenScriptDialog(const FString& InitialFolder)
+{
+	// 긴 경로를 받을 수 있도록 MAX_PATH 대신 넉넉한 버퍼를 쓴다. 매니페스트 덕분에 *A API는 UTF-8이다.
+	char FilePath[DialogPathCapacity] = {};
+
+	OPENFILENAMEA ofn = {};
+	ofn.lStructSize = sizeof(OPENFILENAMEA);
+	ofn.hwndOwner = nullptr;
+	ofn.lpstrFile = FilePath;
+	ofn.nMaxFile = DialogPathCapacity;
+
+	ofn.lpstrFilter = "Lua Scripts (*.lua)\0*.lua\0";
+	ofn.lpstrDefExt = "lua";
+	ofn.lpstrInitialDir = InitialFolder.c_str();
+
+	ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+
+	if (GetOpenFileNameA(&ofn))
+		return FString(FilePath);
+
+	return FString();
+}
+
 FString FEditorFileUtils::OpenLoadSceneDialog()
 {
-	char FilePath[MAX_PATH] = {};
+	// 긴 경로를 받을 수 있도록 MAX_PATH 대신 넉넉한 버퍼를 쓴다. 매니페스트 덕분에 *A API는 UTF-8이다.
+	char FilePath[DialogPathCapacity] = {};
 
 	OPENFILENAMEA ofn = {};
 	ofn.lStructSize = sizeof(OPENFILENAMEA);
 	ofn.hwndOwner = nullptr;
 
 	ofn.lpstrFile = FilePath;
-	ofn.nMaxFile = MAX_PATH;
+	ofn.nMaxFile = DialogPathCapacity;
 
 	ofn.lpstrFilter =
 		"Scene Files (*.scene)\0*.scene\0"
 		"All Files (*.*)\0*.*\0";
 
 	ofn.lpstrDefExt = "scene";
-	ofn.lpstrInitialDir = "Scene/";
+	// 상대 경로는 대화상자가 무시할 수 있어 절대 경로로 넘긴다.
+	const std::string InitialDir = std::filesystem::absolute(ContentPaths::SceneFolder).make_preferred().string();
+	ofn.lpstrInitialDir = InitialDir.c_str();
 
 	ofn.Flags =
 		OFN_FILEMUSTEXIST |

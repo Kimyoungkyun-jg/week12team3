@@ -3,27 +3,12 @@
 #include "Window.h"
 #include "../resource.h"
 #include "Input/InputSystem.h"
-
-#include <dwmapi.h>
-#pragma comment(lib, "dwmapi.lib")
+#include "Input/MouseCapture.h"
 
 namespace
 {
 	// 등록 전에는 nullptr이며, 그 동안의 메시지는 창이 직접 처리한다.
 	FWndProcHook GWndProcHook = nullptr;
-
-	// 기본 프레임의 크기 조절 테두리 두께. 창의 DPI에 맞춘 값이다.
-	int GetFrameThicknessX(HWND hWnd)
-	{
-		const UINT Dpi = GetDpiForWindow(hWnd);
-		return GetSystemMetricsForDpi(SM_CXFRAME, Dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, Dpi);
-	}
-
-	int GetFrameThicknessY(HWND hWnd)
-	{
-		const UINT Dpi = GetDpiForWindow(hWnd);
-		return GetSystemMetricsForDpi(SM_CYFRAME, Dpi) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, Dpi);
-	}
 }
 
 void FWindow::SetWndProcHook(FWndProcHook Hook)
@@ -45,6 +30,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	else
 	{
 		window = reinterpret_cast<FWindow*>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
+	}
+
+	// 마우스 잠금 메시지는 ImGui 입력 상태에 섞이지 않게 훅보다 먼저 처리한다 (TEAM5). 잠금이 꺼져 있으면 아무 일도 하지 않는다.
+	if (msg == WM_KILLFOCUS || (msg == WM_ACTIVATEAPP && wParam == FALSE) || msg == WM_DESTROY)
+	{
+		FMouseCapture::Release(hWnd);
+	}
+	if (msg == WM_INPUT)
+	{
+		FMouseCapture::ProcessRawInput(hWnd, reinterpret_cast<HRAWINPUT>(lParam));
+		return DefWindowProc(hWnd, msg, wParam, lParam);
+	}
+	if (msg == WM_SETCURSOR && LOWORD(lParam) == HTCLIENT && FMouseCapture::IsActive(hWnd))
+	{
+		SetCursor(nullptr);
+		return TRUE;
 	}
 
 	// 훅을 받지 않는 창의 메시지는 ImGui 입력 상태에 섞이지 않게 바로 창이 처리한다.
@@ -100,59 +101,6 @@ void FWindow::Show()
 	SetForegroundWindow(hWnd);
 }
 
-void FWindow::EnableCustomTitleBar(FCaptionHitTest HitTest)
-{
-	if (!hWnd)
-		return;
-
-	bCustomTitleBar = true;
-	CaptionHitTest = HitTest;
-
-	// 창 스타일(WS_OVERLAPPEDWINDOW)은 그대로 둬서 그림자, 스냅, 최소화 애니메이션을 유지한다.
-	// DWM 프레임을 클라이언트 쪽으로 1픽셀 넓혀야 기본 프레임을 없앤 뒤에도 그림자가 남는다.
-	const MARGINS Margins{ 0, 0, 1, 0 };
-	DwmExtendFrameIntoClientArea(hWnd, &Margins);
-
-	// WM_NCCALCSIZE를 다시 받아 기본 제목 표시줄을 걷어낸다. 클라이언트 크기가 바뀌므로 WM_SIZE도 뒤따른다.
-	SetWindowPos(hWnd, nullptr, 0, 0, 0, 0,
-		SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-}
-
-LRESULT FWindow::HitTestCustomFrame(HWND hWnd, LPARAM lParam) const
-{
-	POINT Point{ static_cast<short>(LOWORD(lParam)), static_cast<short>(HIWORD(lParam)) };
-	ScreenToClient(hWnd, &Point);
-
-	RECT Client;
-	GetClientRect(hWnd, &Client);
-
-	// 최대화 상태에서는 테두리로 크기를 바꿀 수 없다.
-	if (!IsZoomed(hWnd))
-	{
-		const int BorderX = GetFrameThicknessX(hWnd);
-		const int BorderY = GetFrameThicknessY(hWnd);
-		const bool bLeft = Point.x < BorderX;
-		const bool bRight = Point.x >= Client.right - BorderX;
-		const bool bTop = Point.y < BorderY;
-		const bool bBottom = Point.y >= Client.bottom - BorderY;
-
-		if (bTop && bLeft) return HTTOPLEFT;
-		if (bTop && bRight) return HTTOPRIGHT;
-		if (bBottom && bLeft) return HTBOTTOMLEFT;
-		if (bBottom && bRight) return HTBOTTOMRIGHT;
-		if (bLeft) return HTLEFT;
-		if (bRight) return HTRIGHT;
-		if (bTop) return HTTOP;
-		if (bBottom) return HTBOTTOM;
-	}
-
-	// HTCAPTION을 돌려주면 끌기, 더블클릭 최대화, 우클릭 시스템 메뉴를 Windows가 처리한다.
-	if (CaptionHitTest && CaptionHitTest(Point.x, Point.y))
-		return HTCAPTION;
-
-	return HTCLIENT;
-}
-
 void FWindow::Destroy()
 {
 	if (!hWnd)
@@ -177,28 +125,6 @@ LRESULT FWindow::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 {
 	switch (msg)
 	{
-	case WM_NCCALCSIZE:
-		if (!bCustomTitleBar || !wParam)
-			return DefWindowProc(hWnd, msg, wParam, lParam);
-		// 0을 돌려주면 창 전체가 클라이언트 영역이 된다.
-		// 최대화된 창은 테두리 두께만큼 화면 밖으로 나가 있으므로 그만큼 안쪽으로 줄인다.
-		if (IsZoomed(hWnd))
-		{
-			NCCALCSIZE_PARAMS* Params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam);
-			const int BorderX = GetFrameThicknessX(hWnd);
-			const int BorderY = GetFrameThicknessY(hWnd);
-			Params->rgrc[0].left += BorderX;
-			Params->rgrc[0].right -= BorderX;
-			Params->rgrc[0].top += BorderY;
-			Params->rgrc[0].bottom -= BorderY;
-		}
-		return 0;
-
-	case WM_NCHITTEST:
-		if (!bCustomTitleBar)
-			return DefWindowProc(hWnd, msg, wParam, lParam);
-		return HitTestCustomFrame(hWnd, lParam);
-
 	case WM_LBUTTONDOWN:
 		FInputSystem::OnMouseDown(EMouseButton::Left);
 		break;
@@ -257,21 +183,21 @@ LRESULT FWindow::HandleMessage(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam
 		FInputSystem::OnKeyUp(wParam);
 		break;
 
-	// Alt를 누른 상태의 키(Alt 자체 포함)는 WM_KEY* 대신 WM_SYSKEY*로 온다. Alt+P 같은 단축키를 위해 같이 기록한다.
+	// Alt를 누른 동안의 키(Alt 자신, Alt+P 등)는 WM_SYSKEY*로 온다. 받지 않으면 Alt 조합 단축키가 동작하지 않는다.
+	// Alt+F4 같은 시스템 처리는 DefWindowProc에 그대로 넘긴다.
 	case WM_SYSKEYDOWN:
 		FInputSystem::OnKeyDown(wParam);
-		// Alt+F4(창 닫기)는 기본 처리로 넘긴다. 나머지는 넘기지 않아야 Alt가 시스템 메뉴를 열지 않는다
-		if (wParam == VK_F4)
-			return DefWindowProc(hWnd, msg, wParam, lParam);
-		break;
+		return DefWindowProc(hWnd, msg, wParam, lParam);
 
 	case WM_SYSKEYUP:
 		FInputSystem::OnKeyUp(wParam);
-		break;
+		return DefWindowProc(hWnd, msg, wParam, lParam);
 
-	// Alt+문자 조합이 메뉴 단축키를 찾다 경고음을 내지 않도록 먹는다
-	case WM_SYSCHAR:
-		break;
+	// Alt를 눌렀다 떼면 창 메뉴 모드로 들어가 다음 키 입력을 먹는다. 메뉴바가 없으니 막는다.
+	case WM_SYSCOMMAND:
+		if ((wParam & 0xFFF0) == SC_KEYMENU)
+			return 0;
+		return DefWindowProc(hWnd, msg, wParam, lParam);
 
 	// 포커스를 잃으면 이후의 KeyUp/ButtonUp 메시지가 이 창으로 오지 않으므로
 	// 눌린 상태가 그대로 남는다. 여기서 전부 비워준다.

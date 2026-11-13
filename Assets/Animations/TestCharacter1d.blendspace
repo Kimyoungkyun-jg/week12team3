@@ -1,0 +1,25 @@
+{
+  "Samples": [
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Walk_Fwd_Right.fbxbin",
+      "X": 300.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Jog_Fwd.fbxbin",
+      "X": 600.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Idle_ADS.fbxbin",
+      "X": 0.0
+    }
+  ],
+  "Skeleton": "Models/UnrealModel/SKEL_SKM_Quinn_Simple_root.fbxbin",
+  "Type": "BlendSpace1D",
+  "XAxis": {
+    "Divisions": 2,
+    "Max": 600.0,
+    "Min": 0.0,
+    "Name": "Speed",
+    "Snap": true
+  }
+}

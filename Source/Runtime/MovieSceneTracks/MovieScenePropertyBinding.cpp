@@ -12,8 +12,8 @@ namespace
 	const FProperty* FindFloatProperty(const UObject* Object, const FString& Name)
 	{
 		for (const UClass* Class = Object ? Object->GetClass() : nullptr; Class; Class = Class->Super)
-			for (const FProperty* Property : Class->GetProperties())
-				if (Property->IsA<FFloatProperty>() && Property->Name == Name) return Property;
+			for (const FProperty& Property : Class->GetProperties())
+				if (Property.Type == EPropertyType::Float && Property.Name == Name) return &Property;
 		return nullptr;
 	}
 

@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "LightSceneProxy.h"
+#include "Render/ShadowRendering.h"
 
 #include "Components/DirectionalLightComponent.h"
 #include "Components/PointLightComponent.h"
@@ -43,7 +44,7 @@ void FDirectionalLightSceneProxy::GetLightShaderParameters(FLightRenderParameter
 	const UDirectionalLightComponent* Dir = static_cast<const UDirectionalLightComponent*>(LightComponent);
 
 	FTransform Transform;
-	Transform.Rotation = Dir->GetWorldRotation().Quaternion();
+	Transform.Rotation = Dir->GetWorldRotation();
 	const FLinearColor Color(Dir->GetLightColor());
 
 	Out = FLightRenderParameters{};
@@ -77,7 +78,7 @@ void FSpotLightSceneProxy::GetLightShaderParameters(FLightRenderParameters& Out)
 	const FLinearColor Color(SpotLightComponent->GetLightColor());
 
 	FTransform Transform;
-	Transform.Rotation = SpotLightComponent->GetWorldRotation().Quaternion();
+	Transform.Rotation = SpotLightComponent->GetWorldRotation();
 
 	const float Outer = FMath::Clamp(SpotLightComponent->GetOuterConeAngle(), 0.0f, 89.0f);
 	const float Inner = FMath::Clamp(SpotLightComponent->GetInnerConeAngle(), 0.0f, Outer);
@@ -102,7 +103,7 @@ void FRectLightSceneProxy::GetLightShaderParameters(FLightRenderParameters& Out)
 	const FLinearColor Color(RectLightComponent->GetLightColor());
 
 	FTransform Transform;
-	Transform.Rotation = RectLightComponent->GetWorldRotation().Quaternion();
+	Transform.Rotation = RectLightComponent->GetWorldRotation();
 
 	Out = FLightRenderParameters{};
 	Out.Type = static_cast<uint32>(ELightType::Rect);
@@ -135,7 +136,9 @@ uint32 FDirectionalLightSceneProxy::GetNumViewDependentWholeSceneShadows(const F
 	const UDirectionalLightComponent* Dir = static_cast<const UDirectionalLightComponent*>(LightComponent);
 	// 거리 0이면 동적 그림자 끔 (언리얼 주석: "A value of 0 disables the dynamic shadow")
 	if (Dir->GetDynamicShadowDistanceMovableLight() <= 0.0f) return 0;
-	return std::clamp(Dir->GetDynamicShadowCascades(), 1u, UDirectionalLightComponent::MaxDynamicShadowCascades);
+	// 콘솔 r.Shadow.CSM.MaxCascades(CSM Count)가 라이트 설정의 상한이 된다 (언리얼과 같음).
+	const uint32 MaxCascades = std::clamp(GShadowCVars.CSMMaxCascades, 1u, UDirectionalLightComponent::MaxDynamicShadowCascades);
+	return std::clamp(Dir->GetDynamicShadowCascades(), 1u, MaxCascades);
 }
 
 bool FDirectionalLightSceneProxy::GetViewDependentWholeSceneProjectedShadowInitializer(const FSceneView& View, int32 InCascadeIndex,
@@ -292,7 +295,7 @@ FSphere FSpotLightSceneProxy::GetBoundingSphere() const
 	const float CosOuter = std::cos(FMath::DegreesToRadians(FMath::Clamp(Spot->GetOuterConeAngle(), 0.0f, 89.0f)));
 
 	FTransform Transform;
-	Transform.Rotation = Spot->GetWorldRotation().Quaternion();
+	Transform.Rotation = Spot->GetWorldRotation();
 
 	// 언리얼과 같은 근사: 원뿔 축 중간점에서 원뿔 가장자리 끝까지의 거리 (코사인 법칙)
 	const float BoundsRadius = std::sqrt(1.25f * Radius * Radius - Radius * Radius * CosOuter);

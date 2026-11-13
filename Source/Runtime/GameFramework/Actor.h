@@ -11,7 +11,6 @@
 
 class UWorld;
 class ULevel;
-struct FLuaScriptInstance;
 struct FMinimalViewInfo;
 
 UCLASS()
@@ -38,7 +37,17 @@ public:
 
 	const TArray<UActorComponent*>& GetComponents() const { return Components; }
 	USceneComponent* GetRootComponent() const { return RootComponent; }
-	void SetRootComponent(USceneComponent* SceneComponent) { RootComponent = SceneComponent; }
+	// 루트는 이 액터가 소유한 씬 컴포넌트만 지정할 수 있다. nullptr도 허용한다.
+	bool SetRootComponent(USceneComponent* SceneComponent);
+	// 기존 계층과 월드 Transform을 유지하며 소유한 씬 컴포넌트를 새 루트로 승격한다.
+	bool ReplaceRootComponent(USceneComponent* NewRoot);
+
+	// 액터끼리 붙이기 (TEAM5). 이 액터의 루트를 부모 액터의 루트(또는 ParentComponent)에 붙인다. 순환이면 false
+	bool AttachToActor(AActor* ParentActor, EAttachmentRule Rule = EAttachmentRule::KeepWorld, USceneComponent* ParentComponent = nullptr);
+	void DetachFromActor(EAttachmentRule Rule = EAttachmentRule::KeepWorld);
+	AActor* GetAttachParentActor() const;
+	// 이 액터의 컴포넌트에 루트가 붙은 다른 액터들 (아웃라이너 트리)
+	void GetAttachedActors(TArray<AActor*>& OutActors) const;
 	void SetActorEnableCollision(bool bEnabled) { bActorEnableCollision = bEnabled; }
 	bool GetActorEnableCollision() const { return bActorEnableCollision; }
 
@@ -52,11 +61,14 @@ public:
 	bool TryGetActorBounds(FBox& OutBounds) const;
 
 	bool Destroy();
+	bool IsActorBeingDestroyed() const { return bActorIsBeingDestroyed; }
+	void EndPlayActor();
 	
 	//xx삭제 예정
 	friend class UWorld;
 
-	UActorComponent* AddComponent(UClass* ComponentClass, FName Name);
+	// 자동 부착 시 첫 씬 컴포넌트가 루트가 된다. 로드는 저장된 계층을 직접 복원한다.
+	UActorComponent* AddComponent(UClass* ComponentClass, FName Name, bool bManualAttachment = false);
 	void DestroyComponent(UActorComponent* Component);
 
 	// bCanEverTick이 켜진 액터·컴포넌트의 Tick 함수만 World의 FTickTaskManager에 등록하거나 해제한다.
@@ -73,13 +85,10 @@ public:
 	// Parameter : 바로 다시 Register 할껀지
 	virtual void UnregisterAllComponents();
 
-	// Lua 스크립트 (담당: A). ScriptPath가 비어 있으면 Script를 만들지 않는다.
-	// 이 헤더에서 sol.hpp를 include하지 않도록 포인터로 둔다.
-	UPROPERTY(EditAnywhere)
-	FString ScriptPath;
-	FLuaScriptInstance* Script = nullptr;
+	// Lua 스크립트는 UScriptComponent로 붙인다 (담당: A). 액터 BeginPlay 도중이면 true
+	bool IsBeginningPlay() const { return bIsBeginningPlay; }
 
-	// 컴포넌트 충돌 이벤트를 액터 단위로 받는 지점 (C가 호출, A가 Lua로 넘김)
+	// 컴포넌트 충돌 이벤트를 액터 단위로 받는 지점 (C가 호출, A가 붙은 UScriptComponent 전부에 넘김)
 	virtual void NotifyActorBeginOverlap(AActor* OtherActor);
 	virtual void NotifyActorEndOverlap(AActor* OtherActor);
 	virtual void NotifyHit(AActor* OtherActor);
@@ -101,5 +110,12 @@ private:
 	UPROPERTY(EditAnywhere)
 	bool bActorEnableCollision = true;
 	bool bHasBegunPlay = false;
+	bool bHasEndedPlay = false;
+	bool bIsEndingPlay = false;
+	bool bIsBeginningPlay = false;
+	bool bActorIsBeingDestroyed = false;
+
+	// 붙은 UScriptComponent 전부에 Lua 함수 호출을 넘긴다. 호출 중 컴포넌트가 바뀌어도 안전하게 복사본을 돈다.
+	void CallScripts(const char* Name, AActor* OtherActor);
 
 };

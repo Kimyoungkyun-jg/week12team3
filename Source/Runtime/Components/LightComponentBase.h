@@ -4,7 +4,7 @@
 #include "Math/Color.h"
 #include "LightComponentBase.generated.h"
 
-enum class ELightType { Directional, Point, Spot, Rect, Fireball, Sky };
+enum class ELightType { Directional, Point, Spot, Rect, Sky };
 
 UCLASS()
 class ULightComponentBase : public USceneComponent

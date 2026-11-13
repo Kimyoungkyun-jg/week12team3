@@ -120,7 +120,7 @@ void RenderCommand::BindPipelineState(const FPipelineState& PipelineState)
 	SetPrimitiveTopology(PipelineState.Topology);
 	SetRasterizerState(PipelineState.RasterizerState);
 	SetBlendState(PipelineState.BlendState);
-	SetDepthStencilState(PipelineState.DepthStencilState);
+	SetDepthStencilState(PipelineState.DepthStencilState, PipelineState.StencilRef);
 }
 
 void RenderCommand::BindShaderProgram(FShaderProgram* Shader)
@@ -371,7 +371,7 @@ void RenderCommand::SetRenderTargets(FTexture2D* ColorTarget, FTexture2D* DepthT
 }
 
 void RenderCommand::SetRenderTargets(uint32 ColorTargetCount, FTexture2D* const* ColorTargets,
-	FTexture2D* DepthTarget, uint32 DepthArraySlice)
+	FTexture2D* DepthTarget, uint32 DepthArraySlice, bool bReadOnlyDepthStencil)
 {
 	assert(ColorTargetCount <= D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT);
 	ID3D11RenderTargetView* RTVs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT]{};
@@ -380,8 +380,19 @@ void RenderCommand::SetRenderTargets(uint32 ColorTargetCount, FTexture2D* const*
 	ID3D11DepthStencilView* DSV = nullptr;
 	if (DepthTarget)
 	{
-		DSV = DepthTarget->GetDimension() == ETextureDimension::Texture2DArray
-			? static_cast<FTexture2DArray*>(DepthTarget)->GetDSV(DepthArraySlice) : DepthTarget->GetDSV();
+		if (bReadOnlyDepthStencil)
+		{
+			// 현재는 FTexture2D만 지원한다.
+			assert(DepthTarget->GetDimension() == ETextureDimension::Texture2D);
+
+			DSV = DepthTarget->GetReadOnlyDSV();
+			assert(DSV);
+		}
+		else
+		{
+			DSV = DepthTarget->GetDimension() == ETextureDimension::Texture2DArray
+				? static_cast<FTexture2DArray*>(DepthTarget)->GetDSV(DepthArraySlice) : DepthTarget->GetDSV();
+		}
 	}
 	RenderDevice->GetContext()->OMSetRenderTargets(ColorTargetCount, ColorTargetCount ? RTVs : nullptr, DSV);
 }
@@ -425,9 +436,9 @@ void RenderCommand::SetBlendState(EBlendState State)
 	RenderDevice->GetContext()->OMSetBlendState(RenderDevice->GetBlendState(State), nullptr, 0xffffffff);
 }
 
-void RenderCommand::SetDepthStencilState(EDepthStencilState State)
+void RenderCommand::SetDepthStencilState(EDepthStencilState State, uint32 StencilRef)
 {
-	RenderDevice->GetContext()->OMSetDepthStencilState(RenderDevice->GetDepthStencilState(State), 0);
+	RenderDevice->GetContext()->OMSetDepthStencilState(RenderDevice->GetDepthStencilState(State), StencilRef);
 }
 
 void RenderCommand::BindSamplerState(uint32 Slot, ESamplerState SamplerState, EShaderBindFlagBits FlagBits)

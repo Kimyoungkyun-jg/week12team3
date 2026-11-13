@@ -18,11 +18,18 @@ public:
 	FTexture2D(ID3D11Device* Device, ComPtr<ID3D11Resource> SwapchainTexture, const D3D11_TEXTURE2D_DESC& InDesc);
 	virtual ~FTexture2D() = default;
 
+	ID3D11DepthStencilView* GetReadOnlyDSV() const
+	{
+		return ReadOnlyDSV.Get();
+	}
+
 protected:
 	FTexture2D() = default;
 
 private:
 	void CreateViews(ID3D11Device* Device, const D3D11_TEXTURE2D_DESC& InDesc);
+
+	ComPtr<ID3D11DepthStencilView> ReadOnlyDSV;
 };
 
 UCLASS()
@@ -31,6 +38,7 @@ class UTexture2D : public URenderAsset
 	GENERATED_BODY()
 	
 	friend class UAssetManager;
+	friend class FFbxAssetLoader;
 public:
 	UTexture2D();
 	~UTexture2D();

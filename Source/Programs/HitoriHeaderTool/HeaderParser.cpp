@@ -30,17 +30,19 @@ namespace
         { "ScriptCallable", "FUNC_ScriptCallable" },
     };
 
-    // UPROPERTY(Type=LinearColor): 멤버 타입이 정하는 프로퍼티 클래스 대신 F<이름>Property를 쓴다 (Runtime/UObject/Property.h).
-    // 크기가 같은 타입끼리 위젯만 바꾸는 용도라서, 크기가 다르면 AddProperty의 static_assert가 막는다.
-    constexpr const char* PropertyTypeNames[] = { "Color", "LinearColor" };
+    // UPROPERTY(Type=Color) 에 쓸 수 있는 EPropertyType 이름
+    constexpr const char* PropertyTypeNames[] =
+    {
+        "Float", "Int", "String", "Bool", "Vector", "Vector4", "Color", "LinearColor", "Rotator", "Transform", "Object",
+    };
 
     // UPROPERTY(meta=(...)) 키. 순서는 Runtime/UObject/Property.h의 FPropertyMeta 필드 순서와 같아야 한다.
     // 생성 코드가 C++20 지정 초기화(FPropertyMeta{ .ClampMin = ..., .Delta = ... })를 쓰기 때문이다.
     constexpr const char* PropertyMetaKeys[] = { "ClampMin", "ClampMax", "UIMin", "UIMax", "Delta" };
     constexpr int PropertyMetaKeyCount = (int)std::size(PropertyMetaKeys);
 
-    // meta를 무시하는 위젯(색상 선택기)을 쓰는 Type=
-    constexpr const char* NonNumericTypeNames[] = { "Color", "LinearColor" };
+    // meta를 무시하는 위젯(색상 선택기, 체크박스 등)을 쓰는 Type=
+    constexpr const char* NonNumericTypeNames[] = { "String", "Bool", "Color", "LinearColor", "Transform", "Object" };
 
     std::string Quote(const std::string& Text) { return "'" + Text + "'"; }
 
@@ -90,9 +92,9 @@ bool FHeaderParser::Parse(std::vector<FClassInfo>& OutClasses, std::vector<FEnum
     while (!AtEnd())
     {
         const FToken& T = Tok();
-		if (T.Is("UCLASS") || T.Is("USTRUCT"))
+        if (T.Is("UCLASS"))
         {
-			ParseClass(T.Is("USTRUCT"));
+            ParseClass();
         }
         else if (T.Is("GENERATED_BODY"))
         {
@@ -168,29 +170,24 @@ bool FHeaderParser::IsInsideAnyClass() const
 }
 
 // UCLASS(지정자) class [API매크로] 이름 [final] : [public] 부모 [, 다른 부모] {
-// USTRUCT(지정자) struct [API매크로] 이름 [final] [: [public] 부모 USTRUCT] {
-// 둘 다 "프로퍼티 목록을 가진 타입"이라 같은 함수로 읽는다 (UE: UClass와 UScriptStruct가 둘 다 UStruct)
-void FHeaderParser::ParseClass(bool bIsStruct)
+void FHeaderParser::ParseClass()
 {
-	const char* MacroName = bIsStruct ? "USTRUCT" : "UCLASS";
-	const char* Keyword = bIsStruct ? "struct" : "class";
     const int Line = Tok().Line;
     ++Index;
 
     std::vector<FSpecifier> Specifiers;
-	if (!ParseSpecifiers(MacroName, Specifiers))
+    if (!ParseSpecifiers("UCLASS", Specifiers))
     {
         return;
     }
     if (IsInsideAnyClass())
     {
-		Error(Line, std::string(MacroName) + " inside a class (nested type) is not supported.");
+        Error(Line, "UCLASS inside a class (nested class) is not supported.");
         return;
     }
-	if (AtEnd() || !Tok().Is(Keyword))
+    if (AtEnd() || !Tok().Is("class"))
     {
-		// UE도 USTRUCT는 struct, UCLASS는 class만 받는다
-		Error(CurrentLine(), std::string(MacroName) + "() must be followed by a " + Keyword + " definition.");
+        Error(CurrentLine(), "UCLASS() must be followed by a class definition.");
         return;
     }
     ++Index;
@@ -215,45 +212,39 @@ void FHeaderParser::ParseClass(bool bIsStruct)
     }
     if (AtEnd() || Tok().Is(";"))
     {
-		Error(Line, std::string("No ") + Keyword + " definition after " + MacroName + "(). Do not put " + MacroName + " on a forward declaration.");
+        Error(Line, "No class definition after UCLASS(). Do not put UCLASS on a forward declaration.");
         return;
     }
     if (Name.empty())
     {
-		Error(Line, std::string("Could not find the name of the ") + MacroName + "() " + Keyword + ".");
+        Error(Line, "Could not find the name of the UCLASS() class.");
         return;
     }
-	// USTRUCT는 부모가 없어도 된다. 생성 코드는 DECLARE_STRUCT(이름, void)
-	const bool bHasParent = Tok().Is(":");
-	if (!bHasParent && !bIsStruct)
+    if (!Tok().Is(":"))
     {
         Error(Line, Quote(Name) + " has no parent class. A UCLASS class must derive from UObject.");
         return;
     }
+    ++Index;
 
-	std::string SuperName;
-	if (bHasParent)
+    while (!AtEnd() && (Tok().Is("public") || Tok().Is("protected") || Tok().Is("private") || Tok().Is("virtual")))
     {
         ++Index;
+    }
 
-		while (!AtEnd() && (Tok().Is("public") || Tok().Is("protected") || Tok().Is("private") || Tok().Is("virtual")))
-		{
-			++Index;
-		}
+    // 첫 번째 부모가 Super. ns::UBase, UBase<T> 처럼 여러 토큰일 수 있다.
+    std::string SuperName;
+    int AngleDepth = 0;
+    while (!AtEnd() && !(AngleDepth == 0 && (Tok().Is(",") || Tok().Is("{"))))
+    {
+        const FToken& T = Tok();
+        if (T.Is("<")) ++AngleDepth;
+        else if (T.Is(">")) --AngleDepth;
 
-		// 첫 번째 부모가 Super. ns::UBase, UBase<T> 처럼 여러 토큰일 수 있다.
-		int AngleDepth = 0;
-		while (!AtEnd() && !(AngleDepth == 0 && (Tok().Is(",") || Tok().Is("{"))))
-		{
-			const FToken& T = Tok();
-			if (T.Is("<")) ++AngleDepth;
-			else if (T.Is(">")) --AngleDepth;
-
-			const bool bNeedSpace = !SuperName.empty() && (std::isalnum((unsigned char)SuperName.back()) || SuperName.back() == '_')
-				&& (T.Type == ETokenType::Identifier || T.Type == ETokenType::Number);
-			SuperName += (bNeedSpace ? " " : "") + T.Text;
-			++Index;
-		}
+        const bool bNeedSpace = !SuperName.empty() && (std::isalnum((unsigned char)SuperName.back()) || SuperName.back() == '_')
+            && (T.Type == ETokenType::Identifier || T.Type == ETokenType::Number);
+        SuperName += (bNeedSpace ? " " : "") + T.Text;
+        ++Index;
     }
 
     // 다중 상속이면 나머지 부모는 무시한다.
@@ -263,19 +254,18 @@ void FHeaderParser::ParseClass(bool bIsStruct)
     }
     if (AtEnd())
     {
-		Error(Line, Quote(Name) + ": could not find the " + Keyword + " body '{'.");
+        Error(Line, Quote(Name) + ": could not find the class body '{'.");
         return;
     }
-	if (bHasParent && SuperName.empty())
+    if (SuperName.empty())
     {
-		Error(Line, Quote(Name) + ": could not find the parent name.");
+        Error(Line, Quote(Name) + ": could not find the parent class name.");
         return;
     }
 
-	ResolveClassSpecifiers(MacroName, Specifiers);
+    ResolveClassSpecifiers(Specifiers);
 
     FClassInfo Info;
-	Info.bIsStruct = bIsStruct;
     Info.Name = Name;
     Info.SuperName = SuperName;
     Info.Line = Line;
@@ -304,7 +294,7 @@ void FHeaderParser::ParseGeneratedBody()
     const int ClassIndex = CurrentClassIndex();
     if (ClassIndex < 0)
     {
-		Error(Line, "GENERATED_BODY() must be directly inside a UCLASS() class or USTRUCT() struct body.");
+        Error(Line, "GENERATED_BODY() must be directly inside a UCLASS() class body.");
         return;
     }
 
@@ -333,7 +323,7 @@ void FHeaderParser::ParseProperty()
     const int ClassIndex = CurrentClassIndex();
     if (ClassIndex < 0)
     {
-		Error(Line, "UPROPERTY is only allowed on member variables directly inside a UCLASS() class or USTRUCT() struct body.");
+        Error(Line, "UPROPERTY is only allowed on member variables directly inside a UCLASS() class body.");
         return;
     }
 
@@ -469,12 +459,6 @@ void FHeaderParser::ParseFunction()
     }
 
     FClassInfo& Class = (*Classes)[ClassIndex];
-	if (Class.bIsStruct)
-	{
-		// UFUNCTION은 UObject에 대고 부르므로 구조체에는 쓸 수 없다. UE도 USTRUCT 안의 UFUNCTION을 막는다.
-		Error(Line, "UFUNCTION is not allowed in a USTRUCT. Use a UCLASS for callable functions.");
-		return;
-	}
     if (AtEnd() || Function.Name.empty())
     {
         Error(Line, "Could not find a function name after UFUNCTION.");
@@ -773,12 +757,12 @@ bool FHeaderParser::Expect(const char* Text, const char* Context)
     return true;
 }
 
-void FHeaderParser::ResolveClassSpecifiers(const char* MacroName, const std::vector<FSpecifier>& Specifiers)
+void FHeaderParser::ResolveClassSpecifiers(const std::vector<FSpecifier>& Specifiers)
 {
-	// 아직 UCLASS / USTRUCT 지정자는 없다. 추가할 때 여기에 표를 만든다.
+    // 아직 UCLASS 지정자는 없다. 추가할 때 여기에 표를 만든다.
     for (const FSpecifier& Specifier : Specifiers)
     {
-		Error(Specifier.Line, std::string(MacroName) + " specifier " + Quote(Specifier.Key) + " is not supported yet.");
+        Error(Specifier.Line, "UCLASS specifier " + Quote(Specifier.Key) + " is not supported yet.");
     }
 }
 
@@ -813,7 +797,7 @@ void FHeaderParser::ResolvePropertySpecifiers(const std::vector<FSpecifier>& Spe
                 [&](const char* Name) { return Specifier.Value == Name; });
             if (!bValidType)
             {
-                Error(Specifier.Line, "Type=" + Specifier.Value + ": only Color and LinearColor are allowed for Type=. Other property types come from the member type.");
+                Error(Specifier.Line, "Type=" + Specifier.Value + ": not an EPropertyType name.");
                 continue;
             }
             Property.TypeOverride = Specifier.Value;

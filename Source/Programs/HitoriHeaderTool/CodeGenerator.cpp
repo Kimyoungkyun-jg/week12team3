@@ -32,46 +32,6 @@ namespace
         return Result;
     }
 
-	// static void RegisterProperties(<OwnerType>* <OwnerName>) { <OwnerName>->AddProperty<...>(...); ... }
-	// UCLASS는 UClass*, USTRUCT는 UScriptStruct*를 받는다. AddProperty는 둘의 부모인 UStruct에 있다.
-	void AddRegisterProperties(std::vector<std::string>& Lines, const FClassInfo& Class, const std::string& OwnerType, const std::string& OwnerName)
-	{
-		Lines.push_back("public:");
-		Lines.push_back("\tstatic void RegisterProperties(" + OwnerType + "* " + OwnerName + ")");
-		Lines.push_back("\t{");
-		for (const FPropertyInfo& Property : Class.Properties)
-		{
-			const std::string Type = "decltype(ThisClass::" + Property.Name + ")";
-			if (!Property.Meta.empty())
-			{
-				Lines.push_back("\t\tstatic_assert(TSupportsNumericMeta<" + Type + ">, \"" + Property.Name
-					+ ": meta is only allowed on float, int32, uint32, FVector, FVector4, FRotator properties.\");");
-			}
-
-			// Type=LinearColor면 프로퍼티 클래스를 직접 넘긴다. 없으면 AddProperty가 멤버 타입으로 고른다.
-			std::string TemplateArgs = Type;
-			if (!Property.TypeOverride.empty())
-			{
-				TemplateArgs += ", F" + Property.TypeOverride + "Property";
-			}
-
-			std::string Call = "\t\t" + OwnerName + "->AddProperty<" + TemplateArgs + ">(\"" + Property.Name + "\", offsetof(ThisClass, " + Property.Name + "), "
-				+ JoinFlags(Property.Flags) + ")";
-			if (!Property.Meta.empty())
-			{
-				// AddProperty가 만든 FNumericProperty를 돌려주므로 meta를 바로 넣는다
-				std::string Meta;
-				for (const FMetaValue& Value : Property.Meta)
-				{
-					Meta += (Meta.empty() ? "" : ", ") + ("." + Value.Key + " = " + Value.Literal);
-				}
-				Call += "->Meta = FPropertyMeta{ " + Meta + " }";
-			}
-			Lines.push_back(Call + ";");
-		}
-		Lines.push_back("\t}");
-	}
-
     // Foo.generated.h → HHT_Runtime_Foo_generated_h
     std::string MakeGuardName(const std::string& ModuleName, const std::string& GeneratedName)
     {
@@ -132,21 +92,41 @@ std::string GenerateHeader(const FHeaderInfo& Header, const std::string& ModuleN
     for (const FClassInfo& Class : Header.Classes)
     {
         std::vector<std::string> Lines;
-        if (Class.bIsStruct)
+        Lines.push_back("\tDECLARE_CLASS(" + Class.Name + ", " + Class.SuperName + ")");
+
+        if (!Class.Properties.empty())
         {
-            // USTRUCT: StaticStruct()가 RegisterProperties를 항상 부르므로 프로퍼티가 없어도 만든다.
-            // 구조체 멤버의 기본 접근은 public이라 DECLARE_STRUCT가 public:으로 끝난다 (UCLASS는 private:).
-            Lines.push_back("\tDECLARE_STRUCT(" + Class.Name + ", " + (Class.SuperName.empty() ? std::string("void") : Class.SuperName) + ")");
-            AddRegisterProperties(Lines, Class, "UScriptStruct", "InStruct");
-        }
-        else
-        {
-            Lines.push_back("\tDECLARE_CLASS(" + Class.Name + ", " + Class.SuperName + ")");
-            if (!Class.Properties.empty())
+            Lines.push_back("public:");
+            Lines.push_back("\tstatic void RegisterProperties(UClass* InClass)");
+            Lines.push_back("\t{");
+            for (const FPropertyInfo& Property : Class.Properties)
             {
-                AddRegisterProperties(Lines, Class, "UClass", "InClass");
-                Lines.push_back("private:");
+                const std::string Type = "decltype(ThisClass::" + Property.Name + ")";
+                if (!Property.Meta.empty())
+                {
+                    Lines.push_back("\t\tstatic_assert(TSupportsNumericMeta<" + Type + ">, \"" + Property.Name
+                        + ": meta is only allowed on float, int32, uint32, FVector, FVector4, FRotator properties.\");");
+                }
+
+                std::string Call = "\t\tInClass->AddProperty<" + Type + ">(\"" + Property.Name + "\", offsetof(ThisClass, " + Property.Name + ")";
+                if (!Property.TypeOverride.empty())
+                {
+                    Call += ", EPropertyType::" + Property.TypeOverride;
+                }
+                Call += ", " + JoinFlags(Property.Flags);
+                if (!Property.Meta.empty())
+                {
+                    std::string Meta;
+                    for (const FMetaValue& Value : Property.Meta)
+                    {
+                        Meta += (Meta.empty() ? "" : ", ") + ("." + Value.Key + " = " + Value.Literal);
+                    }
+                    Call += ", FPropertyMeta{ " + Meta + " }";
+                }
+                Lines.push_back(Call + ");");
             }
+            Lines.push_back("\t}");
+            Lines.push_back("private:");
         }
 
         if (!Class.Functions.empty())
@@ -166,7 +146,7 @@ std::string GenerateHeader(const FHeaderInfo& Header, const std::string& ModuleN
 
         // GENERATED_BODY()가 이 이름으로 바뀐다: CURRENT_FILE_ID _ __LINE__ _GENERATED_BODY
         const std::string MacroName = Header.FileId + "_" + std::to_string(Class.GeneratedBodyLine) + "_GENERATED_BODY";
-		Out += "// " + Class.Name + (Class.bIsStruct ? " (USTRUCT, " : " (") + std::to_string(Class.Properties.size()) + " properties, "
+        Out += "// " + Class.Name + " (" + std::to_string(Class.Properties.size()) + " properties, "
             + std::to_string(Class.Functions.size()) + " functions)\n";
         Out += MakeMacro(MacroName, Lines);
         Out += "\n";

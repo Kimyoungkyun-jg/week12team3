@@ -18,6 +18,7 @@ public:
 
     virtual ULightComponent* GetLightComponent() const { return DirectionalLightComponent; }
     UDirectionalLightComponent* GetPointLightComponent() const { return DirectionalLightComponent; }
+	UStaticMeshComponent* GetArrowComponent() const { return ArrowComponent; }
 
 private:
     UDirectionalLightComponent* DirectionalLightComponent = nullptr;

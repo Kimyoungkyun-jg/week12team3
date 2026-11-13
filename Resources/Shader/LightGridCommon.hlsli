@@ -12,9 +12,8 @@
 #define LIGHT_GRID_MODE_OFF 0u
 #define LIGHT_GRID_MODE_TILED 1u
 #define LIGHT_GRID_MODE_CLUSTERED 2u
-#define LIGHT_GRID_MODE_TILED_25D 3u
 
-// CPU의 FGridConstants와 동일한 224바이트 배치다.
+// CPU의 FGridConstants와 동일한 160바이트 배치다.
 cbuffer LightGridConstants : register(LIGHT_GRID_CONSTANT_REGISTER)
 {
     float4x4 GridView;
@@ -37,7 +36,6 @@ cbuffer LightGridConstants : register(LIGHT_GRID_CONSTANT_REGISTER)
 
     uint4 GridLightOffsets;
     float4 GridDepthParams; // Near, Far, SliceScale, SliceBias
-    float4x4 GridProjection; // 컬링 CS의 타일 평면과 AABB 계산에 쓴다
 };
 
 float GridDeviceZToViewDepth(float DeviceZ)

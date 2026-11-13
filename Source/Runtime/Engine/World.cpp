@@ -1,5 +1,4 @@
 #include "EnginePCH.h"
-#include "Render/LineBatcher.h"
 #include "World.h"
 #include "Level.h"
 
@@ -11,7 +10,9 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/DefaultPawn.h"
 #include "GameFramework/PlayerController.h"
-#include "GameFramework/MyPlayerController.h"
+#include "GameFramework/GameMode.h"
+#include "GameFramework/GameHUD.h"
+#include "UObject/UObjectHash.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Input/InputSystem.h"
 
@@ -20,10 +21,10 @@
 #include "Collision/Ray.h"
 #include "Components/BillboardComponent.h"
 #include "Components/ParticleSubUVComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
 
 #include "Components/StaticMeshComponent.h"
-#include "Components/SkinnedMeshComponent.h"
 #include "Asset/LOD/StaticMeshLODSelector.h"
 
 #include "Math/Frustum.h"
@@ -41,18 +42,20 @@
 
 #include "UObject/UObjectGlobals.h"
 
-#include "Script/LuaBindings.h"
+#include "Scripting/LuaBindings.h"
 #include "Physics/Collision.h"
 #include "Components/ShapeComponent.h"
+#include "Components/CapsuleComponent.h"
 
 namespace
 {
-	inline void WritePerObjectConstants(uint8* Dest, const FMatrix& LocalToWorld, const FMatrix& WorldToLocal, bool bReceiveShadow)
+	inline void WritePerObjectConstants(uint8* Dest, const FMatrix& LocalToWorld, const FMatrix& WorldToLocal, bool bReceiveShadow, bool bReceiveDecal)
 	{
 		FPerObjectConstants Constants{};
 		Constants.World = LocalToWorld;
 		Constants.NormalMatrix = WorldToLocal.GetTransposed();
 		Constants.ShadowFlags.X = bReceiveShadow ? 1.0f : 0.0f;   // GBuffer가 NormalRoughness.w 부호로 넘긴다
+		Constants.ShadowFlags.Y = bReceiveDecal ? 1.0f : 0.0f;
 		std::memcpy(Dest, &Constants, sizeof(Constants));
 	}
 }
@@ -65,14 +68,9 @@ DECLARE_CYCLE_STAT("Gather Elements", STAT_GatherElements);
 DECLARE_CYCLE_STAT("Gather - LOD", STAT_GatherLOD);
 DECLARE_CYCLE_STAT("Gather - Submit", STAT_GatherSubmit);
 
-UWorld::UWorld()
-	: CoroutineScheduler(*this)
-{
-}
-
 UWorld::~UWorld()
 {
-
+	FlushPendingDestruction();
 }
 
 bool UWorld::Init()
@@ -94,16 +92,12 @@ bool UWorld::Init()
 	//카메라 생성
 	CreateMainCamera();
 
-	// 디버그 선 도구를 만든다. FLineBatcher::Init의 렌더러 인자는 쓰이지 않는다.
-	LineBatcher = MakeUnique<FLineBatcher>();
-	LineBatcher->Init(nullptr, this);
-
 	return true;
 }
 
 AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transform)
 {
-	if (!Class) return nullptr;
+	if (bIsClearingWorld || !Class) return nullptr;
 	if (!Class->IsChildOf(AActor::StaticClass())) return nullptr;
 
 	// 1. ObjectFactory로 Actor 생성
@@ -130,6 +124,7 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 	// 4. Level->Actors에 등록한 뒤 컴포넌트를 월드에 연결한다.
 	PersistentLevel->AddActor(NewActor);
 	NewActor->RegisterAllComponents();
+	if (!IsValid(NewActor) || NewActor->IsActorBeingDestroyed()) return nullptr;
 
 	// 월드가 재생 중일 때 생성된 액터만 별도 BeginPlay 대기열에 넣는다.
 	if (bBegunPlay) BeginPlayList.Enqueue(NewActor);
@@ -139,178 +134,110 @@ AActor* UWorld::SpawnActor(UClass* Class, FName InName, const FTransform* Transf
 
 void UWorld::Tick(float RealDeltaTime)
 {
-	// Hit Stop 시간 흐름
+	if (bIsTicking || bIsClearingWorld || ActiveObjectCalls) return;
+	bIsTicking = true;
+	RealTimeSeconds += RealDeltaTime;
+
 	if (HitStopTimeRemaining > 0.0f)
 	{
 		HitStopTimeRemaining = std::max(HitStopTimeRemaining - RealDeltaTime, 0.0f);
 	}
 
 	const float DeltaTime = RealDeltaTime * GetEffectiveTimeDilation();
-	RealTimeSeconds += RealDeltaTime;
 
-	// World 시간 흐름
 	if (!bIsPaused)
 	{
 		TimeSeconds += DeltaTime;
 	}
 
-	// 모든 SceneComponent의 Transform 갱신
 	{
 		SCOPE_CYCLE_COUNTER(STAT_UpdateAllTransforms);
 		Scene.UpdateAllTransforms();
 	}
 
-	if (IsGameWorld())
+	// 에디터 월드가 아니면 액터 틱을 돌린다
+	if (WorldType != EWorldType::Editor)
 	{
-		GameWorldTick(DeltaTime);
-	}
-
-	if (WorldType == EWorldType::Editor)
-	{
-		EditorWorldTick(DeltaTime);
-	}
-	
-	if (WorldType == EWorldType::EditorPreview)
-	{
-		PreviewWorldTick(DeltaTime);
-	}
-
-	// 월드 Tick에서 변경된 변환과 바운드를 렌더링 전에 반영합니다.
-	{
-		SCOPE_CYCLE_COUNTER(STAT_UpdateAllTransforms);
-		Scene.UpdateAllTransforms();
-	}
-}
-
-void UWorld::GameWorldTick(float DeltaTime)
-{
-	// 새로운 Actor들의 BeginPlay 실행
-	while (!BeginPlayList.IsEmpty())
-	{
-		AActor* Actor = BeginPlayList.Peek();
-		BeginPlayList.Dequeue();
-
-		if (Actor)
+		while (!BeginPlayList.IsEmpty())
 		{
-			Actor->BeginPlay();
-		}
-	}
-
-	// 일시 정지 상태라면, 스킵
-	if (bIsPaused)
-	{
-		return;
-	}
-
-	// 모든 Actor를 도는 대신 등록된 Tick 함수만 실행한다
-	{
-		SCOPE_CYCLE_COUNTER(STAT_ActorTick);
-		TickTaskManager.RunAllTickGroups(DeltaTime);
-	}
-
-	// 코루틴 Tick
-	CoroutineScheduler.Tick(DeltaTime);
-
-	// ShapeComponent 충돌 처리
-	UpdateOverlaps();
-
-	// Lua Script 제거 처리
-	FLuaBindings::FlushPendingDestroy(this);
-
-	// 플레이어 카메라 업데이트
-	if (PlayerController)
-	{
-		PlayerController->UpdateCameraManager(DeltaTime);
-	}
-}
-
-void UWorld::EditorWorldTick(float DeltaTime)
-{
-	// Editor World에서 실행
-
-	// 에디터 월드에서도 파티클 시뮬레이션은 틱이 돌아야 한다
-	for (TObjectIterator<UParticleSubUVComponent> Comp; Comp; ++Comp)
-	{
-		if (!Comp || !Comp->IsRegistered() || Comp->GetWorld() != this)
-		{
-			continue;
+			AActor* Actor = BeginPlayList.Peek();
+			BeginPlayList.Dequeue();
+			if (IsValid(Actor) && !Actor->IsActorBeingDestroyed()) Actor->BeginPlay();
 		}
 
-		if (Comp->GetParticlesForView().IsEmpty())
+		if (!bIsPaused)
 		{
-			Comp->SetParticles(10);
+			SCOPE_CYCLE_COUNTER(STAT_ActorTick);
+			// 모든 Actor를 도는 대신 등록된 Tick 함수만 실행한다
+			TickTaskManager.RunAllTickGroups(DeltaTime);
+			FCoroutineScheduler::Get().Tick(DeltaTime);
+
+			UpdateOverlaps();
+			FLuaBindings::FlushPendingDestroy(this);
+			if (IsValid(PlayerController) && !PlayerController->IsActorBeingDestroyed())
+				PlayerController->UpdateCameraManager(RealDeltaTime);
 		}
-
-		Comp->TickComponent(DeltaTime);
 	}
-
-	// 스프링 암 컴포넌트도 에디터에서 틱이 돌아야 한다
-	for (TObjectIterator<USpringArmComponent> Comp; Comp; ++Comp)
+	else
 	{
-		if (!Comp || !Comp->IsRegistered() || Comp->GetWorld() != this)
+		// 에디터 월드에서도 파티클 시뮬레이션은 틱이 돌아야 한다
+		for (TObjectIterator<UParticleSubUVComponent> Comp; Comp; ++Comp)
 		{
-			continue;
+			if (!Comp || !Comp->IsRegistered() || Comp->GetWorld() != this)
+			{
+				continue;
+			}
+			if (Comp->GetParticlesForView().IsEmpty())
+			{
+				Comp->SetParticles(10);
+			}
+			Comp->TickComponent(DeltaTime);
 		}
-
-		Comp->UpdateInEditor();
-	}
-
-
-	for (TObjectIterator<UDecalComponent> Comp; Comp; ++Comp)
-	{
-		if (!Comp || !Comp->IsRegistered() || Comp->GetWorld() != this)
+		// 스프링 암 컴포넌트도 에디터에서 틱이 돌아야 한다
+		for (TObjectIterator<USpringArmComponent> Comp; Comp; ++Comp)
 		{
-			continue;
+			if (!Comp || !Comp->IsRegistered() || Comp->GetWorld() != this)
+			{
+				continue;
+			}
+			Comp->UpdateInEditor();
 		}
-		Comp->UpdateInEditor();
 	}
-}
-
-void UWorld::PreviewWorldTick(float DeltaTime)
-{
-	// 스킨드 메시 컴포넌트의 본이 수정되면 갱신되어야 함
-	for (TObjectIterator<USkinnedMeshComponent> Comp; Comp; ++Comp)
-	{
-		if (!Comp || !Comp->IsRegistered() || Comp->GetWorld() != this)
-		{
-			continue;
-		}
-
-		Comp->TickComponent(DeltaTime);
-	}
-
+	bIsTicking = false;
 }
 
 void UWorld::ClearWorld()
 {
+	if (bIsClearingWorld) return;
+	bIsClearingWorld = true;
 	EndPlay();
-
 	// BeginPlay 대기 중인 Actor 제거
 	while (!BeginPlayList.IsEmpty())
 	{
 		BeginPlayList.Dequeue();
 	}
+
 	
 	for (ULevel* Level : Levels)
 	{
-		for (AActor* Actor : Level->Actors)
+		const TArray<AActor*> Actors = Level->Actors;
+		for (AActor* Actor : Actors)
 		{
-			if (!Actor) continue;
-			if (Actor->HasBegunPlay())
-				Actor->EndPlay();
+			if (!IsValid(Actor)) continue;
+			Actor->EndPlayActor();
 			Actor->UnregisterAllComponents();
 			Actor->RegisterAllActorTickFunctions(false);
 		}
 		Level->ClearActors();
 	}
-	// 액터 EndPlay에서 새로 등록한 작업까지 최종 정리한다.
-	CoroutineScheduler.Reset();
+	FLuaBindings::DiscardPendingDestroy(this);
 	// 액터를 지우기 전에 렌더 프록시와 틱 등록부터 푼다. ClearActors는 액터를 delete만 하므로,
 	// 그대로 두면 지워진 컴포넌트를 가리키는 프록시가 FScene에 남아 다음 프레임에 터진다.
 	Scene.RemoveAllLights();
-	Scene.RemoveAllDecals();
 	Scene.RemoveAllPrimitives();
 	HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
+	bIsClearingWorld = false;
+	FlushPendingDestruction();
 }
 
 void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FViewContext* LODView, const FFrustumPlanes* Frustum, FRenderer* Renderer)
@@ -457,7 +384,7 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FViewContext* 
 					{
 						// 칸 VisibleIndex는 이 반복만 쓴다 → 스레드끼리 겹치지 않음
 						WritePerObjectConstants(SlotDest + size_t(VisibleIndex) * ObjectSlotBytes,
-							Proxy->GetLocalToWorld(), Proxy->GetWorldToLocal(), Proxy->bReceiveShadow);
+							Proxy->GetLocalToWorld(), Proxy->GetWorldToLocal(), Proxy->bReceiveShadow, Proxy->bReceiveDecal);
 						Slot = VisibleIndex;
 					}
 
@@ -519,7 +446,7 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FViewContext* 
 				}
 				else
 				{
-					Proxy->GetDynamicMeshElements(RenderQueue, LODView ? *LODView : FViewContext{});
+					Primitive->SubmitToRenderQueue(RenderQueue, LODView ? *LODView : FViewContext{});
 				}
 
 				// continue 없이 항상 여기까지 와서 새 패킷에 여유 칸을 배정한다.
@@ -529,7 +456,7 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FViewContext* 
 					FRenderPacket& Packet = RenderQueue[p];
 					const FMatrix& Model = Packet.Proxy ? Packet.Proxy->GetLocalToWorld() : Packet.Model ? *Packet.Model : FMatrix::Identity;
 					const FMatrix WorldToLocal = Packet.Proxy ? Packet.Proxy->GetWorldToLocal() : Model.Inverse();
-					WritePerObjectConstants(SlotDest + size_t(NextExtraSlot) * ObjectSlotBytes, Model, WorldToLocal, !Packet.Proxy || Packet.Proxy->bReceiveShadow);
+					WritePerObjectConstants(SlotDest + size_t(NextExtraSlot) * ObjectSlotBytes, Model, WorldToLocal, !Packet.Proxy || Packet.Proxy->bReceiveShadow, !Packet.Proxy || Packet.Proxy->bReceiveDecal);
 					Packet.Slot = NextExtraSlot++;
 				}
 			}
@@ -596,11 +523,28 @@ bool UWorld::DestroyActor(AActor* Actor)
 {
 	if (!Actor)
 		return false;
+	if (Actor->bActorIsBeingDestroyed || Actor->IsGarbage()) return true;
+	if (Actor->bIsEndingPlay || bIsClearingWorld) return false;
 
 	ULevel* Level = Actor->GetLevel();
 
-	if (!Level)
+	if (!Level || Actor->GetWorld() != this || Level->Actors.Find(Actor) == INDEX_NONE)
 		return false;
+	++ActiveObjectCalls;
+	struct FCallGuard { int32& Count; ~FCallGuard() { --Count; } } CallGuard{ ActiveObjectCalls };
+	Actor->bActorIsBeingDestroyed = true;
+	if (Actor == HUD) { if (PlayerController) PlayerController->SetHUD(nullptr); HUD = nullptr; }
+	if (Actor == PlayerController)
+	{
+		PlayerController->UnPossess();
+		PlayerController->SetHUD(nullptr);
+		if (HUD) HUD->SetOwningPlayerController(nullptr);
+		PlayerController = nullptr;
+	}
+	if (Actor == PlayerPawn) { if (PlayerController) PlayerController->UnPossess(); PlayerPawn = nullptr; }
+	if (Actor == GameMode) GameMode = nullptr;
+
+
 
 	// 1. BeginPlay 대기열에서 제거
 	TQueue<AActor*> NewBeginPlayList;
@@ -631,20 +575,49 @@ bool UWorld::DestroyActor(AActor* Actor)
 	FString ActorName = Actor->GetName();
 	uint32 ActorUUID = Actor->GetUUID();
 
-	if (Actor->HasBegunPlay())
-		Actor->EndPlay();
+	Actor->EndPlayActor();
 
 	// 3. 프록시 제거
 	Actor->UnregisterAllComponents();
 
 	Actor->RegisterAllActorTickFunctions(false);
+	if (APawn* Pawn = Cast<APawn>(Actor))
+		if (APlayerController* Controller = Pawn->GetController()) Controller->UnPossess();
+	if (APlayerController* Controller = Cast<APlayerController>(Actor)) Controller->UnPossess();
 
 	// 4. Actor 삭제
-	delete Actor;
+	// Actor 메모리는 프레임 안전 지점에서 해제
+	QueueObjectDeletion(Actor);
 
 	HTR_LOG(Info, "Destroy Actor : {} UUID {}", ActorName, ActorUUID);
 
 	return true;
+}
+
+void UWorld::QueueObjectDeletion(UObject* Object)
+{
+	if (!Object || PendingDeletion.Find(Object) != INDEX_NONE) return;
+	Object->MarkAsGarbage();
+	PendingDeletion.Add(Object);
+}
+
+void UWorld::FlushPendingDestruction()
+{
+	if (bIsTicking || bIsClearingWorld || ActiveObjectCalls || bFlushingDestruction) return;
+	bFlushingDestruction = true;
+	while (!PendingDeletion.IsEmpty())
+	{
+		TArray<UObject*> Objects = std::move(PendingDeletion);
+		PendingDeletion.Reset();
+		TArray<UObject*> Actors;
+		for (UObject* Object : Objects)
+		{
+			if (Object->IsA<AActor>()) Actors.Add(Object);
+			else delete Object;
+		}
+		for (UObject* Actor : Actors) delete Actor;
+	}
+	bFlushingDestruction = false;
 }
 
 // 다른 World의 객체를 제외하고 Component 교차 중 최근접 결과를 선택한다.
@@ -693,6 +666,11 @@ bool UWorld::SweepSingle(const FRay& WorldRay, float MaxDistance, float Radius, 
 				if (Enter > Exit) { bIntersects = false; break; }
 			}
 			if (!bIntersects) continue;
+			if (auto* Capsule = Cast<UCapsuleComponent>(Component))
+			{
+				if (!FCollision::SweepSphereCapsule(WorldRay, NearestT, Radius,
+					FCollision::ToWorld(Capsule), Enter, Normal)) continue;
+			}
 			NearestT = Enter;
 			OutHit.bBlockingHit = true;
 			OutHit.bStartPentrating = Enter == 0.0f;
@@ -871,27 +849,29 @@ bool UWorld::LineTraceSingle(const FRay& WorldRay, FHitResult& OutHit,
 void UWorld::BeginPlay()
 {
 	if (!IsGameWorld() || bBegunPlay) return;
-
-	//TODO : PlayerPawn, PlayerController Class 설정을 GameMode로 옮겨 수정 가능하게 바꿔야 한다.
-	if (!PlayerPawn)
+	UClass* ModeClass = FindClass(GameModeClassName);
+	if (!ModeClass || !ModeClass->IsChildOf(AGameMode::StaticClass()) || !ModeClass->Constructor)
+		ModeClass = AGameMode::StaticClass();
+	GameMode = Cast<AGameMode>(SpawnActor(ModeClass));
+	if (!GameMode) return;
+	if (!PlayerPawn && PlayerPawnClassName.empty())
 	{
 		for (AActor* Actor : PersistentLevel->GetActors())
 		{
 			if (APawn* Pawn = Cast<APawn>(Actor)) { PlayerPawn = Pawn; break; }
 		}
 	}
-	if (!PlayerPawn)
-	{
-		FTransform Transform = MainCamera ? MainCamera->GetActorTransform() : FTransform::Identity;
-		PlayerPawn = SpawnActor<ADefaultPawn>(NAME_None, &Transform);
-	}
-	if (!PlayerController) 
-		PlayerController = SpawnActor<AMyPlayerController>();
-	
+	GameMode->SpawnPlayer(PlayerPawn, PlayerController);
 	if (PlayerController)
-		PlayerController->SpawnPlayerCameraManager();
-	
-	if (PlayerController && PlayerPawn) PlayerController->Possess(PlayerPawn);
+	{
+		UClass* HUDClass = GetHUDClass();
+		HUD = Cast<AGameHUD>(SpawnActor(HUDClass));
+		if (HUD)
+		{
+			HUD->SetOwningPlayerController(PlayerController);
+			PlayerController->SetHUD(HUD);
+		}
+	}
 
 	// 기존 액터 목록을 고정한 후 시작한다. BeginPlay 중 생성된 액터는 대기열로 간다.
 	TArray<AActor*> InitialActors;
@@ -901,29 +881,98 @@ void UWorld::BeginPlay()
 				if (Actor) InitialActors.Add(Actor);
 	bBegunPlay = true;
 	for (AActor* Actor : InitialActors)
-		Actor->BeginPlay();
+		if (IsValid(Actor) && !Actor->IsActorBeingDestroyed()) Actor->BeginPlay();
 
 	// BeginPlay 중 생성된 액터도 PIE 입력 전에 시작한다.
 	while (!BeginPlayList.IsEmpty())
 	{
 		AActor* Actor = BeginPlayList.Peek();
 		BeginPlayList.Dequeue();
-		if (Actor) Actor->BeginPlay();
+		if (IsValid(Actor) && !Actor->IsActorBeingDestroyed()) Actor->BeginPlay();
 	}
 }
 
 void UWorld::EndPlay()
 {
-	CoroutineScheduler.Reset();
 	bBegunPlay = false;
+	TArray<AActor*> EndingActors;
+	for (ULevel* Level : Levels)
+		if (Level)
+			for (AActor* Actor : Level->GetActors())
+				if (IsValid(Actor) && Actor->HasBegunPlay()) EndingActors.Add(Actor);
+	for (AActor* Actor : EndingActors)
+		if (IsValid(Actor) && !Actor->IsActorBeingDestroyed()) Actor->EndPlayActor();
+	if (HUD) HUD->HideWidget();
 	if (PlayerController)
 	{
+		PlayerController->SetHUD(nullptr);
 		PlayerController->ClearInputState();
 		PlayerController->UnPossess();
 	}
 	PlayerController = nullptr;
 	PlayerPawn = nullptr;
+	GameMode = nullptr;
+	HUD = nullptr;
 	bIsPaused = false;
+}
+
+namespace
+{
+	UClass* ResolveGameClass(const FString& Name, UClass* Base, UClass* Fallback)
+	{
+		UClass* Class = Name.empty() ? nullptr : FindClass(Name);
+		return Class && Class->IsChildOf(Base) && Class->Constructor ? Class : Fallback;
+	}
+}
+
+UClass* UWorld::GetDefaultPawnClass() const
+{
+	return ResolveGameClass(PlayerPawnClassName, APawn::StaticClass(),
+		GameMode ? GameMode->GetDefaultPawnClass() : ADefaultPawn::StaticClass());
+}
+
+UClass* UWorld::GetPlayerControllerClass() const
+{
+	return ResolveGameClass(PlayerControllerClassName, APlayerController::StaticClass(),
+		GameMode ? GameMode->GetPlayerControllerClass() : APlayerController::StaticClass());
+}
+
+UClass* UWorld::GetHUDClass() const
+{
+	return ResolveGameClass(HUDClassName, AGameHUD::StaticClass(),
+		GameMode ? GameMode->GetHUDClass() : AGameHUD::StaticClass());
+}
+
+bool UWorld::SetGameModeClass(UClass* Class)
+{
+	if (!Class || !Class->IsChildOf(AGameMode::StaticClass()) || !Class->Constructor) return false;
+	if (GameModeClassName == Class->Name) return true;
+	GameModeClassName = Class->Name;
+	PlayerPawnClassName.clear();
+	PlayerControllerClassName.clear();
+	HUDClassName.clear();
+	return true;
+}
+
+bool UWorld::SetPlayerPawnClass(UClass* Class)
+{
+	if (Class && (!Class->IsChildOf(APawn::StaticClass()) || !Class->Constructor)) return false;
+	PlayerPawnClassName = Class ? Class->Name : "";
+	return true;
+}
+
+bool UWorld::SetPlayerControllerClass(UClass* Class)
+{
+	if (Class && (!Class->IsChildOf(APlayerController::StaticClass()) || !Class->Constructor)) return false;
+	PlayerControllerClassName = Class ? Class->Name : "";
+	return true;
+}
+
+bool UWorld::SetHUDClass(UClass* Class)
+{
+	if (Class && (!Class->IsChildOf(AGameHUD::StaticClass()) || !Class->Constructor)) return false;
+	HUDClassName = Class ? Class->Name : "";
+	return true;
 }
 
 UWorld* UWorld::CreateWorld(const EWorldType InWorldType, bool bInformEngineOfWorld, FName WorldName)
@@ -995,6 +1044,11 @@ void UWorld::Serialize(FStructuredArchive::FRecord Record)
 
 void UWorld::UpdateOverlaps()
 {
+	const auto IsActiveShape = [this](UShapeComponent* Shape)
+	{
+		return IsValid(Shape) && Shape->IsRegistered() && Shape->GetWorld() == this &&
+			IsValid(Shape->GetOwner()) && !Shape->GetOwner()->IsActorBeingDestroyed();
+	};
 	// 1. 이 월드에서 살아 있고 등록된 모든 충돌 도형을 수집한다.
 	// bGenerateOverlapEvents가 false인 도형도 넣는다.
 	// 그래야 실행 중 이벤트를 껐을 때 기존 Overlap에 End를 보낼 수 있다.
@@ -1004,10 +1058,7 @@ void UWorld::UpdateOverlaps()
 	{
 		UShapeComponent* Shape = *It;
 
-		if (!Shape ||
-			!Shape->IsRegistered() ||
-			Shape->GetWorld() != this ||
-			!Shape->GetOwner())
+		if (!IsActiveShape(Shape))
 		{
 			continue;
 		}
@@ -1036,6 +1087,7 @@ void UWorld::UpdateOverlaps()
 	for (int32 i = 0; i < Shapes.Num(); ++i)
 	{
 		UShapeComponent* A = Shapes[i];
+		if (!IsActiveShape(A)) continue;
 		AActor* OwnerA = A->GetOwner();
 
 		Candidates.clear();
@@ -1061,7 +1113,9 @@ void UWorld::UpdateOverlaps()
 
 		for (int32 j : Candidates)
 		{
+			if (!IsActiveShape(A)) break;
 			UShapeComponent* B = Shapes[j];
+			if (!IsActiveShape(B)) continue;
 			AActor* OwnerB = B->GetOwner();
 
 			// 같은 Actor의 콜라이더끼리는 여기서는 무시한다.
@@ -1098,20 +1152,22 @@ void UWorld::UpdateOverlaps()
 			if (!bWasOverlapping && bIsOverlappingNow)
 			{
 				A->BeginComponentOverlap(B);
+				if (!IsActiveShape(A) || !IsActiveShape(B)) continue;
 				B->BeginComponentOverlap(A);
+				if (!IsActiveShape(A) || !IsActiveShape(B)) continue;
 
 				// 지금은 “처음 막혔을 때 한 번” Hit를 보내는 정책
 				if (A->bBlockComponent && B->bBlockComponent)
 				{
 					A->DispatchHit(B);
-					B->DispatchHit(A);
+					if (IsActiveShape(A) && IsActiveShape(B)) B->DispatchHit(A);
 				}
 			}
 			// true -> false: 분리
 			else if (bWasOverlapping && !bIsOverlappingNow)
 			{
 				A->EndComponentOverlap(B);
-				B->EndComponentOverlap(A);
+				if (IsActiveShape(A) && IsActiveShape(B)) B->EndComponentOverlap(A);
 			}
 		}
 	}

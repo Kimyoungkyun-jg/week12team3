@@ -72,11 +72,6 @@ bool UPrimitiveComponent::LineTraceComponent(const FRay& WorldRay, FHitResult& O
 	return Mesh && TraceMesh(WorldRay, *Mesh, GetWorldMatrix(), OutHit);
 }
 
-FPrimitiveSceneProxy* UPrimitiveComponent::CreateSceneProxy()
-{
-	return new FPrimitiveSceneProxy(this);
-}
-
 void UPrimitiveComponent::MarkRenderStateDirty()
 {
 	if (SceneProxy)
@@ -102,9 +97,12 @@ bool UPrimitiveComponent::MoveComponent(const FVector& Delta, const FRotator& Ne
 
 void UPrimitiveComponent::PostEditChangeProperty(const FProperty& Property)
 {
+	// USceneComponent가 Transform 변경 시 MarkTransformDirty로 프록시를 갱신한다
+	Super::PostEditChangeProperty(Property);
+
 	if (Property.Name == "bCastShadow" ||
-		Property.Name == "bReceiveShadow" || 
-		Property.Name == "bReceivesDecals")
+		Property.Name == "bReceiveShadow" ||
+		Property.Name == "bReceiveDecal")
 	{
 		MarkRenderStateDirty();
 	}
@@ -124,6 +122,15 @@ void UPrimitiveComponent::SetReceiveShadow(bool NewValue)
 	{
 		bReceiveShadow = NewValue;
 	}
+}
+
+void UPrimitiveComponent::SetReceiveDecal(bool NewValue)
+{
+	if (bReceiveDecal == NewValue)
+		return;
+
+	bReceiveDecal = NewValue;
+	MarkRenderStateDirty();
 }
 
 void UPrimitiveComponent::CreateRenderState()
@@ -149,12 +156,16 @@ bool UPrimitiveComponent::TraceMesh(const FRay& WorldRay, const FStaticMeshData&
 
 	FRay LocalRay = ToLocalRay(WorldRay, WorldMatrix);
 	float T = FLT_MAX;
+	FVector LocalNormal;
 
-	if (!RayIntersectsMesh(LocalRay, Mesh, T)) return false;
+	if (!RayIntersectsMesh(LocalRay, Mesh, T, &LocalNormal)) return false;
 
 	OutResult.HitComponent = this;
 	OutResult.Distance = T;
 	OutResult.ImpactPoint = WorldRay.Origin + WorldRay.Direction * T;
+	FVector WorldNormal = WorldMatrix.Inverse().GetTransposed().TransformVector(LocalNormal).GetSafeNormal();
+	if (WorldNormal.Dot(WorldRay.Direction) > 0.0f) WorldNormal = -WorldNormal;
+	OutResult.ImpactNormal = OutResult.Normal = WorldNormal;
 
 	return true;
 }

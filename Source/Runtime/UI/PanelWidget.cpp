@@ -1,7 +1,5 @@
 #include "EnginePCH.h"
 #include "UI/PanelWidget.h"
-#include "UI/WidgetSerializer.h"
-#include "Serialization/StructuredArchiveSlots.h"
 
 #include <algorithm>
 
@@ -51,28 +49,6 @@ UWidget* UPanelWidget::FindWidget(const FString& Name) const
 			if (UWidget* Found = Panel->FindWidget(Name)) return Found;
 	}
 	return nullptr;
-}
-
-void UPanelWidget::Serialize(FStructuredArchive::FRecord Record)
-{
-	Super::Serialize(Record);   // "Properties"
-
-	int32 Num = Children.Num();
-	FStructuredArchive::FArray ChildArray = Record.EnterArray("Children", Num);
-
-	if (Record.GetUnderlyingArchive().IsSaving())
-	{
-		for (UWidget* Child : Children)
-			FWidgetSerializer::SaveWidget(ChildArray.EnterElement().EnterRecord(), Child);
-		return;
-	}
-
-	// 불러오기: 읽은 자식을 뒤에 붙인다 (새로 만든 패널이라 보통 비어 있다)
-	for (int32 i = 0; i < Num; ++i)
-	{
-		if (UWidget* Child = FWidgetSerializer::LoadWidget(ChildArray.EnterElement().EnterRecord()))
-			AddChild(Child);
-	}
 }
 
 void UPanelWidget::SetGeometry(const FUIRect& InRect, float InScale)

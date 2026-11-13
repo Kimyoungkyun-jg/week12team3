@@ -27,6 +27,11 @@ public:
     static void OnMouseMove(int32 x, int32 y);
     static void OnMouseWheelDelta(int32 Wheel);
 
+    // 커서 잠금(FMouseCapture) 중에는 WM_MOUSEMOVE 대신 RawInput 이동량을 델타로 쓴다 (TEAM5).
+    static void OnRawMouseMove(int32 X, int32 Y);
+    static void SetRelativeMouseMode(bool bEnabled);
+    static bool IsRelativeMouseMode() { return bRelativeMouseMode; }
+
     static inline int32 GetMouseX() { return MouseX; }
     static inline int32 GetMouseY() { return MouseY; }
 
@@ -54,4 +59,5 @@ private:
     static inline int32 DeltaX = 0, DeltaY = 0;
 
     static inline int32 WheelDelta = 0;
+    static inline bool bRelativeMouseMode = false;
 };

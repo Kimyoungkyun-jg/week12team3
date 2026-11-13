@@ -36,10 +36,10 @@ public:
 	}
 
 
-	const FRotator& GetRelativeRotation() const { return RelativeRotationCache.QuatToRotator(Transform.Rotation); }
+	const FRotator& GetRelativeRotation() const { return Transform.Rotation; }
 	void SetRelativeRotation(const FRotator& InRotation) 
 	{
-		Transform.Rotation = RelativeRotationCache.RotatorToQuat(InRotation);
+		Transform.Rotation = InRotation; 
 		MarkTransformDirty();
 	}
 	void SetRelativeLocationAndRotation(const FVector& NewLocation, const FRotator& NewRotation);
@@ -70,6 +70,7 @@ public:
 	FBox CalcBounds() const { return CalcLocalBounds().GetWorldAABB(GetWorldMatrix()); }
 
 	FVector GetWorldLocation() const;
+	FQuat GetWorldRotationQuat() const;
 	FRotator GetWorldRotation() const;
 	FVector GetWorldScale3D() const;
 	FMatrix GetWorldMatrix() const;
@@ -110,7 +111,6 @@ protected:
 	bool bTransformDirty;
 	UPROPERTY(EditAnywhere)
 	FTransform Transform;
-	mutable FRotationConversionCache RelativeRotationCache;
 
 	USceneComponent* AttachParent = nullptr; // Attach 부모 정보
 	TArray<USceneComponent*> AttachChildren;
@@ -119,4 +119,8 @@ protected:
 	bool bAbsoluteRotation = false;
 	bool bAbsoluteScale = false;
 	float CollisionRadiusOverride = -1.0f;
+
+private:
+	// GetWorldMatrix의 TRS 합성과 같은 규칙으로 부모 기준 상대 값을 역산한다.
+	void ApplyWorldTRS(const FVector& Location, const FQuat& Rotation, const FVector& Scale);
 };

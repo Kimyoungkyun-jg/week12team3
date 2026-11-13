@@ -12,4 +12,10 @@ namespace EditorDragDrop
 	inline constexpr const char* Font = "ASSET_FONT";
 
 	inline constexpr const char* Component = "COMPONENT";
+
+	// 페이로드 내용: AActor* 한 개 (아웃라이너에서 액터 끌어 붙이기)
+	inline constexpr const char* Actor = "OUTLINER_ACTOR";
+
+	// 페이로드 내용: 널로 끝나는 UTF-8 파일 경로 (Content Drawer에서 .lua 끌어 오기, TEAM5)
+	inline constexpr const char* ScriptFile = "ASSET_SCRIPT_FILE";
 }

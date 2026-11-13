@@ -1,0 +1,35 @@
+{
+  "EntryState": 1,
+  "InvertDirection": false,
+  "RootPoseConnected": true,
+  "Skeleton": "Models/UnrealModel/SKEL_SKM_Quinn_Simple_root.fbxbin",
+  "States": [
+    {
+      "Asset": "Models/UnrealModel/AS_Idle.fbxbin",
+      "ConstantX": 0.0,
+      "ConstantY": 0.0,
+      "DirectionOffsetX": 0.0,
+      "DirectionOffsetY": 0.0,
+      "Id": 1,
+      "InputX": 0,
+      "InputY": 0,
+      "Loop": true,
+      "Name": "State 1",
+      "OutputOffsetX": 0.0,
+      "OutputOffsetY": 0.0,
+      "OutputPlayerId": 0,
+      "PlayRate": 1.0,
+      "PlayerOffsetX": 31.0,
+      "PlayerOffsetY": -1.0,
+      "Players": [],
+      "Pose": 0,
+      "PoseConnected": true,
+      "SpeedOffsetX": 0.0,
+      "SpeedOffsetY": 0.0,
+      "X": 630.9091796875,
+      "Y": 708.181884765625
+    }
+  ],
+  "Transitions": [],
+  "Version": 1
+}

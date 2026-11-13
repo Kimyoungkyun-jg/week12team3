@@ -1,4 +1,5 @@
 #pragma once
+#include "Core/ResourcePaths.h"
 
 #include "Shader.h"
 #include "PipelineState.h"
@@ -30,8 +31,8 @@ enum class EPSOType : uint8
 	ShadowDepth,
 	ShadowProjection,        // 그림자 한 장을 화면 마스크(ScreenShadowMask)에 그린다
 	ShadowMaskVisualize,     // Shadow Mask 뷰 모드: 마스크를 화면에 띄운다
-	Decal, 
-	DecalAdditive,
+	StaticMesh_DBufferDecal,
+	DBufferDecal_DepthReconstruction,
 	Count
 };
 
@@ -46,7 +47,7 @@ public:
 
 	static void Init()
 	{
-		Get().ScanShaders("Resources/Shader");
+		Get().ScanShaders(ResourcePaths::ShaderFolder);
 		Get().InitPipelineStates(); // PSO 초기화 추가
 	}
 
@@ -55,11 +56,17 @@ public:
 	static FShaderProgram* GetShaderProgram(const FString& InPath);
 
 	static FPipelineState* GetPSO(const EPSOType& InType);
-	static FShaderProgram* GetForwardShaderProgram(ELightingModel Model);
+	static FShaderProgram* GetForwardShaderProgram(EReflectionModel Reflection, EShadingModel Shading, bool bGPUSkinning = false, bool bUnlit = false);
+	static FShaderProgram* GetWorldNormalShaderProgram(bool bGPUSkinning);
+	static FShaderProgram* GetTranslucentShaderProgram(bool bGPUSkinning);
+	static FShaderProgram* GetShadowDepthShaderProgram();
+	static FShaderProgram* GetGPUSkinningShadowDepthShaderProgram();
+	static FComputeShader* GetComputeSkinningShader();
 private:
+	TUniquePtr<FComputeShader> ComputeSkinningShader;
+	bool bComputeSkinningShaderAttempted = false;
 	
 	void LoadOrCompileShader(const FString& Path);
-	void CreateSkinnedVariant(const FString& Path, const char* LightingMacro, const FShaderProgram& Base);
 	void InitPipelineStates();
 
 	TMap<FString, TUniquePtr<FVertexShader>> VertexShaderMap;

@@ -5,6 +5,7 @@
 #include "Camera/CameraModifier.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
+#include "Curves/CurveFloat.h"
 
 // =======================FMinimalViewInfo===============
 FMatrix FMinimalViewInfo::CalculateViewMatrix() const
@@ -90,6 +91,10 @@ APlayerCameraManager::~APlayerCameraManager()
 		if (TryGetLiveObjectUUID(Modifier, nullptr, UUID))
 			delete Modifier;
 	}
+
+	uint32 UUID = 0;
+	if (TryGetLiveObjectUUID(FOVPunchCurve, nullptr, UUID))
+		delete FOVPunchCurve;
 }
 
 void APlayerCameraManager::InitializeFor(APlayerController* PC)
@@ -218,6 +223,64 @@ void APlayerCameraManager::StopAllCameraShakes(bool bImmediately)
 	auto* Modifier = static_cast<UCameraModifier_CameraShake*>(
 		FindCameraModifierByClass(UCameraModifier_CameraShake::StaticClass()));
 	if (Modifier) Modifier->RemoveAllCameraShakes(bImmediately);
+}
+
+// Curve를 이용한 FOV Punch 효과를 재생합니다. 
+UCameraModifier_FOVPunch* APlayerCameraManager::PlayFOVPunch(UCurveFloat* Curve, float Duration, float Strength)
+{
+	auto* Modifier = static_cast<UCameraModifier_FOVPunch*>(
+		FindCameraModifierByClass(UCameraModifier_FOVPunch::StaticClass()));
+	if (!Modifier)
+	{
+		Modifier = NewObject<UCameraModifier_FOVPunch>(this);
+		AddCameraModifier(Modifier);
+	}
+	if (!Modifier) return nullptr;
+	Modifier->Play(Curve, Duration, Strength);
+	return Modifier->IsPlaying() ? Modifier : nullptr;
+}
+
+// 시간으로 Curve를 구성해 효과를 재생
+// 추가: 시간으로 커브를 구성해서 재생
+UCameraModifier_FOVPunch* APlayerCameraManager::PlayFOVPunch(float Strength, float InTime, float HoldTime, float OutTime)
+{
+	// 우선 진입·복귀 시간은 양수, 유지 시간은 0 이상으로 제한한다.
+	if (!std::isfinite(Strength) ||
+		!std::isfinite(InTime) ||
+		!std::isfinite(HoldTime) ||
+		!std::isfinite(OutTime) ||
+		InTime <= 0.0f || HoldTime < 0.0f || OutTime <= 0.0f)
+	{
+		return nullptr;
+	}
+
+	const float TotalTime = InTime + HoldTime + OutTime;
+	if (!std::isfinite(TotalTime)) return nullptr;
+
+	if (!FOVPunchCurve)
+	{
+		FOVPunchCurve = NewObject<UCurveFloat>(this);
+		if (!FOVPunchCurve) return nullptr;
+	}
+
+	// 이전 재생을 끝내고 같은 커브를 다시 구성한다.
+	StopFOVPunch(true);
+
+	FOVPunchCurve->Reset();
+	FOVPunchCurve->AddKey(0.0f, 0.0f);
+	FOVPunchCurve->AddKey(InTime / TotalTime, 1.0f);
+	FOVPunchCurve->AddKey(
+		(InTime + HoldTime) / TotalTime, 1.0f);
+	FOVPunchCurve->AddKey(1.0f, 0.0f);
+
+	// 기존 함수를 호출해 Modifier 등록·재생 처리를 재사용한다.
+	return PlayFOVPunch(FOVPunchCurve, TotalTime, Strength);
+}
+void APlayerCameraManager::StopFOVPunch(bool bImmediately)
+{
+	auto* Modifier = static_cast<UCameraModifier_FOVPunch*>(
+		FindCameraModifierByClass(UCameraModifier_FOVPunch::StaticClass()));
+	if (Modifier) Modifier->Stop(bImmediately);
 }
 
 bool APlayerCameraManager::IsActorAlive(AActor* Actor, uint32 UUID) const

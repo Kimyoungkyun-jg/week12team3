@@ -55,7 +55,7 @@ public:
 	virtual bool OnMouseButtonDown() { return false; }
 	virtual void OnMouseButtonUp(bool bInside) {}
 
-	// 속성을 불러온 직후 (2단계). 경로 문자열로 폰트·텍스처를 다시 찾는 데 쓴다.
+	// JSON에서 속성을 읽은 직후 (2단계). 경로 문자열로 폰트·텍스처를 다시 찾는 데 쓴다.
 	virtual void OnLoaded() {}
 
 	void RemoveFromParent();

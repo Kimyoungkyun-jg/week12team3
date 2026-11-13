@@ -2,6 +2,7 @@
 #include "GameFramework/Actor.h"
 
 #include "CameraModifier_CameraShake.h"
+#include "CameraModifier_FOVPunch.h"
 
 #include "PlayerCameraManager.generated.h"
 
@@ -92,6 +93,9 @@ public:
 	void StopCameraShake(UCameraShakeBase* ShakeInstance, bool bImmediately = false);
 	void StopAllCameraShakes(bool bImmediately = false);
 
+	UCameraModifier_FOVPunch* PlayFOVPunch(UCurveFloat* Curve, float Duration, float Strength);
+	UCameraModifier_FOVPunch* PlayFOVPunch(float Strength, float InTime, float HoldTime, float OutTime);
+	void StopFOVPunch(bool bImmediately);
 
 
 	void SetLetterbox(float TargetAspect, float BlendTime);
@@ -127,4 +131,7 @@ protected:
 	FViewTargetTransitionParams BlendParams;
 	float BlendTimeToGo = 0.0f;
 	bool  bFreezeOutgoing = false;
+
+	// PCM이 직접 소유하는 시간 설정용 커브.
+	UCurveFloat* FOVPunchCurve = nullptr;
 };

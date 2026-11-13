@@ -1,0 +1,1273 @@
+{
+    "Version": 4,
+    "World": {
+        "PersistentLevel": {
+            "Actors": [
+                {
+                    "Class": "AStaticMeshActor",
+                    "Components": [
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "UStaticMeshComponent",
+                            "OverrideMaterials": [],
+                            "Parent": "",
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.05119657516479492,
+                                        "Y": -1.666877269744873,
+                                        "Z": -0.48807191848754883
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 78.29113006591797,
+                                        "Y": 78.29113006591797,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "UBoxComponent_0",
+                            "Parent": "UStaticMeshComponent",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.5,
+                                    "Y": 0.5,
+                                    "Z": 0.5
+                                },
+                                "ShapeColor": 4286105710,
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": true,
+                                "bCastShadow": false,
+                                "bDrawOnlyIfSelected": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "AStaticMeshActor_0",
+                    "Properties": {
+                        "bActorEnableCollision": true
+                    },
+                    "RootComponentName": "UStaticMeshComponent"
+                },
+                {
+                    "Class": "ADirectionalLightActor",
+                    "Components": [
+                        {
+                            "Class": "UDirectionalLightComponent",
+                            "Name": "UDirectionalLightComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "AngularRadiusDegrees": 0.27000001072883606,
+                                "CascadeDistributionExponent": 3.0,
+                                "CascadeTransitionFraction": 0.10000000149011612,
+                                "DynamicShadowCascades": 4,
+                                "DynamicShadowDistanceMovableLight": 200.0,
+                                "Intensity": 1.0,
+                                "LightColor": 4294967295,
+                                "ShadowBias": 0.5,
+                                "ShadowDistanceFadeoutFraction": 0.10000000149011612,
+                                "ShadowResolutionScale": 1.0,
+                                "ShadowSharpen": 0.0,
+                                "ShadowSlopeBias": 0.5,
+                                "Transform": {
+                                    "Location": {
+                                        "X": -17.15999412536621,
+                                        "Y": 14.050200462341309,
+                                        "Z": 18.84952163696289
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 30.175439834594727,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bCastShadows": true,
+                                "bHiddenInGame": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UBillboardComponent",
+                            "Material": {
+                                "Base": "BillboardMaterial",
+                                "Instance": {
+                                    "BaseColor": {
+                                        "W": 1.0,
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    },
+                                    "BlendState": "AlphaBlend",
+                                    "EmissiveColor": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "EmissiveFactor": 1.0,
+                                    "FlipNormalY": false,
+                                    "OverrideShadingModel": false,
+                                    "PSOType": 14,
+                                    "Properties": {},
+                                    "SamplerState": "LinearClamp",
+                                    "ShadingModel": 2,
+                                    "Shininess": 32.0,
+                                    "SpecularColor": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    },
+                                    "SpecularFactor": 1.0,
+                                    "Textures": [
+                                        "Resources/Icons/Directional.png"
+                                    ],
+                                    "UVScrollSpeed": [
+                                        0.0,
+                                        0.0
+                                    ],
+                                    "UVTiling": [
+                                        1.0,
+                                        1.0
+                                    ],
+                                    "WorldUVLocalSpace": false,
+                                    "WorldUVTileSize": [
+                                        0.0,
+                                        0.0
+                                    ]
+                                }
+                            },
+                            "Name": "UBillboardComponent",
+                            "Parent": "UDirectionalLightComponent",
+                            "Properties": {
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": true,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "UArrowComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Asset": "EditorArrowMaterial"
+                                }
+                            ],
+                            "Parent": "UDirectionalLightComponent",
+                            "Properties": {
+                                "StaticMesh": "Arrow",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 90.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.8999999761581421,
+                                        "Y": 0.8999999761581421,
+                                        "Z": 1.5
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "ADirectionalLightActor_0",
+                    "Properties": {
+                        "bActorEnableCollision": true
+                    },
+                    "RootComponentName": "UDirectionalLightComponent"
+                },
+                {
+                    "Class": "ASkeletalMeshActor",
+                    "Components": [
+                        {
+                            "AnimClassName": "UAnimSingleNodeInstance",
+                            "AnimGraphPath": "",
+                            "AnimSequencePath": "",
+                            "Class": "USkeletalMeshComponent",
+                            "Name": "SkeletalMeshComponent",
+                            "OverrideMaterials": [],
+                            "Parent": "",
+                            "Properties": {
+                                "SkeletalMesh": null,
+                                "Transform": {
+                                    "Location": {
+                                        "X": -2.2845849990844727,
+                                        "Y": -0.5009942054748535,
+                                        "Z": 0.022153377532958984
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bOnlyTickPoseWhenRendered": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "ASkeletalMeshActor_4",
+                    "Properties": {
+                        "SkeletalMeshComponent": null,
+                        "bActorEnableCollision": true
+                    },
+                    "RootComponentName": "SkeletalMeshComponent"
+                },
+                {
+                    "Class": "ASkeletalMeshActor",
+                    "Components": [
+                        {
+                            "AnimClassName": "UAnimSingleNodeInstance",
+                            "AnimGraphPath": "",
+                            "AnimSequencePath": "",
+                            "Class": "USkeletalMeshComponent",
+                            "Name": "SkeletalMeshComponent",
+                            "OverrideMaterials": [],
+                            "Parent": "",
+                            "Properties": {
+                                "SkeletalMesh": null,
+                                "Transform": {
+                                    "Location": {
+                                        "X": -2.2845849990844727,
+                                        "Y": 3.031315803527832,
+                                        "Z": 0.022153377532958984
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bOnlyTickPoseWhenRendered": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "ASkeletalMeshActor_5",
+                    "Properties": {
+                        "SkeletalMeshComponent": null,
+                        "bActorEnableCollision": true
+                    },
+                    "RootComponentName": "SkeletalMeshComponent"
+                },
+                {
+                    "Class": "ACharacter",
+                    "Components": [
+                        {
+                            "Class": "UCapsuleComponent",
+                            "Name": "CapsuleComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "CapsuleHalfHeight": 1.0,
+                                "CapsuleRadius": 0.5,
+                                "ShapeColor": 4286105710,
+                                "Transform": {
+                                    "Location": {
+                                        "X": -2.2074155807495117,
+                                        "Y": -11.525568008422852,
+                                        "Z": 1.142873764038086
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": true,
+                                "bCastShadow": false,
+                                "bDrawOnlyIfSelected": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "AnimClassName": "UAnimSingleNodeInstance",
+                            "AnimGraphPath": "",
+                            "AnimSequencePath": "Models/UnrealModel/AS_MM_Attack_01.fbxbin",
+                            "Class": "USkeletalMeshComponent",
+                            "Name": "SkeletalMeshComponent",
+                            "OverrideMaterials": [],
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": -1.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bOnlyTickPoseWhenRendered": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "USpringArmComponent",
+                            "Name": "SpringArmComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "CameraLagMaxDistance": 0.0,
+                                "CameraLagSpeed": 10.0,
+                                "CameraRotationLagSpeed": 10.0,
+                                "ProbeSize": 0.11999999731779099,
+                                "SocketOffset": {
+                                    "X": 0.0,
+                                    "Y": 0.0,
+                                    "Z": 0.0
+                                },
+                                "TargetArmLength": 4.0,
+                                "TargetOffset": {
+                                    "X": 0.0,
+                                    "Y": 0.0,
+                                    "Z": 0.0
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.699999988079071
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bDoCollisionTest": true,
+                                "bDrawDebug": true,
+                                "bDrawOnlyIfSelected": false,
+                                "bEnableCameraLag": false,
+                                "bEnableCameraRotationLag": false,
+                                "bHiddenInGame": false,
+                                "bInheritPitch": true,
+                                "bInheritRoll": true,
+                                "bInheritYaw": true,
+                                "bUsePawnControlRotation": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UCameraComponent",
+                            "Name": "CameraComponent",
+                            "Parent": "SpringArmComponent",
+                            "Properties": {
+                                "Transform": {
+                                    "Location": {
+                                        "X": -4.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bHiddenInGame": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UCharacterMovementComponent",
+                            "Name": "CharacterMovement",
+                            "Parent": "",
+                            "Properties": {
+                                "AirControl": 0.3499999940395355,
+                                "BrakingDecelerationWalking": 40.0,
+                                "Gravity": 9.8100004196167,
+                                "GravityScale": 1.0,
+                                "JumpZVelocity": 4.199999809265137,
+                                "MaxAcceleration": 40.0,
+                                "MaxWalkSpeed": 5.0,
+                                "Velocity": {
+                                    "X": 0.0,
+                                    "Y": 0.0,
+                                    "Z": 0.0
+                                },
+                                "WalkableFloorAngle": 45.0,
+                                "bAutoActivate": true,
+                                "bConstrainToPlane": false,
+                                "bHiddenInGame": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UTextRenderComponent",
+                            "Name": "UTextRenderComponent_0",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "Font": "Assets/Fonts/CookieRun.json",
+                                "Text": "Enable Root Motion",
+                                "TextSize": 0.699999988079071,
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 1.190026044845581
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "ACharacter_0",
+                    "Properties": {
+                        "bActorEnableCollision": true
+                    },
+                    "RootComponentName": "CapsuleComponent"
+                },
+                {
+                    "Class": "ACharacter",
+                    "Components": [
+                        {
+                            "Class": "UCapsuleComponent",
+                            "Name": "CapsuleComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "CapsuleHalfHeight": 1.0,
+                                "CapsuleRadius": 0.5,
+                                "ShapeColor": 4286105710,
+                                "Transform": {
+                                    "Location": {
+                                        "X": -2.2074155807495117,
+                                        "Y": -18.185283660888672,
+                                        "Z": 1.142873764038086
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": true,
+                                "bCastShadow": false,
+                                "bDrawOnlyIfSelected": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "AnimClassName": "UAnimSingleNodeInstance",
+                            "AnimGraphPath": "",
+                            "AnimSequencePath": "Models/UnrealModel/AS_MM_Attack_02.fbxbin",
+                            "Class": "USkeletalMeshComponent",
+                            "Name": "SkeletalMeshComponent",
+                            "OverrideMaterials": [],
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": -1.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bOnlyTickPoseWhenRendered": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "USpringArmComponent",
+                            "Name": "SpringArmComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "CameraLagMaxDistance": 0.0,
+                                "CameraLagSpeed": 10.0,
+                                "CameraRotationLagSpeed": 10.0,
+                                "ProbeSize": 0.11999999731779099,
+                                "SocketOffset": {
+                                    "X": 0.0,
+                                    "Y": 0.0,
+                                    "Z": 0.0
+                                },
+                                "TargetArmLength": 4.0,
+                                "TargetOffset": {
+                                    "X": 0.0,
+                                    "Y": 0.0,
+                                    "Z": 0.0
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.699999988079071
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bDoCollisionTest": true,
+                                "bDrawDebug": true,
+                                "bDrawOnlyIfSelected": false,
+                                "bEnableCameraLag": false,
+                                "bEnableCameraRotationLag": false,
+                                "bHiddenInGame": false,
+                                "bInheritPitch": true,
+                                "bInheritRoll": true,
+                                "bInheritYaw": true,
+                                "bUsePawnControlRotation": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UCameraComponent",
+                            "Name": "CameraComponent",
+                            "Parent": "SpringArmComponent",
+                            "Properties": {
+                                "Transform": {
+                                    "Location": {
+                                        "X": -4.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bHiddenInGame": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UCharacterMovementComponent",
+                            "Name": "CharacterMovement",
+                            "Parent": "",
+                            "Properties": {
+                                "AirControl": 0.3499999940395355,
+                                "BrakingDecelerationWalking": 40.0,
+                                "Gravity": 9.8100004196167,
+                                "GravityScale": 1.0,
+                                "JumpZVelocity": 4.199999809265137,
+                                "MaxAcceleration": 40.0,
+                                "MaxWalkSpeed": 5.0,
+                                "Velocity": {
+                                    "X": 0.0,
+                                    "Y": 0.0,
+                                    "Z": 0.0
+                                },
+                                "WalkableFloorAngle": 45.0,
+                                "bAutoActivate": true,
+                                "bConstrainToPlane": false,
+                                "bHiddenInGame": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UTextRenderComponent",
+                            "Name": "text",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "Font": "Assets/Fonts/CookieRun.json",
+                                "Text": "Normal",
+                                "TextSize": 0.699999988079071,
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 1.1687536239624023
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "ACharacter_1",
+                    "Properties": {
+                        "bActorEnableCollision": true
+                    },
+                    "RootComponentName": "CapsuleComponent"
+                },
+                {
+                    "Class": "ACharacter",
+                    "Components": [
+                        {
+                            "Class": "UCapsuleComponent",
+                            "Name": "CapsuleComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "CapsuleHalfHeight": 1.0,
+                                "CapsuleRadius": 0.5,
+                                "ShapeColor": 4286105710,
+                                "Transform": {
+                                    "Location": {
+                                        "X": -2.2074155807495117,
+                                        "Y": -4.226436614990234,
+                                        "Z": 1.142873764038086
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": true,
+                                "bCastShadow": false,
+                                "bDrawOnlyIfSelected": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "AnimClassName": "UAnimSingleNodeInstance",
+                            "AnimGraphPath": "",
+                            "AnimSequencePath": "Models/UnrealModel/AS_MM_Attack_03.fbxbin",
+                            "Class": "USkeletalMeshComponent",
+                            "Name": "SkeletalMeshComponent",
+                            "OverrideMaterials": [],
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": -1.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bOnlyTickPoseWhenRendered": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "USpringArmComponent",
+                            "Name": "SpringArmComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "CameraLagMaxDistance": 0.0,
+                                "CameraLagSpeed": 10.0,
+                                "CameraRotationLagSpeed": 10.0,
+                                "ProbeSize": 0.11999999731779099,
+                                "SocketOffset": {
+                                    "X": 0.0,
+                                    "Y": 0.0,
+                                    "Z": 0.0
+                                },
+                                "TargetArmLength": 4.0,
+                                "TargetOffset": {
+                                    "X": 0.0,
+                                    "Y": 0.0,
+                                    "Z": 0.0
+                                },
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.699999988079071
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bDoCollisionTest": true,
+                                "bDrawDebug": true,
+                                "bDrawOnlyIfSelected": false,
+                                "bEnableCameraLag": false,
+                                "bEnableCameraRotationLag": false,
+                                "bHiddenInGame": false,
+                                "bInheritPitch": true,
+                                "bInheritRoll": true,
+                                "bInheritYaw": true,
+                                "bUsePawnControlRotation": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UCameraComponent",
+                            "Name": "CameraComponent",
+                            "Parent": "SpringArmComponent",
+                            "Properties": {
+                                "Transform": {
+                                    "Location": {
+                                        "X": -4.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bHiddenInGame": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UCharacterMovementComponent",
+                            "Name": "CharacterMovement",
+                            "Parent": "",
+                            "Properties": {
+                                "AirControl": 0.3499999940395355,
+                                "BrakingDecelerationWalking": 40.0,
+                                "Gravity": 9.8100004196167,
+                                "GravityScale": 1.0,
+                                "JumpZVelocity": 4.199999809265137,
+                                "MaxAcceleration": 40.0,
+                                "MaxWalkSpeed": 5.0,
+                                "Velocity": {
+                                    "X": 0.0,
+                                    "Y": 0.0,
+                                    "Z": 0.0
+                                },
+                                "WalkableFloorAngle": 45.0,
+                                "bAutoActivate": true,
+                                "bConstrainToPlane": false,
+                                "bHiddenInGame": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UTextRenderComponent",
+                            "Name": "UTextRenderComponent_1",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "Font": "Assets/Fonts/CookieRun.json",
+                                "Text": "Force Root Lock",
+                                "TextSize": 0.699999988079071,
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 1.2497456073760986
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "ACharacter_2",
+                    "Properties": {
+                        "bActorEnableCollision": true
+                    },
+                    "RootComponentName": "CapsuleComponent"
+                },
+                {
+                    "Class": "APlayerStart",
+                    "Components": [
+                        {
+                            "Class": "UCapsuleComponent",
+                            "Name": "CapsuleComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "CapsuleHalfHeight": 1.0,
+                                "CapsuleRadius": 0.5,
+                                "ShapeColor": 4294950480,
+                                "Transform": {
+                                    "Location": {
+                                        "X": -10.350427627563477,
+                                        "Y": -7.728973388671875,
+                                        "Z": 2.7382469177246094
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bDrawOnlyIfSelected": true,
+                                "bGenerateOverlapEvents": false,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UBillboardComponent",
+                            "Material": {
+                                "Base": "BillboardMaterial",
+                                "Instance": {
+                                    "BaseColor": {
+                                        "W": 1.0,
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    },
+                                    "BlendState": "AlphaBlend",
+                                    "EmissiveColor": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "EmissiveFactor": 1.0,
+                                    "FlipNormalY": false,
+                                    "OverrideShadingModel": false,
+                                    "PSOType": 14,
+                                    "Properties": {},
+                                    "SamplerState": "LinearClamp",
+                                    "ShadingModel": 2,
+                                    "Shininess": 32.0,
+                                    "SpecularColor": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    },
+                                    "SpecularFactor": 1.0,
+                                    "Textures": [
+                                        "Resources/Icons/Toolbar/Play.png"
+                                    ],
+                                    "UVScrollSpeed": [
+                                        0.0,
+                                        0.0
+                                    ],
+                                    "UVTiling": [
+                                        1.0,
+                                        1.0
+                                    ],
+                                    "WorldUVLocalSpace": false,
+                                    "WorldUVTileSize": [
+                                        0.0,
+                                        0.0
+                                    ]
+                                }
+                            },
+                            "Name": "BillboardComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 1.25
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": true,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "ForwardArrowComponent",
+                            "OverrideMaterials": [
+                                {
+                                    "Asset": "EditorArrowMaterial"
+                                }
+                            ],
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "StaticMesh": "Arrow",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 90.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 0.3499999940395355,
+                                        "Y": 0.3499999940395355,
+                                        "Z": 0.699999988079071
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": true,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "APlayerStart_0",
+                    "Properties": {
+                        "bActorEnableCollision": false
+                    },
+                    "RootComponentName": "CapsuleComponent"
+                },
+                {
+                    "Class": "AStaticMeshActor",
+                    "Components": [
+                        {
+                            "Class": "UStaticMeshComponent",
+                            "Name": "UStaticMeshComponent",
+                            "OverrideMaterials": [],
+                            "Parent": "",
+                            "Properties": {
+                                "StaticMesh": "Cube",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 4.239419937133789,
+                                        "Y": -1.6668802499771118,
+                                        "Z": -0.4880779981613159
+                                    },
+                                    "Rotation": {
+                                        "Pitch": -90.0,
+                                        "Roll": 180.0000457763672,
+                                        "Yaw": 180.0000457763672
+                                    },
+                                    "Scale": {
+                                        "X": 78.29113006591797,
+                                        "Y": 78.29113006591797,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": false,
+                                "bCastShadow": true,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": true,
+                                "bVisible": true
+                            }
+                        },
+                        {
+                            "Class": "UBoxComponent",
+                            "Name": "UBoxComponent_0",
+                            "Parent": "UStaticMeshComponent",
+                            "Properties": {
+                                "BoxExtent": {
+                                    "X": 0.5,
+                                    "Y": 0.5,
+                                    "Z": 0.5
+                                },
+                                "ShapeColor": 4286105710,
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": true,
+                                "bBlockComponent": true,
+                                "bCastShadow": false,
+                                "bDrawOnlyIfSelected": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bReceiveDecal": true,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "AStaticMeshActor_1",
+                    "Properties": {
+                        "bActorEnableCollision": true
+                    },
+                    "RootComponentName": "UStaticMeshComponent"
+                }
+            ],
+            "Properties": {}
+        },
+        "Properties": {
+            "GameModeClassName": "AGameMode",
+            "HUDClassName": "",
+            "PlayerControllerClassName": "",
+            "PlayerPawnClassName": "ATestCharacter1d"
+        }
+    }
+}

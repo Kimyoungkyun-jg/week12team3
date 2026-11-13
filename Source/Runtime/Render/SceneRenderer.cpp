@@ -1,4 +1,4 @@
-﻿#include "EnginePCH.h"
+#include "EnginePCH.h"
 #include "Render/SceneRenderer.h"
 #include "Render/Renderer.h"
 #include "Render/SceneLightResources.h"
@@ -9,19 +9,24 @@
 #include "Engine/World.h"
 #include "Tasks/Tasks.h"
 #include "Core/Stats/LightweightStats.h"
+#include "Core/StatOverlay.h"
 #include "Components/StaticMeshComponent.h"
 #include "Asset/LOD/StaticMeshLODSelector.h"
 #include "Render/SkyLightEnvironment.h"
 #include "Engine/SceneManagement.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Components/DecalComponent.h"
 #include "Render/PostProcess/HeightFogRenderer.h"
 #include "Render/PostProcess/CameraOverlayRenderer.h"
 #include "Render/PostProcess/FXAARenderer.h"
 #include "Render/PostProcess/ToneMapData.h"
-#include "Render/DecalData.h"
+#include "Render/Decal/ProjectedDecalRenderer.h"
+#include "Render/Decal/DecalStats.h"
+#include "Render/Decal/DecalBounds.h"
+#include "Render/SkinningStats.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Text/TextRenderer.h"
 #include "UObject/UObjectIterator.h"
-#include "Render/GPUStats.h"
 
 #include <cmath>
 #include <algorithm>
@@ -31,21 +36,9 @@
 
 DECLARE_CYCLE_STAT("Frustum Cull", STAT_FrustumCull);
 DECLARE_CYCLE_STAT("Gather Elements", STAT_GatherElements);
-DECLARE_CYCLE_STAT("Decal Pass", STAT_DecalPass);
-DECLARE_CYCLE_STAT("Decal Gather Items", STAT_DecalGatherItems);
-DECLARE_CYCLE_STAT("Decal Draw", STAT_DecalDraw);
 
 namespace
 {
-	std::atomic<uint32> GCascadeCount{ 4 };
-	std::atomic<float> GCascadeLogRatio{ 0.8f };
-
-	struct FDecalItemRef {
-		const FPrimitiveSceneProxy* Proxy;
-		uint32 Batch;
-		uint32 Item;
-	};
-
 	FRenderGraphRasterPassDesc MakeViewportPass(const std::string& Name, FRenderGraphTextureRef Color,
 		FRenderGraphTextureRef DepthTarget = {},
 		ERenderGraphLoadAction DepthLoad = ERenderGraphLoadAction::Load)
@@ -67,40 +60,6 @@ namespace
 	{
 		return !Draw || Graph.AddRasterPass(MakeViewportPass(Name, Color, Depth, DepthLoad), Draw);
 	}
-
-	bool CompareDecalItemRef(const FDecalItemRef& A, const FDecalItemRef& B) {
-		return std::less <const FPrimitiveSceneProxy*>()(A.Proxy, B.Proxy);
-	}
-
-	bool CompareDecalItemRefProxy(const FDecalItemRef& Ref, const FPrimitiveSceneProxy* Proxy) {
-		return std::less <const FPrimitiveSceneProxy*>()(Ref.Proxy, Proxy);
-	}
-}
-
-bool FSceneRenderer::SetCascadeCount(uint32 Count)
-{
-	if (Count < 1 || Count > FSceneRenderData::MaxCascadeShadowCount)
-		return false;
-	GCascadeCount.store(Count, std::memory_order_relaxed);
-	return true;
-}
-
-uint32 FSceneRenderer::GetCascadeCount()
-{
-	return GCascadeCount.load(std::memory_order_relaxed);
-}
-
-bool FSceneRenderer::SetCascadeLogRatio(float Ratio)
-{
-	if (!std::isfinite(Ratio) || Ratio < 0.0f || Ratio > 1.0f)
-		return false;
-	GCascadeLogRatio.store(Ratio, std::memory_order_relaxed);
-	return true;
-}
-
-float FSceneRenderer::GetCascadeLogRatio()
-{
-	return GCascadeLogRatio.load(std::memory_order_relaxed);
 }
 
 // 생성자
@@ -111,7 +70,7 @@ FSceneRenderer::FSceneRenderer(UWorld* InWorld, const FSceneView& InView, FScene
 }
 
 // 구체와 절두체 평면 교차 판별
-bool FSceneRenderer::IntersectSphereFrustum(const FVector4& PositionRadius, const FPlane (&Planes)[6]) const
+bool FSceneRenderer::IntersectSphereFrustum(const FVector4& PositionRadius, const FPlane(&Planes)[6]) const
 {
 	const float Radius = PositionRadius.W;
 	for (const FPlane& Plane : Planes)
@@ -179,7 +138,9 @@ void FSceneRenderer::InitViews(FRenderer* Renderer, const FSceneRenderOptions& O
 		return;
 	}
 
-	CachedViewContext.bShowSkeletalMesh = Options.bShowSkeletalMesh;
+	// Show 플래그는 옵션으로 들어오므로, 수집과 그림자 단계가 읽는 뷰에 옮겨 둔다
+	View.bShowSkeletalMeshes = Options.bDrawSkeletalMeshes;
+	CachedViewContext.bShowSkeletalMeshes = Options.bDrawSkeletalMeshes;
 
 	// 월드 프리미티브 수집 및 절두체 컬링
 	GatherRenderPackets(World->GetScene(), RenderData, CachedViewContext, &View.Frustum, Renderer);
@@ -187,13 +148,13 @@ void FSceneRenderer::InitViews(FRenderer* Renderer, const FSceneRenderOptions& O
 
 	// 모든 프록시가 같은 FLightRenderParameters를 채우고, 종류는 Type으로만 구분한다.
 	auto AddVisibleLight = [this](const FLightSceneProxy* Light)
-	{
-		FLightRenderParameters Parameters{};
-		Light->GetLightShaderParameters(Parameters);
-		const int32 Index = RenderData.VisibleLights.Add(Parameters);
-		RenderData.VisibleLightProxies.Add(Light);
-		if (Light->GetLightComponent() == RenderData.PreviewLight) RenderData.PreviewLightIndex = Index;
-	};
+		{
+			FLightRenderParameters Parameters{};
+			Light->GetLightShaderParameters(Parameters);
+			const int32 Index = RenderData.VisibleLights.Add(Parameters);
+			RenderData.VisibleLightProxies.Add(Light);
+			if (Light->GetLightComponent() == RenderData.PreviewLight) RenderData.PreviewLightIndex = Index;
+		};
 
 	const FScene& Scene = World->GetScene();
 	for (const FDirectionalLightSceneProxy* Light : Scene.GetDirectionalLights())
@@ -216,7 +177,7 @@ void FSceneRenderer::InitViews(FRenderer* Renderer, const FSceneRenderOptions& O
 	FinalizeShadowLights(Options);
 }
 
-bool FSceneRenderer::BindDeferredLighting(FRenderer* Renderer, uint32 Width, uint32 Height, int32 SingleLightIndex)
+bool FSceneRenderer::BindDeferredLighting(FRenderer* Renderer, uint32 Width, uint32 Height, int32 SingleLightIndex, const FSceneRenderOptions& Options)
 {
 	FSceneLightResources& LightResources = RenderData.ViewLightResources;
 
@@ -229,11 +190,13 @@ bool FSceneRenderer::BindDeferredLighting(FRenderer* Renderer, uint32 Width, uin
 
 	FDeferredLightConstants Constants{};
 	Constants.bSingleLightPass = SingleLightIndex >= 0 ? 1u : 0u;
+	Constants.ReflectionModel = static_cast<uint32>(Options.ReflectionModel);
+	Constants.bOverrideMaterialLighting = Options.bOverrideMaterialLighting ? 1u : 0u;
 	Constants.SingleLightIndex = SingleLightIndex >= 0 ? static_cast<uint32>(SingleLightIndex) : 0u;
 	Constants.InverseViewProjection = View.ViewProjectionMatrix.Inverse();
 	Constants.CameraPosition = FVector4(View.ViewLocation.X, View.ViewLocation.Y, View.ViewLocation.Z, View.bIsPerspective ? 1.0f : 0.0f);
 	Constants.CameraForward = FVector4(View.ViewForward.X, View.ViewForward.Y, View.ViewForward.Z, 0.0f);
-	
+
 	const FSkyLightEnvironment* Sky = RenderData.bHasSkyLight ? World->GetScene().FindSkyLightEnvironment(RenderData.SkyLight.SourcePath) : nullptr;
 	Constants.Ambient = Sky ? FAmbientLightRenderData{ FVector4(0.0f) } : RenderData.AmbientLight; // 지금 환경광 계산이 ambient + skylight로 되어있어서 sky 잇으면 ambient 0으로 해줘야됨
 	Constants.SkyColorIntensity = Sky ? RenderData.SkyLight.ColorIntensity : FVector4(0.f);
@@ -245,7 +208,7 @@ bool FSceneRenderer::BindDeferredLighting(FRenderer* Renderer, uint32 Width, uin
 	RenderCommand::UpdateBufferData(DefferedConstants, &Constants, sizeof(Constants));
 	RenderCommand::BindConstantBuffer(0, DefferedConstants, EShaderBindFlagBits::Pixel);
 	// t0~t3은 패스의 ReadTextures(BaseColor, Normal, Depth, ScreenShadowMask)가 묶는다.
-	RenderCommand::BindShaderResource(4, RenderData.HasLights() ? LightResources.GetSceneLights() : nullptr, EShaderBindFlagBits::Pixel);
+	RenderCommand::BindShaderResource(6, RenderData.HasLights() ? LightResources.GetSceneLights() : nullptr, EShaderBindFlagBits::Pixel);
 
 	return true;
 }
@@ -260,9 +223,9 @@ bool FSceneRenderer::BindForwardLighting(FRenderer* Renderer, const FSceneRender
 	{
 		return false;
 	}
-	
+
 	FPipelineState* BasePSO = FRenderResourceManager::GetPSO(EPSOType::StaticMesh_Forward);
-	FShaderProgram* Program = FRenderResourceManager::GetForwardShaderProgram(Options.LightingModel);
+	FShaderProgram* Program = FRenderResourceManager::GetForwardShaderProgram(Options.ReflectionModel, Options.ShadingModel, false, Options.bUnlit);
 	if (!BasePSO || !Program)
 	{
 		return false;
@@ -308,6 +271,341 @@ void FSceneRenderer::UnbindForwardLighting(FRenderer* Renderer)
 	RenderCommand::UnbindShaderResources(11, 1, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 }
 
+void FSceneRenderer::UnbindForwardDecal(FRenderer* Renderer)
+{
+	RenderCommand::UnbindShaderResources(14, 3, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+}
+
+void FSceneRenderer::DrawBasePassMeshes(FRenderer* Renderer, const TArray<FMeshDrawBatch>& Batches)
+{
+	if (!FSkinningStats::IsCollecting())
+	{
+		Renderer->DrawMeshes(Batches);
+		return;
+	}
+
+	auto& Timing = RenderData.BaseSkeletalDrawGpu;
+	if (!Timing) Timing = std::make_shared<FGpuTimingHistory>();
+	Renderer->DrawMeshes(Batches, Timing, RenderData.SkeletalDrawGpuMode);
+}
+
+bool FSceneRenderer::PrepareDecalPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FSceneViewTargets& Targets,
+	const FSceneRenderOptions& Options, const TArray<FMeshDrawBatch>& SourceBatches,
+	uint32 Width, uint32 Height, bool bAlwaysCreate, FDecalPassSetup& Out)
+{
+	Out = {};
+
+	// Receiver Decal 수집
+	DecalReceiverBatches.Reset();
+	DecalReceiverBatches.Reserve(SourceBatches.Num());
+
+	for (const FMeshDrawBatch& SourceBatch : SourceBatches)
+	{
+		bool bHasReceiver = false;
+
+		for (const FMeshDrawBatch::FItem& Item : SourceBatch.Items)
+		{
+			if (Item.bReceiveDecal)
+			{
+				bHasReceiver = true;
+				break;
+			}
+		}
+
+		if (!bHasReceiver)
+			continue;
+
+		FMeshDrawBatch ReceiverBatch = SourceBatch;
+
+		ReceiverBatch.Items.Reset();
+		ReceiverBatch.Items.Reserve(SourceBatch.Items.Num());
+
+		for (const FMeshDrawBatch::FItem& Item : SourceBatch.Items)
+		{
+			if (Item.bReceiveDecal)
+			{
+				ReceiverBatch.Items.Add(Item);
+			}
+		}
+		DecalReceiverBatches.Add(ReceiverBatch);
+	}
+
+	// 데칼 패스 확인
+	FDecalStats& DecalStats = RenderData.DecalStats;
+	if (DecalStats.bCollecting)
+	{
+		for (const FMeshDrawBatch& Batch : DecalReceiverBatches)
+		{
+			if (Batch.Items.IsEmpty())
+				continue;
+
+			++DecalStats.Frame.ReceiverBatchCount;
+			DecalStats.Frame.ReceiverItemCount +=
+				static_cast<uint32>(Batch.Items.Num());
+		}
+	}
+	if (Options.bDrawDecals)
+	{
+		GatherProjectedDecals();
+	}
+	else
+	{
+		VisibleDecals.Reset();
+	}
+	MeshDecalDrawLists.Reset();
+
+	if (Options.DecalRenderMethod == EDecalRenderMethod::MeshRerendering)
+	{
+		BuildProjectedDecalMeshDrawLists();
+	}
+	FProjectedDecalRenderer* DecalRenderer = Renderer->GetProjectedDecal();
+
+	Out.bNeedsDBuffer =
+		Options.bDrawPrimitives &&
+		!View.bIsWireframe &&
+		!DecalReceiverBatches.IsEmpty() &&
+		!VisibleDecals.IsEmpty();
+
+	if (Out.bNeedsDBuffer &&
+		(!DecalRenderer || !DecalRenderer->IsReady()))
+	{
+		return false;
+	}
+
+	if (!Out.bNeedsDBuffer && !bAlwaysCreate)
+		return true;
+
+	// 비활성 상태에서도 투명한 DBuffer를 본 패스에 전달한다.
+	Out.Lit = Graph.CreateTexture({ Width, Height, ETextureFormat::R8G8B8A8_UNorm }, "DBufferLit");
+	Out.Unlit = Graph.CreateTexture({ Width, Height, ETextureFormat::R8G8B8A8_UNorm }, "DBufferUnlit");
+	Out.Normal = Graph.CreateTexture({ Width, Height, ETextureFormat::R16G16B16A16_Float }, "DBufferNormal");
+
+	if (!Out.Lit || !Out.Unlit || !Out.Normal) return false;
+	if (DecalStats.bCollecting)
+	{
+		DecalStats.Frame.bHasDBufferPasses = true;
+
+		DecalStats.Frame.DBufferBytes =
+			uint64(Width) * uint64(Height)
+			* (4ull + 4ull + 8ull); // 4채널 8비트 * 2장 + 4채널 16비트 * 1장
+	}
+
+	Out.bUseReceiverStencil =
+		Options.bDecalReceiverStencil &&
+		Options.DecalRenderMethod == EDecalRenderMethod::DepthReconstruction &&
+		Out.bNeedsDBuffer &&
+		Targets.Depth &&
+		Targets.Depth->GetReadOnlyDSV() &&
+		FRenderDevice::Get()->GetDepthStencilState(
+			EDepthStencilState::DecalReceiverWrite) &&
+		FRenderDevice::Get()->GetDepthStencilState(
+			EDepthStencilState::DecalReceiverTest);
+	return true;
+}
+
+bool FSceneRenderer::AddDepthPrepass(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef Depth,
+	const TArray<FMeshDrawBatch>* Batches, bool bWriteReceiverStencil)
+{
+	FPipelineState* DepthPipeline = FRenderResourceManager::GetPSO(EPSOType::StaticMesh_DepthOnly);
+	if (!DepthPipeline || !DepthPipeline->Shader || !DepthPipeline->Shader->PixelShader) return false;
+
+	// 본 패스가 이 깊이를 다시 쓰므로 PrepassReadOnly로 같은 픽셀만 그린다.
+	FRenderGraphRasterPassDesc Prepass{};
+	Prepass.Name = "DepthPrepass";
+	Prepass.DepthAttachment = { Depth, ERenderGraphLoadAction::Clear, 1.0f, 0 };
+	return Graph.AddRasterPass(std::move(Prepass), [this, Renderer, Batches, DepthPipeline, bWriteReceiverStencil]
+		{
+			if (!bCorePassSucceeded || !Batches || Batches->IsEmpty()) return;
+			// GBuffer 배치는 뷰 상수를 스스로 묶지 않으므로 먼저 올린다 (Forward에도 같은 값이라 무해).
+			Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
+
+			for (const FMeshDrawBatch& SourceBatch : *Batches)
+			{
+				if (SourceBatch.Items.IsEmpty())
+					continue;
+
+				if (!SourceBatch.Pipeline.Shader ||
+					!SourceBatch.Pipeline.Shader->VertexShader)
+				{
+					bCorePassSucceeded = false;
+					return;
+				}
+
+				// 각 배치의 원래 VS를 사용한다.
+				FShaderProgram DepthProgram(
+					SourceBatch.Pipeline.Shader->VertexShader,
+					DepthPipeline->Shader->PixelShader);
+
+				FMeshDrawBatch Batch = SourceBatch;
+
+				Batch.Pipeline = *DepthPipeline;
+				Batch.Pipeline.Shader = &DepthProgram;
+
+				// 원래 표면과 같은 래스터 규칙 유지
+				Batch.Pipeline.RasterizerState =
+					SourceBatch.Pipeline.RasterizerState;
+
+				Batch.Pipeline.StencilRef = 0;
+
+				if (bWriteReceiverStencil)
+				{
+					Batch.Pipeline.DepthStencilState =
+						EDepthStencilState::DecalReceiverWrite;
+				}
+
+				for (FMeshDrawBatch::FItem& Item : Batch.Items)
+				{
+					Item.bOverrideStencilRef =
+						bWriteReceiverStencil;
+
+					Item.StencilRef =
+						Item.bReceiveDecal
+						? StencilBits::ReceiveDecal
+						: 0;
+				}
+
+				// DepthProgram의 수명이 살아 있는 동안 바로 제출한다.
+				Renderer->DrawMeshes(std::span<const FMeshDrawBatch>(&Batch, 1));
+			}
+		});
+}
+
+bool FSceneRenderer::AddDBufferPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef Depth,
+	const FSceneRenderOptions& Options, const FDecalPassSetup& Setup, uint32 Width, uint32 Height)
+{
+	if (!Setup.Lit || !Setup.Unlit || !Setup.Normal)
+		return false;
+
+	FProjectedDecalRenderer* DecalRenderer = Renderer->GetProjectedDecal();
+	const bool bNeedsDBuffer = Setup.bNeedsDBuffer;
+	const bool bUseDecalReceiverStencil = Setup.bUseReceiverStencil;
+	const FRenderGraphTextureRef DBufferNormal = Setup.Normal;
+	const bool bUseDepthReconstruction =
+		Options.DecalRenderMethod == EDecalRenderMethod::DepthReconstruction;
+	auto AddDecalPass =
+		[&](FRenderGraphTextureRef Output, bool bUnlitPass)
+		{
+			FRenderGraphRasterPassDesc DecalPass{};
+			DecalPass.Name = bUnlitPass ? "DBufferUnlit" : "DBufferLit";
+			DecalPass.ColorAttachments = {
+				{
+					Output,
+					ERenderGraphLoadAction::Clear,
+					{ 0.0f, 0.0f, 0.0f, 0.0f }
+				},
+				{
+					DBufferNormal,
+					bUnlitPass
+						? ERenderGraphLoadAction::Load
+						: ERenderGraphLoadAction::Clear,
+					{ 0.0f, 0.0f, 0.0f, 0.0f }
+				}
+			};
+			if (bNeedsDBuffer)
+			{
+				if (bUseDepthReconstruction)
+				{
+					DecalPass.ReadTextures = { Depth };
+					DecalPass.ReadTextureStartSlot = 1;
+
+					// 볼륨 경로의 GreaterEqual 검사를 위해 DSV가 항상 필요하다.
+					DecalPass.DepthAttachment = {
+						Depth,
+						ERenderGraphLoadAction::Load,
+						1.0f, 0
+					};
+
+					DecalPass.DepthAttachment.bReadOnlyDepthStencil = true;
+				}
+				else
+				{
+					// 메시 방식은 Depth Equal 검사에 사용한다.
+					DecalPass.DepthAttachment = {
+						Depth,
+						ERenderGraphLoadAction::Load,
+						1.0f, 0
+					};
+				}
+			}
+
+			FDecalStats& Stats = RenderData.DecalStats;
+			if (Stats.bCollecting)
+			{
+				const auto Destination =
+					bUnlitPass ? Stats.GpuUnlit : Stats.GpuLit;
+
+				// 실행 전후 람다가 같은 핸들을 공유한다.
+				const auto Handle = std::make_shared<int32>(-1);
+
+				DecalPass.OnBeforeExecute =
+					[this, Destination, Handle]
+					{
+						if (!bCorePassSucceeded)
+							return;
+
+						*Handle =
+							FGpuProfiler::Get().BeginScope(Destination);
+					};
+
+				DecalPass.OnAfterExecute =
+					[Handle]
+					{
+						FGpuProfiler::Get().EndScope(*Handle);
+					};
+			}
+
+			return Graph.AddRasterPass(
+				std::move(DecalPass),
+				[
+					this,
+					DecalRenderer,
+					bNeedsDBuffer,
+					bUseDepthReconstruction,
+					bUnlitPass,
+					Width,
+					Height,
+					bUseDecalReceiverStencil
+				]
+				{
+					if (!bCorePassSucceeded || !bNeedsDBuffer)
+						return;
+
+					FDecalStats& Stats = RenderData.DecalStats;
+					FDecalCpuScope Timer(
+						Stats.bCollecting,
+						Stats.Frame.SubmitCycles);
+
+					FDecalFrameStats* Counters =
+						Stats.bCollecting ? &Stats.Frame : nullptr;
+
+					if (bUseDepthReconstruction)
+					{
+						bCorePassSucceeded =
+							DecalRenderer->OnRenderDepth(
+								View,
+								Width,
+								Height,
+								VisibleDecals,
+								bUnlitPass,
+								Counters,
+								bUseDecalReceiverStencil);
+					}
+					else
+					{
+						bCorePassSucceeded =
+							DecalRenderer->OnRenderMesh(
+								DecalReceiverBatches,
+								VisibleDecals,
+								MeshDecalDrawLists,
+								bUnlitPass,
+								Counters);
+					}
+				});
+		};
+
+	return AddDecalPass(Setup.Lit, false) && AddDecalPass(Setup.Unlit, true);
+}
+
 bool FSceneRenderer::AddWorldNormalPass(FRenderGraphBuilder& Graph, FRenderer* Renderer,
 	FSceneViewTargets& Targets, const FSceneRenderOptions& Options)
 {
@@ -317,7 +615,7 @@ bool FSceneRenderer::AddWorldNormalPass(FRenderGraphBuilder& Graph, FRenderer* R
 
 	FRenderGraphRasterPassDesc Pass{};
 	Pass.Name = "WorldNormal";
-	Pass.ColorAttachments = { { SceneColor, ERenderGraphLoadAction::Clear, { 0.0f, 0.0f, 0.0f, 1.0f } } };
+	Pass.ColorAttachments = { { SceneColor, ERenderGraphLoadAction::Clear,{ 0.0f, 0.0f, 0.0f, 1.0f } } };
 	Pass.DepthAttachment = { Depth, ERenderGraphLoadAction::Clear, 1.0f, 0 };
 	return Graph.AddRasterPass(std::move(Pass), [this, Renderer, bDrawPrimitives = Options.bDrawPrimitives]
 		{
@@ -343,6 +641,15 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 
 	bCorePassSucceeded = true;
 	bTilesBuilt = false;
+	const ESkinningMode SkinningMode = USkeletalMeshComponent::GetSkinningMode();
+	if (RenderData.SkeletalDrawGpuPath != Options.RenderingPath || RenderData.SkeletalDrawGpuMode != SkinningMode)
+	{
+		// Pending GPU queries still target the old history.
+		RenderData.BaseSkeletalDrawGpu.reset();
+		RenderData.ShadowSkeletalDrawGpu.reset();
+		RenderData.SkeletalDrawGpuPath = Options.RenderingPath;
+		RenderData.SkeletalDrawGpuMode = SkinningMode;
+	}
 	if (Options.bShowWorldNormal)
 		return AddWorldNormalPass(Graph, Renderer, Targets, Options);
 
@@ -355,18 +662,18 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 	const FRenderGraphTextureRef LightingHDR = Graph.CreateTexture(HDRDesc, "LightingHDR");
 	if (!LightingHDR)
 		return false;
-	
+
 	PrepareDrawData(Renderer, RenderData);
 
 	// HDR 파노라마를 물체보다 먼저 그려 두고, 최종 ToneMap에서 함께 인코딩한다.
 	FRenderGraphRasterPassDesc Sky{};
 	Sky.Name = "Skybox";
 	Sky.ColorAttachments = {
-		{ LightingHDR, ERenderGraphLoadAction::Clear, { 0.0f, 0.0f, 0.0f, 1.0f } }
+		{ LightingHDR, ERenderGraphLoadAction::Clear,{ 0.0f, 0.0f, 0.0f, 1.0f } }
 	};
 	if (!Graph.AddRasterPass(std::move(Sky), [this, Skybox]
 		{
-			if (bCorePassSucceeded && Skybox)
+			if (bCorePassSucceeded && Skybox && View.bIsPerspective)
 				Skybox->OnRender(View.ViewProjectionMatrix, View.ViewLocation);
 		})) return false;
 
@@ -386,7 +693,6 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 		ShadowDepths.DepthAttachment = { AtlasRef, ERenderGraphLoadAction::Clear, 1.0f, 0 };   // 단계 8에서 Load로
 		if (!Graph.AddRasterPass(std::move(ShadowDepths), [this, Renderer, &Graph, AtlasRef]
 			{
-				SCOPED_GPU_STAT(GPUStats::STAT_GPU_ShadowDepths);
 				RenderShadowDepthMaps(Renderer, static_cast<FTexture2DArray*>(Graph.Resolve(AtlasRef)));
 			})) return false;
 	}
@@ -396,7 +702,9 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 		const FRenderGraphTextureDesc GBufferDesc{ Width, Height, ETextureFormat::R8G8B8A8_UNorm };
 		const FRenderGraphTextureRef BaseColor = Graph.CreateTexture(GBufferDesc, "BaseColorMetallic"); // 임시 텍스쳐 생성
 		const FRenderGraphTextureRef Normal = Graph.CreateTexture(HDRDesc, "NormalRoughness");
-		if (!BaseColor || !Normal)
+		const FRenderGraphTextureRef Emissive = Graph.CreateTexture(HDRDesc, "EmissiveModel");
+		const FRenderGraphTextureRef Specular = Graph.CreateTexture(HDRDesc, "SpecularShininess");
+		if (!BaseColor || !Normal || !Emissive || !Specular)
 			return false;
 
 		if (Options.bDrawPrimitives)
@@ -404,23 +712,48 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 			FRenderGraphRasterPassDesc GBuffer{};
 			GBuffer.Name = "GBuffer";
 			GBuffer.ColorAttachments = {
-				{ BaseColor, ERenderGraphLoadAction::Clear, { 0.0f, 0.0f, 0.0f, 0.0f } },
-				{ Normal, ERenderGraphLoadAction::Clear, { 0.0f, 0.0f, 0.0f, 0.0f } }
+				{ BaseColor, ERenderGraphLoadAction::Clear,{ 0.0f, 0.0f, 0.0f, 0.0f } },
+				{ Normal, ERenderGraphLoadAction::Clear,{ 0.0f, 0.0f, 0.0f, 0.0f } },
+				{ Emissive, ERenderGraphLoadAction::Clear,{ 0.0f, 0.0f, 0.0f, 0.0f } },
+				{ Specular, ERenderGraphLoadAction::Clear,{ 0.0f, 0.0f, 0.0f, 1.0f } }
 			}; // GBuffer Pass 에는 BaseColor 와 Normal Texture가 Clear된 상태로 필요하다
 
-			GBuffer.DepthAttachment = { Depth, ERenderGraphLoadAction::Clear, 1.0f, 0 }; // GBuffer Pass 에는 Depth Texture가 Clear된 상태로 필요하다
+			// 프리패스와 GBuffer 패스가 같은 배치를 쓰므로 미리 만든다.
+			GBufferBatches.Reset();
+			{
+				FMeshPassProcessor Processor;
+				if (!Processor.Build(View, RenderData.RenderQueue,
+					&RenderData, EMeshPassType::GBuffer, GBufferBatches)) return false;
+			}
 
-			if (!Graph.AddRasterPass(std::move(GBuffer), [this, Renderer]
+			// 언리얼 DBuffer 데칼: 깊이 프리패스 → DBuffer → GBuffer(BasePass)가 DBuffer를 읽어 재질에 섞는다.
+			FDecalPassSetup Decal{};
+			if (!PrepareDecalPasses(Graph, Renderer, Targets, Options, GBufferBatches, Width, Height, false, Decal))
+				return false;
+			const bool bUseDepthPrepass = Decal.bNeedsDBuffer;
+			if (bUseDepthPrepass)
+			{
+				if (!AddDepthPrepass(Graph, Renderer, Depth, &GBufferBatches, Decal.bUseReceiverStencil)) return false;
+				if (!AddDBufferPasses(Graph, Renderer, Depth, Options, Decal, Width, Height)) return false;
+				GBuffer.ReadTextures = { Decal.Lit, Decal.Unlit, Decal.Normal };
+				GBuffer.ReadTextureStartSlot = 14;
+			}
+
+			GBuffer.DepthAttachment = { Depth,
+				bUseDepthPrepass ? ERenderGraphLoadAction::Load : ERenderGraphLoadAction::Clear, 1.0f, 0 };
+
+			if (!Graph.AddRasterPass(std::move(GBuffer), [this, Renderer, bUseDepthPrepass]
 				{
-					TArray<FMeshDrawBatch> Batches;
-					FMeshPassProcessor Processor;
-					bCorePassSucceeded = Processor.Build(View, RenderData.RenderQueue,
-						&RenderData, EMeshPassType::GBuffer, Batches);
-					if (bCorePassSucceeded)
+					if (!bCorePassSucceeded) return;
+					if (bUseDepthPrepass)
 					{
-						Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
-						Renderer->DrawMeshes(Batches);
+						for (FMeshDrawBatch& Batch : GBufferBatches)
+							Batch.Pipeline.DepthStencilState = EDepthStencilState::PrepassReadOnly;
 					}
+					Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
+					DrawBasePassMeshes(Renderer, GBufferBatches);
+					if (bUseDepthPrepass)
+						UnbindForwardDecal(Renderer);
 				})) return false;
 
 			// 언리얼 RenderLights: 그림자 없는 광원은 한 번에 그리고, 그림자 광원은 광원마다
@@ -431,13 +764,13 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 				{
 					FRenderGraphRasterPassDesc LightingPass{};
 					LightingPass.Name = Name;
-					LightingPass.ReadTextures = { BaseColor, Normal, Depth };
+					LightingPass.ReadTextures = { BaseColor, Normal, Depth, Emissive, Specular };
 					if (SingleLightIndex >= 0) LightingPass.ReadTextures.push_back(ShadowMask);   // t3
 					LightingPass.ColorAttachments = { { LightingHDR, ERenderGraphLoadAction::Load } };
-					return Graph.AddRasterPass(std::move(LightingPass), [this, Renderer, Width, Height, SingleLightIndex]
+					return Graph.AddRasterPass(std::move(LightingPass), [this, Renderer, Width, Height, SingleLightIndex, Options]
 						{
 							if (!bCorePassSucceeded) return;
-							if (!BindDeferredLighting(Renderer, Width, Height, SingleLightIndex))
+							if (!BindDeferredLighting(Renderer, Width, Height, SingleLightIndex, Options))
 							{
 								bCorePassSucceeded = false;
 								return;
@@ -455,7 +788,7 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 							{
 								bCorePassSucceeded = false;
 							}
-							RenderCommand::UnbindShaderResources(3, 2, EShaderBindFlagBits::Pixel);
+							RenderCommand::UnbindShaderResources(3, 4, EShaderBindFlagBits::Pixel);
 						});
 				};
 			if (!AddDeferredLightPass("DeferredLighting", -1)) return false;
@@ -467,7 +800,7 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 					FRenderGraphRasterPassDesc Projection{};
 					Projection.Name = "ShadowProjection";
 					Projection.ReadTextures = { Depth, ShadowAtlasRef };   // t0 장면 깊이, t1 깊이 아틀라스
-					Projection.ColorAttachments = { { ShadowMask, ERenderGraphLoadAction::Clear, { 1.0f, 1.0f, 1.0f, 1.0f } } };
+					Projection.ColorAttachments = { { ShadowMask, ERenderGraphLoadAction::Clear,{ 1.0f, 1.0f, 1.0f, 1.0f } } };
 					if (!Graph.AddRasterPass(std::move(Projection), [this, Width, Height, LightId = Light.LightId]
 						{
 							if (!bCorePassSucceeded) return;
@@ -488,7 +821,7 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 				FRenderGraphRasterPassDesc Projection{};
 				Projection.Name = "ShadowProjection";
 				Projection.ReadTextures = { Depth, ShadowAtlasRef };   // t0 장면 깊이, t1 깊이 아틀라스
-				Projection.ColorAttachments = { { ShadowMask, ERenderGraphLoadAction::Clear, { 1.0f, 1.0f, 1.0f, 1.0f } } };
+				Projection.ColorAttachments = { { ShadowMask, ERenderGraphLoadAction::Clear,{ 1.0f, 1.0f, 1.0f, 1.0f } } };
 				if (!Graph.AddRasterPass(std::move(Projection), [this, Width, Height]
 					{
 						RenderShadowMaskVisualizationProjections(Width, Height);
@@ -524,8 +857,16 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 		{
 			FMeshPassProcessor Processor;
 			if (!Processor.Build(View, RenderData.RenderQueue, &RenderData,
-				EMeshPassType::Forward, ForwardBatches, Options.LightingModel)) return false;
+				EMeshPassType::Forward, ForwardBatches, Options)) return false;
 		}
+		
+		FDecalPassSetup Decal{};
+		if (!PrepareDecalPasses(Graph, Renderer, Targets, Options, ForwardBatches, Width, Height, true, Decal))
+			return false;
+		const bool bNeedsDBuffer = Decal.bNeedsDBuffer;
+		const bool bUseDecalReceiverStencil = Decal.bUseReceiverStencil;
+
+
 		// 현재 업로드된 광원 정보를 기존 그리드에 전달한다.
 		FForwardLightTileGrid& Tiles = RenderData.ViewLightResources.GetTiles();
 		FStructuredBuffer* SceneLights = RenderData.ViewLightResources.GetSceneLights();
@@ -534,8 +875,8 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 		std::memcpy(GridLighting.LightOffsets, RenderData.LightParameterOffsets, sizeof(RenderData.LightParameterOffsets));
 
 		// 픽셀 조명 경로에서만 목록을 사용한다.
-		const ELightCullingMode CullingMode = !View.bIsWireframe && Options.LightingModel != ELightingModel::Gouraud &&
-			Options.LightingModel != ELightingModel::Unlit ? Options.LightCullingMode : ELightCullingMode::Off;
+		const ELightCullingMode CullingMode = !View.bIsWireframe && Options.ShadingModel != EShadingModel::Gouraud &&
+			!Options.bUnlit ? Options.LightCullingMode : ELightCullingMode::Off;
 
 		// Off도 이번 프레임의 화면 정보와 입력 광원 개수를 갱신한다.
 		bool bUseDepthPrepass = false;
@@ -545,35 +886,10 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 		const bool bNeedsLightCulling = bGridPrepared && CullingMode != ELightCullingMode::Off && (RenderData.HasSpotLights() || RenderData.HasPointLights());
 		// 그림자 마스크는 장면 깊이로 Projection하므로 프리패스가 필요하다. Gouraud는 FinalizeShadowLights가 채널을 주지 않는다.
 		const bool bForwardShadows = Options.bDrawPrimitives && ShadowAtlasRef && !ShadowedLights.IsEmpty();
-		if (bNeedsLightCulling || bForwardShadows)
+		if (bNeedsLightCulling || bForwardShadows || bNeedsDBuffer)
 		{
-			FPipelineState* DepthPipeline = FRenderResourceManager::GetPSO(EPSOType::StaticMesh_DepthOnly);
-			if (!DepthPipeline || !DepthPipeline->Shader || !DepthPipeline->Shader->PixelShader) return false;
 			bUseDepthPrepass = true;
-
-			// 기존 프리패스를 유지해 ForwardOpaque에서 깊이를 재사용한다.
-			FRenderGraphRasterPassDesc Prepass{};
-			Prepass.Name = "DepthPrepass";
-			Prepass.DepthAttachment = { Depth, ERenderGraphLoadAction::Clear, 1.0f, 0 };
-			if (!Graph.AddRasterPass(std::move(Prepass), [this, Renderer, DepthPipeline]
-				{
-					if (ForwardBatches.IsEmpty()) return;
-
-					// 실제 메시 패스와 같은 VS를 사용해 깊이 계산을 일치시킨다.
-					FShaderProgram DepthProgram(nullptr, DepthPipeline->Shader->PixelShader);
-					FShaderProgram SkinnedDepthProgram(nullptr, DepthPipeline->Shader->PixelShader);
-					TArray<FMeshDrawBatch> DepthBatches = ForwardBatches;
-					for (FMeshDrawBatch& Batch : DepthBatches)
-					{
-						// GPU 스킨 배치는 VS가 달라서 프로그램을 나눈다
-						FShaderProgram& Program = Batch.BoneBuffer ? SkinnedDepthProgram : DepthProgram;
-						Program.VertexShader = Batch.Pipeline.Shader->VertexShader;
-						Batch.Pipeline = *DepthPipeline;
-						Batch.Pipeline.Shader = &Program;
-					}
-					SCOPED_GPU_STAT(GPUStats::STAT_GPU_DepthPrepass);
-					Renderer->DrawMeshes(DepthBatches);
-				})) return false;
+			if (!AddDepthPrepass(Graph, Renderer, Depth, &ForwardBatches, bUseDecalReceiverStencil)) return false;
 		}
 
 		// 그림자 광원마다 배정된 채널(R~A)에 Projection한다. 한 픽셀에서 겹치는 그림자 광원은 서로 다른 채널을 받는다.
@@ -586,7 +902,7 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 			FRenderGraphRasterPassDesc Projection{};
 			Projection.Name = "ShadowProjection";
 			Projection.ReadTextures = { Depth, ShadowAtlasRef };   // t0 장면 깊이, t1 깊이 아틀라스
-			Projection.ColorAttachments = { { ForwardShadowMask, ERenderGraphLoadAction::Clear, { 1.0f, 1.0f, 1.0f, 1.0f } } };
+			Projection.ColorAttachments = { { ForwardShadowMask, ERenderGraphLoadAction::Clear,{ 1.0f, 1.0f, 1.0f, 1.0f } } };
 			if (!Graph.AddRasterPass(std::move(Projection), [this, Width, Height]
 				{
 					if (!bCorePassSucceeded) return;
@@ -603,7 +919,7 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 			Culling.Name = CullingMode == ELightCullingMode::Clustered
 				? "ClusterLightCulling" : "TileLightCulling";
 			Culling.ReadResources = { SceneLights->GetBuffer() };
-			if (CullingMode == ELightCullingMode::Tiled25D)
+			if (CullingMode == ELightCullingMode::Tiled)
 				Culling.ReadResources.push_back(Targets.Depth->GetRawPtr());
 
 			const std::array<ID3D11Resource*, 4> Writes = Tiles.GetWriteResources();
@@ -613,199 +929,45 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 				{
 					if (bCorePassSucceeded)
 						bTilesBuilt = RenderData.ViewLightResources.GetTiles().ExecuteBuild(Renderer, DepthTexture, SceneLights);
-				})) 
+				}))
 				return false;
 		}
+
+		// 데칼 패스 (그릴 것이 없어도 빈 DBuffer로 지운다)
+		if (!AddDBufferPasses(Graph, Renderer, Depth, Options, Decal, Width, Height))
+			return false;
+
 		FRenderGraphRasterPassDesc Forward{};
 		Forward.Name = "ForwardOpaque";
+		Forward.ReadTextures = { Decal.Lit, Decal.Unlit, Decal.Normal };
+		Forward.ReadTextureStartSlot = 14;
 		Forward.ColorAttachments = {
 			{ LightingHDR, ERenderGraphLoadAction::Load }
 		};
 		Forward.DepthAttachment = { Depth, bUseDepthPrepass ? ERenderGraphLoadAction::Load : ERenderGraphLoadAction::Clear, 1.0f, 0 };
 		if (!Graph.AddRasterPass(std::move(Forward), [this, Renderer, &Graph, LightingOptions = Options, bUseDepthPrepass, ForwardShadowMask]
-		{
-			if (!LightingOptions.bDrawPrimitives) return;
-			bCorePassSucceeded = BindForwardLighting(Renderer, LightingOptions, ForwardShadowMask ? Graph.Resolve(ForwardShadowMask) : nullptr);
-			if (!bCorePassSucceeded) return;
-			if (bUseDepthPrepass)
 			{
-				for (FMeshDrawBatch& Batch : ForwardBatches)
+				if (!LightingOptions.bDrawPrimitives) return;
+				bCorePassSucceeded = BindForwardLighting(Renderer, LightingOptions, ForwardShadowMask ? Graph.Resolve(ForwardShadowMask) : nullptr);
+				if (!bCorePassSucceeded) return;
+				if (bUseDepthPrepass)
 				{
-					Batch.Pipeline.DepthStencilState = EDepthStencilState::PrepassReadOnly;
-				}
-			}
-			SCOPED_GPU_STAT(GPUStats::STAT_GPU_ForwardOpaque);
-			Renderer->DrawMeshes(ForwardBatches);
-			UnbindForwardLighting(Renderer);
-		})) return false;
-
-		if (Options.bDrawDecals)
-		{
-			FRenderGraphRasterPassDesc Decal{};
-			Decal.Name = "Decal";
-			Decal.ColorAttachments = { { LightingHDR, ERenderGraphLoadAction::Load,{ 0.0f, 0.0f, 0.0f, 1.0f } } };
-			Decal.DepthAttachment = { Depth, ERenderGraphLoadAction::Load, 1.0f, 0 };
-			Decal.ReadTextures = {};
-			Decal.Viewport = {};
-			if (!Graph.AddRasterPass(std::move(Decal), [this, Renderer, bDecalCulling = Options.bDecalCulling, 
-				bDecalNarrowCulling = Options.bDecalNarrowCulling, bDecalBVHCulling = Options.bDecalBVHCulling,
-				bDecalOBBTree = Options.bDecalOBBTree]
-				{
-					SCOPE_CYCLE_COUNTER(STAT_DecalPass);
-					if (!bCorePassSucceeded || ForwardBatches.IsEmpty()) return;
-
-					FPipelineState* DecalPipeline = FRenderResourceManager::GetPSO(EPSOType::Decal);
-					FPipelineState* DecalAdditivePipeline = FRenderResourceManager::GetPSO(EPSOType::DecalAdditive);
-					if (!DecalPipeline || !DecalPipeline->Shader) return;
-					if (!DecalAdditivePipeline || !DecalAdditivePipeline->Shader) return;
-
-					// 여기부터 패스 끝까지가 GPU 측정 구간이다. 위의 조기 return은 잴 것이 없으므로 제외한다.
-					SCOPED_GPU_STAT(GPUStats::STAT_GPU_Decal);
-
-					FConstantBuffer* Constants = Renderer->GetDecalConstants();
-					TArray<FMeshDrawBatch> DecalBatches;
-					DecalBatches.Reserve(ForwardBatches.Num());
-					FDecalData Data{};
-
-					const FScene& Scene = World->GetScene();
-					RenderData.RenderStats.DecalCount = Scene.Decals.Num();
-
-					TArray <UDecalComponent*> SortedDecals = Scene.Decals;
-					std::sort(SortedDecals.begin(), SortedDecals.end(), CompareDecalSortOrder);
-
-					TArray <FMeshDrawBatch> DecalHeaders;
-					DecalHeaders.Reserve(ForwardBatches.Num());
-					TArray <FDecalItemRef> ItemRefs;
-
-					TArray <uint32> TouchedBatches;
-
-					// ForwardBatches를 순회로 각 배치의 아이템 중 데칼을 받을 수 있는 아이템들 수집
-					for (uint32 BatchIndex = 0; BatchIndex < ForwardBatches.Num(); BatchIndex++)
+					for (FMeshDrawBatch& Batch : ForwardBatches)
 					{
-						const FMeshDrawBatch& Src = ForwardBatches[BatchIndex];
-						DecalHeaders.Add(Src);
-						FMeshDrawBatch& Header = DecalHeaders.Last();
-						Header.Items.Reset();
-						Header.Sampler = ESamplerState::LinearClamp;
-
-						for (uint32 ItemIndex = 0; ItemIndex < static_cast<uint32>(Src.Items.Num()); ItemIndex++)
-						{
-							const FMeshDrawBatch::FItem& Item = Src.Items[ItemIndex];
-							if (!Item.bReceivesDecals) continue;
-							ItemRefs.Add({ Item.Proxy, BatchIndex, ItemIndex });
-						}
+						Batch.Pipeline.DepthStencilState = EDepthStencilState::PrepassReadOnly;
 					}
+				}
+				DrawBasePassMeshes(Renderer, ForwardBatches);
 
-					std::sort(ItemRefs.begin(), ItemRefs.end(), CompareDecalItemRef);
-
-					for (auto Decal : SortedDecals) {
-						if (Decal->GetDecalTexture() == nullptr) continue;
-						RenderData.RenderStats.DecalsRendered++;
-
-						Decal->SetDecalViewProj();
-						Data.Fade = Decal->GetFade();
-						Data.bAdditive = Decal->IsAdditive() ? 1.0f : 0.0f;
-						Data.VP = Decal->GetDecalVP();
-
-						RenderCommand::UpdateBufferData(Constants, &Data, sizeof(Data));
-						RenderCommand::BindConstantBuffer(1, Constants, EShaderBindFlagBits::Pixel);
-
-						DecalBatches.Reset();
-						TouchedBatches.Reset();
-						uint32 ReceiverItems = 0;
-						const FAABB DecalAABB = Decal->GetWorldAABB();
-						const FOBB DecalOBB = Decal->GetWorldOBB();
-
-						const FBox DecalBox{ DecalAABB.Center - DecalAABB.Extent, DecalAABB.Center + DecalAABB.Extent };
-
-						// 아이템 하나 검사 
-						const auto ConsiderItem = [&](const FDecalItemRef& Ref)
-							{
-								const FMeshDrawBatch::FItem& Item = ForwardBatches[Ref.Batch].Items[Ref.Item];
-								RenderData.RenderStats.DecalItemsTested++;
-
-								if (!bDecalBVHCulling && bDecalCulling) {
-									RenderData.RenderStats.DecalBroadTests++;
-									if (!IntersectAABB(DecalAABB, Item.Bounds)) return;
-								}
-
-								RenderData.RenderStats.DecalNarrowTested++;
-								if (bDecalNarrowCulling && !IntersectOBBAABB(DecalOBB, Item.Bounds)) return;
-
-								if (bDecalNarrowCulling && bDecalOBBTree && Item.Proxy && Item.Proxy->GetMesh()) {
-									const FStaticMeshData& MeshData = Item.Proxy->GetMesh()->GetMeshData();
-									FMatrix LocalToWorld = Item.Proxy->GetLocalToWorld();
-									if (MeshData.OBBTree) {
-										RenderData.RenderStats.DecalOBBTreeTested++;
-										if (!MeshData.OBBTree->Intersects(DecalOBB, LocalToWorld)) return;
-									}
-									
-								}
-
-								FMeshDrawBatch& Header = DecalHeaders[Ref.Batch];
-								if (Header.Items.IsEmpty()) TouchedBatches.Add(Ref.Batch);
-								Header.Items.Add(Item);
-							};
-
-						// BVH 질의 후 index 하나씩 돌며 검사
-						{
-							SCOPE_CYCLE_COUNTER(STAT_DecalGatherItems);
-							if (bDecalBVHCulling) {
-								Scene.BVH.Query(
-									[&](const FBox& Bounds) {
-										RenderData.RenderStats.DecalBroadTests++;
-										return UWorld::AreAABBsOverlapping(DecalBox, Bounds);
-									},
-									[&](FPrimitiveSceneProxy* Proxy) { 
-										// BVH에서 얻은 Proxy를 ItemRefs에서 찾아서 ConsiderItem 호출
-										auto it = std::lower_bound(ItemRefs.begin(), ItemRefs.end(), Proxy, CompareDecalItemRefProxy);
-										while (it != ItemRefs.end() && it->Proxy == Proxy) {
-											ConsiderItem(*it);
-											++it;
-										}
-									});
-							}
-							else {
-								for (const FDecalItemRef& Ref : ItemRefs) {
-									ConsiderItem(Ref);
-								}
-							}
-						}
-
-						if (TouchedBatches.IsEmpty()) continue;
-						std::sort(TouchedBatches.begin(), TouchedBatches.end());
-
-						for (uint32 BatchIndex : TouchedBatches) {
-							FMeshDrawBatch& Header = DecalHeaders[BatchIndex];
-							Header.Pipeline = Decal->IsAdditive() ? *DecalAdditivePipeline : *DecalPipeline;
-							Header.Textures = { { Decal->GetDecalTexture(), EShaderBindFlagBits::Pixel } };
-							ReceiverItems += Header.Items.Num();
-							DecalBatches.Add(std::move(Header));
-						}
-
-						{
-							SCOPE_CYCLE_COUNTER(STAT_DecalDraw);
-							Renderer->DrawMeshes(DecalBatches);
-						}
-						RenderData.RenderStats.DecalDrawCalls += ReceiverItems;
-
-						for (uint32 Index = 0; Index < static_cast<uint32>(TouchedBatches.Num()); ++Index) {
-							FMeshDrawBatch& Header = DecalHeaders[TouchedBatches[Index]];
-							Header = std::move(DecalBatches[Index]);
-							Header.Items.Reset();
-						}
-						
-					}
-				})) return false;
-		}
+				UnbindForwardDecal(Renderer);
+				UnbindForwardLighting(Renderer);
+			})) return false;
 	}
-
-	
 
 	FRenderGraphRasterPassDesc ToneMap{};
 	ToneMap.Name = "ToneMap";
 	ToneMap.ReadTextures = { LightingHDR };
-	ToneMap.ColorAttachments = { { SceneColor, ERenderGraphLoadAction::Clear, { 0.0f, 0.0f, 0.0f, 1.0f } } };
+	ToneMap.ColorAttachments = { { SceneColor, ERenderGraphLoadAction::Clear,{ 0.0f, 0.0f, 0.0f, 1.0f } } };
 	if (!Graph.AddRasterPass(std::move(ToneMap), [this, Renderer, &Graph, LightingHDR, bGamma = Options.bGammaCorrection, DisplayGamma = Options.DisplayGamma]
 		{
 			if (bCorePassSucceeded)
@@ -839,16 +1001,18 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 	{
 		// 디버그 보기에서 현재 뷰의 실제 타일 목록을 생성한다.
 		CoreOptions.RenderingPath = ERenderingPath::Forward;
-		CoreOptions.LightingModel = ELightingModel::Lambert;
+		CoreOptions.ReflectionModel = EReflectionModel::Lambert;
+		CoreOptions.ShadingModel = EShadingModel::Phong;
+		CoreOptions.bUnlit = false;
 	}
-	else if (Options.LightingModel == ELightingModel::Unlit)
+	else if (Options.bUnlit)
 	{
 		// Deferred 조명 패스는 Unlit 변형이 없다. 조명이 필요 없으므로 Uber Shader의 Unlit 변형으로 바로 그린다.
 		CoreOptions.RenderingPath = ERenderingPath::Forward;
 	}
 	if (!AddCorePasses(Graph, Renderer, Targets, CoreOptions, Skybox)) // 기본적으로 그려져야 되는 Core Pass 들
 		return false;
-	
+
 	const FRenderGraphTextureRef SceneColor = Graph.ImportTexture(Targets.SceneColor.get(), "SceneColor");
 	const FRenderGraphTextureRef Depth = Graph.ImportTexture(Targets.Depth.get(), "SceneDepth");
 	if (!SceneColor || !Depth) return false;
@@ -861,7 +1025,7 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 		Pass.ReadTextures = { Depth };
 		if (!Graph.AddRasterPass(std::move(Pass), [this, DrawFog = Callbacks.HeightFog]
 			{
-			bHasFog = DrawFog();
+				bHasFog = DrawFog();
 			})) return false;
 	}
 	if (!Options.bShowWorldNormal && Options.bDrawPrimitives)
@@ -869,7 +1033,7 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 		if (!Graph.AddRasterPass(MakeViewportPass("Translucent", SceneColor, Depth),
 			[this, Renderer, GetFog = Callbacks.TranslucentFogConstants]
 			{
-			RenderTranslucent(Renderer, GetFog ? GetFog(bHasFog) : nullptr);
+				RenderTranslucent(Renderer, GetFog ? GetFog(bHasFog) : nullptr);
 			})) return false;
 	}
 	if (!Options.bShowWorldNormal && Callbacks.SceneText &&
@@ -906,7 +1070,7 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 		Pass.ReadTextures = { SceneColor };
 		if (!Graph.AddRasterPass(std::move(Pass), [this, ApplyFXAA = Callbacks.FXAA]
 			{
-			bFXAAPassSucceeded = ApplyFXAA();
+				bFXAAPassSucceeded = ApplyFXAA();
 			})) return false;
 	}
 
@@ -946,7 +1110,9 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 	if (!AddOverlayPass(Graph, "EditorLines", FinalColor, Depth, Overlay.EditorLines) ||
 		!AddOverlayPass(Graph, "EditorGrid", FinalColor, Depth, Overlay.EditorGrid) ||
 		!AddOverlayPass(Graph, "EditorOutline", FinalColor, Depth, Overlay.EditorOutline) ||
-		!AddOverlayPass(Graph, "EditorGizmo", FinalColor, Depth, Overlay.EditorGizmo, ERenderGraphLoadAction::Clear))
+		!AddOverlayPass(Graph, "EditorGizmo", FinalColor, Depth, Overlay.EditorGizmo, ERenderGraphLoadAction::Clear) ||
+		!AddOverlayPass(Graph, "SIEOutline", FinalColor, Depth, Overlay.SIEOutline) ||
+		!AddOverlayPass(Graph, "SIEGizmo", FinalColor, Depth, Overlay.SIEGizmo, ERenderGraphLoadAction::Clear))
 		return false;
 	if (Overlay.bClearEditorDepth)
 	{
@@ -963,6 +1129,8 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 
 bool FSceneRenderer::Render(FRenderer* Renderer, FSceneViewTargets& Targets, const FSceneRenderOptions& Options, const std::function<void(FScenePassCallbacks&)>& ExtraPasses)
 {
+	RenderData.DecalStats.Frame.bValid = false;
+
 	FTexture2D* ColorTarget = Targets.SceneColor.get();
 	FTexture2D* DepthTarget = Targets.Depth.get();
 	if (!World || !Renderer || !ColorTarget || !DepthTarget)
@@ -971,6 +1139,14 @@ bool FSceneRenderer::Render(FRenderer* Renderer, FSceneViewTargets& Targets, con
 	const uint32 Height = ColorTarget->GetHeight();
 	if (!Width || !Height || !Targets.IsValidFor(Width, Height))
 		return false;
+
+	FDecalStats& DecalStats = RenderData.DecalStats;
+	DecalStats.BeginView(
+		FStatOverlay::IsEnabled(EStatFlags::Decal),
+		Options.DecalRenderMethod,
+		Width,
+		Height);
+	FDecalViewStatsScope DecalStatsScope(DecalStats);
 
 	FScenePassCallbacks Callbacks;
 	Callbacks.HeightFog = [this, Renderer, DepthTarget, ColorTarget]
@@ -996,13 +1172,16 @@ bool FSceneRenderer::Render(FRenderer* Renderer, FSceneViewTargets& Targets, con
 	if (ExtraPasses) ExtraPasses(Callbacks);
 
 	FRenderGraphBuilder Graph;
-	if (!AddViewportPasses(Graph, Renderer, Targets, Options, Renderer->GetSkybox(), Callbacks) ||
+	FSkyboxRenderer* Skybox = Callbacks.SkyboxOverride ? Callbacks.SkyboxOverride : Renderer->GetSkybox();
+	if (!AddViewportPasses(Graph, Renderer, Targets, Options, Skybox, Callbacks) ||
 		!Graph.Execute() || !DidCorePassSucceed() || !DidFXAAPassSucceed())
 		return false;
 	if (bUseFXAA && !Targets.SwapSceneColorAndBind(FXAA->GetOutputTarget()))
 		return false;
 
 	RenderCommand::EndRenderPass();
+
+	DecalStatsScope.MarkSuccess();
 	return true;
 }
 
@@ -1043,9 +1222,9 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 		SCOPE_CYCLE_COUNTER(STAT_FrustumCull);
 		// 표시 상태는 프록시 캐시로 판정해 오클루전과 드로우 수집 전에 제외한다.
 		const auto Visit = [&](FPrimitiveSceneProxy* Proxy)
-		{
-			if (Proxy->IsShown(View.bGameView)) VisibleProxies.Add(Proxy);
-		};
+			{
+				if (Proxy->IsShown(View.bGameView, View.bShowSkeletalMeshes)) VisibleProxies.Add(Proxy);
+			};
 
 		if (Frustum)
 		{
@@ -1061,6 +1240,12 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 		{
 			Scene.BVH.QueryCull(0, [](const FBox&, uint32&) { return EBVHCullResult::Inside; }, Visit);
 		}
+	}
+
+	for (FPrimitiveSceneProxy* Proxy : VisibleProxies)
+	{
+		if (USkeletalMeshComponent* Component = Cast<USkeletalMeshComponent>(Proxy->GetComponent()))
+			Component->MarkVisibleForAnimationTick();
 	}
 
 	RenderStats.TotalPrimitives = Scene.PrimitiveSceneProxies.Num();
@@ -1116,7 +1301,7 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 		LODInputs.Reset();
 		LODInputs.Reserve(VisibleProxies.Num());
 		for (const FPrimitiveSceneProxy* Proxy : VisibleProxies)
-			LODInputs.Add({Proxy->GetLODSphere(), Proxy->GetRenderState()});
+			LODInputs.Add({ Proxy->GetLODSphere(), Proxy->GetRenderState() });
 		SelectLODs(LODInputs, View, SelectedLODs);
 		Tasks::ParallelForChunks(VisibleCount, ChunkCount, [&](uint32 Begin, uint32 End, uint32 ChunkIndex)
 			{
@@ -1168,7 +1353,8 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 					{
 						// 칸 VisibleIndex는 이 반복만 쓴다 → 스레드끼리 겹치지 않음
 						const FPerObjectConstants Constants =
-							MakePerObjectConstants(Proxy->GetLocalToWorld(), Proxy->bReceiveShadow);
+							MakePerObjectConstants(Proxy->GetLocalToWorld(), 
+								Proxy->bReceiveShadow, Proxy->bReceiveDecal);
 
 						Data.ObjectConstants[VisibleIndex] = Constants;
 
@@ -1202,7 +1388,7 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 				}
 			});
 
-	// 이 뷰의 스태틱 드로우 수를 세고, 실제 렌더링할 때에만 해당 묶음을 바인딩한다.
+		// 이 뷰의 스태틱 드로우 수를 세고, 실제 렌더링할 때에만 해당 묶음을 바인딩한다.
 		uint32 StaticDraws = 0;
 		if (Renderer)
 		{
@@ -1230,9 +1416,6 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 				if (!Primitive || !Primitive->IsVisible())
 					continue;
 
-				if (Proxy->IsSkinned() && !View.bShowSkeletalMesh)
-					continue;
-
 				const uint32 FirstNew = RenderQueue.Num();
 
 				// 프록시 캐시가 없는 스태틱 메시는 기존처럼 LOD를 골라 제출하고, 그 외는 컴포넌트에 맡긴다.
@@ -1244,7 +1427,7 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 				}
 				else
 				{
-					Proxy->GetDynamicMeshElements(RenderQueue, View); 
+					Primitive->SubmitToRenderQueue(RenderQueue, View);
 				}
 
 				// continue 없이 항상 여기까지 와서 새 패킷에 여유 칸을 배정한다.
@@ -1253,7 +1436,11 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 					if (!bPrepareObjectSlots || NextExtraSlot >= MaxSlots) break;
 					FRenderPacket& Packet = RenderQueue[p];
 					const FMatrix& Model = Packet.Proxy ? Packet.Proxy->GetLocalToWorld() : Packet.Model ? *Packet.Model : FMatrix::Identity;
-					Data.ObjectConstants[NextExtraSlot] = MakePerObjectConstants(Model);
+					Data.ObjectConstants[NextExtraSlot] = 
+						MakePerObjectConstants(
+							Model, 
+							!Packet.Proxy || Packet.Proxy->bReceiveShadow, 
+							!Packet.Proxy || Packet.Proxy->bReceiveDecal);
 					Packet.Slot = NextExtraSlot++;
 				}
 			}
@@ -1285,7 +1472,252 @@ void FSceneRenderer::PrepareDrawData(FRenderer* Renderer, const FSceneRenderData
 	}
 }
 
+void FSceneRenderer::GatherProjectedDecals()
+{
+	VisibleDecals.Reset();
 
-bool FSceneRenderer::CompareDecalSortOrder(const UDecalComponent* A, const UDecalComponent* B) {
-	return A->GetSortOrder() < B->GetSortOrder();
+	FDecalStats& Stats = RenderData.DecalStats;
+	FDecalFrameStats& Frame = Stats.Frame;
+
+	if (!World)
+		return;
+
+	{
+		FDecalCpuScope Timer(Stats.bCollecting, Frame.GatherCycles);
+
+		for (TObjectIterator<UDecalComponent> It; It; ++It)
+		{
+			UDecalComponent* Component = *It;
+
+			if (!Component || !Component->IsRegistered())
+			{
+				continue;
+			}
+
+			AActor* Owner = Component->GetOwner();
+
+			if (!Owner || Owner->GetWorld() != World)
+			{
+				continue;
+			}
+
+			if (Stats.bCollecting)
+				++Frame.WorldCount;
+
+			if (!Component->IsShown(View.bGameView))
+			{
+				if (Stats.bCollecting)
+					++Frame.HiddenCount;
+
+				continue;
+			}
+
+			FProjectedDecalRenderData Data{};
+
+			if (!Component->TryGetRenderData(Data))
+			{
+				if (Stats.bCollecting)
+					++Frame.RenderDataRejected;
+
+				continue;
+			}
+
+			const FBox Bounds = DecalBounds::GetWorldBox(Data);
+
+			if (!DecalBounds::IsFinite(Bounds))
+			{
+				if (Stats.bCollecting)
+					++Frame.RenderDataRejected;
+
+				continue;
+			}
+
+			if (Stats.bCollecting)
+				++Frame.EligibleCount;
+
+			uint32 PlaneMask = FrustumAllPlanesMask;
+
+			if (ClassifyBoxInFrustum(Bounds, View.Frustum, PlaneMask) ==
+				EFrustumTest::Outside)
+			{
+				if (Stats.bCollecting)
+					++Frame.ViewFrustumRejectedDecals;
+
+				continue;
+			}
+
+			VisibleDecals.Add(Data);
+		}
+	}
+
+	{
+		FDecalCpuScope Timer(
+			Stats.bCollecting,
+			Frame.SortCycles);
+
+		std::sort(
+			VisibleDecals.begin(),
+			VisibleDecals.end(),
+			[](const auto& A, const auto& B)
+			{
+				if (A.SortOrder != B.SortOrder)
+					return A.SortOrder < B.SortOrder;
+				return A.ComponentID < B.ComponentID;
+			});
+	}
+}
+
+void FSceneRenderer::BuildProjectedDecalMeshDrawLists()
+{
+	MeshDecalDrawLists.Reset();
+	MeshDecalDrawLists.SetNum(VisibleDecals.Num());
+
+	if (!World ||
+		VisibleDecals.IsEmpty() ||
+		DecalReceiverBatches.IsEmpty())
+	{
+		return;
+	}
+
+	FDecalStats& Stats = RenderData.DecalStats;
+	FDecalFrameStats& Frame = Stats.Frame;
+
+	FDecalCpuScope Timer(
+		Stats.bCollecting,
+		Frame.ReceiverSelectionCycles);
+
+	FScene& Scene = World->GetScene();
+
+	using FItemRefs = TArray<FDecalReceiverItemRef>;
+
+	TMap<const FPrimitiveSceneProxy*, FItemRefs> ReceiverLookup;
+
+	FItemRefs FallbackItems;
+
+	// BVH 갱신 대기가 남아있으면 오래된 Bounds로 메시가 누락되지 않도록 보수적으로 처리
+	const bool bBVHReady =
+		!Scene.bElementListChanged &&
+		Scene.DirtyProxies.IsEmpty() &&
+		Scene.RenderStateDirtyProxies.IsEmpty();
+
+	auto IsIndexedProxy =
+		[&](const FPrimitiveSceneProxy* Proxy)
+		{
+			if (!bBVHReady ||
+				!Proxy ||
+				Proxy->GetScene() != &Scene ||
+				!Proxy->GetComponent())
+			{
+				return false;
+			}
+
+			const int32 Index = Proxy->PackedIndex;
+
+			return
+				Index >= 0 &&
+				Index < Scene.PrimitiveSceneProxies.Num() &&
+				Scene.PrimitiveSceneProxies[Index] == Proxy;
+		};
+
+	// 뷰당 한 번: Proxy -> 현재 뷰의 수신 Item 목록
+	for (uint32 BatchIndex = 0; BatchIndex < DecalReceiverBatches.Num(); ++BatchIndex)
+	{
+		const FMeshDrawBatch& Batch = DecalReceiverBatches[BatchIndex];
+
+		for (uint32 ItemIndex = 0; ItemIndex < Batch.Items.Num(); ++ItemIndex)
+		{
+			const FMeshDrawBatch::FItem& Item = Batch.Items[ItemIndex];
+
+			if (!Item.bReceiveDecal)
+				continue;
+
+			const FDecalReceiverItemRef Ref{
+				BatchIndex, ItemIndex
+			};
+
+			if (IsIndexedProxy(Item.Proxy))
+			{
+				ReceiverLookup[Item.Proxy].Add(Ref);
+			}
+			else
+			{
+				FallbackItems.Add(Ref);
+			}
+		}
+	}
+
+	for (uint32 DecalIndex = 0; DecalIndex < VisibleDecals.Num(); ++DecalIndex)
+	{
+		const FProjectedDecalRenderData& Decal = VisibleDecals[DecalIndex];
+
+		FItemRefs& Selected = MeshDecalDrawLists[DecalIndex].Items;
+
+		const FBox DecalWorldBox = DecalBounds::GetWorldBox(Decal);
+
+		const FBox QueryBox = DecalBounds::GetWorldBox(Decal);
+
+		const FMatrix WorldToDecal = Decal.DecalToWorld.Inverse();
+
+		if (bBVHReady && !ReceiverLookup.IsEmpty())
+		{
+			Scene.BVH.Query(
+				[&](const FBox& Bounds)
+				{
+					if (Stats.bCollecting)
+						++Frame.MeshBVHBoundsTests;
+
+					return DecalBounds::Overlaps(
+						QueryBox, Bounds);
+				},
+				[&](FPrimitiveSceneProxy* Proxy)
+				{
+					if (Stats.bCollecting)
+						++Frame.MeshBVHProxyCandidates;
+
+					const FItemRefs* Found = ReceiverLookup.Find(Proxy);
+
+					// 월드에는 있지만 이번 뷰에서 실제로 그릴 수신 Item이 없는 경우
+					if (!Found || Found->IsEmpty())
+						return;
+
+					const FBox ReceiverWorldBox = DecalBounds::GetProxyWorldBox(*Proxy);
+
+					if (!DecalBounds::MayIntersectVolume(
+						ReceiverWorldBox, WorldToDecal))
+					{
+						if (Stats.bCollecting)
+							++Frame.MeshRefineRejectedProxies;
+
+						return;
+					}
+
+					Selected.Append(*Found);
+				}
+			);
+		}
+
+		// Bounds를 확실히 알 수 없는 Item은 일단 포함한다.
+		// 이 목록이 커지면 후속으로 명시적 Bounds를 추가한다.
+		Selected.Append(FallbackItems);
+
+		if (Stats.bCollecting)
+		{
+			Frame.MeshFallbackItems += FallbackItems.Num();
+		}
+
+		// BVH 방문 순서 대신 기존 Batch/Item 순서로 제출.
+		std::sort(Selected.begin(), Selected.end());
+
+		// 중복 제거. 같은 Batch/Item이 여러 번 선택될 수 있다.
+		auto NewEnd = std::unique(Selected.begin(), Selected.end());
+		Selected.SetNum(static_cast<int32>(NewEnd - Selected.begin()));
+
+		if (Stats.bCollecting)
+		{
+			Frame.MeshMatchedItems += Selected.size();
+
+			if (Selected.IsEmpty())
+				++Frame.MeshNoReceiverDecals;
+		}
+	}
 }

@@ -5,6 +5,7 @@
 #include "Core/Types.h"
 #include "Math/Vector.h"
 #include "Math/Vector2.h"
+#include "Render/ImportedMaterialProperties.h"
 
 #include <functional>
 
@@ -44,7 +45,7 @@ struct FObjSection
 	int32 Count = 0;
 };
 
-struct FObjMaterialInfo
+struct FObjMaterialInfo : FImportedMaterialProperties
 {
 	FString Name;
 	FVector Kd = FVector(1.0f, 1.0f, 1.0f);

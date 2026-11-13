@@ -5,6 +5,7 @@
 #include "Math/Quat.h"
 #include "Math/Vector.h"
 #include "Render/RenderEnums.h"
+#include "Editor/Viewports/ViewShowFlags.h"
 
 class UWorld;
 
@@ -17,31 +18,19 @@ struct FEditorSettings
 	// 에디터 렌더 옵션과 Multiple Viewports 레이아웃의 영구 설정을 한곳에 담는다.
 	// Toggles
 	bool bWireframe = false;
-	bool bDrawPrimitives = true;
 	bool bCacheShadows = true; // r.Shadow.CacheWholeSceneShadows
-	EPcfMode PcfMode = EPcfMode::Sample8;
-	bool bDrawBoundingBox = false;
-	bool bShowUUID = false;
-	// Debug Draw (UE show 플래그): PIE에서만 적용된다
-	bool bShowCollision = true;   // show Collision
-	bool bShowRootDebug = false;  // root 본 구체 + 액터→root 선
-	bool bDrawBatchLine = true;
-	bool bDrawCascadeBounds = false;
-	bool bDrawPSGrid = false;
-	bool bEnableFXAA = false;
-	bool bDrawDecals = true;
-	bool bDecalCulling = true;
-	bool bDecalNarrowCulling = true;
-	bool bDecalBVHCulling = true;
-	bool bDecalOBBTree = true;
+	EPcfMode PcfMode = EPcfMode::Sample32;   // PCF 7x7
 	ELightCullingMode LightCullingMode = ELightCullingMode::Tiled;
 	ERenderingPath RenderingPath = ERenderingPath::Deferred;
-	ELightingModel LightingModel = ELightingModel::Gouraud;
+	ESkinningMode SkinningMode = ESkinningMode::CPU;
+	EReflectionModel ReflectionModel = EReflectionModel::BlinnPhong;
+	EShadingModel ShadingModel = EShadingModel::Phong;
+	EDecalRenderMethod DecalRenderMethod = EDecalRenderMethod::MeshRerendering;
 
 	// Values
-	float SceneDepthMaxRange = 50.0f;
-	float CameraSpeed = 1.0f;
-	float MouseSensitivity = 1.0f;
+	float LegacySceneDepthMaxRange = 50.0f;
+	float LegacyCameraSpeed = 1.0f;
+	float LegacyMouseSensitivity = 1.0f;
 	int32 GridSpacing = 1;
 	float MultipleViewportsHorizontal = 0.5f;
 	float MultipleViewportsVertical = 0.5f;
@@ -50,10 +39,19 @@ struct FEditorSettings
 
     // 미저장 표식은 초기 카메라 값을 유지한다. 위치·회전은 저장하지 않는다.
     float ViewFov[4]{};
+    float ViewCameraSpeed[4]{};
+    float ViewMouseSensitivity[4]{};
+    float ViewSceneDepthRange[4]{};
+    float ViewNearClip[4]{};
+    float ViewFarClip[4]{};
     float ViewOrthoWidth[4]{};
     int32 ViewPreset[4]{-1,-1,-1,-1};
     int32 ViewWireframe[4]{-1,-1,-1,-1};
     int32 ViewMode[4]{-1,-1,-1,-1};
+    int32 ViewReflectionModel[4]{1,1,1,1};
+    int32 ViewShadingModel[4]{1,1,1,1};
+    // 뷰포트 Show 메뉴의 뷰별 표시 항목
+    FViewShowFlags ViewShowFlags[4]{};
 
     // View별 카메라 Transform은 Quaternion 그대로 저장해 재실행 후 같은 시점을 복원한다.
     // 구형 editor.ini에 키가 없으면 Saved가 false로 남아 Adapter의 초기 Transform을 유지한다.
@@ -62,15 +60,13 @@ struct FEditorSettings
     bool bViewLocationSaved[4]{};
     bool bViewRotationSaved[4]{};
 
-	int32 DirectionalShadowMapSizeLevel = 2;
-	int32 PointShadowMapSizeLevel = 2;
-	int32 SpotShadowMapSizeLevel = 2;
+	// 캐스케이드 한 장 / Spot·Point 한 장의 최대 크기. 기본값은 r.Shadow 기본값(2048)과 같다.
+	int32 DirectionalShadowMapSizeLevel = 3;
+	int32 PointShadowMapSizeLevel = 4;
+	int32 SpotShadowMapSizeLevel = 4;
 
 	bool bGammaCorrection = true;
 	float DisplayGamma = 2.2f;
-	bool bShowVignette = true;
-	bool bShowCameraOverlay = true;
-	bool bShowSkeletalMesh = true;
 
 	inline uint32 GetDirectionalShadowMapSize() const { return DirectionalShadowMapSizePerLevels[DirectionalShadowMapSizeLevel]; }
 	inline uint32 GetPointShadowMapSize() const { return PointShadowMapSizePerLevels[PointShadowMapSizeLevel]; }
@@ -110,8 +106,7 @@ private:
 
     // View별 Transform·투영·표시 설정을 읽어 저장용 스냅샷에 반영한다.
     void ReadViewportSettings(FEditorSettings& Out) const;
-	void ApplySceneDepthRange();
-	void DrawDefaultPawnSettings();
+	void DrawGameFrameworkSettings();
 	void DrawShadowMapSettings();
 
 	UWorld* World = nullptr;

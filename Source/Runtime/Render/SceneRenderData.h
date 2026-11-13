@@ -7,6 +7,7 @@
 #include "Render/LightRenderData.h"
 #include "Render/SceneLightResources.h"
 #include "Render/SceneRendering.h"
+#include "Render/Decal/DecalStats.h"
 #include "Math/Matrix.h"
 #include <algorithm>
 #include <cmath>
@@ -36,14 +37,6 @@ struct FRenderStats
 	uint32 ShadowLightsSkippedNoCaster = 0;
 	uint32 ShadowCastersSkippedSmall = 0;
 	uint32 ShadowDepthDraws = 0;    // 언리얼 구조 ShadowDepths 패스에서 그린 그림자 맵 수
-
-	uint32 DecalCount = 0;
-	uint32 DecalsRendered = 0;
-	uint32 DecalDrawCalls = 0;
-	uint32 DecalItemsTested = 0;
-	uint32 DecalNarrowTested = 0;
-	uint32 DecalBroadTests = 0;
-	uint32 DecalOBBTreeTested = 0;
 
 	uint32 CascadeViewsRedrawn = 0;
 	uint32 CascadeViewsCached = 0;
@@ -78,6 +71,11 @@ struct FSceneRenderData
 
 	FRenderQueue RenderQueue;
 	FRenderStats RenderStats;
+	FDecalStats DecalStats;
+	std::shared_ptr<FGpuTimingHistory> BaseSkeletalDrawGpu;
+	std::shared_ptr<FGpuTimingHistory> ShadowSkeletalDrawGpu;
+	ESkinningMode SkeletalDrawGpuMode = ESkinningMode::CPU;
+	ERenderingPath SkeletalDrawGpuPath = ERenderingPath::Forward;
 	TArray<FPrimitiveSceneProxy*> VisibleProxies;
 	TArray<FLODSelectionInput> LODInputs;
 	TArray<uint8> SelectedLODs;
@@ -146,6 +144,13 @@ struct FSceneRenderData
 	void ResetScene()
 	{
 		ResetFrame();
+
+		DecalStats.Frame = {};
+		DecalStats.bCollecting = false;
+		DecalStats.ResetHistory();
+		BaseSkeletalDrawGpu = {};
+		ShadowSkeletalDrawGpu = {};
+
 		for (FGatherChunk& Chunk : GatherChunks)
 		{
 			Chunk.Groups.clear();
@@ -270,8 +275,8 @@ struct FSceneRenderData
 	}
 
 	inline bool HasDirectionalLight() { return LightParameterCounts[DirectionalLightSlotIndex]; }
-	inline uint32 GetDirectionalLightOffset() { return LightParameterOffsets[DirectionalLightSlotIndex]; }
-	inline uint32 GetDirectionalLightCount() { return LightParameterCounts[DirectionalLightSlotIndex]; }
+	inline uint32 GetDirectionalLightOffset() const { return LightParameterOffsets[DirectionalLightSlotIndex]; }
+	inline uint32 GetDirectionalLightCount() const { return LightParameterCounts[DirectionalLightSlotIndex]; }
 
 	inline bool HasPointLights() { return LightParameterCounts[PointLightSlotIndex]; }
 	inline uint32 GetPointLightOffset() { return LightParameterOffsets[PointLightSlotIndex]; }

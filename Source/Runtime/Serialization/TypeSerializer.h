@@ -41,14 +41,12 @@ inline void from_json(const json& J, FVector4& V)
 
 inline void to_json(json& J, const FTransform& T)
 {
-	J = json{ {"Location", T.Location}, {"Rotation", T.Rotation.ToFRotator()}, {"Scale", T.Scale} };
+	J = json{ {"Location", T.Location}, {"Rotation", T.Rotation}, {"Scale", T.Scale} };
 }
 
 inline void from_json(const json& J, FTransform& T)
 {
 	J.at("Location").get_to(T.Location);
-	FRotator Rotation;
-	J.at("Rotation").get_to(Rotation);
-	T.Rotation = Rotation.Quaternion();
+	J.at("Rotation").get_to(T.Rotation);
 	J.at("Scale").get_to(T.Scale);
 }

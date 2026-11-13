@@ -1,9 +1,9 @@
 ﻿#pragma once
 
 #include "Vertex.h"
+#include "Render/ImportedMaterialProperties.h"
 #include "Math/BVH.h"
 #include "Math/Box.h"
-#include "Math/OBBTree.h"
 
 // Cooked obj Data의 Section 구조체
 struct FStaticMeshSection
@@ -13,7 +13,7 @@ struct FStaticMeshSection
 	uint32 MaterialSlotIndex = 0;
 };
 
-struct FStaticMaterialSlot
+struct FStaticMaterialSlot : FImportedMaterialProperties
 {
 	FString Name;
 	FVector4 BaseColor = FVector4(1, 1, 1, 1);
@@ -48,7 +48,6 @@ struct FStaticMeshData
 	TArray<FLODSourceVertex> LODSourceVertices;
 
 	std::optional<TBVH<FMeshTriangleElement>> TriangleBVH;
-	std::optional<FOBBTree> OBBTree;
 
 	// TODO: 나중에 Sections, MaterialSlots 도 Append 해줘야 함.
 	void Append(const FStaticMeshData& Other)
@@ -75,8 +74,6 @@ struct FStaticMeshData
 	void OptimizeTriangleOrderForVertexCache();
 
 	void BuildTriangleBVH();
-
-	void BuildOBBTree();
 
 	void BuildTangentSpace(); 
 };

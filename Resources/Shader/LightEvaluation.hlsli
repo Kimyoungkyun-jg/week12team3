@@ -3,6 +3,8 @@
 
 #include "LightData.hlsli"
 
+#define SHADOW_FILTER_PCSS 4u
+
 // hwang의 Ambient/Lambert/Blinn-Phong 식을 Forward와 Deferred가 공유한다.
 struct FLightResult
 {
@@ -68,9 +70,15 @@ void AccumulateLight(inout FLightResult Result, float3 N, float3 V, float3 L,
     Result.Diffuse += Radiance * NoL;
     if (bIncludeSpecular && NoL > 0.0f)
     {
+#if REFLECTION_MODEL_PHONG
+        float3 R = reflect(-L, N);
+        float SpecularTerm = saturate(dot(R, V));
+#else
         float3 H = L + V;
         H *= rsqrt(max(dot(H, H), 1.0e-8f));
-        Result.Specular += Radiance * SpecularColor * pow(saturate(dot(N, H)), max(Shininess, 1.0f));
+        float SpecularTerm = saturate(dot(N, H));
+#endif
+        Result.Specular += Radiance * SpecularColor * pow(SpecularTerm, max(Shininess, 1.0f));
     }
 }
 
@@ -463,5 +471,28 @@ float CalculateShadow(float3 PixelPosition, float3 P, float3 N, float3 LightDire
     float Result = CalculateShadow(PixelPosition, BiasedP, N, Light, Shadow, Atlas,
         AtlasWidth, AtlasHeight, PointSampler, ShadowSampler, bReceiveShadow, PcfMode, LightType);
     return saturate((Result - 0.5f) * (1.0f + Shadow.Sharpen * 7.0f) + 0.5f);
+}
+
+void SelectCascade(float ViewDepth, float4 Distances, uint Count, float BlendRatio,
+    out int Index, out float BlendT)
+{
+    Index = -1;
+    BlendT = 0.0f;
+    [loop]
+    for (uint i = 0; i < Count; ++i)
+    {
+        if (ViewDepth < Distances[i])
+        {
+            Index = i;
+            break;
+        }
+    }
+    if (Index < 0)
+        return;
+
+    float Begin = Index == 0 ? 0.0f : Distances[Index - 1];
+    float End = Distances[Index];
+    float BlendStart = End - (End - Begin) * BlendRatio;
+    BlendT = saturate((ViewDepth - BlendStart) / max(End - BlendStart, 1.0e-4f));
 }
 #endif

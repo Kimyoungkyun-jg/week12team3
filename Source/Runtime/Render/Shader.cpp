@@ -1,6 +1,9 @@
 #include "EnginePCH.h"
 #include "Shader.h"
 #include "Render/Renderer.h"
+#include "Render/Vertex.h"
+#include <cstddef>
+#include <cstring>
 
 namespace
 {
@@ -121,6 +124,14 @@ void FVertexShader::InputLayoutReflection(ID3D11Device* Device, const FShaderByt
 
 	D3D11_SHADER_DESC Desc{};
 	Reflection->GetDesc(&Desc);
+	bool bSkeletalInput = false;
+	for (uint32 i = 0; i < Desc.InputParameters; ++i)
+	{
+		D3D11_SIGNATURE_PARAMETER_DESC ParamDesc{};
+		Reflection->GetInputParameterDesc(i, &ParamDesc);
+		if (std::strcmp(ParamDesc.SemanticName, "BLENDINDICES") == 0) bSkeletalInput = true;
+	}
+
 
 	TArray<D3D11_INPUT_ELEMENT_DESC> InputLayoutDesc;
 	for (uint32 i = 0; i < Desc.InputParameters; ++i)
@@ -139,6 +150,16 @@ void FVertexShader::InputLayoutReflection(ID3D11Device* Device, const FShaderByt
 		ElementDesc.Format = Format;
 		ElementDesc.InputSlot = 0;
 		ElementDesc.AlignedByteOffset = D3D11_APPEND_ALIGNED_ELEMENT;
+		if (bSkeletalInput)
+		{
+			if (std::strcmp(ParamDesc.SemanticName, "POSITION") == 0) ElementDesc.AlignedByteOffset = offsetof(FSkeletalVertex, Position);
+			else if (std::strcmp(ParamDesc.SemanticName, "NORMAL") == 0) ElementDesc.AlignedByteOffset = offsetof(FSkeletalVertex, Normal);
+			else if (std::strcmp(ParamDesc.SemanticName, "TANGENT") == 0) ElementDesc.AlignedByteOffset = offsetof(FSkeletalVertex, Tangent);
+			else if (std::strcmp(ParamDesc.SemanticName, "TEXCOORD") == 0) ElementDesc.AlignedByteOffset = offsetof(FSkeletalVertex, UV);
+			else if (std::strcmp(ParamDesc.SemanticName, "COLOR") == 0) ElementDesc.AlignedByteOffset = offsetof(FSkeletalVertex, Color);
+			else if (std::strcmp(ParamDesc.SemanticName, "BLENDINDICES") == 0) ElementDesc.AlignedByteOffset = offsetof(FSkeletalVertex, BoneIndices);
+			else if (std::strcmp(ParamDesc.SemanticName, "BLENDWEIGHT") == 0) ElementDesc.AlignedByteOffset = offsetof(FSkeletalVertex, BoneWeights);
+		}
 		ElementDesc.InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
 		ElementDesc.InstanceDataStepRate = 0;
 

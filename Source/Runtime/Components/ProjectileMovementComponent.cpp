@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "ProjectileMovementComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include <cmath>
 
 const float UProjectileMovementComponent::MIN_TICK_TIME = 1e-6f;
@@ -218,6 +219,12 @@ FVector UProjectileMovementComponent::ComputeBounceResult(const FHitResult& Hit,
 
 void UProjectileMovementComponent::HandleImpact(const FHitResult& Hit, float TimeSlice, const FVector& MoveDelta)
 {	
+	if (UpdatedComponent && Hit.HitComponent)
+	{
+		AActor* Owner = UpdatedComponent->GetOwner();
+		AActor* Other = Hit.HitComponent->GetOwner();
+		if (Owner && Other && Owner != Other) OnProjectileImpact.Broadcast(Other, Hit);
+	}
 	if (bShouldBounce)
 	{
 		const FVector OldVelocity = Velocity;

@@ -20,6 +20,7 @@ public:
 	using MapType = std::unordered_map<KeyType, ValueType, KeyFuncs>;
 
 	TMap() = default;
+	void Swap(TMap& Other) noexcept { mMap.swap(Other.mMap); }
 	TMap(std::initializer_list<std::pair<const KeyType, ValueType>> initList) : mMap(initList) {}
 
 	~TMap() = default;

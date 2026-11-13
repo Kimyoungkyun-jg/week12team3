@@ -25,7 +25,7 @@ public:
 	UPROPERTY(EditAnywhere)
 	FString Text = "Text Block";
 	UPROPERTY(EditAnywhere)
-	FString FontPath = "Engine/Fonts/Pretendard.json";
+	FString FontPath = "Assets/Fonts/Pretendard.json";
 	UPROPERTY(EditAnywhere)
 	float FontSize = 32.0f;                              // 디자인 해상도 기준 픽셀
 	UPROPERTY(EditAnywhere)

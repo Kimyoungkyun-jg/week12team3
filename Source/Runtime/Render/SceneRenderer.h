@@ -6,8 +6,10 @@
 #include "Render/MeshPassProcessor.h"
 #include "Render/SceneRenderData.h"
 #include "Render/SceneRenderOptions.h"
+#include "Render/ShadowRendering.h"
 #include "Render/RenderGraph/RenderGraph.h"
-#include "Components/DecalComponent.h"
+#include "Render/Decal/ProjectedDecal.h"
+#include "Render/Decal/DecalMeshDrawList.h"
 
 class UWorld;
 class FScene;
@@ -17,7 +19,6 @@ class FTexture2D;
 class FSkyboxRenderer;
 struct FSceneViewTargets;
 struct FLightSceneInfo;
-class UDecalComponent;
 
 // 에디터는 실행할 작업만 제공한다. 패스 생성과 순서는 FSceneRenderer가 결정한다.
 struct FSceneOverlayCallbacks
@@ -26,6 +27,8 @@ struct FSceneOverlayCallbacks
 	std::function<void()> EditorGrid;
 	std::function<void()> EditorOutline;
 	std::function<void()> EditorGizmo;
+	std::function<void()> SIEOutline;
+	std::function<void()> SIEGizmo;
 	bool bClearEditorDepth = false;
 	std::function<void()> EditorUUID;
 	std::function<void()> GameUI;
@@ -40,6 +43,7 @@ struct FScenePassCallbacks // 기본 도형 다 그려진 후 그려져야 될 �
 	std::function<void()> CascadeVisualization;
 	std::function<bool()> FXAA;
 	FTexture2D* FXAAOutput = nullptr;
+	class FSkyboxRenderer* SkyboxOverride = nullptr;
 	FSceneOverlayCallbacks Overlays;
 };
 
@@ -55,10 +59,6 @@ public:
 
 	// 가시성 검사 및 렌더 큐 수집
 	void InitViews(FRenderer* Renderer, const FSceneRenderOptions& Options);
-	static bool SetCascadeCount(uint32 Count);
-	static uint32 GetCascadeCount();
-	static bool SetCascadeLogRatio(float Ratio);
-	static float GetCascadeLogRatio();
 
 	// 뷰 결과를 하나 유지하는 벤치마크에서도 사용한다.
 	static void GatherRenderPackets(FScene& Scene, FSceneRenderData& Data, const FViewContext& View,
@@ -92,9 +92,10 @@ private:
 	bool AddWorldNormalPass(FRenderGraphBuilder& Graph, FRenderer* Renderer, FSceneViewTargets& Targets,
 		const FSceneRenderOptions& Options);
 	// SingleLightIndex < 0: 그림자 없는 광원 전부 + Ambient/Sky. 0 이상: VisibleLights[SingleLightIndex] 하나만 ScreenShadowMask를 곱해 더한다.
-	bool BindDeferredLighting(FRenderer* Renderer, uint32 Width, uint32 Height, int32 SingleLightIndex);
+	bool BindDeferredLighting(FRenderer* Renderer, uint32 Width, uint32 Height, int32 SingleLightIndex, const FSceneRenderOptions& Options);
 	bool BindForwardLighting(FRenderer* Renderer, const FSceneRenderOptions& Options, FTexture2D* ShadowMask);
 	void UnbindForwardLighting(FRenderer* Renderer);
+	void UnbindForwardDecal(FRenderer* Renderer);
 	bool IntersectSphereFrustum(const FVector4& PositionRadius, const FPlane (&Planes)[6]) const;
 
 	// ---------- 언리얼 구조 그림자 (ShadowSetup.cpp) ----------
@@ -107,6 +108,7 @@ private:
 	bool HasVisibleReceiverInBounds(const FLightSceneInfo* LightSceneInfo) const;
 	// 그림자마다 Caster를 모으고, Caster가 없는 그림자는 버린다.
 	void GatherShadowPrimitives();
+	void GatherProjectedDecals();
 	void AddInteractingPrimitives(FScene& Scene, FProjectedShadowInfo& Shadow);
 	// 남은 그림자를 깊이 아틀라스(Texture2DArray)에 배치한다.
 	void AllocateShadowDepthTargets();
@@ -122,7 +124,30 @@ private:
 	// Details 미리보기·캐스케이드 경계 선·stat이 읽는 LightShadows, CascadeShadowDistances도 여기서 채운다.
 	void FinalizeShadowLights(const FSceneRenderOptions& Options);
 
-	static bool CompareDecalSortOrder(const UDecalComponent* A, const UDecalComponent* B) ;
+	void BuildProjectedDecalMeshDrawLists();
+
+	// ---------- 데칼 DBuffer (Forward/Deferred 공용, 언리얼 DBuffer 방식) ----------
+	// 깊이 프리패스 → DBuffer 패스 → 본 패스(ForwardOpaque 또는 GBuffer)가 t14~t16으로 읽는다.
+	struct FDecalPassSetup
+	{
+		FRenderGraphTextureRef Lit{};
+		FRenderGraphTextureRef Unlit{};
+		FRenderGraphTextureRef Normal{};
+		bool bNeedsDBuffer = false;        // 이번 뷰에 그릴 데칼과 수신 물체가 모두 있다
+		bool bUseReceiverStencil = false;  // Depth Reconstruction이 프리패스의 수신 스텐실 비트를 쓴다
+	};
+	// SourceBatches에서 수신 물체를 고르고 데칼을 모아 DBuffer를 만든다.
+	// bAlwaysCreate면 그릴 데칼이 없어도 빈 DBuffer를 만든다 (Forward 셰이더는 항상 읽는다).
+	bool PrepareDecalPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FSceneViewTargets& Targets,
+		const FSceneRenderOptions& Options, const TArray<FMeshDrawBatch>& SourceBatches,
+		uint32 Width, uint32 Height, bool bAlwaysCreate, FDecalPassSetup& Out);
+	// DBufferLit/DBufferUnlit 두 패스를 등록한다. 장면 깊이가 이미 채워져 있어야 한다.
+	bool AddDBufferPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef Depth,
+		const FSceneRenderOptions& Options, const FDecalPassSetup& Setup, uint32 Width, uint32 Height);
+	void DrawBasePassMeshes(FRenderer* Renderer, const TArray<FMeshDrawBatch>& Batches);
+	// 각 배치의 원래 VS로 깊이만 그린다. bWriteReceiverStencil이면 데칼 수신 비트도 기록한다.
+	bool AddDepthPrepass(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef Depth,
+		const TArray<FMeshDrawBatch>* Batches, bool bWriteReceiverStencil);
 
 	// 이번 프레임에 그림자를 Projection할 광원. Deferred는 이 순서대로 광원마다 마스크를 만들어 더한다.
 	struct FShadowedLight
@@ -132,6 +157,10 @@ private:
 		uint32 Channel = 0;                     // ScreenShadowMask 채널
 	};
 	TArray<FShadowedLight> ShadowedLights;
+	// InitDynamicShadows가 Options에서 채우는 그림자 해상도·필터 설정
+	FShadowViewSettings ShadowSettings;
+	TArray<FProjectedDecalRenderData> VisibleDecals;
+	TArray<FProjectedDecalMeshDrawList> MeshDecalDrawLists;
 
 	bool RenderHeightFog(FRenderer* Renderer, FTexture2D* DepthTarget, FTexture2D* ColorTarget);
 	void RenderSceneText(FRenderer* Renderer);
@@ -143,6 +172,8 @@ private:
 	bool bLightUploadSucceeded = false;
 	bool bTilesBuilt = false;
 	TArray<FMeshDrawBatch> ForwardBatches;
+	TArray<FMeshDrawBatch> GBufferBatches;   // Deferred: 프리패스와 GBuffer 패스가 같은 배치를 쓴다
+	TArray<FMeshDrawBatch> DecalReceiverBatches;
 	FViewContext CachedViewContext;
 	bool bCorePassSucceeded = true;
 	bool bFXAAPassSucceeded = true;

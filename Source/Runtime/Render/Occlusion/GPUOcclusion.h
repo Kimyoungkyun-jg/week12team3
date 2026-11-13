@@ -60,7 +60,24 @@ private:
 	};
 	static_assert(sizeof(FCullItem) == 32);
 
+	// 화면 크기에 묶인 리소스 한 벌. 크기가 다른 뷰포트가 번갈아 그려질 때 다시 만들지 않도록 보관한다.
+	struct FTargetSet
+	{
+		uint32 TargetWidth = 0, TargetHeight = 0;
+		ComPtr<ID3D11Texture2D> OccluderDepth;
+		ComPtr<ID3D11DepthStencilView> OccluderDSV;
+		ComPtr<ID3D11ShaderResourceView> OccluderDepthSRV;
+		ComPtr<ID3D11Texture2D> HiZ;
+		ComPtr<ID3D11ShaderResourceView> HiZSRV;
+		std::vector<ComPtr<ID3D11ShaderResourceView>> HiZMipSRVs;
+		std::vector<ComPtr<ID3D11UnorderedAccessView>> HiZMipUAVs;
+		std::vector<uint32> MipWidths, MipHeights;
+		uint64 LastUse = 0;
+	};
+	static constexpr size_t MaxSpareTargets = 7;
+
 	bool EnsureTargets(uint32 Width, uint32 Height);
+	void SwapActiveTargets(FTargetSet& Other);
 	bool EnsureItemCapacity(uint32 Count);
 	bool EnsureOccluderCapacity(uint32 Count);
 	bool FillItems(const FPrimitiveSceneProxy* const* Proxies, uint32 Count, const FViewContext& View);
@@ -95,6 +112,11 @@ private:
 	std::vector<ComPtr<ID3D11ShaderResourceView>> HiZMipSRVs;  // 밉 하나씩 (다음 밉을 만들 때 읽기)
 	std::vector<ComPtr<ID3D11UnorderedAccessView>> HiZMipUAVs;
 	std::vector<uint32> MipWidths, MipHeights;
+
+	// 지금 쓰지 않는 크기의 타깃들. 위의 활성 타깃과 swap해서 쓴다.
+	std::vector<FTargetSet> SpareTargets;
+	uint64 ActiveTargetLastUse = 0;
+	uint64 TargetUseCounter = 0;
 
 	// 물체별 입력·출력
 	uint32 ItemCapacity = 0;

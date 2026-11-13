@@ -3,6 +3,7 @@
 #include "Components/BoxComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Collision/Ray.h"
 
 namespace
 {
@@ -109,6 +110,57 @@ namespace FCollision
 	{
 		const float R = A.Radius + B.Radius;
 		return SegmentSegmentDistSq(A.A, A.B, B.A, B.B) <= R * R;
+	}
+
+	bool SweepSphereCapsule(const FRay& Ray, float MaxDistance, float SphereRadius,
+		const FWorldCapsule& Capsule, float& OutDistance, FVector& OutNormal)
+	{
+		const float Radius = SphereRadius + Capsule.Radius;
+		const FVector Axis = Capsule.B - Capsule.A;
+		const float AxisLengthSq = Axis.SizeSquared();
+		const FVector FromA = Ray.Origin - Capsule.A;
+		const FVector Closest = ClosestPointOnSegment(Ray.Origin, Capsule.A, Capsule.B);
+		if ((Ray.Origin - Closest).SizeSquared() <= Radius * Radius)
+		{
+			OutDistance = 0.0f;
+			OutNormal = (Ray.Origin - Closest).GetSafeNormal();
+			if (OutNormal.SizeSquared() <= Eps) OutNormal = -Ray.Direction;
+			return true;
+		}
+
+		float HitDistance = MaxDistance;
+		bool bHit = false;
+		const float AxisDotRay = Axis.Dot(Ray.Direction);
+		const float AxisDotOrigin = Axis.Dot(FromA);
+		const float RayDotOrigin = Ray.Direction.Dot(FromA);
+		const float CylinderA = AxisLengthSq - AxisDotRay * AxisDotRay;
+		const float CylinderB = AxisLengthSq * RayDotOrigin - AxisDotOrigin * AxisDotRay;
+		const float CylinderC = AxisLengthSq * (FromA.SizeSquared() - Radius * Radius) - AxisDotOrigin * AxisDotOrigin;
+		const float Discriminant = CylinderB * CylinderB - CylinderA * CylinderC;
+		if (CylinderA > Eps && Discriminant >= 0.0f)
+		{
+			const float T = (-CylinderB - std::sqrt(Discriminant)) / CylinderA;
+			const float AlongAxis = AxisDotOrigin + T * AxisDotRay;
+			if (T >= 0.0f && T <= HitDistance && AlongAxis >= 0.0f && AlongAxis <= AxisLengthSq)
+			{
+				HitDistance = T;
+				bHit = true;
+			}
+		}
+		for (const FVector& Center : { Capsule.A, Capsule.B })
+		{
+			const FVector Offset = Ray.Origin - Center;
+			const float B = Offset.Dot(Ray.Direction);
+			const float D = B * B - (Offset.SizeSquared() - Radius * Radius);
+			if (D < 0.0f) continue;
+			const float T = -B - std::sqrt(D);
+			if (T >= 0.0f && T <= HitDistance) { HitDistance = T; bHit = true; }
+		}
+		if (!bHit) return false;
+		OutDistance = HitDistance;
+		const FVector Point = Ray.PointAt(HitDistance);
+		OutNormal = (Point - ClosestPointOnSegment(Point, Capsule.A, Capsule.B)).GetSafeNormal();
+		return true;
 	}
 
 	bool BoxBox(const FWorldBox& A, const FWorldBox& B)
@@ -264,6 +316,12 @@ namespace FCollision
 		Expect(CapsuleCapsule(Capsule(0, 0), Capsule(0.9f, 0)), true, "capsule-capsule parallel");
 		Expect(CapsuleCapsule(Capsule(0, 0), Capsule(1.1f, 0)), false, "capsule-capsule parallel apart");
 		Expect(CapsuleCapsule(Capsule(0, 0), { FVector(-2, 0.9f, 0), FVector(2, 0.9f, 0), 0.5f }), true, "capsule-capsule cross");
+		float SweepDistance = 0.0f;
+		FVector SweepNormal;
+		Expect(SweepSphereCapsule({ FVector(-2, 0, 0), FVector(1, 0, 0) }, 2.0f, 0.5f,
+			Capsule(0, 0), SweepDistance, SweepNormal), true, "sphere sweep capsule hit");
+		Expect(SweepSphereCapsule({ FVector(-1.5f, -1, 0), FVector(1, 0, 0) }, 0.5f, 0.5f,
+			Capsule(0, 0), SweepDistance, SweepNormal), false, "sphere sweep capsule AABB corner miss");
 
 		// 박스-박스: 회전과 AABB만 겹치는 경우
 		Expect(BoxBox(UnitBox, RotatedBox(FVector(2.3f, 0, 0))), true, "box-box rotated touch");

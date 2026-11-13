@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MaterialInterface.h"
+#include "Render/ImportedMaterialProperties.h"
 #include "RenderResourceManager.h"
 #include "Render/RenderStates.h"
 #include "Render/Texture2D.h"
@@ -20,8 +21,13 @@ struct FStaticMeshMaterialParams
 	FVector4 BaseColor;
 	FVector2 UVOffset;
 	FVector2 TextureFlags; // 텍스처 플래그 및 노멀 반전
+	FVector2 UVTiling;
+	FVector2 WorldUVTileSize;
+	FVector4 Emissive;
+	FVector4 SpecularColorShininess;
+	FVector4 WorldUVParams; // x: local axes, y: opaque, z: shading override, w: model
 };
-static_assert(sizeof(FStaticMeshMaterialParams) == 32);
+static_assert(sizeof(FStaticMeshMaterialParams) == 96);
 
 UCLASS()
 class UMaterial : public UMaterialInterface
@@ -46,6 +52,18 @@ public:
 	float Shininess = 32.0f;
 	FVector2 UVScrollSpeed = FVector2(0.0f, 0.0f);
 	bool bFlipNormalY = false;
+	// TEAM5 material controls. BaseColor keeps the existing TEAM6 scene key;
+	// its RGB is the linear diffuse color / texture factor (DiffuseOrFactor).
+	float SpecularFactor = 1.0f;
+	FVector EmissiveColor = FVector(0.0f, 0.0f, 0.0f);
+	float EmissiveFactor = 1.0f;
+	FVector2 UVTiling = FVector2(1.0f, 1.0f);
+	FVector2 WorldUVTileSize = FVector2(0.0f, 0.0f);
+	bool bWorldUVLocalSpace = false;
+	ELightingModel ShadingModel = ELightingModel::Phong;
+	bool bOverrideShadingModel = false;
+	void SetBlendState(EBlendState InBlendState);
+	void ApplyImportedProperties(const FImportedMaterialProperties& Properties);
 
 	bool bIsInstance = false;
 
@@ -57,6 +75,9 @@ public:
 
 	// 경로가 있는(=에셋으로 등록된) 가장 가까운 원본. 자신이 에셋이면 자신
 	const UMaterial* GetBaseAsset() const;
+
+	static json SaveMaterial(const UMaterial* Material);
+	static UMaterial* LoadMaterial(const json& In);
 
 	const uint16 SortID;
 

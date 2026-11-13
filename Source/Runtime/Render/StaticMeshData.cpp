@@ -214,17 +214,6 @@ void FStaticMeshData::BuildTriangleBVH()
 	TriangleBVH->Build(Elements);
 }
 
-void FStaticMeshData::BuildOBBTree()
-{
-	TArray<FVector> Positions;
-	Positions.Reserve(Vertices.Num());
-	for (auto & Vertice : Vertices) {
-		Positions.Add(Vertice.Position);
-	}
-	OBBTree.emplace();
-	OBBTree->Build(Positions, Indices);
-}
-
 void FStaticMeshData::BuildTangentSpace() {
 	const int32 VertexCount{ Vertices.Num() };
 	const int32 IndexCount{ Indices.Num() };

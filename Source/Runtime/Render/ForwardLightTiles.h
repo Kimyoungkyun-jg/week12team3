@@ -40,12 +40,11 @@ private:
 		uint32 GridPointCount = 0, GridSpotCount = 0, GridPointIndexCapacity = 0, GridSpotIndexCapacity = 0;
 		uint32 GridLightOffsets[4]{};
 		FVector4 GridDepthParams; // Near, Far, SliceScale, SliceBias
-		FMatrix GridProjection;
 	};
-	static_assert(sizeof(FGridConstants) == 224);
+	static_assert(sizeof(FGridConstants) == 160);
 
 	TUniquePtr<FComputeShader> ComputeShader;
-	TUniquePtr<FComputeShader> Tiled25DComputeShader;
+	TUniquePtr<FComputeShader> ClusterComputeShader;
 	TUniquePtr<FConstantBuffer> CullingCB;
 	TUniquePtr<FConstantBuffer> LightingInfoCB;
 	TUniquePtr<FStructuredBuffer> Ranges, PointIndices, SpotIndices, Allocator;

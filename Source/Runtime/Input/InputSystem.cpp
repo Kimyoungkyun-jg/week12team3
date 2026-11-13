@@ -67,7 +67,7 @@ void FInputSystem::OnMouseDown(EMouseButton MouseButton)
     if (Index < 5)
     {
         bMouseStates[Index] = true;
-        if (MouseButton == EMouseButton::Right)
+        if (MouseButton == EMouseButton::Right && !bRelativeMouseMode)
         {
             // 같은 메시지 큐에서 우클릭보다 먼저 들어온 이동을 카메라 캡처에 사용하지 않는다.
             DeltaX = 0;
@@ -82,8 +82,12 @@ void FInputSystem::OnMouseMove(int32 x, int32 y)
 {
     // BeginFrame에서 초기화한 뒤 이번 메시지 큐에 들어온 이동량만 누적한다.
     // 여러 WM_MOUSEMOVE가 한 프레임에 처리돼도 첫 위치와 마지막 위치 사이의 실제 델타가 남는다.
-    DeltaX += x - MouseX;
-    DeltaY += y - MouseY;
+    // 잠금 중에는 커서를 가운데로 되돌리는 이동까지 들어오므로 RawInput 델타만 쓴다.
+    if (!bRelativeMouseMode)
+    {
+        DeltaX += x - MouseX;
+        DeltaY += y - MouseY;
+    }
 
     PrevMouseX = MouseX;
     PrevMouseY = MouseY;
@@ -131,3 +135,18 @@ void FInputSystem::UpdateInputStates()
     PrevMouseY = MouseY;
 }
 
+void FInputSystem::OnRawMouseMove(int32 X, int32 Y)
+{
+    if (bRelativeMouseMode)
+    {
+        DeltaX += X;
+        DeltaY += Y;
+    }
+}
+
+void FInputSystem::SetRelativeMouseMode(bool bEnabled)
+{
+    bRelativeMouseMode = bEnabled;
+    DeltaX = 0;
+    DeltaY = 0;
+}

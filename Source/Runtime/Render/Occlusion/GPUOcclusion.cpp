@@ -218,10 +218,55 @@ bool FGPUOcclusion::Init()
 	return bReady;
 }
 
+void FGPUOcclusion::SwapActiveTargets(FTargetSet& Other)
+{
+	std::swap(TargetWidth, Other.TargetWidth);
+	std::swap(TargetHeight, Other.TargetHeight);
+	OccluderDepth.Swap(Other.OccluderDepth);
+	OccluderDSV.Swap(Other.OccluderDSV);
+	OccluderDepthSRV.Swap(Other.OccluderDepthSRV);
+	HiZ.Swap(Other.HiZ);
+	HiZSRV.Swap(Other.HiZSRV);
+	HiZMipSRVs.swap(Other.HiZMipSRVs);
+	HiZMipUAVs.swap(Other.HiZMipUAVs);
+	MipWidths.swap(Other.MipWidths);
+	MipHeights.swap(Other.MipHeights);
+	std::swap(ActiveTargetLastUse, Other.LastUse);
+}
+
 bool FGPUOcclusion::EnsureTargets(uint32 Width, uint32 Height)
 {
+	++TargetUseCounter;
 	if (OccluderDSV && TargetWidth == Width && TargetHeight == Height)
+	{
+		ActiveTargetLastUse = TargetUseCounter;
 		return true;
+	}
+
+	// 멀티 뷰포트처럼 크기가 다른 뷰가 번갈아 오면, 보관해 둔 같은 크기 타깃으로 바꿔 끼운다.
+	for (FTargetSet& Spare : SpareTargets)
+	{
+		if (Spare.OccluderDSV && Spare.TargetWidth == Width && Spare.TargetHeight == Height)
+		{
+			SwapActiveTargets(Spare);
+			ActiveTargetLastUse = TargetUseCounter;
+			return true;
+		}
+	}
+
+	// 맞는 것이 없으면 현재 타깃을 보관함에 넣고(가득 차면 가장 오래 안 쓴 것을 버린다) 새로 만든다.
+	if (OccluderDSV)
+	{
+		FTargetSet* Slot = nullptr;
+		if (SpareTargets.size() < MaxSpareTargets)
+			Slot = &SpareTargets.emplace_back();
+		else
+			Slot = &*std::min_element(SpareTargets.begin(), SpareTargets.end(),
+				[](const FTargetSet& A, const FTargetSet& B) { return A.LastUse < B.LastUse; });
+		*Slot = FTargetSet{};
+		SwapActiveTargets(*Slot);
+	}
+	ActiveTargetLastUse = TargetUseCounter;
 
 	ID3D11Device* Device = FRenderDevice::Get()->GetDevice();
 	TargetWidth = TargetHeight = 0;

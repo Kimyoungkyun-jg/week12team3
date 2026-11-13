@@ -1,111 +1,205 @@
 #pragma once
 
-#include "Animation/BonePose.h"
+#include "Asset/AnimNotifyEvent.h"
+#include "Asset/AnimGraphAsset.h"
+#include "Asset/AnimTransform.h"
+#include "Containers/Array.h"
+#include "Core/EngineString.h"
 
-class UAnimInstance;
+#include <functional>
 
-// UE는 UAnimInstance 대신 FAnimInstanceProxy를 들고 있다. 이 엔진은 워커 스레드 평가가 없어 인스턴스를 직접 쓴다.
-struct FAnimationUpdateContext
-{
-	FAnimationUpdateContext(UAnimInstance* InAnimInstance, float InDeltaTime)
-		: AnimInstance(InAnimInstance), DeltaTime(InDeltaTime) {}
+class UAnimGraphInstance;
+class UAnimSequence;
+class UBlendSpace;
+class USkeleton;
 
-	float GetDeltaTime() const { return DeltaTime; }
-
-	// 호출하는 쪽에 T의 정의가 include되어 있어야 한다
-	template <typename T>
-	T* GetAnimInstance() const { return static_cast<T*>(AnimInstance); }
-
-	//BlendNode가 가중치를 줄일 때 사용
-	FAnimationUpdateContext FractionalWeight(float WeightMultiplier) const
-	{
-		FAnimationUpdateContext Result(*this);
-		Result.CurrentWeight = CurrentWeight * WeightMultiplier;
-		return Result;
-	}
-
-	float GetFinalBlendWeight() const { return CurrentWeight; }
-
-private:
-	UAnimInstance* AnimInstance = nullptr;
-	float DeltaTime = 0.0f;
-	float CurrentWeight = 1.0f;
-};
-
-struct FPoseContext
-{
-	FPoseContext(UAnimInstance* InAnimInstance, const TArray<FBoneInfo>& InRefSkeleton)
-		: AnimInstance(InAnimInstance), RefSkeleton(&InRefSkeleton)
-	{
-		Pose.SetNumBones(InRefSkeleton.Num());
-	}
-
-	// UE와 같이 포즈 값은 복사하지 않고 같은 스켈레톤용 출력 공간만 준비한다.
-	// FPoseContext PoseA(Output) 직후의 Pose 값은 항등 트랜스폼이며 Evaluate가 채운다.
-	FPoseContext(const FPoseContext& Source)
-		: AnimInstance(Source.AnimInstance), RefSkeleton(Source.RefSkeleton)
-	{
-		Pose.SetNumBones(Source.Pose.GetNumBones());
-	}
-	FPoseContext& operator=(const FPoseContext&) = delete;
-
-	template <typename T>
-	T* GetAnimInstance() const { return static_cast<T*>(AnimInstance); }
-
-	const TArray<FBoneInfo>& GetRefSkeleton() const { return *RefSkeleton; }
-	void ResetToRefPose() { Pose.ResetToRefPose(*RefSkeleton); }
-
-	FCompactPose Pose;
-
-	FBlendedCurve Curve;
-
-private:
-	UAnimInstance* AnimInstance = nullptr;
-	const TArray<FBoneInfo>* RefSkeleton = nullptr;
-};
-
-struct FAnimationInitializeContext
-{
-
-};
-
-// 모든 노드의 뿌리. 프레임마다 Update -> Evaluate 순서로 불린다.
-// UE의 Update_AnyThread / Evaluate_AnyThread에 해당한다.
 struct FAnimNode_Base
 {
 	virtual ~FAnimNode_Base() = default;
+	virtual void Reset() {}
+	virtual void Update(float DeltaSeconds) {}
+	virtual bool Evaluate(const USkeleton* Skeleton, TArray<FAnimBoneTransform>& OutPose) = 0;
+	virtual bool ConsumeRootMotion(FMatrix& OutDelta) { return false; }
+	// 이번 Update에서 모은 Notify를 OutQueue 뒤에 추가한다 (비우지 않는다). 읽기만 하며 Update 때마다 새로 모인다.
+	// 합성 노드는 자식의 Notify에 자기 블렌드 가중치를 곱해서 올린다. ParentWeight는 루트에서 이 노드까지 곱해진 가중치다.
+	virtual void GatherNotifies(float ParentWeight, TArray<FAnimNotifyQueueItem>& OutQueue) const {}
 
-	virtual void Update(const FAnimationUpdateContext& Context) {}
-	// 출력은 항상 Output.Pose의 모든 본을 채운다. Rotation은 단위 쿼터니언이어야 한다.
-	virtual void Evaluate(FPoseContext& Output) { Output.ResetToRefPose(); }
-	virtual void Initialize(const FAnimationInitializeContext& Context) {}
+	// 블렌드 동기화용. 한 주기를 재생하는 데 걸리는 실제 시간(초), 주기 안의 위치(0~1), 반복 여부다.
+	// 지원하지 않는 노드는 0/false를 돌려주고 동기화에서 빠진다.
+	virtual float GetCycleSeconds() const { return 0.0f; }
+	virtual bool GetNormalizedTime(float& OutTime) const { return false; }
+	virtual void SetNormalizedTime(float Time) {}
+	virtual bool IsLooping() const { return false; }
 };
 
-// 다른 노드로 이어지는 입력 핀. 연결이 없으면 바인드 포즈를 낸다.
-struct FPoseLink
+struct FAnimNode_SequencePlayer : FAnimNode_Base
 {
-	void SetLinkNode(FAnimNode_Base* InLinkedNode) { LinkedNode = InLinkedNode; }
+	UAnimSequence* Sequence = nullptr;
+	float CurrentTime = 0.0f;
+	float PlayRate = 1.0f;
+	bool bLoop = true;
+	bool bPlaying = true;
+	FMatrix PendingRootMotion = FMatrix::Identity;
+	bool bHasPendingRootMotion = false;
+	// 가장 최근 Update에서 진행한 구간에 든 Notify. 매 Update 시작에 비운다.
+	TArray<FAnimNotifyEvent> PendingNotifies;
+	// Reset 직후 첫 Update는 구간 시작(0초)을 포함해 0초 Notify를 놓치지 않는다.
+	bool bNotifyIncludeStart = true;
+	bool IsFinished() const;
+	float GetRemainingTime() const;
 
-	void Update(const FAnimationUpdateContext& Context)
+	void Reset() override;
+	void Update(float DeltaSeconds) override;
+	bool Evaluate(const USkeleton* Skeleton, TArray<FAnimBoneTransform>& OutPose) override;
+	bool ConsumeRootMotion(FMatrix& OutDelta) override;
+	void GatherNotifies(float ParentWeight, TArray<FAnimNotifyQueueItem>& OutQueue) const override;
+	float GetCycleSeconds() const override;
+	bool GetNormalizedTime(float& OutTime) const override;
+	void SetNormalizedTime(float Time) override;
+	bool IsLooping() const override { return bLoop; }
+};
+
+struct FAnimNode_TwoWayBlend : FAnimNode_Base
+{
+	FAnimNode_Base* A = nullptr;
+	FAnimNode_Base* B = nullptr;
+	float Alpha = 0.0f;
+	// 둘 다 반복 재생이면 가중치가 큰 쪽(리더)의 주기 위치에 다른 쪽을 맞춘다(UE 싱크 그룹과 같은 목적).
+	// 걷기·달리기처럼 길이가 다른 루프를 섞어도 발 위치가 어긋나지 않는다.
+	bool bSyncByNormalizedTime = true;
+
+	void Reset() override;
+	void Update(float DeltaSeconds) override;
+	bool Evaluate(const USkeleton* Skeleton, TArray<FAnimBoneTransform>& OutPose) override;
+	bool ConsumeRootMotion(FMatrix& OutDelta) override;
+	void GatherNotifies(float ParentWeight, TArray<FAnimNotifyQueueItem>& OutQueue) const override;
+};
+
+struct FAnimNode_BlendSpacePlayer : FAnimNode_Base
+{
+	UBlendSpace* BlendSpace = nullptr;
+	float InputX = 0.0f;
+	float InputY = 0.0f;
+	float NormalizedTime = 0.0f;
+	float PlayRate = 1.0f;
+	bool bLoop = true;
+	bool bPlaying = true;
+	FMatrix PendingRootMotion = FMatrix::Identity;
+	bool bHasPendingRootMotion = false;
+	// 가장 최근 Update에서 진행한 구간에 든 Notify. Weight는 샘플의 블렌드 가중치이고 매 Update 시작에 비운다.
+	TArray<FAnimNotifyQueueItem> PendingNotifies;
+	// Reset 직후 첫 Update는 구간 시작(0)을 포함해 0초 Notify를 놓치지 않는다.
+	bool bNotifyIncludeStart = true;
+
+	void Reset() override;
+	void Update(float DeltaSeconds) override;
+	bool Evaluate(const USkeleton* Skeleton, TArray<FAnimBoneTransform>& OutPose) override;
+	bool ConsumeRootMotion(FMatrix& OutDelta) override;
+	void GatherNotifies(float ParentWeight, TArray<FAnimNotifyQueueItem>& OutQueue) const override;
+	float GetCycleSeconds() const override;
+	bool GetNormalizedTime(float& OutTime) const override { OutTime = NormalizedTime; return BlendSpace != nullptr; }
+	void SetNormalizedTime(float Time) override { NormalizedTime = std::clamp(Time, 0.0f, 1.0f); }
+	bool IsLooping() const override { return bLoop; }
+};
+
+struct FAnimNode_StateMachine : FAnimNode_Base
+{
+	struct FState
 	{
-		if (LinkedNode)
-			LinkedNode->Update(Context);
-	}
-
-	void Evaluate(FPoseContext& Output)
+		FString Name;
+		FAnimNode_Base* Pose = nullptr;
+	};
+	struct FTransition
 	{
-		if (LinkedNode)
-			LinkedNode->Evaluate(Output);
-		else
-			Output.ResetToRefPose();
-	}
+		int32 FromState = -1;
+		int32 ToState = -1;
+		std::function<bool()> Condition;
+		float BlendTime = 0.0f;
+		std::function<void()> OnCompleted;
+		std::function<void()> OnStarted;
+	};
 
-	void Initialize(const FAnimationInitializeContext& Context)
+	TArray<FState> States;
+	TArray<FTransition> Transitions;
+	int32 CurrentState = -1;
+	int32 NextState = -1;
+	float TransitionElapsed = 0.0f;
+	float TransitionDuration = 0.0f;
+	std::function<void()> TransitionOnCompleted;
+	// 섞는 도중에 새 전환이 들어오면 From으로 쓸 노드가 없다. 그때 마지막으로 내보낸 포즈를 고정해 From으로 쓴다.
+	TArray<FAnimBoneTransform> LastPose;
+	TArray<FAnimBoneTransform> SnapshotPose;
+	bool bBlendFromSnapshot = false;
+
+	int32 AddState(const FString& Name, FAnimNode_Base* PoseNode);
+	int32 FindState(const FString& Name) const;
+	bool AddTransition(int32 FromState, int32 ToState, std::function<bool()> Condition,
+		float BlendTime, std::function<void()> OnCompleted = {}, std::function<void()> OnStarted = {});
+	// 조건 검사 없이 바깥(스크립트)에서 바로 전환을 건다. 이미 그 상태로 가는 중이면 bRestart일 때만 처음부터 다시 튼다.
+	bool RequestTransition(int32 ToState, float BlendTime, bool bRestart = false);
+	bool IsInTransition() const { return NextState >= 0; }
+	// 전환 중이면 들어가는 중인 상태, 아니면 현재 상태
+	int32 GetTargetState() const { return NextState >= 0 ? NextState : CurrentState; }
+	void FinishTransition();
+	void Reset() override;
+	void Update(float DeltaSeconds) override;
+	bool Evaluate(const USkeleton* Skeleton, TArray<FAnimBoneTransform>& OutPose) override;
+	bool ConsumeRootMotion(FMatrix& OutDelta) override;
+	void GatherNotifies(float ParentWeight, TArray<FAnimNotifyQueueItem>& OutQueue) const override;
+};
+
+struct FAnimNode_LayeredBoneBlend : FAnimNode_Base
+{
+	FAnimNode_Base* BasePose = nullptr;
+	FAnimNode_Base* BlendPose = nullptr;
+	FString StartBoneName = "spine_01";
+	float Alpha = 1.0f;
+	bool bMeshSpaceRotationBlend = false;
+	bool bGraphManaged = false;
+
+	void Reset() override;
+	void Update(float DeltaSeconds) override;
+	bool Evaluate(const USkeleton* Skeleton, TArray<FAnimBoneTransform>& OutPose) override;
+	bool ConsumeRootMotion(FMatrix& OutDelta) override;
+	void GatherNotifies(float ParentWeight, TArray<FAnimNotifyQueueItem>& OutQueue) const override;
+};
+
+struct FAnimNode_Slot : FAnimNode_Base
+{
+	FAnimNode_Base* Source = nullptr;
+	FString SlotName = "UpperBody";
+	UAnimGraphInstance* GraphInstance = nullptr;
+	bool bGraphManaged = false;
+
+	void Reset() override;
+	void Update(float DeltaSeconds) override;
+	bool Evaluate(const USkeleton* Skeleton, TArray<FAnimBoneTransform>& OutPose) override;
+	bool ConsumeRootMotion(FMatrix& OutDelta) override;
+	void GatherNotifies(float ParentWeight, TArray<FAnimNotifyQueueItem>& OutQueue) const override;
+};
+
+struct FAnimNode_AimOffset1D : FAnimNode_Base
+{
+	struct FSampleEntry
 	{
-		if (LinkedNode)
-			LinkedNode->Initialize(Context);
-	}
+		float Pitch = 0.0f;
+		UAnimSequence* Sequence = nullptr;
+		int32 FrameIndex = 0;
+	};
 
-private:
-	FAnimNode_Base* LinkedNode = nullptr;
+	FAnimNode_Base* BasePose = nullptr;
+	FAimOffsetAsset Asset;
+	UAnimSequence* BaseSequence = nullptr;
+	TArray<FSampleEntry> Samples;
+	float Pitch = 0.0f;
+	float Alpha = 1.0f;
+	bool bGraphManaged = false;
+
+	bool SamplePoseAtPitch(const USkeleton* Skeleton, float SamplePitch, TArray<FAnimBoneTransform>& OutPose) const;
+	bool EvaluateReferencePose(const USkeleton* Skeleton, TArray<FAnimBoneTransform>& OutPose) const;
+	void Reset() override;
+	void Update(float DeltaSeconds) override;
+	bool Evaluate(const USkeleton* Skeleton, TArray<FAnimBoneTransform>& OutPose) override;
+	bool ConsumeRootMotion(FMatrix& OutDelta) override;
+	void GatherNotifies(float ParentWeight, TArray<FAnimNotifyQueueItem>& OutQueue) const override;
 };

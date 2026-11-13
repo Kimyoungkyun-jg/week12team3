@@ -7,13 +7,14 @@
 UCLASS()
 class ASkeletalMeshActor : public AActor
 {
-	GENERATED_BODY()
-
+    GENERATED_BODY()
 public:
-	ASkeletalMeshActor();
-	
-	USkeletalMeshComponent* GetSkeletalMeshComponent() const { return SkeletalMeshComponent; }
-private:
-	USkeletalMeshComponent* SkeletalMeshComponent = nullptr;
-};
+    ASkeletalMeshActor();
+    virtual ~ASkeletalMeshActor() override = default;
 
+    USkeletalMeshComponent* GetSkeletalMeshComponent() const { return SkeletalMeshComponent; }
+
+private:
+    UPROPERTY(VisibleAnywhere)
+    USkeletalMeshComponent* SkeletalMeshComponent = nullptr;
+};

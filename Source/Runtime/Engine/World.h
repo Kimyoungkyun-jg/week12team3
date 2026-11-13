@@ -15,14 +15,14 @@
 #include "Asset/LOD/StaticMeshLODSelector.h"
 #include "Engine/EngineTypes.h"
 #include "Render/SceneRenderData.h"
-#include "Script/CoroutineScheduler.h"
 #include "World.generated.h"
 
 class ULevel;
-class FLineBatcher;
 class UBillboardComponent;
 class APawn;
 class APlayerController;
+class AGameMode;
+class AGameHUD;
 
 struct FViewContext;
 
@@ -32,15 +32,10 @@ class UWorld : public UObject
 	GENERATED_BODY()
 
 public:
-	UWorld();
+	UWorld() = default;
 	virtual ~UWorld();
 
 	bool Init();
-
-	// 이 월드의 디버그 선(충돌 도형, 라이트 범위, 본 등)을 모아 그리는 도구. Init에서 만든다.
-	// UE의 UWorld::LineBatcher와 같은 자리이고 UE에서도 public 멤버다.
-	// UE는 선을 쌓아 두면 씬과 함께 그려지지만, 이 엔진은 쓰는 쪽이 BeginFrame, Add..., OnRender 순서로 직접 그린다.
-	TUniquePtr<FLineBatcher> LineBatcher;
 	/*UPrimitiveComponent* SpawnPrimitive(FClass* Class);*/
 	AActor* SpawnActor(UClass* Class, FName InName = NAME_None, const FTransform* Transform = nullptr);
 	
@@ -84,6 +79,8 @@ public:
 	int32 GetActorNum();
 
 	bool DestroyActor(AActor* Actor);
+	void QueueObjectDeletion(UObject* Object);
+	void FlushPendingDestruction();
 
 	// View별 Billboard 행렬 공급자는 이 동기 호출 동안만 사용하며 저장하지 않는다.
 	using FBillboardTraceTransform = FMatrix(*)(const UBillboardComponent&, const void*);
@@ -99,12 +96,24 @@ public:
 	bool HasBegunPlay() const { return bBegunPlay; }
 	APawn* GetPlayerPawn() const { return PlayerPawn; }
 	APlayerController* GetPlayerController() const { return PlayerController; }
+	AGameMode* GetGameMode() const { return GameMode; }
+	AGameHUD* GetHUD() const { return HUD; }
+	UClass* GetDefaultPawnClass() const;
+	UClass* GetPlayerControllerClass() const;
+	UClass* GetHUDClass() const;
+	const FString& GetGameModeClassName() const { return GameModeClassName; }
+	const FString& GetPlayerPawnClassName() const { return PlayerPawnClassName; }
+	const FString& GetPlayerControllerClassName() const { return PlayerControllerClassName; }
+	const FString& GetHUDClassName() const { return HUDClassName; }
+	bool SetGameModeClass(UClass* Class);
+	bool SetPlayerPawnClass(UClass* Class);
+	bool SetPlayerControllerClass(UClass* Class);
+	bool SetHUDClass(UClass* Class);
 	bool IsPaused() const { return bIsPaused; }
 	void SetPaused(bool bPaused) { bIsPaused = bPaused; }
 
 	FScene& GetScene() { return Scene; }
 	FTickTaskManager& GetTickTaskManager() { return TickTaskManager; }
-	FCoroutineScheduler& GetCoroutineScheduler() { return CoroutineScheduler; }
 
 	const FRenderStats& GetRenderStats() const { return RenderStats; }
 
@@ -132,11 +141,6 @@ public:
 	void SetCinematicTimeDilation(float InDilation) { CinematicTimeDilation = InDilation; }
 
 private:
-
-	void GameWorldTick(float DeltaTime);
-	void EditorWorldTick(float DeltaTime);
-	void PreviewWorldTick(float DeltaTime);
-
 	EWorldType WorldType = EWorldType::None;
 
 	struct alignas(64) FGatherChunk
@@ -154,14 +158,29 @@ private:
 
 	// 등록된 Tick 함수만 실행한다. Actor보다 먼저 사라져도 남은 함수와의 연결을 스스로 끊는다.
 	FTickTaskManager TickTaskManager;
-	FCoroutineScheduler CoroutineScheduler;
 
 	TQueue<AActor*> BeginPlayList;
+	TArray<UObject*> PendingDeletion;
+	bool bIsTicking = false;
+	bool bIsClearingWorld = false;
+	bool bFlushingDestruction = false;
+	int32 ActiveObjectCalls = 0;
 
 	//메인 카메라 
 	ACameraActor* MainCamera = nullptr;
 	APawn* PlayerPawn = nullptr;
 	APlayerController* PlayerController = nullptr;
+	AGameMode* GameMode = nullptr;
+	AGameHUD* HUD = nullptr;
+
+	UPROPERTY(EditAnywhere)
+	FString GameModeClassName = "AGameMode";
+	UPROPERTY(EditAnywhere)
+	FString PlayerPawnClassName;
+	UPROPERTY(EditAnywhere)
+	FString PlayerControllerClassName;
+	UPROPERTY(EditAnywhere)
+	FString HUDClassName;
 	bool bIsPaused = false;
 	bool bBegunPlay = false;
 
@@ -183,8 +202,8 @@ private:
 	float CinematicTimeDilation = 1.0f;
 	float HitStopTimeRemaining = 0.0f;	// 실제 시간 (초)
 	float HitStopDilation = 1.0f;
-	float TimeSeconds = 0.0f;			// 게임 시간 (dilated 누적)
-	float RealTimeSeconds = 0.0f;		// 실제 시간 누적
+	double TimeSeconds = 0.0;			// 게임 시간 (dilated 누적). float으로 누적하면 커질수록 어긋나므로 double
+	double RealTimeSeconds = 0.0;		// 실제 시간 누적
 
 	static constexpr float MinTimeDilation = 0.0001f;
 	static constexpr float MaxTimeDilation = 20.0f;

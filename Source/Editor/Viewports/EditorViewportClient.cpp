@@ -8,48 +8,50 @@
 #include "Camera/ViewportCameraMovement.h"
 #include "Math/EngineMath.h"
 #include "Render/RenderCommand.h"
-#include "Editor/AssetEditor/FPreviewScene.h"
-#include "Math/BoxSphereBounds.h"
-#include "Render/Renderer.h"
-#include "Render/SceneRenderer.h"
+#include "Render/SceneRenderOptions.h"
+#include <imgui.h>
+#include <algorithm>
+#include <cmath>
 
 FEditorViewportClient::FEditorViewportClient() {}
 
-FEditorViewportClient::FEditorViewportClient(FPreviewScene& InPreviewScene)
-    : PreviewScene(&InPreviewScene) {}
-
-UWorld* FEditorViewportClient::GetWorld() const {
-  return PreviewScene ? PreviewScene->GetWorld() : World;
+void FEditorViewportClient::ApplyRenderSettings(FSceneRenderOptions& Options) const
+{
+    Options.ReflectionModel = ReflectionModel;
+    Options.ShadingModel = Options.RenderingPath == ERenderingPath::Deferred ? EShadingModel::Phong : ShadingModel;
+    Options.bOverrideMaterialLighting = true;
+    Options.bEnableFXAA = ShowFlags.bFXAA;
+    Options.bDrawDecals = ShowFlags.bDecals;
+    Options.bDrawSkeletalMeshes = ShowFlags.bSkeletalMeshes;
+    Options.bShowVignette = ShowFlags.bVignette;
+    Options.bShowCameraOverlay = ShowFlags.bCameraOverlay;
+    Options.SceneDepthRange = MaxRange;
 }
 
-void FEditorViewportClient::SetWorld(UWorld* InWorld) {
-  // AssetEditor Viewport인 경우, SetWorld를 무시
-  // PreviewScene이 World를 직접 관리해야함
-  if (PreviewScene) {
-    return;
-  }
-
-  if (World != InWorld) {
-    RenderData.ResetScene();
-    World = InWorld;
-  }
+void FEditorViewportClient::SetCameraSpeed(float Value)
+{
+    if (std::isfinite(Value)) CameraSpeed = std::clamp(Value, 0.1f, 10.0f);
 }
 
-void FEditorViewportClient::FocusOnBounds(const FBoxSphereBounds& Bounds) {
-  const float Radius = FMath::Max(FMath::Max(Bounds.SphereRadius, Bounds.BoxExtent.Size()), 0.1f);
-  const float Aspect = FMath::Max(AspectRatio, 0.01f);
-  const float HalfFOV = FMath::DegreesToRadians(FMath::Clamp(ViewFOV, 1.0f, 179.0f)) * 0.5f;
-  const float LimitingHalfFOV = atanf(tanf(HalfFOV) * FMath::Min(Aspect, 1.0f));
-  const float Distance = FMath::Max(Radius * 1.1f / sinf(LimitingHalfFOV), Radius + NearClip);
-
-  OrthoWidth = Radius * 2.2f * FMath::Max(Aspect, 1.0f);
-  ViewLocation = Bounds.Origin - GetViewForward() * Distance;
-  FarClip = FMath::Max(FarClip, Distance + Radius * 2.0f);
+void FEditorViewportClient::SetMouseSensitivity(float Value)
+{
+    if (std::isfinite(Value)) MouseSensitivity = std::clamp(Value, 0.01f, 1.0f);
 }
+
+void FEditorViewportClient::SetMaxRange(float Value)
+{
+    if (std::isfinite(Value)) MaxRange = std::clamp(Value, 0.1f, 10000.0f);
+}
+
 
 void FEditorViewportClient::TickInput(float DeltaTime, bool bCaptured,
                                       bool bHovered, int32 WheelDelta,
                                       float MoveSpeed, float MouseSensitivity) {
+
+  // 포커스 이동 중이라도 사용자가 카메라를 잡거나 휠을 굴리면 그 자리에서 멈춘다.
+  if (bFraming && (bCaptured || WheelDelta != 0))
+    bFraming = false;
+  TickFrameTransition(DeltaTime);
 
   FViewportCameraInput Input;
   Input.bCaptured = bCaptured;
@@ -63,12 +65,86 @@ void FEditorViewportClient::TickInput(float DeltaTime, bool bCaptured,
   Input.bLeft = FInputSystem::IsKeyDown(EKeyCode::A);
   Input.bUp = FInputSystem::IsKeyDown(EKeyCode::E);
   Input.bDown = FInputSystem::IsKeyDown(EKeyCode::Q);
+  ApplyCameraInput(Input, DeltaTime, MoveSpeed, MouseSensitivity);
+}
+
+void FEditorViewportClient::TickInputFromImGui(float DeltaTime, bool bCaptured,
+                                               bool bHovered, int32 WheelDelta,
+                                               float MoveSpeed, float MouseSensitivity) {
+  if (bFraming && (bCaptured || WheelDelta != 0))
+    bFraming = false;
+  TickFrameTransition(DeltaTime);
+
+  const ImGuiIO& IO = ImGui::GetIO();
+  const bool bKeys = bCaptured && !IO.WantTextInput;
+  FViewportCameraInput Input;
+  Input.bCaptured = bCaptured;
+  Input.bAllowWheel = bCaptured || bHovered;
+  Input.MouseX = IO.MouseDelta.x;
+  Input.MouseY = IO.MouseDelta.y;
+  Input.Wheel = static_cast<float>(WheelDelta);
+  Input.bForward = bKeys && ImGui::IsKeyDown(ImGuiKey_W);
+  Input.bBackward = bKeys && ImGui::IsKeyDown(ImGuiKey_S);
+  Input.bRight = bKeys && ImGui::IsKeyDown(ImGuiKey_D);
+  Input.bLeft = bKeys && ImGui::IsKeyDown(ImGuiKey_A);
+  Input.bUp = bKeys && ImGui::IsKeyDown(ImGuiKey_E);
+  Input.bDown = bKeys && ImGui::IsKeyDown(ImGuiKey_Q);
+  ApplyCameraInput(Input, DeltaTime, MoveSpeed, MouseSensitivity);
+}
+
+void FEditorViewportClient::ApplyCameraInput(const FViewportCameraInput& Input, float DeltaTime,
+                                             float MoveSpeed, float MouseSensitivity) {
   FViewportCameraState Camera{ViewLocation, ViewRotation, OrthoWidth,
       Width > 0 ? static_cast<float>(Width) : 800.0f, bIsPerspective};
   ApplyViewportCameraMovement(Camera, Input, DeltaTime, MoveSpeed, MouseSensitivity);
   ViewLocation = Camera.Location;
   ViewRotation = Camera.Rotation;
   OrthoWidth = Camera.OrthoWidth;
+}
+
+void FEditorViewportClient::FocusOnBounds(const FVector& Center, float Radius)
+{
+  Radius = std::max(Radius, 0.01f);
+  constexpr float Margin = 1.15f;   // 물체가 화면 가장자리에 닿지 않게 둔다
+  const FVector Forward = GetViewForward();
+  const float Aspect = AspectRatio > 0.0f ? AspectRatio : 1.0f;
+
+  FrameStartLocation = ViewLocation;
+  FrameStartOrthoWidth = OrthoWidth;
+  FrameTargetOrthoWidth = OrthoWidth;
+  if (bIsPerspective)
+  {
+    // 세로·가로 FOV 중 좁은 쪽에 구가 들어가는 거리
+    const float HalfVertical = ViewFOV * 0.5f * (PI / 180.0f);
+    const float HalfHorizontal = std::atan(std::tan(HalfVertical) * Aspect);
+    const float HalfFov = std::min(HalfVertical, HalfHorizontal);
+    const float Distance = Radius * Margin / std::max(std::sin(HalfFov), 0.01f);
+    FrameTargetLocation = Center - Forward * Distance;
+  }
+  else
+  {
+    // 직교는 화면 평면 위치만 맞추고 깊이는 유지한다. 폭은 세로로도 구가 들어가게 잡는다.
+    const float Depth = (ViewLocation - Center).Dot(Forward);
+    FrameTargetLocation = Center + Forward * Depth;
+    FrameTargetOrthoWidth = 2.0f * Radius * Margin * std::max(1.0f, Aspect);
+  }
+  FrameElapsed = 0.0f;
+  bFraming = true;
+}
+
+void FEditorViewportClient::TickFrameTransition(float DeltaTime)
+{
+  if (!bFraming)
+    return;
+  constexpr float Duration = 0.25f;
+  FrameElapsed += DeltaTime;
+  const float T = std::min(FrameElapsed / Duration, 1.0f);
+  const float Ease = 1.0f - (1.0f - T) * (1.0f - T);   // 빠르게 출발해 천천히 멈춘다
+  ViewLocation = FrameStartLocation + (FrameTargetLocation - FrameStartLocation) * Ease;
+  // 폭은 비율로 보간해야 배율이 크게 달라도 줌 속도가 일정해 보인다.
+  OrthoWidth = FrameStartOrthoWidth * std::pow(FrameTargetOrthoWidth / std::max(FrameStartOrthoWidth, 1.0e-4f), Ease);
+  if (T >= 1.0f)
+    bFraming = false;
 }
 
 // 기즈모 조작 및 액터 피킹 갱신
@@ -92,8 +168,7 @@ void FEditorViewportClient::UpdateGizmoAndPicking(
   if (FInputSystem::IsMousePressed(EMouseButton::Left) && !InGizmo->IsUsing() &&
       InGizmo->GetHoveredAxis() < 0) {
     FHitResult Hit;
-    UWorld* PickingWorld = GetWorld();
-    if (PickingWorld && PickingWorld->LineTraceSingle(Ray, Hit)) {
+    if (World && World->LineTraceSingle(Ray, Hit)) {
       if (Hit.HitComponent && Hit.HitComponent->GetOwner()) {
         if (OnSelectActor) {
           OnSelectActor(Hit.HitComponent->GetOwner());
@@ -198,14 +273,6 @@ FSceneView FEditorViewportClient::CalcSceneView(const FRect &InViewRect) const {
     OutView.bIsPerspective = bIsPerspective;
     OutView.bIsWireframe = ViewportMode == EViewportMode::Wireframe;
 
-    if (GCameraOverlayDebug.bOverride)
-    {
-        const FCameraOverlayDebug& D = GCameraOverlayDebug;
-        OutView.OverlayColor = FLinearColor{ D.FadeColor[0], D.FadeColor[1], D.FadeColor[2], D.FadeAmount };
-        OutView.LetterboxAmount = D.LetterboxAmount;
-        OutView.LetterboxAspect = D.LetterboxAspect;
-        OutView.VignetteIntensity = D.VignetteIntensity;
-    }
 
     return OutView;
 }
@@ -216,40 +283,9 @@ FSceneView FEditorViewportClient::CalcSceneView() const {
       FRect(0.0f, 0.0f, static_cast<float>(Width), static_cast<float>(Height)));
 }
 
-// 이 뷰포트의 월드를 자기 카메라로 자기 타깃에 그린다. 레벨 에디터와 에셋 에디터가 같이 쓰는 순서다.
-void FEditorViewportClient::Draw(FRenderer* Renderer)
-{
-	UWorld* TargetWorld = GetWorld();
-	if (!TargetWorld || !Renderer) return;
-
-	// 카메라를 뷰·투영 행렬로 바꾼다.
-	const FSceneView SceneView = CalcSceneView();
-
-	// 보이는 물체와 라이트를 모은다.
-	FSceneRenderer SceneRenderer(TargetWorld, SceneView, RenderData);
-	SceneRenderer.InitViews(Renderer, EngineShowFlags);
-
-	// 패스를 순서대로 실행해 ViewTargets에 그린다. 씬 위에 올릴 에디터 요소는
-	// 두 번째 Draw가 등록하고, 등록한 함수는 Render 안에서 불린다.
-	SceneRenderer.Render(Renderer, ViewTargets, EngineShowFlags,
-		[this, &SceneView](FScenePassCallbacks& Callbacks)
-		{
-			Draw(&SceneView, Callbacks);
-		});
-}
-
-// 기본 뷰포트는 씬 위에 아무것도 올리지 않는다.
-void FEditorViewportClient::Draw(const FSceneView* View, FScenePassCallbacks& Callbacks)
-{
-}
-
 // 뷰포트 크기 변경 및 타깃 생성
 void FEditorViewportClient::Resize(const uint32 InWidth,
                                    const uint32 InHeight) {
-  if (InWidth == 0 || InHeight == 0) {
-    return;
-  }
-
   if (Width == InWidth && Height == InHeight &&
       ViewTargets.IsValidFor(InWidth, InHeight)) {
     return;

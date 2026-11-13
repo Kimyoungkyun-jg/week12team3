@@ -15,6 +15,39 @@ enum class ERenderingPath
     Deferred
 };
 
+enum class ESkinningMode : uint8_t
+{
+	CPU,
+	GPU,
+	Compute
+};
+
+inline const char* GetSkinningModeName(ESkinningMode Mode)
+{
+	switch (Mode)
+	{
+	case ESkinningMode::GPU: return "GPU";
+	case ESkinningMode::Compute: return "CS";
+	default: return "CPU";
+	}
+}
+
+// Reflection determines the lighting equation, independently of interpolation.
+enum class EReflectionModel
+{
+    Phong,
+    BlinnPhong,
+    Lambert
+};
+
+// Gouraud interpolates vertex lighting; Phong evaluates interpolated normals per pixel.
+enum class EShadingModel
+{
+    Gouraud,
+    Phong
+};
+
+// Legacy material/config values. Preserve numeric values for existing assets.
 enum class ELightingModel
 {
     Gouraud,
@@ -27,8 +60,7 @@ enum class ELightCullingMode
 {
     Off = 0,
     Tiled = 1,
-    Clustered = 2,
-    Tiled25D = 3
+    Clustered = 2
 };
 
 enum class EPcfMode : uint32_t
@@ -38,4 +70,10 @@ enum class EPcfMode : uint32_t
     Sample16 = 2,
     Sample32 = 3,
     PCSS = 4
+};
+
+enum class EDecalRenderMethod
+{
+    MeshRerendering,
+    DepthReconstruction
 };

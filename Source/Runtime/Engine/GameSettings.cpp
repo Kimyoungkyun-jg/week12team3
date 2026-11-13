@@ -37,7 +37,6 @@ namespace
 		if (Name == "Off") return ELightCullingMode::Off;
 		if (Name == "Tiled") return ELightCullingMode::Tiled;
 		if (Name == "Clustered") return ELightCullingMode::Clustered;
-		if (Name == "Tiled25D") return ELightCullingMode::Tiled25D;
 		return Fallback;
 	}
 }
@@ -70,13 +69,19 @@ FGameSettings FGameSettings::Load(const FString& Path)
 
 	FSceneRenderOptions& Options = Settings.RenderOptions;
 	Options.RenderingPath = ParseRenderingPath(Config.GetString("Rendering", "RenderingPath", ""), Options.RenderingPath);
-	Options.LightingModel = ParseLightingModel(Config.GetString("Rendering", "LightingModel", ""), Options.LightingModel);
+	Options.SetLegacyLightingModel(ParseLightingModel(Config.GetString("Rendering", "LightingModel", ""), ELightingModel::Phong));
+	const FString Reflection = Config.GetString("Rendering", "ReflectionModel", "");
+	if (Reflection == "Phong") Options.ReflectionModel = EReflectionModel::Phong;
+	else if (Reflection == "BlinnPhong" || Reflection == "Blinn-Phong") Options.ReflectionModel = EReflectionModel::BlinnPhong;
+	else if (Reflection == "Lambert") Options.ReflectionModel = EReflectionModel::Lambert;
+	const FString Shading = Config.GetString("Rendering", "ShadingModel", "");
+	if (Shading == "Gouraud") Options.ShadingModel = EShadingModel::Gouraud;
+	else if (Shading == "Phong") Options.ShadingModel = EShadingModel::Phong;
 	Options.LightCullingMode = ParseLightCullingMode(Config.GetString("Rendering", "LightCullingMode", ""), Options.LightCullingMode);
 	Options.bEnableFXAA = Config.GetBool("Rendering", "EnableFXAA", Options.bEnableFXAA);
 	Options.bGammaCorrection = Config.GetBool("Rendering", "GammaCorrection", Options.bGammaCorrection);
 	Options.bShowVignette = Config.GetBool("Rendering", "ShowVignette", Options.bShowVignette);
 	Options.bShowCameraOverlay = Config.GetBool("Rendering", "ShowCameraOverlay", Options.bShowCameraOverlay);
-	Options.bShowSkeletalMesh = Config.GetBool("Rendering", "ShowSkeletalMesh", Options.bShowSkeletalMesh);
 	if (const FString Gamma = Config.GetString("Rendering", "DisplayGamma", ""); !Gamma.empty())
 	{
 		try { Options.DisplayGamma = FMath::Clamp(std::stof(Gamma), 1.0f, 3.0f); } catch (...) {}
@@ -91,5 +96,7 @@ FGameSettings FGameSettings::Load(const FString& Path)
 	Options.DirectionalShadowMapSize = GetUInt("Rendering", "DirectionalShadowMapSize", Options.DirectionalShadowMapSize, false);
 	Options.PointShadowMapSize = GetUInt("Rendering", "PointShadowMapSize", Options.PointShadowMapSize, false);
 	Options.SpotShadowMapSize = GetUInt("Rendering", "SpotShadowMapSize", Options.SpotShadowMapSize, false);
+	if (Options.RenderingPath == ERenderingPath::Deferred && Options.ShadingModel == EShadingModel::Gouraud)
+		Options.ShadingModel = EShadingModel::Phong;
 	return Settings;
 }

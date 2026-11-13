@@ -7,19 +7,17 @@
 #include "Math/Vector2.h"
 #include "Render/SceneViewTargets.h"
 #include "Render/SceneView.h"
+#include "Render/RenderEnums.h"
 #include "Render/SceneRenderData.h"
-#include "Render/SceneRenderOptions.h"
 #include "Render/Texture2D.h"
+#include "Editor/Viewports/ViewShowFlags.h"
 
 #include <functional>
 
+struct FSceneRenderOptions;
 class UWorld;
 class FGizmo;
 class AActor;
-class FPreviewScene;
-class FRenderer;
-struct FBoxSphereBounds;
-struct FScenePassCallbacks;
 
 
 // 뷰포트 투영 타입
@@ -41,18 +39,20 @@ enum class EViewportMode
 	LightCulling,
 	Cascade,
 	ShadowMask,
+	// editor.ini에 정수로 저장되므로 새 모드는 항상 끝에 붙인다.
+	Unlit,
 };
+
 
 // 에디터 뷰포트 클라이언트
 class FEditorViewportClient : public FViewportClient {
 public:
 	FEditorViewportClient();
-	explicit FEditorViewportClient(FPreviewScene& InPreviewScene);
 	virtual ~FEditorViewportClient() override = default;
 
 	// 월드 조회 및 설정
-	virtual UWorld* GetWorld() const override;
-	void SetWorld(UWorld* InWorld);
+	virtual UWorld* GetWorld() const override { return World; }
+	void SetWorld(UWorld* InWorld) { if (World != InWorld) RenderData.ResetScene(); World = InWorld; }
 
 	// 입력 이벤트
 	virtual void MouseMove(FViewport* Viewport, int32 X, int32 Y) override;
@@ -81,8 +81,15 @@ public:
 		ViewRotation = InRotation;
 	}
 
+	float GetCameraSpeed() const { return CameraSpeed; }
+	void SetCameraSpeed(float Value);
+	float GetMouseSensitivity() const { return MouseSensitivity; }
+	void SetMouseSensitivity(float Value);
 	float GetViewFOV() const { return ViewFOV; }
 	void SetViewFOV(float InFOV) { ViewFOV = InFOV; }
+	float GetNearClip() const { return NearClip; }
+	float GetFarClip() const { return FarClip; }
+	void SetClipPlanes(float Near, float Far) { NearClip = Near; FarClip = Far; }
 
 	float GetOrthoWidth() const { return OrthoWidth; }
 	void SetOrthoWidth(float InWidth) { OrthoWidth = InWidth; }
@@ -90,8 +97,15 @@ public:
 	float GetAspectRatio() const { return AspectRatio; }
 	void SetAspectRatio(float InAspectRatio) { AspectRatio = InAspectRatio; }
 
+	// 구(중심, 반지름)가 화면에 꽉 차게 카메라를 옮긴다 (TEAM5 FrameBounds). 방향은 유지하고 0.25초 동안 부드럽게 이동한다.
+	void FocusOnBounds(const FVector& Center, float Radius);
+	bool IsFraming() const { return bFraming; }
+
 	// 카메라 입력 처리
 	void TickInput(float DeltaTime, bool bCaptured, bool bHovered,
+		int32 WheelDelta, float MoveSpeed, float MouseSensitivity);
+	// 뷰어용. 별도 OS 창에서는 FInputSystem이 입력을 받지 못하므로 ImGui 입력을 읽는다.
+	void TickInputFromImGui(float DeltaTime, bool bCaptured, bool bHovered,
 		int32 WheelDelta, float MoveSpeed, float MouseSensitivity);
 
 	// 기즈모 조작과 피킹 처리
@@ -108,23 +122,13 @@ public:
 
 	// 카메라 전방 벡터
 	FVector GetViewForward() const;
-	void FocusOnBounds(const FBoxSphereBounds& Bounds);
+
+	// Apply only view-owned options; preserve the renderer-wide path and quality settings.
+	void ApplyRenderSettings(FSceneRenderOptions& Options) const;
 
 	// 씬 뷰 생성
 	FSceneView CalcSceneView(const FRect& InViewRect) const;
 	FSceneView CalcSceneView() const;
-
-	// 이 뷰포트의 월드를 자기 카메라로 자기 타깃(ViewTargets)에 그린다. 엔진과 에셋 에디터가 부르는 입구다.
-	// UE의 FEditorViewportClient::Draw(FViewport*, FCanvas*)와 같은 자리이고,
-	// 이 엔진은 렌더러를 인자로 받는다. 무엇을 어떻게 보여 줄지는 자기 EngineShowFlags에서 읽는다.
-	// 씬을 그리는 도중에 아래의 두 번째 Draw를 부른다.
-	virtual void Draw(FRenderer* Renderer);
-
-	// 씬 위에 올릴 에디터 요소(선, 그리드, 기즈모 등)를 등록한다. 기본 구현은 아무것도 올리지 않는다.
-	// 레벨 에디터와 에셋 에디터의 클라이언트가 이 함수만 재정의한다.
-	// UE의 FEditorViewportClient::Draw(const FSceneView*, FPrimitiveDrawInterface*)와 같은 자리다.
-	// UE는 PDI로 바로 그리지만, 이 엔진은 그릴 시점에 불릴 함수를 Callbacks에 채운다.
-	virtual void Draw(const FSceneView* View, FScenePassCallbacks& Callbacks);
 
 	// 화면 역투영 레이 생성
 	FRay DeprojectScreenToWorld(const FVector2& ScreenPos) const;
@@ -154,15 +158,19 @@ public:
 	bool IsShadowMask() const { return ViewportMode == EViewportMode::ShadowMask; }
 	EViewportMode GetViewportMode() const { return ViewportMode; }
 	void SetViewportMode(const EViewportMode InViewportMode) { ViewportMode = InViewportMode; }
+	EReflectionModel GetReflectionModel() const { return ReflectionModel; }
+	void SetReflectionModel(EReflectionModel Model) { ReflectionModel = Model; }
+	EShadingModel GetShadingModel() const { return ShadingModel; }
+	void SetShadingModel(EShadingModel Model) { ShadingModel = Model; }
 	float GetMaxRange() const { return MaxRange; }
-	void SetMaxRange(float InMaxRange) { MaxRange = InMaxRange; }
+	FViewShowFlags& GetShowFlags() { return ShowFlags; }
+	const FViewShowFlags& GetShowFlags() const { return ShowFlags; }
+	void SetMaxRange(float InMaxRange);
 
 	// 타깃 크기 변경
 	void Resize(uint32 InWidth, uint32 InHeight);
 
 protected:
-	// 프리뷰 장면은 클라이언트보다 오래 살아 있어야 합니다.
-	FPreviewScene* PreviewScene = nullptr;
 	UWorld* World = nullptr;
 	int32 ViewIndex = 0;
 	ELevelViewportType ViewportType = ELevelViewportType::Perspective;
@@ -170,23 +178,35 @@ protected:
 	bool bIsRealtime = true;
 	bool bActive = false;
 	EViewportMode ViewportMode = EViewportMode::Solid;
+	EReflectionModel ReflectionModel = EReflectionModel::BlinnPhong;
+	EShadingModel ShadingModel = EShadingModel::Phong;
 
 	FRect Rect{};
 	uint32 Width = 0;
 	uint32 Height = 0;
 	FSceneViewTargets ViewTargets;
 	FSceneRenderData RenderData;
-	// 이 뷰포트가 무엇을 어떻게 보여 줄지 정하는 설정. Draw가 이 값으로 씬을 그린다.
-	// UE의 FEditorViewportClient::EngineShowFlags와 같은 자리다. UE의 FEngineShowFlags는 표시 여부만 담지만
-	// 이 엔진의 FSceneRenderOptions는 그림자 해상도, 렌더링 경로 같은 품질 설정도 같이 담는다.
-	FSceneRenderOptions EngineShowFlags;
 
 	FVector ViewLocation = FVector(0.0f, 0.0f, 0.0f);
 	FRotator ViewRotation = FRotator(0.0f, 0.0f, 0.0f);
 	float ViewFOV = 60.0f;
+	float CameraSpeed = 1.0f;
+	float MouseSensitivity = 1.0f;
 	float AspectRatio = 1.777778f;
 	float NearClip = 0.1f;
 	float FarClip = 10000.0f;
 	float OrthoWidth = 10.0f;
 	float MaxRange = 50.0f;
+	FViewShowFlags ShowFlags;
+
+	void ApplyCameraInput(const struct FViewportCameraInput& Input, float DeltaTime, float MoveSpeed, float MouseSensitivity);
+
+	// 포커스 이동. 사용자가 카메라를 잡거나 휠을 굴리면 그 자리에서 멈춘다.
+	void TickFrameTransition(float DeltaTime);
+	bool bFraming = false;
+	float FrameElapsed = 0.0f;
+	FVector FrameStartLocation = FVector(0.0f, 0.0f, 0.0f);
+	FVector FrameTargetLocation = FVector(0.0f, 0.0f, 0.0f);
+	float FrameStartOrthoWidth = 10.0f;
+	float FrameTargetOrthoWidth = 10.0f;
 };

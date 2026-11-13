@@ -51,11 +51,15 @@ namespace EditorCommandUI
 		if (!Command.IsVisibleNow())
 			return false;
 
+		// 0이면 글자 크기에 맞춘다. 고정 픽셀이면 배율이 큰 모니터에서 아이콘만 작아진다 (TEAM5).
+		if (IconSize <= 0.0f)
+			IconSize = std::round(ImGui::GetFontSize());
+
 		const bool bEnabled = Command.CanExecuteNow();
 		ImGui::BeginDisabled(!bEnabled);
 
 		bool bClicked = false;
-		if (Command.Icon)
+		if (Command.Icon && Command.Icon->GetResource())
 		{
 			// 비활성일 때는 BeginDisabled가 알파를 낮춰 준다.
 			bClicked = ImGui::ImageButton(Id, (ImTextureID)Command.Icon->GetResource()->GetSRV(),

@@ -83,8 +83,23 @@ namespace
 		TUniquePtr<FTexture2D> Texture;
 		FRenderGraphTextureDesc Desc{};
 		bool bInUse = false;
+		uint64 LastUsedGeneration = 0;
 	};
 	static std::vector<FPooledTexture> GTexturePool;
+
+	// Execute 호출마다 1씩 오른다. 뷰포트 크기가 바뀌면 이전 크기의 텍스처는 더 이상 맞지 않으므로,
+	// 일정 횟수 동안 쓰이지 않은 텍스처를 지워 풀이 끝없이 커지지 않게 한다.
+	static uint64 GPoolGeneration = 0;
+	constexpr uint64 PoolEvictAfterGenerations = 64;
+
+	void TrimTexturePool()
+	{
+		std::erase_if(GTexturePool, [](const FPooledTexture& Item)
+			{
+				return !Item.bInUse &&
+					GPoolGeneration - Item.LastUsedGeneration > PoolEvictAfterGenerations;
+			});
+	}
 
 	FTexture2D* AcquireTexture(const FRenderGraphTextureDesc& Desc)
 	{
@@ -97,6 +112,7 @@ namespace
 				Item.Desc.BindFlags == Desc.BindFlags)
 			{
 				Item.bInUse = true;
+				Item.LastUsedGeneration = GPoolGeneration;
 				return Item.Texture.get();
 			}
 		}
@@ -113,7 +129,7 @@ namespace
 			(HasFlag(Desc.BindFlags, ETextureBindFlags::DepthStencil) && !NewTex->GetDSV()) ||
 			(HasFlag(Desc.BindFlags, ETextureBindFlags::ShaderResource) && !NewTex->GetSRV())) return nullptr;
 		FTexture2D* Ptr = NewTex.get();
-		GTexturePool.push_back({ std::move(NewTex), Desc, true });
+		GTexturePool.push_back({ std::move(NewTex), Desc, true, GPoolGeneration });
 		return Ptr;
 	}
 }
@@ -176,7 +192,23 @@ FTexture2D* FRenderGraphBuilder::Resolve(FRenderGraphTextureRef Ref) const
 
 bool FRenderGraphBuilder::ValidatePass(const FRenderGraphRasterPassDesc& Desc) const
 {
-	return !(Desc.ColorAttachments.empty() && !Desc.DepthAttachment.Texture);
+	if (Desc.ColorAttachments.empty() &&
+		!Desc.DepthAttachment.Texture)
+	{
+		return false;
+	}
+
+	if (Desc.DepthAttachment.bReadOnlyDepthStencil)
+	{
+		if (!Desc.DepthAttachment.Texture)
+			return false;
+
+		// 읽기 전용 attachment를 clear하면 안된다.
+		if (Desc.DepthAttachment.LoadAction != ERenderGraphLoadAction::Load)
+			return false;
+	}
+
+	return true;
 }
 
 bool FRenderGraphBuilder::AddRasterPass(FRenderGraphRasterPassDesc Desc, std::function<void()> Execute)
@@ -215,12 +247,42 @@ bool FRenderGraphBuilder::Execute() // 등록되어 있던
 	if (bExecuted || !FRenderDevice::Get()) return false;
 	bExecuted = true;
 
+	++GPoolGeneration;
+	TrimTexturePool();
+
 	for (auto& Entry : Textures)
 	{
 		if (Entry.bTransient && !Entry.Texture)
 		{
 			Entry.Texture = AcquireTexture(Entry.Desc);
 			if (!Entry.Texture) return false;
+		}
+	}
+
+	// 패스 실행 전 검증
+	for (const FRasterPass& Pass : Passes)
+	{
+		if (Pass.bCompute ||
+			!Pass.Desc.DepthAttachment.bReadOnlyDepthStencil)
+		{
+			continue;
+		}
+
+		FTexture2D* Depth =
+			Resolve(Pass.Desc.DepthAttachment.Texture);
+
+		if (!Depth ||
+			Depth->GetDimension() != ETextureDimension::Texture2D ||
+			!Depth->GetReadOnlyDSV())
+		{
+			return false;
+		}
+
+		// 같은 텍스처를 컬러 출력으로도 쓰는 선언은 허용하지 않는다.
+		for (const FRenderGraphColorAttachment& Color : Pass.Desc.ColorAttachments)
+		{
+			if (Resolve(Color.Texture) == Depth)
+				return false;
 		}
 	}
 
@@ -269,6 +331,9 @@ bool FRenderGraphBuilder::Execute() // 등록되어 있던
 		}
 
 		UnbindConflictingViews(Context, Outputs);
+
+		if (Pass.Desc.OnBeforeExecute)
+			Pass.Desc.OnBeforeExecute();
 		
 		for (uint32 Index = 0; Index < Pass.Desc.ColorAttachments.size(); ++Index)
 		{
@@ -287,9 +352,16 @@ bool FRenderGraphBuilder::Execute() // 등록되어 있던
 		}
 
 		RenderCommand::SetRenderTargets(static_cast<uint32>(Pass.Desc.ColorAttachments.size()), ColorTargets,
-			Depth, Pass.Desc.DepthAttachment.DSVIndex);
-		for (uint32 Slot = 0; Slot < Pass.Desc.ReadTextures.size(); ++Slot)
-			RenderCommand::BindShaderResource(Slot, Resolve(Pass.Desc.ReadTextures[Slot]), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+			Depth, Pass.Desc.DepthAttachment.DSVIndex, Pass.Desc.DepthAttachment.bReadOnlyDepthStencil);
+		for (uint32 Index = 0; Index < Pass.Desc.ReadTextures.size(); ++Index)
+		{
+			const uint32 Slot = Pass.Desc.ReadTextureStartSlot + Index;
+
+			RenderCommand::BindShaderResource(
+				Slot,
+				Resolve(Pass.Desc.ReadTextures[Index]),
+				EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+		}
 
 		FShadowAtlasRect Viewport = Pass.Desc.Viewport;
 		if (Viewport.Width == 0)
@@ -304,6 +376,9 @@ bool FRenderGraphBuilder::Execute() // 등록되어 있던
 		RenderCommand::SetViewport(Viewport.X, Viewport.Y, Viewport.Width, Viewport.Height);
 		Pass.Execute();
 		RenderCommand::EndRenderPass();
+
+		if (Pass.Desc.OnAfterExecute)
+			Pass.Desc.OnAfterExecute();
 	}
 	return true;
 }

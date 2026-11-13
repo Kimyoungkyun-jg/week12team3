@@ -1,0 +1,141 @@
+{
+  "Type": "BlendSpace2D",
+  "Skeleton": "Models/UnrealModel/SKEL_SKM_Quinn_Simple_root.fbxbin",
+  "Samples": [
+    {
+      "X": -180,
+      "Y": 0,
+      "Sequence": "Models/UnrealModel/AS_Idle.fbxbin"
+    },
+    {
+      "X": -180,
+      "Y": 300,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Walk_Bwd.fbxbin"
+    },
+    {
+      "X": -180,
+      "Y": 600,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Jog_Bwd.fbxbin"
+    },
+    {
+      "X": -135,
+      "Y": 0,
+      "Sequence": "Models/UnrealModel/AS_Idle.fbxbin"
+    },
+    {
+      "X": -135,
+      "Y": 300,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Walk_Bwd_Left.fbxbin"
+    },
+    {
+      "X": -135,
+      "Y": 600,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Jog_Bwd_Left.fbxbin"
+    },
+    {
+      "X": -90,
+      "Y": 0,
+      "Sequence": "Models/UnrealModel/AS_Idle.fbxbin"
+    },
+    {
+      "X": -90,
+      "Y": 300,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Walk_Left.fbxbin"
+    },
+    {
+      "X": -90,
+      "Y": 600,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Jog_Left.fbxbin"
+    },
+    {
+      "X": -45,
+      "Y": 0,
+      "Sequence": "Models/UnrealModel/AS_Idle.fbxbin"
+    },
+    {
+      "X": -45,
+      "Y": 300,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Walk_Fwd_Left.fbxbin"
+    },
+    {
+      "X": -45,
+      "Y": 600,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Jog_Fwd_Left.fbxbin"
+    },
+    {
+      "X": 0,
+      "Y": 0,
+      "Sequence": "Models/UnrealModel/AS_Idle.fbxbin"
+    },
+    {
+      "X": 0,
+      "Y": 300,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Walk_Fwd.fbxbin"
+    },
+    {
+      "X": 0,
+      "Y": 600,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Jog_Fwd.fbxbin"
+    },
+    {
+      "X": 45,
+      "Y": 0,
+      "Sequence": "Models/UnrealModel/AS_Idle.fbxbin"
+    },
+    {
+      "X": 45,
+      "Y": 300,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Walk_Fwd_Right.fbxbin"
+    },
+    {
+      "X": 45,
+      "Y": 600,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Jog_Fwd_Right.fbxbin"
+    },
+    {
+      "X": 90,
+      "Y": 0,
+      "Sequence": "Models/UnrealModel/AS_Idle.fbxbin"
+    },
+    {
+      "X": 90,
+      "Y": 300,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Walk_Right.fbxbin"
+    },
+    {
+      "X": 90,
+      "Y": 600,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Jog_Right.fbxbin"
+    },
+    {
+      "X": 135,
+      "Y": 0,
+      "Sequence": "Models/UnrealModel/AS_Idle.fbxbin"
+    },
+    {
+      "X": 135,
+      "Y": 300,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Walk_Bwd_Right.fbxbin"
+    },
+    {
+      "X": 135,
+      "Y": 600,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Jog_Bwd_Right.fbxbin"
+    },
+    {
+      "X": 180,
+      "Y": 0,
+      "Sequence": "Models/UnrealModel/AS_Idle.fbxbin"
+    },
+    {
+      "X": 180,
+      "Y": 300,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Walk_Bwd.fbxbin"
+    },
+    {
+      "X": 180,
+      "Y": 600,
+      "Sequence": "Models/UnrealModel/AS_MF_Unarmed_Jog_Bwd.fbxbin"
+    }
+  ]
+}

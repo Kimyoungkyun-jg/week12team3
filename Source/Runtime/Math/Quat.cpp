@@ -13,9 +13,9 @@ FQuat::FQuat(float InX, float InY, float InZ, float InW)
 	X = InX; Y = InY; Z = InZ; W = InW;
 }
 
-FQuat::FQuat(FRotator InRotator)
+FQuat::FQuat(FRotator InRoatator)
 {
-	*this = InRotator.Quaternion();
+	// TODO
 }
 
 /* Functions */
@@ -150,15 +150,13 @@ FRotator FQuat::ToFRotator() const
 	// Gimbal Lock 방지를 위해 [-1, 1] 범위로 Clamp
 	const float ClampedSinPitch = FMath::Clamp(SinPitch, -1.0f, 1.0f);
 
-	ResultRotator.Pitch = atan2f(ClampedSinPitch, hypotf(2.0f * (W * X + Y * Z), 1.0f - 2.0f * (X * X + Y * Y))); // asin은 ±1 근처에서 오차가 커서 90도가 89.97도로 나온다
+	ResultRotator.Pitch = asinf(ClampedSinPitch);
 
 	// Roll
-	const bool bGimbalLock = fabsf(ClampedSinPitch) > 0.999999f;
-	ResultRotator.Roll = bGimbalLock ? 0.0f : atan2f( 2.0f * (W * X + Y * Z), 1.0f - 2.0f * (X * X + Y * Y));
+	ResultRotator.Roll = atan2f( 2.0f * (W * X + Y * Z), 1.0f - 2.0f * (X * X + Y * Y));
 
 	// Yaw
-	// Pitch가 ±90도면 Roll과 Yaw가 한 축으로 합쳐져 위 식이 atan2(0, 0)이 된다. Roll을 0으로 두고 전부 Yaw로 표현한다.
-	ResultRotator.Yaw = bGimbalLock ? atan2f(2.0f * Z * W, W * W - Z * Z) : atan2f( 2.0f * (W * Z + X * Y), 1.0f - 2.0f * (Y * Y + Z * Z));
+	ResultRotator.Yaw = atan2f( 2.0f * (W * Z + X * Y), 1.0f - 2.0f * (Y * Y + Z * Z));
 
 	// Radian -> Degree
 	ResultRotator.Pitch = FMath::RadiansToDegrees(ResultRotator.Pitch);
@@ -247,4 +245,34 @@ FQuat FQuat::MakeFromEuler(float RollRadian, float PitchRadian, float YawRadian)
 		// W
 		CR * CP * CY + SR * SP * SY
 	);
+}
+
+// UE FQuat::Slerp_NotNormalized와 같은 식. 두 사원수가 거의 같으면(cos >= 0.9999) sin 나눗셈이 불안정하므로 선형 보간한다.
+FQuat FQuat::Slerp_NotNormalized(const FQuat& Quat1, const FQuat& Quat2, float Alpha)
+{
+	const float RawCosOm = Quat1.X * Quat2.X + Quat1.Y * Quat2.Y + Quat1.Z * Quat2.Z + Quat1.W * Quat2.W;
+	const float CosOm = RawCosOm >= 0.0f ? RawCosOm : -RawCosOm;
+
+	float Scale0, Scale1;
+	if (CosOm < 0.9999f)
+	{
+		const float Omega = std::acos(CosOm);
+		const float InvSin = 1.0f / std::sin(Omega);
+		Scale0 = std::sin((1.0f - Alpha) * Omega) * InvSin;
+		Scale1 = std::sin(Alpha * Omega) * InvSin;
+	}
+	else
+	{
+		Scale0 = 1.0f - Alpha;
+		Scale1 = Alpha;
+	}
+
+	// q와 -q는 같은 회전이므로 가까운 쪽으로 돈다.
+	Scale1 = RawCosOm >= 0.0f ? Scale1 : -Scale1;
+
+	return FQuat(
+		Scale0 * Quat1.X + Scale1 * Quat2.X,
+		Scale0 * Quat1.Y + Scale1 * Quat2.Y,
+		Scale0 * Quat1.Z + Scale1 * Quat2.Z,
+		Scale0 * Quat1.W + Scale1 * Quat2.W);
 }

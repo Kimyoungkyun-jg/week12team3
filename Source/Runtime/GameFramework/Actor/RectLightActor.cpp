@@ -1,11 +1,12 @@
 #include "EnginePCH.h"
+#include "Core/ResourcePaths.h"
 #include "RectLightActor.h"
 #include "Asset/AssetManager.h"
 
 ARectLightActor::ARectLightActor()
 {
     RectLightComponent = CreateDefaultSubobject<URectLightComponent>("URectLightComponent");
-	SetupLightRoot(RectLightComponent, "Engine/Icons/Rect.png");
+	SetupLightRoot(RectLightComponent, ResourcePaths::RectLightIcon);
 
     // Icon 옆에 붙어서 빛의 방향을 알려주는 기즈모 arrow (로컬 x축)
     ArrowComponent = CreateDefaultSubobject<UStaticMeshComponent>("UArrowComponent");

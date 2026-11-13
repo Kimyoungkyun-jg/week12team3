@@ -1,11 +1,12 @@
 #include "EnginePCH.h"
+#include "Core/ResourcePaths.h"
 #include "SpotLightActor.h"
 #include "Asset/AssetManager.h"
 
 ASpotLightActor::ASpotLightActor()
 {
     SpotLightComponent = CreateDefaultSubobject<USpotLightComponent>("USpotLightComponent");
-	SetupLightRoot(SpotLightComponent, "Engine/Icons/Spot.png");
+	SetupLightRoot(SpotLightComponent, ResourcePaths::SpotLightIcon);
 
     // Icon 옆에 붙어서 빛의 방향을 알려주는 기즈모 arrow (로컬 x축)
     ArrowComponent = CreateDefaultSubobject<UStaticMeshComponent>("UArrowComponent");
@@ -18,4 +19,5 @@ ASpotLightActor::ASpotLightActor()
     ArrowComponent->SetHiddenInDetails(true);
     ArrowComponent->SetCastShadow(false);
     ArrowComponent->SetReceiveShadow(false);
+	ArrowComponent->SetReceiveDecal(false);
 }

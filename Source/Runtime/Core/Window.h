@@ -9,10 +9,6 @@
 // true를 반환하면 그 메시지는 소비된 것으로 보고 더 처리하지 않는다.
 using FWndProcHook = bool (*)(HWND, UINT, WPARAM, LPARAM);
 
-// 사용자 정의 제목 표시줄에서 클라이언트 좌표 (X, Y)가 창을 끌 수 있는 빈 제목 표시줄인지 알려준다.
-// 메뉴나 버튼처럼 클릭을 받아야 하는 곳이면 false를 돌려준다.
-using FCaptionHitTest = bool (*)(int X, int Y);
-
 class FWindow
 {
 public:
@@ -23,11 +19,6 @@ public:
 	// 창은 숨겨진 채로 만들어진다. 초기화가 끝나면 Show()를 호출한다.
 	bool Create(HINSTANCE hInstance, int Width, int Height, const wchar_t* Title, bool bBorderless = false);
 	void Show();
-	// Windows 기본 제목 표시줄을 없애고 창 전체를 클라이언트 영역으로 쓴다.
-	// 크기 조절 테두리, 끌어서 이동, 더블클릭 최대화, 화면 가장자리 스냅은 그대로 동작한다.
-	// 제목 표시줄은 UI가 직접 그리고, 끌 수 있는 곳은 HitTest로 알려준다.
-	void EnableCustomTitleBar(FCaptionHitTest HitTest);
-	bool HasCustomTitleBar() const { return bCustomTitleBar; }
 	void ProcessMessage(bool& bIsRunning);
 	// 메인 창이 아닌 창(PIE 창 등)을 직접 닫는다. 메인 창은 OS 종료 흐름을 따른다.
 	void Destroy();
@@ -62,11 +53,6 @@ public:
 	}
 
 private:
-	LRESULT HitTestCustomFrame(HWND hWnd, LPARAM lParam) const;
-
-	bool bCustomTitleBar = false;
-	FCaptionHitTest CaptionHitTest = nullptr;
-
 	bool bIsResized = false;
 	bool bIsInSizeMove = false;
 	bool bQuitOnClose = true;

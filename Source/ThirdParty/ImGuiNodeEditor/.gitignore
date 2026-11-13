@@ -1,8 +1,0 @@
-.vs
-.vscode
-.build*
-.DS_Store
-/[Bb]uild*/
-*.VC.db
-*.VC.opendb
-*.user

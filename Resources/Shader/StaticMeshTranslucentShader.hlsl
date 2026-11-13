@@ -1,6 +1,6 @@
 #pragma pack_matrix(row_major)
-#include "GpuSkinCommon.hlsli"
-
+#include "Skinning.hlsli"
+#include "MaterialUV.hlsli"
 cbuffer Viewconstants : register(b0)
 {
     matrix VP;
@@ -16,6 +16,11 @@ cbuffer MaterialParams : register(b1)
     float4 BaseColor;
     float2 UVOffset;
     float2 Padding;
+    float2 UVTiling;
+    float2 WorldUVTileSize;
+    float4 Emissive;
+    float4 SpecularColorShininess;
+    float4 WorldUVParams;
 };
 
 cbuffer TranslucentFogConstants : register(b3)
@@ -34,7 +39,10 @@ struct VS_INPUT
 	float4 tangent : TANGENT;
 	float2 t : TEXCOORD;
 	float4 c : COLOR;
-	GPU_SKIN_VS_INPUT
+#if GPU_SKINNING
+	int4 BoneIndices : BLENDINDICES;
+	float4 BoneWeights : BLENDWEIGHT;
+#endif
 };
 
 struct PS_INPUT
@@ -44,6 +52,8 @@ struct PS_INPUT
     float4 color : COLOR;
     float2 uv : TEXCOORD0;
     float3 worldPosition : TEXCOORD1;
+    float3 localPosition : TEXCOORD2;
+    float3 localNormal : TEXCOORD3;
 };
 
 Texture2D g_txColor : register(t0);
@@ -85,21 +95,31 @@ float FogTransmittance(float3 Position)
 
 PS_INPUT mainVS(VS_INPUT input)
 {
+#if GPU_SKINNING
+    SkinVertex(input.p, input.n, input.tangent, input.BoneIndices, input.BoneWeights);
+#endif
     PS_INPUT output;
-    GPU_SKIN_APPLY(input, input.p, input.n, input.tangent);
 
     float4 WorldPosition = mul(float4(input.p, 1.0f), World);
     output.position = mul(WorldPosition, VP);
     output.color = input.c;
     output.uv = input.t;
-    output.normal = input.n;
+    output.normal = mul(float4(input.n, 0.0f), World).xyz;
+    output.localPosition = input.p;
+    output.localNormal = input.n;
     output.worldPosition = WorldPosition.xyz;
     return output;
 }
 
 float4 mainPS(PS_INPUT input) : SV_TARGET
 {
-    float4 texColor = g_txColor.Sample(g_Sample, input.uv + UVOffset);
+    float3 ProjectedT, ProjectedB;
+    float2 UV = ResolveMaterialUV(input.uv, input.worldPosition, input.normal,
+        input.localPosition, input.localNormal, World, UVTiling, UVOffset, WorldUVTileSize,
+        WorldUVParams.x > 0.5f, ProjectedT, ProjectedB);
+    float4 texColor = g_txColor.Sample(g_Sample, UV);
+    texColor.rgb = pow(max(texColor.rgb, 0.0f), 2.2f) * BaseColor.rgb + Emissive.rgb;
+    texColor.a *= BaseColor.a;
     texColor.a *= FogTransmittance(input.worldPosition);
     return texColor;
 }

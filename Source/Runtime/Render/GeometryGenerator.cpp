@@ -80,11 +80,12 @@ TUniquePtr<FStaticMeshData> FGeometryGenerator::CreatePlane(float Size, const FV
 		FVector(-HalfSize, -HalfSize, 0.0f),
 	};
 
+	// 위(+Z)에서 내려다봤을 때 텍스처 위쪽 = +X(Forward), 오른쪽 = +Y(Right), UV 원점 좌상단.
 	TArray<FVector2> uvs =
 	{
-		FVector2(0.0f, 0.0f),
-		FVector2(1.0f, 0.0f),
 		FVector2(1.0f, 1.0f),
+		FVector2(1.0f, 0.0f),
+		FVector2(0.0f, 0.0f),
 		FVector2(0.0f, 1.0f),
 	};
 
@@ -123,7 +124,8 @@ TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateCone(float Radius, float H
 		float angle = i * Slice;
 		float x = -Radius * cosf(angle);
 		float y = -Radius * sinf(angle);
-		float u = (float)i / Segments;
+		// angle 증가 방향은 바깥에서 봤을 때 왼쪽이므로 U를 반대로 증가시킨다.
+		float u = 1.0f - (float)i / Segments;
 
 		Vertices.Add({ { x, y, 0.0f }, FVector(0.0f, 0.0f, 0.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f), FVector2(u, 1.0f), Color });
 	}
@@ -149,8 +151,9 @@ TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateCone(float Radius, float H
 		float angle = i * Slice;
 		float x = Radius * cosf(angle);
 		float y = Radius * sinf(angle);
-		float u = 0.5f + 0.5f * cosf(angle);
-		float v = 0.5f + 0.5f * sinf(angle);
+		// 아래(-Z)에서 올려다봤을 때 위쪽 = +X, 오른쪽 = -Y
+		float u = 0.5f - 0.5f * sinf(angle);
+		float v = 0.5f - 0.5f * cosf(angle);
 
 		Vertices.Add({ { x, y, 0.0f }, FVector(0.0f, 0.0f, 0.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f), FVector2(u, v), Color });
 	}
@@ -183,7 +186,8 @@ TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateCylinder(float Radius, flo
 		float angle = i * Slice;
 		float x = Radius * cosf(angle);
 		float y = Radius * sinf(angle);
-		float u = (float)i / Segments;
+		// angle 증가 방향은 바깥에서 봤을 때 왼쪽이므로 U를 반대로 증가시킨다.
+		float u = 1.0f - (float)i / Segments;
 
 		Vertices.Add({ { x, y, -HalfHeight }, FVector(0.0f, 0.0f, 0.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f), FVector2(u, 1.0f), Color });
 		Vertices.Add({ { x, y,  HalfHeight }, FVector(0.0f, 0.0f, 0.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f), FVector2(u, 0.0f), Color });
@@ -214,8 +218,9 @@ TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateCylinder(float Radius, flo
 		float angle = i * Slice;
 		float x = Radius * cosf(angle);
 		float y = Radius * sinf(angle);
-		float u = 0.5f + 0.5f * cosf(angle);
-		float v = 0.5f + 0.5f * sinf(angle);
+		// 아래(-Z)에서 올려다봤을 때 위쪽 = +X, 오른쪽 = -Y
+		float u = 0.5f - 0.5f * sinf(angle);
+		float v = 0.5f - 0.5f * cosf(angle);
 
 		Vertices.Add({ { x, y, -HalfHeight }, FVector(0.0f, 0.0f, 0.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f), FVector2(u, v), Color });
 	}
@@ -226,8 +231,9 @@ TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateCylinder(float Radius, flo
 		float angle = i * Slice;
 		float x = Radius * cosf(angle);
 		float y = Radius * sinf(angle);
-		float u = 0.5f + 0.5f * cosf(angle);
-		float v = 0.5f + 0.5f * sinf(angle);
+		// 위(+Z)에서 내려다봤을 때 위쪽 = +X, 오른쪽 = +Y
+		float u = 0.5f + 0.5f * sinf(angle);
+		float v = 0.5f - 0.5f * cosf(angle);
 
 		Vertices.Add({ { x, y, HalfHeight }, FVector(0.0f, 0.0f, 0.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f), FVector2(u, v), Color });
 	}
@@ -338,62 +344,57 @@ TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateRing(float Radius, float T
 
 TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateCube(float Size, const FVector4& Color)
 {
-	float HalfWidth = Size / 2.0f;
-	float HalfHeight = Size / 2.0f;
-	float HalfDepth = Size / 2.0f;
+	const float HalfSize = Size / 2.0f;
 
-	TArray<FVector> positions =
+	// 엔진 규약: Z-up, X-forward, Y-right(왼손), 시계방향이 앞면, UV 원점은 좌상단(V는 아래로).
+	// 각 면을 바깥에서 바라봤을 때 텍스처가 똑바로(뒤집힘/좌우반전 없이) 보이도록
+	// 면마다 법선(N), 텍스처 위쪽(Up), 텍스처 오른쪽(Right = N x Up)을 정의한다.
+	// 옆면의 위쪽은 +Z, 윗면/아랫면의 위쪽은 +X(Forward)로 둔다.
+	struct FCubeFace
 	{
-		//Front
-		FVector(-HalfWidth, -HalfHeight, -HalfDepth),
-		FVector(-HalfWidth, HalfHeight, -HalfDepth),
-		FVector(HalfWidth, HalfHeight, -HalfDepth),
-		FVector(HalfWidth, -HalfHeight, -HalfDepth),
-		//Back
-		FVector(-HalfWidth, -HalfHeight, HalfDepth),
-		FVector(-HalfWidth, HalfHeight, HalfDepth),
-		FVector(HalfWidth, HalfHeight, HalfDepth),
-		FVector(HalfWidth, -HalfHeight, HalfDepth)
+		FVector Normal;
+		FVector Up;
+		FVector Color;
 	};
 
-	TArray<FVector> colors =
+	const FCubeFace Faces[6] =
 	{
-		FVector(1.0f,0.0f,0.6f),//Front
-		FVector(1.0f,0.0f,0.6f), //Back
-		FVector(0.6f,1.0f,0.0f), //Top
-		FVector(0.6f,1.0f,0.0f),//Bottom
-		FVector(0.0f,0.6f,1.0f),//Left
-		FVector(0.0f,0.6f,1.0f), //Right
+		{ FVector( 1.0f,  0.0f,  0.0f), FVector(0.0f, 0.0f, 1.0f), FVector(1.0f, 0.0f, 0.6f) }, // Front  (+X)
+		{ FVector(-1.0f,  0.0f,  0.0f), FVector(0.0f, 0.0f, 1.0f), FVector(1.0f, 0.0f, 0.6f) }, // Back   (-X)
+		{ FVector( 0.0f,  0.0f,  1.0f), FVector(1.0f, 0.0f, 0.0f), FVector(0.6f, 1.0f, 0.0f) }, // Top    (+Z)
+		{ FVector( 0.0f,  0.0f, -1.0f), FVector(1.0f, 0.0f, 0.0f), FVector(0.6f, 1.0f, 0.0f) }, // Bottom (-Z)
+		{ FVector( 0.0f, -1.0f,  0.0f), FVector(0.0f, 0.0f, 1.0f), FVector(0.0f, 0.6f, 1.0f) }, // Left   (-Y)
+		{ FVector( 0.0f,  1.0f,  0.0f), FVector(0.0f, 0.0f, 1.0f), FVector(0.0f, 0.6f, 1.0f) }, // Right  (+Y)
 	};
 
-	TArray<TArray<uint32>> cubeFaces =
+	// 좌상단 -> 우상단 -> 우하단 -> 좌하단 (바깥에서 봤을 때 시계방향)
+	const FVector2 CornerUVs[4] =
 	{
-		{ 0,1,2,3 }, //Front
-		{ 7,6,5,4 }, //Back
-		{ 1,5,6,2 }, //Top
-		{ 4,0,3,7 }, //Bottom
-		{ 4,5,1,0 }, //Left
-		{ 3,2,6,7 }, //Right
-	};
-
-	TArray<FVector2> faceUVs =
-	{
-		FVector2(0.0f, 1.0f),
 		FVector2(0.0f, 0.0f),
 		FVector2(1.0f, 0.0f),
 		FVector2(1.0f, 1.0f),
+		FVector2(0.0f, 1.0f),
 	};
 
 	TUniquePtr<FStaticMeshData> CubeMeshData = MakeUnique<FStaticMeshData>();
 
 	for (int i = 0; i < 6; i++)
 	{
+		const FCubeFace& Face = Faces[i];
+		const FVector Right = FVector::Cross(Face.Normal, Face.Up);
+		const FVector Center = Face.Normal * HalfSize;
+
 		for (int j = 0; j < 4; j++)
 		{
+			const FVector2& UV = CornerUVs[j];
+			// U: 0 -> 1 이 Right 방향, V: 0 -> 1 이 -Up 방향
+			const FVector RightOffset = Right * ((UV.X * 2.0f - 1.0f) * HalfSize);
+			const FVector UpOffset = Face.Up * ((1.0f - UV.Y * 2.0f) * HalfSize);
+
 			FVertex Vertex;
-			Vertex.Position = positions[cubeFaces[i][j]];
-			Vertex.UV = faceUVs[j];
-			Vertex.Color = FVector4(colors[i], 1.0f);
+			Vertex.Position = Center + RightOffset + UpOffset;
+			Vertex.UV = UV;
+			Vertex.Color = FVector4(Face.Color, 1.0f);
 			CubeMeshData->Vertices.Add(Vertex);
 		}
 
@@ -433,7 +434,8 @@ TUniquePtr<FStaticMeshData> FGeometryGenerator::CreateSphere(float Radius, uint3
 
 			FVertex Vertex;
 			Vertex.Position = FVector(r * cosf(Theta), r * sinf(Theta), z);
-			Vertex.UV = FVector2(float(j) / NumSlices, float(i) / NumStacks);
+			// Theta 증가 방향은 바깥에서 봤을 때 왼쪽이므로 U를 반대로 증가시킨다. V=0이 북극(+Z).
+			Vertex.UV = FVector2(1.0f - float(j) / NumSlices, float(i) / NumStacks);
 			Vertex.Color = Color;
 
 			SphereMeshData->Vertices.Add(Vertex);

@@ -7,7 +7,7 @@
 AStaticMeshActor::AStaticMeshActor()
 {
 	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>("UStaticMeshComponent");
-	StaticMeshComponent->SetupAttachment(GetRootComponent());
+	SetRootComponent(StaticMeshComponent);
 }
 
 void AStaticMeshActor::SetPrimitiveType(EPrimitiveType Type)

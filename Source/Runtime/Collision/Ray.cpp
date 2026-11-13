@@ -108,7 +108,8 @@ bool RayIntersectsTriangleEdges(const FRay& Ray, const FVector& V0, const FVecto
 }
 
 // Mesh AABB를 통과한 Ray에 삼각형 교차를 적용해 가장 가까운 거리만 반환한다.
-bool RayIntersectsMesh(const FRay& LocalRay, const FStaticMeshData& Mesh, float& InOutNearestT)
+bool RayIntersectsMesh(const FRay& LocalRay, const FStaticMeshData& Mesh, float& InOutNearestT,
+    FVector* OutNormal)
 {
     if (!Mesh.TriangleBVH)
     {
@@ -122,6 +123,7 @@ bool RayIntersectsMesh(const FRay& LocalRay, const FStaticMeshData& Mesh, float&
 
     bool bHit = false;
     float NearestT = InOutNearestT;
+    FVector NearestNormal;
 
     const FPreparedRay PreparedRay(LocalRay);
 
@@ -144,6 +146,7 @@ bool RayIntersectsMesh(const FRay& LocalRay, const FStaticMeshData& Mesh, float&
                     T < OutNearestT)
                 {
                     OutNearestT = T;
+                    if (OutNormal) NearestNormal = Element.Edge1.Cross(Element.Edge2);
                     return true;
                 }
 
@@ -169,12 +172,17 @@ bool RayIntersectsMesh(const FRay& LocalRay, const FStaticMeshData& Mesh, float&
             if (RayIntersectsTriangle(LocalRay, vertices[0], vertices[1], vertices[2], T) && T < NearestT)
             {
                 NearestT = T;
+                if (OutNormal) NearestNormal = (vertices[1] - vertices[0]).Cross(vertices[2] - vertices[0]);
                 bHit = true;
             }
         }
     }
 
-    if (bHit) InOutNearestT = NearestT;
+    if (bHit)
+    {
+        InOutNearestT = NearestT;
+        if (OutNormal) *OutNormal = NearestNormal.GetSafeNormal();
+    }
     return bHit;
 }
 

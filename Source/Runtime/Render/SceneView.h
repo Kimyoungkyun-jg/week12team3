@@ -30,6 +30,7 @@ struct FSceneView
 	bool bIsPerspective = true;
 	bool bIsWireframe = false;
 	bool bGameView = false;
+	bool bShowSkeletalMeshes = true;   // FSceneRenderOptions::bDrawSkeletalMeshes를 InitViews에서 옮겨 받는다
 
 	FLinearColor OverlayColor{ 0.0f, 0.0f, 0.0f, 0.0f };   // rgb = 페이드 색, a = FadeAmount
 	float LetterboxAmount = 0.0f;                        // 0~1 진행도
@@ -54,6 +55,7 @@ struct FSceneView
 		Context.NearZ = NearClip;
 		Context.bOrthographic = !bIsPerspective;
 		Context.bGameView = bGameView;
+		Context.bShowSkeletalMeshes = bShowSkeletalMeshes;
 		const float ScaleX = ProjectionMatrix.M[1][0];
 		const float ScaleY = ProjectionMatrix.M[2][1];
 		Context.ProjectionScaleSquared = std::max(ScaleX * ScaleX, ScaleY * ScaleY);

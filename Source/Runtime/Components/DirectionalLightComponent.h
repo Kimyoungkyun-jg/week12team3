@@ -33,12 +33,15 @@ public:
 	static constexpr uint32 MaxDynamicShadowCascades = 4;
 
 private:
+	// 광원의 각반지름(도). PCSS 반그림자 폭 = tan(각반지름) x 가림막~수신점 거리.
+	// 실제 태양은 약 0.27도 (언리얼 LightSourceAngle 기본 0.5357도는 지름).
 	UPROPERTY(EditAnywhere)
-	float AngularRadiusDegrees = 3.0f;
+	float AngularRadiusDegrees = 0.27f;
 
-	// 카메라에서 이 거리까지만 동적 그림자를 그린다. 0이면 동적 그림자를 끈다.
+	// 카메라에서 이 거리(m)까지만 동적 그림자를 그린다. 0이면 동적 그림자를 끈다.
+	// 언리얼 기본값 20000cm = 200m. 늘릴수록 모든 캐스케이드가 넓어져 가까운 그림자 텍셀이 커진다.
 	UPROPERTY(EditAnywhere)
-	float DynamicShadowDistanceMovableLight = 1000.0f;
+	float DynamicShadowDistanceMovableLight = 200.0f;
 	// 캐스케이드 개수 (1 ~ MaxDynamicShadowCascades)
 	UPROPERTY(EditAnywhere)
 	uint32 DynamicShadowCascades = 4;

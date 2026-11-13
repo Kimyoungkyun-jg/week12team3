@@ -1,0 +1,3299 @@
+{
+  "Version": 4,
+  "World": {
+    "PersistentLevel": {
+      "Actors": [
+        {
+          "Class": "AStaticMeshActor",
+          "Components": [
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "UStaticMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "StaticMesh": "Cube",
+                "Transform": {
+                  "Location": {
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 100.0,
+                    "Y": 100.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "AStaticMeshActor_0",
+          "Properties": {
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "UStaticMeshComponent"
+        },
+        {
+          "Class": "ADirectionalLightActor",
+          "Components": [
+            {
+              "Class": "UDirectionalLightComponent",
+              "Name": "UDirectionalLightComponent",
+              "Parent": "",
+              "Properties": {
+                "AngularRadiusDegrees": 0.27000001072883606,
+                "CascadeDistributionExponent": 3.0,
+                "CascadeTransitionFraction": 0.10000000149011612,
+                "DynamicShadowCascades": 4,
+                "DynamicShadowDistanceMovableLight": 200.0,
+                "Intensity": 1.0,
+                "LightColor": 4294967295,
+                "ShadowBias": 0.5,
+                "ShadowDistanceFadeoutFraction": 0.10000000149011612,
+                "ShadowResolutionScale": 1.0,
+                "ShadowSharpen": 0.0,
+                "ShadowSlopeBias": 0.5,
+                "Transform": {
+                  "Location": {
+                    "X": 6.828359603881836,
+                    "Y": 2.878896713256836,
+                    "Z": 7.209273338317871
+                  },
+                  "Rotation": {
+                    "Pitch": 32.49587631225586,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bCastShadows": true,
+                "bHiddenInGame": false,
+                "bVisible": true
+              }
+            },
+            {
+              "Class": "UBillboardComponent",
+              "Material": {
+                "Base": "BillboardMaterial",
+                "Instance": {
+                  "BaseColor": {
+                    "W": 1.0,
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  },
+                  "BlendState": "AlphaBlend",
+                  "EmissiveColor": {
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                  },
+                  "EmissiveFactor": 1.0,
+                  "FlipNormalY": false,
+                  "OverrideShadingModel": false,
+                  "PSOType": 14,
+                  "Properties": {},
+                  "SamplerState": "LinearClamp",
+                  "ShadingModel": 2,
+                  "Shininess": 32.0,
+                  "SpecularColor": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  },
+                  "SpecularFactor": 1.0,
+                  "Textures": [
+                    "Resources/Icons/Directional.png"
+                  ],
+                  "UVScrollSpeed": [
+                    0.0,
+                    0.0
+                  ],
+                  "UVTiling": [
+                    1.0,
+                    1.0
+                  ],
+                  "WorldUVLocalSpace": false,
+                  "WorldUVTileSize": [
+                    0.0,
+                    0.0
+                  ]
+                }
+              },
+              "Name": "UBillboardComponent",
+              "Parent": "UDirectionalLightComponent",
+              "Properties": {
+                "Transform": {
+                  "Location": {
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": false,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": true,
+                "bReceiveDecal": true,
+                "bReceiveShadow": false,
+                "bVisible": true
+              }
+            },
+            {
+              "Class": "UStaticMeshComponent",
+              "Name": "UArrowComponent",
+              "OverrideMaterials": [
+                {
+                  "Asset": "EditorArrowMaterial"
+                }
+              ],
+              "Parent": "UDirectionalLightComponent",
+              "Properties": {
+                "StaticMesh": "Arrow",
+                "Transform": {
+                  "Location": {
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                  },
+                  "Rotation": {
+                    "Pitch": 90.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 0.8999999761581421,
+                    "Y": 0.8999999761581421,
+                    "Z": 1.5
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": false,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": false,
+                "bReceiveShadow": false,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ADirectionalLightActor_0",
+          "Properties": {
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "UDirectionalLightComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -7.0,
+                    "Y": -7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_01",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -5.0,
+                    "Y": -7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_02",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -3.0,
+                    "Y": -7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_03",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -1.0,
+                    "Y": -7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_04",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 1.0,
+                    "Y": -7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_05",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 3.0,
+                    "Y": -7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_06",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 5.0,
+                    "Y": -7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_07",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 7.0,
+                    "Y": -7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_08",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -7.0,
+                    "Y": -5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_09",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -5.0,
+                    "Y": -5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_10",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -3.0,
+                    "Y": -5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_11",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -1.0,
+                    "Y": -5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_12",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 1.0,
+                    "Y": -5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_13",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 3.0,
+                    "Y": -5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_14",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 5.0,
+                    "Y": -5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_15",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 7.0,
+                    "Y": -5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_16",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -7.0,
+                    "Y": -3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_17",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -5.0,
+                    "Y": -3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_18",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -3.0,
+                    "Y": -3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_19",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -1.0,
+                    "Y": -3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_20",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 1.0,
+                    "Y": -3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_21",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 3.0,
+                    "Y": -3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_22",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 5.0,
+                    "Y": -3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_23",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 7.0,
+                    "Y": -3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_24",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -7.0,
+                    "Y": -1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_25",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -5.0,
+                    "Y": -1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_26",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -3.0,
+                    "Y": -1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_27",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -1.0,
+                    "Y": -1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_28",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 1.0,
+                    "Y": -1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_29",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 3.0,
+                    "Y": -1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_30",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 5.0,
+                    "Y": -1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_31",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 7.0,
+                    "Y": -1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_32",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -7.0,
+                    "Y": 1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_33",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -5.0,
+                    "Y": 1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_34",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -3.0,
+                    "Y": 1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_35",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -1.0,
+                    "Y": 1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_36",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_37",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 3.0,
+                    "Y": 1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_38",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 5.0,
+                    "Y": 1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_39",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 7.0,
+                    "Y": 1.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_40",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -7.0,
+                    "Y": 3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_41",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -5.0,
+                    "Y": 3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_42",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -3.0,
+                    "Y": 3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_43",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -1.0,
+                    "Y": 3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_44",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 1.0,
+                    "Y": 3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_45",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 3.0,
+                    "Y": 3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_46",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 5.0,
+                    "Y": 3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_47",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 7.0,
+                    "Y": 3.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_48",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -7.0,
+                    "Y": 5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_49",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -5.0,
+                    "Y": 5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_50",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -3.0,
+                    "Y": 5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_51",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -1.0,
+                    "Y": 5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_52",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 1.0,
+                    "Y": 5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_53",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 3.0,
+                    "Y": 5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_54",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 5.0,
+                    "Y": 5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_55",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 7.0,
+                    "Y": 5.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_56",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -7.0,
+                    "Y": 7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_57",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -5.0,
+                    "Y": 7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_58",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -3.0,
+                    "Y": 7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_59",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": -1.0,
+                    "Y": 7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_60",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 1.0,
+                    "Y": 7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_61",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 3.0,
+                    "Y": 7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_62",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 5.0,
+                    "Y": 7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_63",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        },
+        {
+          "Class": "ASkeletalMeshActor",
+          "Components": [
+            {
+              "AnimClassName": "UAnimGraphInstance",
+              "AnimGraphPath": "Assets/Animations/IdleTest.animgraph",
+              "AnimSequencePath": "Models/UnrealModel/AS_MM_Jump.fbxbin",
+              "Class": "USkeletalMeshComponent",
+              "Name": "SkeletalMeshComponent",
+              "OverrideMaterials": [],
+              "Parent": "",
+              "Properties": {
+                "SkeletalMesh": "Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin",
+                "Transform": {
+                  "Location": {
+                    "X": 7.0,
+                    "Y": 7.0,
+                    "Z": 0.5293899178504944
+                  },
+                  "Rotation": {
+                    "Pitch": 0.0,
+                    "Roll": 0.0,
+                    "Yaw": 0.0
+                  },
+                  "Scale": {
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                  }
+                },
+                "bAutoActivate": true,
+                "bBlockComponent": false,
+                "bCastShadow": true,
+                "bGenerateOverlapEvents": true,
+                "bHiddenInGame": false,
+                "bReceiveDecal": true,
+                "bReceiveShadow": true,
+                "bVisible": true
+              }
+            }
+          ],
+          "Name": "ASkeletalMeshActor_Grid_64",
+          "Properties": {
+            "SkeletalMeshComponent": null,
+            "bActorEnableCollision": true
+          },
+          "RootComponentName": "SkeletalMeshComponent"
+        }
+      ],
+      "Properties": {}
+    },
+    "Properties": {
+      "GameModeClassName": "AGameMode",
+      "HUDClassName": "",
+      "PlayerControllerClassName": "",
+      "PlayerPawnClassName": ""
+    }
+  }
+}

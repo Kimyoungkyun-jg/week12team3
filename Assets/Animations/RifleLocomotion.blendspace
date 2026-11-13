@@ -1,0 +1,155 @@
+{
+  "Samples": [
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Idle_ADS.fbxbin",
+      "X": -180.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Walk_Bwd.fbxbin",
+      "X": -180.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Jog_Bwd.fbxbin",
+      "X": -180.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Idle_ADS.fbxbin",
+      "X": -135.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Walk_Bwd_Left.fbxbin",
+      "X": -135.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Jog_Bwd_Left.fbxbin",
+      "X": -135.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Idle_ADS.fbxbin",
+      "X": -90.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Walk_Left.fbxbin",
+      "X": -90.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Jog_Left.fbxbin",
+      "X": -90.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Idle_ADS.fbxbin",
+      "X": -45.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Walk_Fwd_Left.fbxbin",
+      "X": -45.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Jog_Fwd_Left.fbxbin",
+      "X": -45.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Idle_ADS.fbxbin",
+      "X": 0.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Walk_Fwd.fbxbin",
+      "X": 0.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Jog_Fwd.fbxbin",
+      "X": 0.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Idle_ADS.fbxbin",
+      "X": 45.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Walk_Fwd_Right.fbxbin",
+      "X": 45.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Jog_Fwd_Right.fbxbin",
+      "X": 45.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Idle_ADS.fbxbin",
+      "X": 90.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Walk_Right.fbxbin",
+      "X": 90.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Jog_Right.fbxbin",
+      "X": 90.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Idle_ADS.fbxbin",
+      "X": 135.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Walk_Bwd_Right.fbxbin",
+      "X": 135.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Jog_Bwd_Right.fbxbin",
+      "X": 135.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Idle_ADS.fbxbin",
+      "X": 180.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Walk_Bwd.fbxbin",
+      "X": 180.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/UnrealModel/AS_MF_Rifle_Jog_Bwd.fbxbin",
+      "X": 180.0,
+      "Y": 600.0
+    }
+  ],
+  "Skeleton": "Models/UnrealModel/SKEL_SKM_Quinn_Simple_root.fbxbin",
+  "Type": "BlendSpace2D",
+  "XAxis": {
+    "Divisions": 8,
+    "Max": 180.0,
+    "Min": -180.0,
+    "Name": "Direction",
+    "Snap": true
+  },
+  "YAxis": {
+    "Divisions": 2,
+    "Max": 600.0,
+    "Min": 0.0,
+    "Name": "Speed",
+    "Snap": true
+  }
+}

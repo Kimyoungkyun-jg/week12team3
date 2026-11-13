@@ -1,6 +1,4 @@
 #pragma pack_matrix(row_major)
-#include "GpuSkinCommon.hlsli"
-
 // View별 행렬과 렌더 타깃 픽셀 크기·Outline 확장량을 전달한다.
 cbuffer constants : register(b0)
 {
@@ -18,7 +16,6 @@ struct VS_INPUT
     float4 tangent : TANGENT;
     float2 uv : TEXCOORD;
     float4 color : COLOR;
-    GPU_SKIN_VS_INPUT
 };
 
 
@@ -33,8 +30,7 @@ struct PS_INPUT
 PS_INPUT mainVS(VS_INPUT input)
 {
     PS_INPUT output;
-    GPU_SKIN_APPLY(input, input.position, input.normal, input.tangent);
-
+    
     const matrix worldViewProjection = mul(World, ViewProjection);
     
     float4 clipPosition = mul(float4(input.position, 1.0f), worldViewProjection);

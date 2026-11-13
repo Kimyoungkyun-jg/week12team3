@@ -9,15 +9,21 @@ struct FPerObjectConstants
 {
 	FMatrix World;
 	FMatrix NormalMatrix;
-	FVector4 ShadowFlags; // x: bReceiveShadow (GBuffer가 NormalRoughness.w 부호로 넘긴다)
+	// x: bReceiveShadow (GBuffer가 NormalRoughness.w 부호로 넘긴다)
+	// y: bReceiveDecal
+	FVector4 ShadowFlags; 
 };
 
-inline FPerObjectConstants MakePerObjectConstants(const FMatrix& World, bool bReceiveShadow = true)
+inline FPerObjectConstants MakePerObjectConstants(
+	const FMatrix& World, 
+	bool bReceiveShadow = true,
+	bool bReceiveDecal = true)
 {
 	FPerObjectConstants Result{};
 	Result.World = World;
 	Result.NormalMatrix = World.Inverse().GetTransposed();
 	Result.ShadowFlags.X = bReceiveShadow ? 1.0f : 0.0f;
+	Result.ShadowFlags.Y = bReceiveDecal ? 1.0f : 0.0f;
 	return Result;
 }
 
@@ -31,7 +37,10 @@ struct FForwardObjectConstants
 	FMatrix View;
 	FMatrix Projection;
 	FMatrix NormalMatrix;
-	FVector4 ShadowFlags; // x: 그림자 수신, y: 디버그 웨이트 본 번호 + 1 (0이면 끔)
+
+	// x: bReceiveShadow
+	// y: bReceiveDecal
+	FVector4 ShadowFlags;
 };
 
 struct FForwardMaterialConstants
@@ -41,9 +50,10 @@ struct FForwardMaterialConstants
 	FVector4 SurfaceParams;
 	FVector4 UVTransform;
 	FVector4 SpecularColorShininess;
+	FVector4 WorldUVParams; // xy: tile size, z: local axes, w: opaque
 };
 
 static_assert(sizeof(FForwardObjectConstants) == 272);
-static_assert(sizeof(FForwardMaterialConstants) == 80);
+static_assert(sizeof(FForwardMaterialConstants) == 96);
 static_assert(offsetof(FForwardMaterialConstants, SpecularColorShininess) == 64);
 

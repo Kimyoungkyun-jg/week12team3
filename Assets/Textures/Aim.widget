@@ -1,0 +1,91 @@
+{
+  "DesignSize": [
+    1920,
+    1080
+  ],
+  "ParentClass": "UUserWidget",
+  "Root": {
+    "Children": [
+      {
+        "Children": [
+          {
+            "Class": "UImage",
+            "Properties": {
+              "AlignmentX": 0.0,
+              "AlignmentY": 0.0,
+              "Anchors": [
+                0.5,
+                0.5,
+                0.5,
+                0.5
+              ],
+              "ColorAndOpacity": [
+                1.0,
+                1.0,
+                1.0,
+                1.0
+              ],
+              "Offsets": [
+                -40.45025634765625,
+                -39.724395751953125,
+                81.33026123046875,
+                80.0350341796875
+              ],
+              "RenderOpacity": 1.0,
+              "TexturePath": "Assets\\Textures\\crosshair.png",
+              "Visibility": 0,
+              "WidgetName": "Image412",
+              "ZOrder": 0,
+              "bAutoSize": false
+            }
+          }
+        ],
+        "Class": "UCanvasPanel",
+        "Properties": {
+          "AlignmentX": 0.0,
+          "AlignmentY": 0.0,
+          "Anchors": [
+            0.5,
+            0.5,
+            0.5,
+            0.5
+          ],
+          "Offsets": [
+            -954.337158203125,
+            -539.8912353515625,
+            1915.294189453125,
+            1077.8609619140625
+          ],
+          "RenderOpacity": 1.0,
+          "Visibility": 0,
+          "WidgetName": "CanvasPanel411",
+          "ZOrder": 0,
+          "bAutoSize": false
+        }
+      }
+    ],
+    "Class": "UCanvasPanel",
+    "Properties": {
+      "AlignmentX": 0.0,
+      "AlignmentY": 0.0,
+      "Anchors": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "Offsets": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "RenderOpacity": 1.0,
+      "Visibility": 3,
+      "WidgetName": "Root",
+      "ZOrder": 0,
+      "bAutoSize": false
+    }
+  },
+  "Version": 1
+}

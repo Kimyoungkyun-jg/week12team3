@@ -93,7 +93,6 @@ public:
 
 	FVertexShader* VertexShader;
 	FPixelShader* PixelShader;
-	FString Name; // ShaderProgramMap 키
 };
 
 class FComputeShader : public FShader

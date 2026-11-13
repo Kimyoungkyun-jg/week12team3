@@ -3,8 +3,6 @@
 
 #include "Asset/RenderAsset.h"
 #include "Asset/AssetManager.h"
-#include "Animation/AnimSequence.h"
-#include "Animation/AnimSequenceFile.h"
 
 
 FJsonArchiveInputFormatter::FJsonArchiveInputFormatter(FArchive& InInner)
@@ -226,19 +224,6 @@ void FJsonArchiveInputFormatter::Serialize(UObject*& Value)
     FString AssetPath;
     if (!Read(AssetPath, "asset path"))
         return;
-
-    if (AnimSequenceFile::IsAnimSequencePath(AssetPath))
-    {
-        if (UAnimSequence* Sequence = UAssetManager::LoadAnimSequence(AssetPath))
-        {
-            Value = Sequence;
-        }
-        else
-        {
-            HTR_LOG(Warning, "Load: animation '{}' not found, keeping default", AssetPath);
-        }
-        return;
-    }
 
     if (URenderAsset* Asset = UAssetManager::GetAssetByPath<URenderAsset>(AssetPath))
         Value = Asset;

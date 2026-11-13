@@ -432,7 +432,10 @@ FodyWeavers.xsd
 /Build/
 /.vs/
 /Saved/
+/Settings/
+/Logs/
 *.sln
+*.slnx
 *.vcxproj
 *.vcxproj.filters
 *.vcxproj.user
@@ -442,10 +445,16 @@ imgui.ini
 editor.ini
 
 # 3D .obj 파일은 커밋 허용
+!/Assets/Models/OBJ/
 !Assets/**/*.obj
 
 # Bake 결과 (실행 시 자동 생성, 원본을 수정하면 지우고 다시 실행)
 *.obj.bin
+*.fbx.bin
+*.fbx.anim.bin
+# FBX 임포트 결과(.fbxbin)는 Notify 등 에디터 편집 내용을 담으므로 추적한다. 임시 폴더만 제외한다.
+.fbx-import-*/
+/Assets/.fbx-test-fixtures*/
 
 # 셰이더 컴파일 캐시 (실행 시 자동 생성)
 /Intermediate/
@@ -455,10 +464,10 @@ AGENTS.md
 # 빌드 결과 exe가 루트 등에 커밋되지 않게 한다. premake 실행 파일만 예외
 *.exe
 !Setup/premake5.exe
-/Docs/Runtime/ParticleSystem.md
+/Docs/
 Tools/SnowMountain/build_snow_mountain.py
 /Tools
-/Docs/Runtime/UI/JRPG_BattleUI_Timer_Random.md
 
-# 엔진 사용자 데이터 (최근 프로젝트 목록)
-/Saved/
+# FBX SDK 2020.3.11 DLL 판 (debug/release 폴더 무시 규칙의 예외). TEAM1에서 가져왔다.
+!Source/ThirdParty/FBX/lib/x64/debug/
+!Source/ThirdParty/FBX/lib/x64/release/

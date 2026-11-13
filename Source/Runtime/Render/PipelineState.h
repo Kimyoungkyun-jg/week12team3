@@ -15,4 +15,5 @@ struct FPipelineState
 	ERasterizerState         RasterizerState = ERasterizerState::SolidBack;
 	EBlendState              BlendState = EBlendState::Opaque;
 	EDepthStencilState       DepthStencilState = EDepthStencilState::Default;
+	uint32					 StencilRef = 0;
 };

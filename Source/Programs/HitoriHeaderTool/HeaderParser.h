@@ -24,7 +24,7 @@ private:
 	int CurrentClassIndex() const;
 	bool IsInsideAnyClass() const;
 
-	void ParseClass(bool bIsStruct);
+	void ParseClass();
 	void ParseGeneratedBody();
 	void ParseProperty();
 	void ParseFunction();
@@ -35,7 +35,7 @@ private:
 	bool SkipBalanced(const char* Open, const char* Close, std::string* OutText = nullptr);
 	bool Expect(const char* Text, const char* Context);
 
-	void ResolveClassSpecifiers(const char* MacroName, const std::vector<FSpecifier>& Specifiers);
+	void ResolveClassSpecifiers(const std::vector<FSpecifier>& Specifiers);
 	void ResolvePropertySpecifiers(const std::vector<FSpecifier>& Specifiers, FPropertyInfo& Property);
 	void ResolvePropertyMeta(const FSpecifier& MetaSpecifier, FPropertyInfo& Property);
 	void ResolveFunctionSpecifiers(const std::vector<FSpecifier>& Specifiers, FFunctionInfo& Function);

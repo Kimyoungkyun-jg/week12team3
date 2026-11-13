@@ -5,7 +5,10 @@
 
 UActorComponent::~UActorComponent()
 {
-	assert(!bRegistered && "Delete Without Unregister");
+	if (bRegistered)
+	{
+		UnregisterComponent();
+	}
 	if (Owner)
 	{
 		Owner->RemoveOwnedComponent(this);

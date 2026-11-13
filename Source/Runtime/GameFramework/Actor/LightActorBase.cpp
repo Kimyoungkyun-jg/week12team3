@@ -17,6 +17,7 @@ void ALightActorBase::SetupLightRoot(ULightComponent* LightComponent, const FStr
     BillboardComponent->SetTintSource(LightComponent);
     BillboardComponent->bCastShadow = false;
     BillboardComponent->bReceiveShadow = false;
+    BillboardComponent->SetHiddenInDetails(true);
 
     UMaterial* Base = UAssetManager::GetAssetByPath<UMaterial>("BillboardMaterial");
     UTexture2D* Icon = UAssetManager::Get().LoadTexture(IconPath);
