@@ -1,11 +1,14 @@
 #include "EnginePCH.h"
 #include "Editor/ParticleEditor/ParticleSystemEditorPanel.h"
+#include "Editor/ContentDrawer/ContentDrawerPanel.h"
 #include "Editor/EditorUI/EditorUIScale.h"
+#include "Editor/EditorUI/EditorSort.h"
 #include "Editor/HitoriEd/EditorEngine.h"
 #include "Editor/HitoriEd/EditorResourcePaths.h"
 #include "Asset/FbxImporter/FbxPath.h"
 #include "Particles/ParticleSystem.h"
 #include "UObject/Casts.h"
+#include "UObject/UObjectIterator.h"
 #include "Components/ParticleSystemComponent.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/SkyLightComponent.h"
@@ -14,6 +17,7 @@
 #include "GameFramework/Actor/DirectionalLightActor.h"
 #include "GameFramework/Actor/SkyLightActor.h"
 #include "Render/SkyboxRenderer.h"
+#include "Render/Material.h"
 #include "Engine/World.h"
 #include <implot.h>
 #include <algorithm>
@@ -475,6 +479,39 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			ImGui::DragFloat("Emitter Duration", &Req->EmitterDuration, 0.05f, 0.0f, 300.0f);
 			ImGui::Checkbox("Looping", &Req->bLooping);
 			ImGui::Checkbox("Use Local Space", &Req->bUseLocalSpace);
+
+			const FString Preview = Req->Material ? Req->Material->GetPath() : FString("(Default)");
+			EditorUIScale::LimitNextComboPopupWidth();
+			if (ImGui::BeginCombo("Material", Preview.c_str()))
+			{
+				if (ImGui::Selectable("(Default)", Req->Material == nullptr))
+				{
+					Req->Material = nullptr;
+					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+						PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
+				}
+				const TArray<UMaterial*> Candidates = EditorSort::CollectSorted<UMaterial>(
+					TObjectIterator<UMaterial>(),
+					[](const UMaterial* M) { return M->GetPath(); },
+					[](const UMaterial* M) { return !M->IsRetired() && !M->GetPath().empty(); });
+				for (UMaterial* Candidate : Candidates)
+				{
+					ImGui::PushID(Candidate);
+					if (ID3D11ShaderResourceView* ThumbSRV = FContentDrawerPanel::GetMaterialThumbnailSRV(Candidate))
+					{
+						ImGui::Image(reinterpret_cast<ImTextureID>(ThumbSRV), ImVec2(24.0f, 24.0f));
+						ImGui::SameLine();
+					}
+					if (ImGui::Selectable(Candidate->GetPath().c_str(), Candidate == Req->Material, 0, ImVec2(0.0f, 24.0f)))
+					{
+						Req->Material = Candidate;
+						if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+							PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
+					}
+					ImGui::PopID();
+				}
+				ImGui::EndCombo();
+			}
 		}
 		else if (auto* Spawn = Cast<UParticleModuleSpawn>(SelectedModule))
 		{

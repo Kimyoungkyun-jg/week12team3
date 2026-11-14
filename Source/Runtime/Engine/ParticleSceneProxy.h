@@ -18,6 +18,7 @@ struct FParticleSpriteRenderData
 	float Width = 1.0f;
 	float Height = 1.0f;
 	float Rotation = 0.0f;
+	UMaterial* Material = nullptr;
 	FSubUVConstants Constants{};
 };
 

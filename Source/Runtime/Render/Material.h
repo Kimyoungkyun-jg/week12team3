@@ -4,6 +4,7 @@
 #include "Render/ImportedMaterialProperties.h"
 #include "RenderResourceManager.h"
 #include "Render/RenderStates.h"
+#include "Render/Buffer.h"
 #include "Render/Texture2D.h"
 #include "Material.generated.h"
 

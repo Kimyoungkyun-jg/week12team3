@@ -3,6 +3,7 @@
 #include "Engine/World.h"
 #include "Engine/Scene.h"
 #include "Engine/ParticleSceneProxy.h"
+#include "Render/SceneRenderData.h"
 #include "GameFramework/Actor.h"
 #include "UObject/Casts.h"
 #include <json.hpp>
@@ -34,11 +35,10 @@ FParticleEmitterInstance::FParticleEmitterInstance(const FParticleEmitterInstanc
 	, SpawnFraction(Other.SpawnFraction)
 	, Random(Other.Random)
 	, InstanceParameters(Other.InstanceParameters)
-	, GpuEmitterId(Other.GpuEmitterId)
 	, PendingGpuSpawns(Other.PendingGpuSpawns)
-	, GpuWriteCursor(Other.GpuWriteCursor)
+	, GpuWriteCursor(0)
 	, LastGpuDeltaTime(Other.LastGpuDeltaTime)
-	, bGpuResetRequested(Other.bGpuResetRequested)
+	, bGpuResetRequested(true)
 {
 	if (MaxActiveParticles > 0 && ParticleStride > 0 && Other.ParticleData && Other.ParticleIndices)
 	{
@@ -75,7 +75,7 @@ FParticleEmitterInstance::FParticleEmitterInstance(FParticleEmitterInstance&& Ot
 	, SpawnFraction(Other.SpawnFraction)
 	, Random(Other.Random)
 	, InstanceParameters(Other.InstanceParameters)
-	, GpuEmitterId(Other.GpuEmitterId)
+	, GpuResources(std::move(Other.GpuResources))
 	, PendingGpuSpawns(std::move(Other.PendingGpuSpawns))
 	, GpuWriteCursor(Other.GpuWriteCursor)
 	, LastGpuDeltaTime(Other.LastGpuDeltaTime)
@@ -85,7 +85,6 @@ FParticleEmitterInstance::FParticleEmitterInstance(FParticleEmitterInstance&& Ot
 	Other.ParticleIndices = nullptr;
 	Other.ActiveParticles = 0;
 	Other.MaxActiveParticles = 0;
-	Other.GpuEmitterId = 0;
 }
 
 FParticleEmitterInstance& FParticleEmitterInstance::operator=(FParticleEmitterInstance&& Other) noexcept
@@ -109,7 +108,7 @@ FParticleEmitterInstance& FParticleEmitterInstance::operator=(FParticleEmitterIn
 	SpawnFraction = Other.SpawnFraction;
 	Random = Other.Random;
 	InstanceParameters = Other.InstanceParameters;
-	GpuEmitterId = Other.GpuEmitterId;
+	GpuResources = std::move(Other.GpuResources);
 	PendingGpuSpawns = std::move(Other.PendingGpuSpawns);
 	GpuWriteCursor = Other.GpuWriteCursor;
 	LastGpuDeltaTime = Other.LastGpuDeltaTime;
@@ -118,7 +117,6 @@ FParticleEmitterInstance& FParticleEmitterInstance::operator=(FParticleEmitterIn
 	Other.ParticleIndices = nullptr;
 	Other.ActiveParticles = 0;
 	Other.MaxActiveParticles = 0;
-	Other.GpuEmitterId = 0;
 	return *this;
 }
 
@@ -149,7 +147,8 @@ void FParticleEmitterInstance::UpdateStride()
 			}
 		}
 	}
-	const int32 NewStride = NewSize;
+	// 다음 파티클 시작 주소를 경계에 맞추기 위해 보폭을 올림 정렬
+	const int32 NewStride = (NewSize + 15) & ~15;
 	if (NewStride == ParticleStride && NewSize == ParticleSize) return;
 
 	if (MaxActiveParticles > 0 && ParticleData && ParticleIndices)
@@ -223,8 +222,7 @@ void FParticleEmitterInstance::Resize(int32 NewMaxActiveParticles)
 
 void FParticleEmitterInstance::Initialize(UParticleEmitter* Emitter, uint32 Seed)
 {
-	static uint64 NextGpuEmitterId = 1;
-	GpuEmitterId = NextGpuEmitterId++;
+	GpuResources.reset();
 	PendingGpuSpawns.Reset();
 	GpuWriteCursor = 0;
 	LastGpuDeltaTime = 0.0f;
@@ -237,7 +235,7 @@ void FParticleEmitterInstance::Initialize(UParticleEmitter* Emitter, uint32 Seed
 	CurrentLODLevel = nullptr;
 	CurrentLODLevelIndex = 0;
 	ParticleSize = sizeof(FBaseParticle);
-	ParticleStride = ParticleSize;
+	ParticleStride = (ParticleSize + 15) & ~15;
 	Random.State = Seed ? Seed : 1;
 	Random.InstanceParams = InstanceParameters;
 	if (!Emitter) { Resize(0); return; }

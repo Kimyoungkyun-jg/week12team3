@@ -3,6 +3,7 @@
 #include "Editor/EditorUI/EditorUIScale.h"
 #include "Editor/EditorUI/EditorSort.h"
 #include "Editor/Details/DetailsPanel.h"
+#include "Editor/ContentDrawer/ContentDrawerPanel.h"
 #include "Editor/Details/PropertyEditor.h"
 
 #include "imgui_internal.h"
@@ -447,6 +448,12 @@ namespace
 
 				for (UMaterial* Candidate : Candidates)
 				{
+					ImGui::PushID(Candidate);
+					if (ID3D11ShaderResourceView* ThumbSRV = FContentDrawerPanel::GetMaterialThumbnailSRV(Candidate))
+					{
+						ImGui::Image(reinterpret_cast<ImTextureID>(ThumbSRV), ImVec2(24.0f, 24.0f));
+						ImGui::SameLine();
+					}
 
 					const bool bSelected =
 						Candidate == Material ||
@@ -454,10 +461,13 @@ namespace
 
 					if (ImGui::Selectable(
 						Candidate->GetPath().c_str(),
-						bSelected))
+						bSelected,
+						0,
+						ImVec2(0.0f, 24.0f)))
 					{
 						Decal->SetDecalMaterial(Candidate);
 					}
+					ImGui::PopID();
 				}
 
 				ImGui::EndCombo();

@@ -6,6 +6,7 @@
 #include "Containers/Array.h"
 #include "Containers/Map.h"
 #include "Curves/CurveFloat.h"
+#include "Render/Material.h"
 #include "ParticleSystem.generated.h"
 
 class UClass;
@@ -99,6 +100,8 @@ public:
 	bool bLooping = true;
 	UPROPERTY(EditAnywhere)
 	bool bUseLocalSpace = false;
+	UPROPERTY(EditAnywhere)
+	UMaterial* Material = nullptr;
 };
 
 USTRUCT()

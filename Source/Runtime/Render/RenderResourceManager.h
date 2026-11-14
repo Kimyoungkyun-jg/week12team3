@@ -63,16 +63,9 @@ public:
 	static FShaderProgram* GetTranslucentShaderProgram(bool bGPUSkinning);
 	static FShaderProgram* GetShadowDepthShaderProgram();
 	static FShaderProgram* GetGPUSkinningShadowDepthShaderProgram();
-	static FComputeShader* GetComputeSkinningShader();
-	static FComputeShader* GetGpuParticleInjectShader();
-	static FComputeShader* GetGpuParticleSimulateShader();
+	static FComputeShader* GetComputeShader(const FString& InPath, const FString& EntryPoint);
 private:
-	TUniquePtr<FComputeShader> ComputeSkinningShader;
-	bool bComputeSkinningShaderAttempted = false;
-	TUniquePtr<FComputeShader> GpuParticleInjectShader;
-	bool bGpuParticleInjectAttempted = false;
-	TUniquePtr<FComputeShader> GpuParticleSimulateShader;
-	bool bGpuParticleSimulateAttempted = false;
+	TMap<FString, TUniquePtr<FComputeShader>> ComputeShaderMap;
 	
 	void LoadOrCompileShader(const FString& Path);
 	void InitPipelineStates();

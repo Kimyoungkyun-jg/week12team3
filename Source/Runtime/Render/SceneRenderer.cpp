@@ -1034,28 +1034,44 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 	{
 		if (!RenderData.GpuParticleBatches.IsEmpty())
 		{
-			Graph.AddComputePass("GpuParticleSimulate", [this]
+			FRenderGraphComputePassDesc ComputeDesc{};
+			ComputeDesc.Name = "GpuParticleSimulate";
+			for (const FGpuParticleBatch& Batch : RenderData.GpuParticleBatches)
 			{
-				FComputeShader* InjectCS = FRenderResourceManager::GetGpuParticleInjectShader();
-				FComputeShader* SimCS = FRenderResourceManager::GetGpuParticleSimulateShader();
-				if (!InjectCS || !SimCS) return;
-
-				for (const FGpuParticleBatch& Batch : RenderData.GpuParticleBatches)
+				if (!Batch.GpuResources || Batch.MaxParticles == 0) continue;
+				FGpuParticleEmitterResources& Res = *Batch.GpuResources;
+				if (!Res.ParticleBuffer || Res.MaxParticles != Batch.MaxParticles)
 				{
-					if (Batch.EmitterId == 0 || Batch.MaxParticles == 0) continue;
-					FGpuParticleEmitterResources& Res = RenderData.GpuParticleBuffers[Batch.EmitterId];
-					if (!Res.ParticleBuffer || Res.MaxParticles != Batch.MaxParticles)
-					{
-						Res.ParticleBuffer = RenderCommand::CreateRWStructuredBuffer(Batch.ParticleStride, Batch.MaxParticles);
-						Res.MaxParticles = Batch.MaxParticles;
-						if (Res.ParticleBuffer)
-							RenderCommand::ClearUnorderedAccess(Res.ParticleBuffer.get(), 0);
-					}
-					else if (Batch.bResetRequested && Res.ParticleBuffer)
-					{
+					Res.ParticleBuffer = RenderCommand::CreateRWStructuredBuffer(Batch.ParticleStride, Batch.MaxParticles);
+					Res.MaxParticles = Batch.MaxParticles;
+					if (Res.ParticleBuffer)
 						RenderCommand::ClearUnorderedAccess(Res.ParticleBuffer.get(), 0);
-					}
-					if (!Res.ParticleBuffer) continue;
+				}
+				else if (Batch.bResetRequested && Res.ParticleBuffer)
+				{
+					RenderCommand::ClearUnorderedAccess(Res.ParticleBuffer.get(), 0);
+				}
+				if (Res.ParticleBuffer && Res.ParticleBuffer->GetBuffer())
+				{
+					ID3D11Resource* RawRes = Res.ParticleBuffer->GetBuffer();
+					if (std::find(ComputeDesc.WriteResources.begin(), ComputeDesc.WriteResources.end(), RawRes) == ComputeDesc.WriteResources.end())
+						ComputeDesc.WriteResources.push_back(RawRes);
+				}
+			}
+
+			if (!ComputeDesc.WriteResources.empty())
+			{
+				Graph.AddComputePass(std::move(ComputeDesc), [this]
+				{
+					FComputeShader* InjectCS = FRenderResourceManager::GetComputeShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSInjectSpawns");
+					FComputeShader* SimCS = FRenderResourceManager::GetComputeShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSSimulate");
+					if (!InjectCS || !SimCS) return;
+
+					for (const FGpuParticleBatch& Batch : RenderData.GpuParticleBatches)
+					{
+						if (!Batch.GpuResources || Batch.MaxParticles == 0) continue;
+						FGpuParticleEmitterResources& Res = *Batch.GpuResources;
+						if (!Res.ParticleBuffer) continue;
 
 					if (!Res.CurveLUTBuffer)
 						Res.CurveLUTBuffer = RenderCommand::CreateDynamicStructuredBuffer(384, sizeof(FVector4));
@@ -1105,8 +1121,9 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 					RenderCommand::UnbindUnorderedAccess(0);
 					RenderCommand::UnbindShaderResources(1, 1, EShaderBindFlagBits::Compute);
 					RenderCommand::BindComputeShader(nullptr);
-				}
-			});
+					}
+				});
+			}
 		}
 
 		if (!Graph.AddRasterPass(MakeViewportPass("Translucent", SceneColor, Depth),
@@ -1352,9 +1369,9 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 
 			for (const FGpuParticleBatch& Batch : RenderData.GpuParticleBatches)
 			{
-				if (!Batch.Mesh || !Batch.Material || Batch.MaxParticles == 0) continue;
-				FGpuParticleEmitterResources* Res = RenderData.GpuParticleBuffers.Find(Batch.EmitterId);
-				if (!Res || !Res->ParticleBuffer || !Res->DrawCB) continue;
+				if (!Batch.Mesh || !Batch.Material || !Batch.GpuResources || Batch.MaxParticles == 0) continue;
+				FGpuParticleEmitterResources* Res = Batch.GpuResources.get();
+				if (!Res->ParticleBuffer || !Res->DrawCB) continue;
 				FIndexBuffer* IndexBuffer = Batch.Mesh->GetIndexBuffer(0);
 				if (!IndexBuffer) continue;
 

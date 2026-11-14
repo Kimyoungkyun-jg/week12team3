@@ -1,6 +1,10 @@
 #include "EnginePCH.h"
 #include "Editor/AssetEditor/AssetEditorPanel.h"
+#include "Editor/ContentDrawer/ContentDrawerPanel.h"
 #include "Editor/EditorUI/EditorUIScale.h"
+#include "Editor/HitoriEd/EditorDragDrop.h"
+#include "Editor/EditorUI/EditorSort.h"
+#include "UObject/UObjectIterator.h"
 #include "Editor/HitoriEd/EditorEngine.h"
 #include "Editor/HitoriEd/EditorResourcePaths.h"
 #include "Asset/FbxImporter/FbxAssetLoader.h"
@@ -33,6 +37,87 @@ bool EditAssetColor(const char* Label, float* Linear, bool Alpha = false)
 	for (int I = 0; I < 3; ++I) if (Display[I] != Previous[I]) Linear[I] = std::pow(std::max(Display[I], 0.0f), 2.2f);
 	if (Alpha) Linear[3] = Display[3];
 	return true;
+}
+
+FString GetTextureDisplayName(const FString& InPath)
+{
+	const fs::path P = FbxPath::FromString(InPath);
+	const FString Name = FbxPath::ToString(P.filename());
+	return Name.empty() ? InPath : Name;
+}
+
+void SetMaterialTextureSlot(UMaterial* Material, int32 SlotIndex, UTexture2D* NewTexture)
+{
+	if (!Material || SlotIndex < 0) return;
+	while (static_cast<int32>(Material->Textures.Num()) <= SlotIndex)
+		Material->Textures.Add(nullptr);
+	Material->Textures[SlotIndex] = NewTexture;
+}
+
+void DrawAssetMaterialTextureSlot(UMaterial* Material, int32 SlotIndex, const char* Label)
+{
+	if (!Material) return;
+	const float ThumbSize = EditorUIScale::Px(48.0f);
+	const float ItemThumbSize = EditorUIScale::Px(24.0f);
+	UTexture2D* Texture = Material->Textures.IsValidIndex(SlotIndex) ? Material->Textures[SlotIndex] : nullptr;
+
+	ImGui::PushID(SlotIndex);
+	if (Texture && Texture->GetResource())
+	{
+		ImGui::Image(Texture->GetResource()->GetSRV(), ImVec2(ThumbSize, ThumbSize));
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Texture->GetPath().c_str());
+	}
+	else
+	{
+		ImGui::Button("Empty", ImVec2(ThumbSize, ThumbSize));
+	}
+
+	if (ImGui::BeginDragDropTarget())
+	{
+		if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::Texture))
+		{
+			UTexture2D* Dropped = *static_cast<UTexture2D**>(Payload->Data);
+			SetMaterialTextureSlot(Material, SlotIndex, Dropped);
+			Texture = Dropped;
+		}
+		ImGui::EndDragDropTarget();
+	}
+
+	ImGui::SameLine();
+	ImGui::BeginGroup();
+	ImGui::TextUnformatted(Label);
+	const FString CurrentName = Texture ? GetTextureDisplayName(Texture->GetPath()) : FString("None");
+	ImGui::SetNextItemWidth(-1.0f);
+	EditorUIScale::LimitNextComboPopupWidth();
+	const bool bOpen = ImGui::BeginCombo("##TexSlot", CurrentName.c_str());
+	if (ImGui::IsItemHovered() && Texture) ImGui::SetTooltip("%s", Texture->GetPath().c_str());
+	if (bOpen)
+	{
+		if (ImGui::Selectable("None", Texture == nullptr))
+			SetMaterialTextureSlot(Material, SlotIndex, nullptr);
+
+		const TArray<UTexture2D*> Candidates = EditorSort::CollectSorted<UTexture2D>(
+			TObjectIterator<UTexture2D>(),
+			[](const UTexture2D* T) { return GetTextureDisplayName(T->GetPath()); },
+			[](UTexture2D* T) { return !T->IsRetired() && T->GetResource() && !T->GetPath().empty(); });
+
+		for (UTexture2D* Candidate : Candidates)
+		{
+			const bool bSelected = (Candidate == Texture);
+			const FString CandName = GetTextureDisplayName(Candidate->GetPath());
+			ImGui::PushID(Candidate);
+			ImGui::Image(Candidate->GetResource()->GetSRV(), ImVec2(ItemThumbSize, ItemThumbSize));
+			ImGui::SameLine();
+			if (ImGui::Selectable(CandName.c_str(), bSelected, ImGuiSelectableFlags_None, ImVec2(0.0f, ItemThumbSize)))
+				SetMaterialTextureSlot(Material, SlotIndex, Candidate);
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Candidate->GetPath().c_str());
+			if (bSelected) ImGui::SetItemDefaultFocus();
+			ImGui::PopID();
+		}
+		ImGui::EndCombo();
+	}
+	ImGui::EndGroup();
+	ImGui::PopID();
 }
 }
 
@@ -111,10 +196,13 @@ void FAssetEditorPanel::SaveMaterial()
 	Data.Material.EmissiveColor = Material->EmissiveColor; Data.Material.EmissiveFactor = Material->EmissiveFactor;
 	Data.Material.Shininess = Material->Shininess; Data.Material.ShadingModel = Material->ShadingModel;
 	Data.Material.SamplerState = Material->SamplerState; Data.Material.BlendState = Material->BlendState;
+	Data.Material.DiffuseTexture = (Material->Textures.IsValidIndex(0) && Material->Textures[0]) ? Material->Textures[0]->GetPath() : FString();
+	Data.Material.NormalTexture = (Material->Textures.IsValidIndex(1) && Material->Textures[1]) ? Material->Textures[1]->GetPath() : FString();
 	const auto Temporary = Path + ".editing";
 	if (!FFbxAssetBake::WriteBaked(Temporary, Data, Status)) return;
 	if (!MoveFileExW(FbxPath::FromString(Temporary).c_str(), FbxPath::FromString(Path).c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
 	{ Status = "Could not replace material file. The previous asset is intact."; std::error_code E; fs::remove(FbxPath::FromString(Temporary), E); return; }
+	FContentDrawerPanel::InvalidateMaterialThumbnail(Path);
 	Status = "Saved";
 }
 
@@ -147,6 +235,15 @@ void FAssetEditorPanel::OnRender()
 			if (ImGui::Combo("Shading", &Model, Models, 4)) { Material->ShadingModel = static_cast<ELightingModel>(Model); Material->bOverrideShadingModel = true; }
 			int Blend = Material->BlendState == EBlendState::AlphaBlend ? 1 : 0;
 			if (ImGui::Combo("Blend", &Blend, "Opaque\0Alpha Blend\0")) Material->SetBlendState(Blend ? EBlendState::AlphaBlend : EBlendState::Opaque);
+			ImGui::Separator();
+			const int32 SlotCount = std::max(2, static_cast<int32>(Material->Textures.Num()));
+			for (int32 Slot = 0; Slot < SlotCount; ++Slot)
+			{
+				const FString SlotLabel = (Slot == 0) ? FString("Diffuse Texture")
+					: (Slot == 1) ? FString("Normal Texture")
+					: ("Texture Slot " + std::to_string(Slot));
+				DrawAssetMaterialTextureSlot(Material, Slot, SlotLabel.c_str());
+			}
 		}
 		if (auto* Skeleton = Cast<USkeleton>(Asset))
 		{

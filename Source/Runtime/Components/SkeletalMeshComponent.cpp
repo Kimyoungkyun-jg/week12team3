@@ -360,7 +360,7 @@ void USkeletalMeshComponent::UpdateSkinning()
 			SkinningMatricesBuffer = RenderCommand::CreateDynamicStructuredBuffer(
 				static_cast<uint32>(SkinningMatrices.Num()), sizeof(FMatrix));
 		if (SkinningMatricesBuffer && SkinningMatricesBuffer->GetBuffer() && SkinningMatricesBuffer->GetSRV()
-			&& (DesiredMode != ESkinningMode::Compute || FRenderResourceManager::GetComputeSkinningShader()))
+			&& (DesiredMode != ESkinningMode::Compute || FRenderResourceManager::GetComputeShader("Resources/Shader/ComputeSkinningCS.hlsli", "mainCS")))
 		{
 			const uint32 MatrixBytes = static_cast<uint32>(SkinningMatrices.Num() * sizeof(FMatrix));
 			FSkinningFrameStats& Stats = FSkinningStats::Pending();
@@ -430,7 +430,7 @@ FVertexBuffer* USkeletalMeshComponent::DispatchComputeSkinning(uint32 LOD)
 	RenderCommand::BindVertexBuffer(nullptr);
 	ID3D11UnorderedAccessView* Output = Cached.OutputUAV.Get();
 	Context->CSSetUnorderedAccessViews(0, 1, &Output, nullptr);
-	RenderCommand::BindComputeShader(FRenderResourceManager::GetComputeSkinningShader());
+	RenderCommand::BindComputeShader(FRenderResourceManager::GetComputeShader("Resources/Shader/ComputeSkinningCS.hlsli", "mainCS"));
 	RenderCommand::BindShaderResource(0, Source, EShaderBindFlagBits::Compute);
 	RenderCommand::BindShaderResource(16, SkinningMatricesBuffer.get(), EShaderBindFlagBits::Compute);
 	const uint32 Groups = (Source->GetCapacity() + 63) / 64;

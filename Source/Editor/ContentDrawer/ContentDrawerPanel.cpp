@@ -21,12 +21,16 @@ FString SkeletonKeyFromPath(const std::filesystem::path& Path);
 #include "Editor/HitoriEd/EditorEngine.h"
 
 #include "GameFramework/Actor/SkeletalMeshActor.h"
+#include "GameFramework/Actor/StaticMeshActor.h"
 #include "GameFramework/Actor/SkyLightActor.h"
 #include "GameFramework/Actor/DirectionalLightActor.h"
 #include "Components/BillboardComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 
 #include "Render/SkeletalMesh.h"
+#include "Render/Mesh.h"
+#include "Render/Material.h"
 #include "Render/RenderCommand.h"
 #include "Math/MathUtility.h"
 #include "Components/LightComponent.h"
@@ -35,7 +39,12 @@ FString SkeletonKeyFromPath(const std::filesystem::path& Path);
 #include "Render/SkyboxRenderer.h"
 #include <cctype>
 
-FContentDrawerPanel::FContentDrawerPanel() = default;
+FContentDrawerPanel* FContentDrawerPanel::ActiveInstance = nullptr;
+
+FContentDrawerPanel::FContentDrawerPanel()
+{
+	ActiveInstance = this;
+}
 
 void FContentDrawerPanel::Release()
 {
@@ -51,6 +60,7 @@ void FContentDrawerPanel::Release()
 		ThumbnailWorld = nullptr;
 	}
 	ThumbnailActor = nullptr;
+	MaterialThumbnailActor = nullptr;
 	ThumbnailSkybox.reset();
 	ThumbnailCache.clear();
 	bStudioInitialized = false;
@@ -58,6 +68,10 @@ void FContentDrawerPanel::Release()
 
 FContentDrawerPanel::~FContentDrawerPanel()
 {
+	if (ActiveInstance == this)
+	{
+		ActiveInstance = nullptr;
+	}
 	Release();
 }
 
@@ -411,6 +425,13 @@ void FContentDrawerPanel::OnRender()
 						if (FTexture2D* FbxThumb = GetOrCreateSkeletalMeshThumbnail(PathString))
 						{
 							ThumbnailSRV = FbxThumb->GetSRV();
+						}
+					}
+					else if (UMaterial* MatAsset = Cast<UMaterial>(Asset))
+					{
+						if (FTexture2D* MatThumb = GetOrCreateMaterialThumbnail(MatAsset))
+						{
+							ThumbnailSRV = MatThumb->GetSRV();
 						}
 					}
 				}
@@ -807,6 +828,11 @@ void FContentDrawerPanel::InitThumbnailStudio()
 	}
 
 	ThumbnailActor = ThumbnailWorld->SpawnActor<ASkeletalMeshActor>();
+	MaterialThumbnailActor = ThumbnailWorld->SpawnActor<AStaticMeshActor>();
+	if (MaterialThumbnailActor && MaterialThumbnailActor->GetStaticMeshComponent())
+	{
+		MaterialThumbnailActor->GetStaticMeshComponent()->SetVisibility(false);
+	}
 
 	if (ASkyLightActor* SkyLight = ThumbnailWorld->SpawnActor<ASkyLightActor>())
 	{
@@ -856,6 +882,11 @@ FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString&
 		ThumbnailCache[FbxPath] = nullptr;
 		return nullptr;
 	}
+	if (MaterialThumbnailActor && MaterialThumbnailActor->GetStaticMeshComponent())
+	{
+		MaterialThumbnailActor->GetStaticMeshComponent()->SetVisibility(false);
+	}
+	ThumbnailActor->GetSkeletalMeshComponent()->SetVisibility(true);
 	ThumbnailActor->GetSkeletalMeshComponent()->SetSkeletalMesh(Mesh);
 
 	const FBox Bounds = ThumbnailActor->GetSkeletalMeshComponent()->CalcBounds();
@@ -908,4 +939,113 @@ FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString&
 
 	ThumbnailCache[FbxPath] = nullptr;
 	return nullptr;
+}
+
+FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterial* Material)
+{
+	if (!Material)
+	{
+		return nullptr;
+	}
+
+	const FString MatKey = !Material->GetPath().empty()
+		? Material->GetPath()
+		: std::to_string(reinterpret_cast<uintptr_t>(Material));
+	const FString CacheKey = "MAT:" + MatKey;
+
+	auto It = ThumbnailCache.find(CacheKey);
+	if (It != ThumbnailCache.end())
+	{
+		return It->second.get();
+	}
+
+	InitThumbnailStudio();
+	if (!MaterialThumbnailActor || !ThumbnailWorld)
+	{
+		ThumbnailCache[CacheKey] = nullptr;
+		return nullptr;
+	}
+
+	UStaticMesh* SphereMesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
+	if (!SphereMesh)
+	{
+		ThumbnailCache[CacheKey] = nullptr;
+		return nullptr;
+	}
+
+	if (ThumbnailActor && ThumbnailActor->GetSkeletalMeshComponent())
+	{
+		ThumbnailActor->GetSkeletalMeshComponent()->SetVisibility(false);
+	}
+
+	UStaticMeshComponent* MeshComp = MaterialThumbnailActor->GetStaticMeshComponent();
+	MeshComp->SetVisibility(true);
+	MeshComp->SetStaticMesh(SphereMesh);
+	MeshComp->SetMaterial(0, Material);
+
+	ThumbnailClient.SetViewRotation(FRotator(15.0f, 160.0f, 0.0f));
+	const FBox Bounds = SphereMesh->GetRenderBounds();
+	ThumbnailClient.FocusOnBounds(
+		(Bounds.Min + Bounds.Max) * 0.5f,
+		std::max(0.1f, (Bounds.Max - Bounds.Min).Length() * 0.5f));
+
+	if (UEditorEngine* EdEngine = Cast<UEditorEngine>(GEngine))
+	{
+		EdEngine->RenderPreviewViewport(&ThumbnailClient, ThumbnailWorld, nullptr, ThumbnailSkybox.get(), false);
+		FEngineLoop& Loop = GEngine->GetEngineLoop();
+		if (FSwapchain* SC = Loop.GetSwapchain())
+		{
+			if (FWindow* Win = Loop.GetMainWindow())
+			{
+				RenderCommand::BindRenderPassNoClear(SC->GetBackbuffer(), nullptr,
+					Win->GetWidth(), Win->GetHeight());
+			}
+		}
+	}
+
+	FTexture2D* RenderedTarget = ThumbnailClient.GetColorTarget();
+	if (!RenderedTarget)
+	{
+		ThumbnailCache[CacheKey] = nullptr;
+		return nullptr;
+	}
+
+	FTextureDesc Desc{};
+	Desc.Width = RenderedTarget->GetWidth();
+	Desc.Height = RenderedTarget->GetHeight();
+	Desc.Format = RenderedTarget->GetTextureFormat();
+	Desc.Usage = ETextureUsage::Default;
+	Desc.BindFlags = ETextureBindFlags::ShaderResource;
+
+	TUniquePtr<FTexture2D> CachedTex = RenderCommand::CreateTexture2D(Desc);
+	if (CachedTex)
+	{
+		RenderCommand::CopyTexture(CachedTex.get(), RenderedTarget);
+		ThumbnailCache[CacheKey] = std::move(CachedTex);
+		return ThumbnailCache[CacheKey].get();
+	}
+
+	ThumbnailCache[CacheKey] = nullptr;
+	return nullptr;
+}
+
+ID3D11ShaderResourceView* FContentDrawerPanel::GetMaterialThumbnailSRV(UMaterial* Material)
+{
+	if (!ActiveInstance || !Material)
+	{
+		return nullptr;
+	}
+
+	FTexture2D* Tex = ActiveInstance->GetOrCreateMaterialThumbnail(Material);
+	return Tex ? Tex->GetSRV() : nullptr;
+}
+
+void FContentDrawerPanel::InvalidateMaterialThumbnail(const FString& Path)
+{
+	if (!ActiveInstance || Path.empty())
+	{
+		return;
+	}
+
+	ActiveInstance->ThumbnailCache.erase("MAT:" + Path);
 }

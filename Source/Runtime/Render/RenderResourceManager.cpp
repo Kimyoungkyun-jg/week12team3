@@ -261,56 +261,26 @@ void FRenderResourceManager::ScanShaders(const fs::path& ShaderRoot)
 	}
 }
 
-FComputeShader* FRenderResourceManager::GetComputeSkinningShader()
+FComputeShader* FRenderResourceManager::GetComputeShader(const FString& InPath, const FString& EntryPoint)
 {
 	auto& Resources = Get();
-	if (!Resources.bComputeSkinningShaderAttempted)
-	{
-		Resources.bComputeSkinningShaderAttempted = true;
-		Resources.ComputeSkinningShader = RenderCommand::CreateComputeShader(
-			RenderUtil::CompileShader("Resources/Shader/ComputeSkinningCS.hlsli", "mainCS", EShaderType::Compute));
-		if (Resources.ComputeSkinningShader && !Resources.ComputeSkinningShader->IsValid())
-			Resources.ComputeSkinningShader.reset();
-	}
-	return Resources.ComputeSkinningShader.get();
-}
+	const FString Key = InPath + "#" + EntryPoint;
+	if (TUniquePtr<FComputeShader>* Found = Resources.ComputeShaderMap.Find(Key))
+		return Found->get();
 
-FComputeShader* FRenderResourceManager::GetGpuParticleInjectShader()
-{
-	auto& Resources = Get();
-	if (!Resources.bGpuParticleInjectAttempted)
-	{
-		Resources.bGpuParticleInjectAttempted = true;
-		Resources.GpuParticleInjectShader = RenderCommand::CreateComputeShader(
-			RenderUtil::CompileShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSInjectSpawns", EShaderType::Compute));
-		if (Resources.GpuParticleInjectShader && !Resources.GpuParticleInjectShader->IsValid())
-			Resources.GpuParticleInjectShader.reset();
-	}
-	return Resources.GpuParticleInjectShader.get();
-}
+	TUniquePtr<FComputeShader> Shader = RenderCommand::CreateComputeShader(
+		RenderUtil::CompileShader(InPath, EntryPoint.c_str(), EShaderType::Compute));
+	if (Shader && !Shader->IsValid())
+		Shader.reset();
 
-FComputeShader* FRenderResourceManager::GetGpuParticleSimulateShader()
-{
-	auto& Resources = Get();
-	if (!Resources.bGpuParticleSimulateAttempted)
-	{
-		Resources.bGpuParticleSimulateAttempted = true;
-		Resources.GpuParticleSimulateShader = RenderCommand::CreateComputeShader(
-			RenderUtil::CompileShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSSimulate", EShaderType::Compute));
-		if (Resources.GpuParticleSimulateShader && !Resources.GpuParticleSimulateShader->IsValid())
-			Resources.GpuParticleSimulateShader.reset();
-	}
-	return Resources.GpuParticleSimulateShader.get();
+	FComputeShader* Result = Shader.get();
+	Resources.ComputeShaderMap[Key] = std::move(Shader);
+	return Result;
 }
 
 void FRenderResourceManager::Shutdown()
 {
-	Get().ComputeSkinningShader.reset();
-	Get().bComputeSkinningShaderAttempted = false;
-	Get().GpuParticleInjectShader.reset();
-	Get().bGpuParticleInjectAttempted = false;
-	Get().GpuParticleSimulateShader.reset();
-	Get().bGpuParticleSimulateAttempted = false;
+	Get().ComputeShaderMap.Empty();
 	Get().VertexShaderMap.Empty();
 	Get().PixelShaderMap.Empty();
 	Get().ShaderProgramMap.Empty();

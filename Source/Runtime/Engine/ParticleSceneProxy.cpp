@@ -60,6 +60,7 @@ void FParticleSceneProxy::UpdateFromComponent()
 		const float AtlasRowSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesVertical)) : 1.0f;
 		const float AtlasColSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesHorizontal)) : 1.0f;
 		const uint32 SubUVOffset = SubUVModule ? Emitter.GetModuleDataOffset(SubUVModule) : 0;
+		UMaterial* EmitterMaterial = LOD->RequiredModule->Material ? LOD->RequiredModule->Material : Material;
 
 		if (!Emitter.ParticleData || !Emitter.ParticleIndices) continue;
 		for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index)
@@ -70,6 +71,7 @@ void FParticleSceneProxy::UpdateFromComponent()
 			Sprite.Width = std::abs(Particle.Size.X * (bLocal ? Scale.Y : 1.0f));
 			Sprite.Height = std::abs(Particle.Size.Y * (bLocal ? Scale.Z : 1.0f));
 			Sprite.Rotation = Particle.Rotation;
+			Sprite.Material = EmitterMaterial;
 			float CurrentFrame = 0.0f;
 			if (SubUVModule && SubUVOffset > 0)
 			{
@@ -115,7 +117,7 @@ void FParticleSceneProxy::SubmitToRenderQueue(FRenderQueue& Queue, const FViewCo
 		}
 		FRenderPacket Packet;
 		Packet.Mesh = QuadMesh;
-		Packet.Material = Material;
+		Packet.Material = Sprite.Material ? Sprite.Material : Material;
 		Packet.Model = Queue.StoreWorldMatrix(World);
 		const FVector Delta = Sprite.Location - View.CameraPosition;
 		Packet.CameraToParticleDistance = Delta.Dot(Delta);
@@ -152,9 +154,27 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 	const uint32 StartInstance = static_cast<uint32>(OutInstances.Num());
 	OutInstances.Reserve(StartInstance + static_cast<uint32>(Count));
 
+	UMaterial* BatchMaterial = nullptr;
+	uint32 BatchStart = StartInstance;
+	uint32 BatchCount = 0;
+
 	for (const FSortedSprite& Entry : Sorted)
 	{
 		const FParticleSpriteRenderData& Sprite = Sprites[Entry.Index];
+		UMaterial* SpriteMat = Sprite.Material ? Sprite.Material : Material;
+		if (BatchCount > 0 && SpriteMat != BatchMaterial)
+		{
+			FParticleInstancedBatch Batch{};
+			Batch.Mesh = QuadMesh;
+			Batch.Material = BatchMaterial;
+			Batch.StartInstance = BatchStart;
+			Batch.InstanceCount = BatchCount;
+			OutBatches.Add(Batch);
+			BatchStart = static_cast<uint32>(OutInstances.Num());
+			BatchCount = 0;
+		}
+		BatchMaterial = SpriteMat;
+
 		FMatrix World = View.BuildBillboardMatrix(Sprite.Location, Sprite.Width, Sprite.Height);
 		const float C = std::cos(Sprite.Rotation);
 		const float S = std::sin(Sprite.Rotation);
@@ -179,14 +199,18 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 			Sprite.Constants.AtlasColSize,
 			Sprite.Constants.DecodeSRGB);
 		OutInstances.Add(Instance);
+		++BatchCount;
 	}
 
-	FParticleInstancedBatch Batch{};
-	Batch.Mesh = QuadMesh;
-	Batch.Material = Material;
-	Batch.StartInstance = StartInstance;
-	Batch.InstanceCount = static_cast<uint32>(Count);
-	OutBatches.Add(Batch);
+	if (BatchCount > 0)
+	{
+		FParticleInstancedBatch Batch{};
+		Batch.Mesh = QuadMesh;
+		Batch.Material = BatchMaterial;
+		Batch.StartInstance = BatchStart;
+		Batch.InstanceCount = BatchCount;
+		OutBatches.Add(Batch);
+	}
 }
 
 void FParticleSceneProxy::SubmitGpuEmitters(TArray<FGpuParticleBatch>& OutBatches, const FViewContext& View) const
@@ -212,10 +236,13 @@ void FParticleSceneProxy::SubmitGpuEmitters(TArray<FGpuParticleBatch>& OutBatche
 		const UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
 		if (!LOD || !LOD->RequiredModule) continue;
 
+		if (!Emitter.GpuResources)
+			Emitter.GpuResources = MakeShared<FGpuParticleEmitterResources>();
+
 		FGpuParticleBatch& Batch = OutBatches.AddDefaulted_GetRef();
-		Batch.EmitterId = Emitter.GpuEmitterId;
+		Batch.GpuResources = Emitter.GpuResources;
 		Batch.Mesh = QuadMesh;
-		Batch.Material = Material;
+		Batch.Material = LOD->RequiredModule->Material ? LOD->RequiredModule->Material : Material;
 		Batch.MaxParticles = static_cast<uint32>(Emitter.MaxActiveParticles);
 		Batch.ParticleStride = static_cast<uint32>(sizeof(FGpuParticle));
 		Batch.bResetRequested = Emitter.bGpuResetRequested;

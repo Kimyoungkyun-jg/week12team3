@@ -8,6 +8,7 @@
 
 class FScene;
 class FParticleSceneProxy;
+struct FGpuParticleEmitterResources;
 
 #define DECLARE_PARTICLE(Name, Address) \
 	FBaseParticle& Name = *((FBaseParticle*)(Address));
@@ -43,7 +44,7 @@ struct FParticleEmitterInstance
 	uint8* ParticleData = nullptr;
 	uint16* ParticleIndices = nullptr;
 	int32 ParticleSize = sizeof(FBaseParticle);
-	int32 ParticleStride = sizeof(FBaseParticle);
+	int32 ParticleStride = (sizeof(FBaseParticle) + 15) & ~15;
 	int32 PayloadOffset = sizeof(FBaseParticle);
 	TMap<const UParticleModule*, uint32> ModuleOffsetMap;
 	int32 ActiveParticles = 0;
@@ -54,7 +55,7 @@ struct FParticleEmitterInstance
 	FParticleRandom Random;
 	const FParticleInstanceParameters* InstanceParameters = nullptr;
 
-	uint64 GpuEmitterId = 0;
+	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
 	TArray<FGpuParticle> PendingGpuSpawns;
 	uint32 GpuWriteCursor = 0;
 	float LastGpuDeltaTime = 0.0f;

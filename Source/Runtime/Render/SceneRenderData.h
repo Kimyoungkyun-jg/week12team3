@@ -111,7 +111,7 @@ struct FGpuParticleDrawParams
 
 struct FGpuParticleBatch
 {
-	uint64 EmitterId = 0;
+	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
 	UStaticMesh* Mesh = nullptr;
 	UMaterial* Material = nullptr;
 	uint32 MaxParticles = 0;
@@ -168,7 +168,6 @@ struct FSceneRenderData
 	mutable uint32 ParticleInstanceCapacity = 0;
 	mutable TUniquePtr<FConstantBuffer> ParticleBatchCB;
 	TArray<FGpuParticleBatch> GpuParticleBatches;
-	mutable TMap<uint64, FGpuParticleEmitterResources> GpuParticleBuffers;
 	FSceneLightResources ViewLightResources;
 
 	FAmbientLightRenderData AmbientLight{};

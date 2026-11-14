@@ -12,6 +12,9 @@
 
 namespace fs = std::filesystem;
 
+class AStaticMeshActor;
+class UMaterial;
+
 class FContentDrawerPanel : public IEditorPanel
 {
 public:
@@ -24,6 +27,8 @@ public:
 	void RenderFolderTree(const fs::path& Path, fs::path& SelectedPath);
 	void Release();
 	void RequestThumbnailRefresh() { bRefreshThumbnails = true; AnimSequenceDisplayNames.clear(); }
+	static ID3D11ShaderResourceView* GetMaterialThumbnailSRV(UMaterial* Material);
+	static void InvalidateMaterialThumbnail(const FString& Path);
 
 	// .widget 파일을 더블클릭하면 불린다 (UI 에디터가 연다).
 	void SetOpenWidgetCallback(std::function<void(const FString&)> InCallback) { OnOpenWidget = std::move(InCallback); }
@@ -89,10 +94,13 @@ private:
 	std::unordered_map<FString, FString> AnimSequenceDisplayNames;
 	UWorld* ThumbnailWorld = nullptr;
 	ASkeletalMeshActor* ThumbnailActor = nullptr;
+	AStaticMeshActor* MaterialThumbnailActor = nullptr;
 	TUniquePtr<class FSkyboxRenderer> ThumbnailSkybox;
 	FEditorViewportClient ThumbnailClient;
 	bool bStudioInitialized = false;
 	bool bRefreshThumbnails = false;
+	static FContentDrawerPanel* ActiveInstance;
 	void InitThumbnailStudio();
 	FTexture2D* GetOrCreateSkeletalMeshThumbnail(const FString& FbxPath);
+	FTexture2D* GetOrCreateMaterialThumbnail(UMaterial* Material);
 };
