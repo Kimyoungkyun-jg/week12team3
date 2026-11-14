@@ -505,44 +505,19 @@ UMaterial* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
 	}
 
 	const FString ClassName = Root["Class"].get<FString>();
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 
-	if (ClassName == UMaterialInstance::StaticClass()->Name)
+	if (ClassName == UMaterialInstanceConstant::StaticClass()->Name || ClassName == "UMaterialInstance")
 	{
-		const json& ObjectData = Root["Object"];
-
-		if (!ObjectData.contains("ParentAsset") || !ObjectData["ParentAsset"].is_string())
-		{
-			HTR_LOG(Warning, "Material Instance '{}' has an invalid ParentAsset.", Key);
-			LoadingMaterials.erase(Key);
-			return nullptr;
-		}
-
-		const FString ParentPath = ObjectData["ParentAsset"].get<FString>();
-
-		if (ParentPath.empty())
-		{
-			HTR_LOG(Warning, "Material Instance '{}' has an empty ParentAsset.", Key);
-			LoadingMaterials.erase(Key);
-			return nullptr;
-		}
-
-		UMaterial* Parent = LoadMaterialAsset(ParentPath);
-
-		if (!Parent)
-		{
-			LoadingMaterials.erase(Key);
-			return nullptr;
-		}
-
-		Material = UMaterial::CreateInstance(Parent);
+		Material = NewObject<UMaterialInstanceConstant>();
 	}
 	else if (ClassName == UMaterial::StaticClass()->Name)
 	{
 		Material = NewObject<UMaterial>();
 	}
 
-	if (!Material || !FJsonArchive::LoadObject(Material, FbxPath::ToString(File)))
+	const FString LegacyClassName = ClassName == "UMaterialInstance" ? "UMaterialInstance" : "";
+	if (!Material || !FJsonArchive::LoadObject(Material, FbxPath::ToString(File), LegacyClassName))
 	{
 		if (Material)
 		{

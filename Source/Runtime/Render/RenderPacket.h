@@ -22,7 +22,7 @@ struct FRenderPacket
 	FVertexBuffer* VertexBufferOverride = nullptr;
 	FIndexBuffer* IndexBufferOverride = nullptr;
 	FStructuredBuffer* SkinningMatricesBuffer = nullptr;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	const void* MaterialParamData = nullptr;
 	float CameraToParticleDistance = 0.0f;
 	uint32 MaterialParamDataSize = 0;
@@ -107,7 +107,7 @@ class FRenderQueue : public TArray<FRenderPacket>
 	// 패킷 정렬 키 생성
 	static uint64 MakeSortKey(const FRenderPacket& Packet)
 	{
-		if (Packet.Material->PSOType != EPSOType::StaticMesh_Opaque)
+		if (Packet.Material->GetPSOType() != EPSOType::StaticMesh_Opaque)
 		{
 			const uint64 DistanceBits = static_cast<uint64>(std::bit_cast<uint32>(Packet.CameraToParticleDistance));
 			return (1ull << 63) | (~DistanceBits & 0xFFFFFFFFull);
@@ -115,7 +115,7 @@ class FRenderQueue : public TArray<FRenderPacket>
 
 		uint16 MeshSortID = Packet.Mesh ? Packet.Mesh->SortID : (Packet.SkeletalMesh ? Packet.SkeletalMesh->SortID : 0);
 
-		return (static_cast<uint64>(Packet.Material->SortID) << 47)
+		return (static_cast<uint64>(Packet.Material->GetSortID()) << 47)
 			| (static_cast<uint64>(MeshSortID) << 31)
 			| (static_cast<uint64>(Packet.LODIndex & 0x3) << 29);
 	}

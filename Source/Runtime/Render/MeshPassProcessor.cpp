@@ -5,6 +5,7 @@
 #include "Render/RenderResourceManager.h"
 #include "Render/Mesh.h"
 #include "Render/NormalMapUtils.h"
+#include "Render/MaterialRenderProxy.h"
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Core/EngineTimer.h"
@@ -81,10 +82,18 @@ namespace
 	}
 
 	bool BuildBatch(FMeshDrawBatch& Batch, UStaticMesh* Mesh, uint8 LOD,
-		UMaterial* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options,
+		UMaterialInterface* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options,
 		const void* OverrideParams = nullptr, uint32 OverrideSize = 0)
 	{
 		if (!Mesh || !Material) return false;
+		FMaterialRenderProxy MaterialProxy{};
+		Material->GetRenderProxy(MaterialProxy);
+
+		UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
+		if (!BaseMaterial)
+		{
+			return false;
+		}
 		Batch.VertexBuffer = Mesh->GetVertexBuffer(LOD);
 		Batch.IndexBuffer = Mesh->GetIndexBuffer(LOD);
 		if (!Batch.VertexBuffer || !Batch.IndexBuffer) return false;
@@ -108,7 +117,7 @@ namespace
 			Batch.SamplerStages = Batch.MaterialStages;
 			Batch.bForceWireframe = !bWorldNormal && View.bIsWireframe;
 
-			FForwardMaterialConstants Params = MakeForwardMaterial(*Material);
+			FForwardMaterialConstants Params = MakeForwardMaterial(MaterialProxy);
 			std::memcpy(Batch.MaterialData.data(), &Params, sizeof(Params));
 			Batch.MaterialDataSize = sizeof(Params);
 		}
@@ -128,7 +137,7 @@ namespace
 				Material->PSOType == EPSOType::StaticMesh_Translucent ||
 				Material->PSOType == EPSOType::StaticMesh_Wireframe)
 			{
-				FStaticMeshMaterialParams Params = MakeStaticMaterial(*Material);
+				FStaticMeshMaterialParams Params = MakeStaticMaterial(MaterialProxy);
 				std::memcpy(Batch.MaterialData.data(), &Params, sizeof(Params));
 				Batch.MaterialDataSize = sizeof(Params);
 			}
@@ -159,9 +168,17 @@ namespace
 	}
 
 	bool BuildBatch(FMeshDrawBatch& Batch, USkeletalMesh* Mesh,
-		UMaterial* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options, bool bGPUSkinning, uint8 LOD,
+		UMaterialInterface* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options, bool bGPUSkinning, uint8 LOD,
 		const void* OverrideParams = nullptr, uint32 OverrideSize = 0)
 	{
+		FMaterialRenderProxy MaterialProxy{};
+		Material->GetRenderProxy(MaterialProxy);
+
+		UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
+		if (!BaseMaterial)
+		{
+			return false;
+		}
 		if (!Mesh || !Material) return false;
 		Batch.VertexBuffer = Mesh->GetVertexBuffer(LOD);
 		Batch.IndexBuffer = Mesh->GetIndexBuffer(LOD);
@@ -187,7 +204,7 @@ namespace
 			Batch.SamplerStages = Batch.MaterialStages;
 			Batch.bForceWireframe = !bWorldNormal && View.bIsWireframe;
 
-			FForwardMaterialConstants Params = MakeForwardMaterial(*Material);
+			FForwardMaterialConstants Params = MakeForwardMaterial(MaterialProxy);
 			std::memcpy(Batch.MaterialData.data(), &Params, sizeof(Params));
 			Batch.MaterialDataSize = sizeof(Params);
 		}
@@ -212,7 +229,7 @@ namespace
 				Material->PSOType == EPSOType::StaticMesh_Translucent ||
 				Material->PSOType == EPSOType::StaticMesh_Wireframe)
 			{
-				FStaticMeshMaterialParams Params = MakeStaticMaterial(*Material);
+				FStaticMeshMaterialParams Params = MakeStaticMaterial(MaterialProxy);
 				std::memcpy(Batch.MaterialData.data(), &Params, sizeof(Params));
 				Batch.MaterialDataSize = sizeof(Params);
 			}

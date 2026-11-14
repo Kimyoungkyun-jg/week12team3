@@ -25,6 +25,8 @@ class UBlendSpace1D;
 class UBlendSpace2D;
 class USoundWave;
 class UParticleSystem;
+class UMaterialInterface;
+class UMaterialInstanceConstant;
 
 namespace fs = std::filesystem;
 
@@ -56,8 +58,8 @@ public:
 	void CreateEditorArrowMaterial();
 	void CreateBoneWeightHeatmapMaterial();
 
-	static UMaterial* LoadMaterialAsset(const FString& AssetPath);
-	static bool SaveMaterialAsset(const FString& AssetPath, UMaterial& Material);
+	static UMaterialInterface* LoadMaterialAsset(const FString& AssetPath);
+	static bool SaveMaterialAsset(const FString& AssetPath, UMaterialInterface& Material);
 	void LoadDeferredAssets();
 
 	template <typename T>

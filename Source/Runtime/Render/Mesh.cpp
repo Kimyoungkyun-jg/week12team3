@@ -15,7 +15,7 @@ UStaticMesh::~UStaticMesh()
 	IndexBuffer = nullptr;
 }
 
-UMaterial* UStaticMesh::GetMaterial(uint32 SlotIndex) const
+UMaterialInterface* UStaticMesh::GetMaterial(uint32 SlotIndex) const
 {
 	if (SlotIndex < Materials.size() && Materials[SlotIndex]) {
 		return Materials[SlotIndex];

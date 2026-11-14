@@ -9,6 +9,7 @@
 #include "Material.generated.h"
 
 class FShader;
+class UMaterialInstanceDynamic;
 
 enum class EMaterialParamLayout
 {
@@ -65,15 +66,16 @@ public:
 	ELightingModel ShadingModel = ELightingModel::Phong;
 	bool bOverrideShadingModel = false;
 	void SetBlendState(EBlendState InBlendState);
+	UMaterial* GetBaseMaterial() const override { return const_cast<UMaterial*>(this); }
+	void GetRenderProxy(FMaterialRenderProxy& OutProxy) const override;
+
+	EPSOType GetPSOType() const override { return PSOType; }
+	EBlendState GetBlendState() const override { return BlendState; }
+	ESamplerState GetSamplerState() const override { return SamplerState; }
+	uint16 GetSortID() const override { return SortID; }
 	void ApplyImportedProperties(const FImportedMaterialProperties& Properties);
 
-	bool bIsInstance = false;
-
-	// 인스턴스가 복제된 원본. 인스턴스는 경로가 없어서, 저장할 때 원본을 따라가 기준 에셋을 찾는다
-	const UMaterial* Parent = nullptr;
-
-	// Source의 내용을 복사한 편집용 복제본을 만든다
-	static UMaterial* CreateInstance(const UMaterial* Source);
+	static UMaterialInstanceDynamic* CreateDynamicInstance(UMaterialInterface* Parent);
 
 	// 경로가 있는(=에셋으로 등록된) 가장 가까운 원본. 자신이 에셋이면 자신
 	const UMaterial* GetBaseAsset() const;
@@ -97,20 +99,4 @@ public:
 
 private:
 	inline static uint16 NextSortID = 0;
-};
-
-UCLASS()
-class UMaterialInstance : public UMaterial
-{
-	GENERATED_BODY()
-public:
-	void SetParent(const UMaterial* InParent);
-	void RefreshFromParent();
-	void Serialize(FStructuredArchive::FRecord Record) override;
-
-	bool bOverrideBaseColor = false;
-	FVector4 BaseColorOverride = FVector4(1, 1, 1, 1);
-
-	bool bOverrideTexture0 = false;
-	UTexture2D* Texture0Override = nullptr;
 };

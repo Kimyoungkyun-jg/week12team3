@@ -50,7 +50,7 @@ bool FJsonArchive::SaveObject(UObject* Object, const FString& Path)
 	return File.good();
 }
 
-bool FJsonArchive::LoadObject(UObject* Object, const FString& Path)
+bool FJsonArchive::LoadObject(UObject* Object, const FString& Path, const FString& LegacyClassName)
 {
 	if (!Object) return false;
 	std::ifstream File(Path, std::ios::binary | std::ios::ate);
@@ -70,7 +70,10 @@ bool FJsonArchive::LoadObject(UObject* Object, const FString& Path)
 	FString ClassName;
 	Root << SA_VALUE("Version", Version);
 	Root << SA_VALUE("Class", ClassName);
-	if (Version != ObjectVersion || ClassName != Object->GetClass()->Name) return false;
+	if (Version != ObjectVersion || (ClassName != Object->GetClass()->Name && ClassName != LegacyClassName))
+	{
+		return false;
+	}
 	Object->Serialize(Root.EnterRecord("Object"));
 	Ar.Close();
 	return !Reader.IsError();

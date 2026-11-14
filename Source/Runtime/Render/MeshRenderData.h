@@ -5,12 +5,13 @@
 #include "Math/Sphere.h"
 
 class UMaterial;
+class UMaterialInterface;
 
 struct FCachedMeshSection
 {
-    UMaterial* Material;
-    uint32 StartIndex;
-    uint32 IndexCount;
+	UMaterialInterface* Material = nullptr;
+	uint32 StartIndex = 0;
+	uint32 IndexCount = 0;
 };
 
 struct FCachedMeshLOD

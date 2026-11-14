@@ -3,6 +3,7 @@
 #include "RenderCommand.h"
 
 #include "Material.h"
+#include "Render/MaterialRenderProxy.h"
 
 #include "Asset/AssetManager.h"
 #include "UObject/UObjectGlobals.h"
@@ -33,6 +34,29 @@ void UMaterial::ApplyImportedProperties(const FImportedMaterialProperties& Prope
 	bOverrideShadingModel = Properties.bOverrideShadingModel;
 }
 
+void UMaterial::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
+{
+	OutProxy.BaseMaterial = this;
+	OutProxy.Textures = Textures;
+	OutProxy.BaseColor = BaseColor;
+	OutProxy.SpecularColor = SpecularColor;
+	OutProxy.Shininess = Shininess;
+	OutProxy.UVScrollSpeed = UVScrollSpeed;
+	OutProxy.bFlipNormalY = bFlipNormalY;
+	OutProxy.SpecularFactor = SpecularFactor;
+	OutProxy.EmissiveColor = EmissiveColor;
+	OutProxy.EmissiveFactor = EmissiveFactor;
+	OutProxy.UVTiling = UVTiling;
+	OutProxy.WorldUVTileSize = WorldUVTileSize;
+	OutProxy.bWorldUVLocalSpace = bWorldUVLocalSpace;
+	OutProxy.ShadingModel = ShadingModel;
+	OutProxy.bOverrideShadingModel = bOverrideShadingModel;
+	OutProxy.PSOType = PSOType;
+	OutProxy.BlendState = BlendState;
+	OutProxy.DepthStencilState = DepthStencilState;
+	OutProxy.SamplerState = SamplerState;
+}
+
 void UMaterial::SetBlendState(EBlendState InBlendState)
 {
 	BlendState = InBlendState;
@@ -43,20 +67,21 @@ void UMaterial::SetBlendState(EBlendState InBlendState)
 	}
 }
 
-UMaterial* UMaterial::CreateInstance(const UMaterial* Source)
+UMaterialInstanceDynamic* UMaterial::CreateDynamicInstance(UMaterialInterface* Parent)
 {
-	if (!Source)
+	if (!Parent)
 	{
 		return nullptr;
 	}
 
-	UMaterialInstance* Instance = NewObject<UMaterialInstance>();
+	UMaterialInstanceDynamic* Instance = NewObject<UMaterialInstanceDynamic>();
+
 	if (!Instance)
 	{
 		return nullptr;
 	}
 
-	Instance->SetParent(Source);
+	Instance->SetParent(Parent);
 	return Instance;
 }
 

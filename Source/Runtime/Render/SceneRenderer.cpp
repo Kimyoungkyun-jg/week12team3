@@ -1367,7 +1367,7 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 						const FCachedMeshSection& Section = Proxy->GetSection(CachedLOD.FirstSection + i);
 						Out.LODTriangles[LOD] += Section.IndexCount / 3;
 
-						if (bStaticGroups && Section.Material && Section.Material->PSOType == EPSOType::StaticMesh_Opaque)
+						if (bStaticGroups && Section.Material && Section.Material->GetPSOType() == EPSOType::StaticMesh_Opaque)
 						{
 							FStaticDrawGroup& Group = FindGroup(Section.Material, Mesh, static_cast<uint8>(LOD));
 							Group.Items.push_back({ Proxy, Slot, Section.StartIndex, Section.IndexCount, bOccludedByGpu ? 1u : 0u });
