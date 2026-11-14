@@ -169,6 +169,11 @@ void FContentDrawerPanel::OnRender()
 				bNewBlendSpace2D = true;
 				bOpenCreateBlendSpace = true;
 			}
+			if (ImGui::MenuItem("Create Particle System"))
+			{
+				strcpy_s(NewAssetName, "NewParticleSystem");
+				bOpenCreateParticleSystem = true;
+			}
 			if (ImGui::MenuItem("Create AnimMontage") && OnOpenAsset)
 			{
 				strcpy_s(NewAssetName, "NewMontage");
@@ -184,6 +189,7 @@ void FContentDrawerPanel::OnRender()
 		if (bOpenCreateWidget) { ImGui::OpenPopup("Create Widget"); bOpenCreateWidget = false; }
 		if (bOpenCreateAnimGraph) { ImGui::OpenPopup("Create AnimGraph"); bOpenCreateAnimGraph = false; }
 		if (bOpenCreateBlendSpace) { ImGui::OpenPopup("Create BlendSpace"); bOpenCreateBlendSpace = false; }
+		if (bOpenCreateParticleSystem) { ImGui::OpenPopup("Create Particle System"); bOpenCreateParticleSystem = false; }
 		if (bOpenCreateAnimationAsset) { ImGui::OpenPopup("Create Animation Asset"); bOpenCreateAnimationAsset = false; }
 		if (ImGui::BeginPopupModal("Create Animation Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 		{
@@ -234,6 +240,45 @@ void FContentDrawerPanel::OnRender()
 			{
 				ImGui::CloseCurrentPopup();
 			}
+			ImGui::EndPopup();
+		}
+		if (ImGui::BeginPopupModal("Create Particle System", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::InputText("Name", NewAssetName, sizeof(NewAssetName));
+
+			const FString Name = NewAssetName;
+			const fs::path Target = CurrentPath / (Name + ".particlesystem");
+
+			const bool bExists = fs::exists(Target);
+			const bool bInvalid = Name.empty() || Name == "." || Name == ".." ||
+				Name.find_first_of("\\/:*?\"<>|") != FString::npos;
+
+			if (bExists)
+			{
+				ImGui::TextUnformatted("An asset with this name already exists.");
+			}
+			if (bInvalid)
+			{
+				ImGui::TextUnformatted("Enter a valid asset name.");
+			}
+
+			ImGui::BeginDisabled(bExists || bInvalid || !OnCreateParticleSystem);
+
+			if (ImGui::Button("Create"))
+			{
+				OnCreateParticleSystem(FbxPath::ToString(Target));
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndDisabled();
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Cancel"))
+			{
+				ImGui::CloseCurrentPopup();
+			}
+
 			ImGui::EndPopup();
 		}
 		if (ImGui::BeginPopupModal("Create AnimGraph", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
@@ -553,6 +598,10 @@ void FContentDrawerPanel::OpenItem(const fs::path& Path)
 	else if (Extension == ".blendspace" && OnOpenBlendSpace)
 	{
 		OnOpenBlendSpace(FbxPath::ToString(Path));
+	}
+	else if (Extension == ".particlesystem" && OnOpenParticleSystem)
+	{
+		OnOpenParticleSystem(FbxPath::ToString(Path));
 	}
 	else if (Extension == ".fbxbin")
 	{

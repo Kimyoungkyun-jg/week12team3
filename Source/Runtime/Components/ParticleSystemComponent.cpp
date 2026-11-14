@@ -20,6 +20,11 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 	}
 
 	Template = InTemplate;
+	ResetSystem();
+}
+
+void UParticleSystemComponent::ResetSystem()
+{
 	EmitterRuntimeData.Reset();
 	Material = nullptr;
 	bEmitterInitialized = false;
@@ -32,10 +37,7 @@ void UParticleSystemComponent::PostEditChangeProperty(const FProperty& Property)
 
 	if (Property.Name == "Template")
 	{
-		EmitterRuntimeData.Reset();
-		Material = nullptr;
-		bEmitterInitialized = false;
-		OnTransformDirty();
+		ResetSystem();
 	}
 }
 

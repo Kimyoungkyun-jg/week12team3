@@ -1,0 +1,130 @@
+{
+    "Class": "UParticleSystem",
+    "Object": {
+        "Properties": {
+            "Emitters": [
+                {
+                    "Class": "UParticleEmitter",
+                    "Value": {
+                        "Properties": {
+                            "LODLevels": [
+                                {
+                                    "Class": "UParticleLODLevel",
+                                    "Value": {
+                                        "Properties": {
+                                            "Modules": [
+                                                {
+                                                    "Class": "UParticleModuleLifetime",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "MaxLifetime": 1.0,
+                                                            "MinLifetime": 1.0
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleLocation",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "MaxOffset": {
+                                                                "X": 0.0,
+                                                                "Y": 0.0,
+                                                                "Z": 0.0
+                                                            },
+                                                            "MinOffset": {
+                                                                "X": 0.0,
+                                                                "Y": 0.0,
+                                                                "Z": 0.0
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleVelocity",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "MaxVelocity": {
+                                                                "X": 0.0,
+                                                                "Y": 0.0,
+                                                                "Z": 100.0
+                                                            },
+                                                            "MinVelocity": {
+                                                                "X": 0.0,
+                                                                "Y": 0.0,
+                                                                "Z": 0.0
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleColor",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "EndColor": {
+                                                                "W": 0.0,
+                                                                "X": 1.0,
+                                                                "Y": 1.0,
+                                                                "Z": 1.0
+                                                            },
+                                                            "StartColor": {
+                                                                "W": 1.0,
+                                                                "X": 1.0,
+                                                                "Y": 1.0,
+                                                                "Z": 1.0
+                                                            },
+                                                            "bUseColorOverLife": false
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleSize",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "EndSize": {
+                                                                "X": 40.0,
+                                                                "Y": 40.0,
+                                                                "Z": 1.0
+                                                            },
+                                                            "StartSize": {
+                                                                "X": 40.0,
+                                                                "Y": 40.0,
+                                                                "Z": 1.0
+                                                            },
+                                                            "bUseSizeOverLife": false
+                                                        }
+                                                    }
+                                                }
+                                            ],
+                                            "RequiredModule": {
+                                                "Class": "UParticleModuleRequired",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "Material": null
+                                                    }
+                                                }
+                                            },
+                                            "SpawnModule": {
+                                                "Class": "UParticleModuleSpawn",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "BurstCount": 0,
+                                                        "SpawnRate": 10.0
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            ],
+                            "MaxActiveParticles": 1000,
+                            "MeshTypeDataModule": {
+                                "Class": ""
+                            }
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "Version": 1
+}

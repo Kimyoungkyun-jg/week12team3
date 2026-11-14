@@ -16,6 +16,8 @@ public:
 	UParticleModuleRequired* GetRequiredModule() const { return RequiredModule; }
 	UParticleModuleSpawn* GetSpawnModule() const { return SpawnModule; }
 	const TArray<UParticleModule*>& GetModules() const { return Modules; }
+	UParticleModule* AddModule(UClass* ModuleClass, const FName& InName);
+	bool RemoveModule(UParticleModule* Module);
 
 private:
 	UPROPERTY(EditAnywhere, Instanced)
@@ -52,6 +54,8 @@ public:
 
 	void SetMeshTypeDataModule(UParticleModuleTypeDataMesh* InModule) { MeshTypeDataModule = InModule; }
 
+	void SetMeshEmitterEnabled(bool bEnabled);
+
 	const TArray<UParticleLODLevel*>& GetLODLevels() const { return LODLevels; }
 
 private:
@@ -86,6 +90,9 @@ public:
 		Emitters.Add(Emitter);
 		return Emitter;
 	}
+
+	bool RemoveEmitter(int32 Index);
+
 private:
 	UPROPERTY(EditAnywhere, Instanced)
 	TArray<UParticleEmitter*> Emitters;

@@ -281,6 +281,9 @@ bool UEditorEngine::Init()
 	ContentDrawerPanel->SetCreateAnimGraphCallback([this](const FString& Path, const FString& SkeletonKey) { AnimGraphEditorPanel->NewAsset(Path, SkeletonKey); });
 	ContentDrawerPanel->SetOpenAnimGraphCallback([this](const FString& Path) { AnimGraphEditorPanel->OpenAsset(Path); });
 	BlendSpaceEditorPanel = EditorUI->AddEditorPanel<FBlendSpaceEditorPanel>();
+	ParticleSystemEditorPanel = EditorUI->AddEditorPanel<FParticleSystemEditorPanel>();
+	ContentDrawerPanel->SetCreateParticleSystemCallback([this](const FString& Path) { ParticleSystemEditorPanel->NewAsset(Path); });
+	ContentDrawerPanel->SetOpenParticleSystemCallback([this](const FString& Path) { ParticleSystemEditorPanel->OpenAsset(Path); });
 	AnimMontageEditorPanel = EditorUI->AddEditorPanel<FAnimMontageEditorPanel>();
 	AimOffsetEditorPanel = EditorUI->AddEditorPanel<FAimOffsetEditorPanel>();
 	AnimGraphEditorPanel->SetOpenBlendSpaceCallback([this](const FString& Path) { BlendSpaceEditorPanel->OpenAsset(Path); });
@@ -602,7 +605,8 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 			const bool bAnimEditorFocused =
 				(AnimSequenceViewerPanel && AnimSequenceViewerPanel->HasFocusedWindow()) ||
 				(AnimGraphEditorPanel && AnimGraphEditorPanel->HasFocusedWindow()) ||
-				(BlendSpaceEditorPanel && BlendSpaceEditorPanel->HasFocusedWindow());
+				(BlendSpaceEditorPanel && BlendSpaceEditorPanel->HasFocusedWindow()) ||
+				(ParticleSystemEditorPanel && ParticleSystemEditorPanel->HasFocusedWindow());
 			if (bAnimEditorFocused)
 				EditorCommandUI::ProcessShortcuts({ &SaveAll });
 			else
@@ -1074,6 +1078,7 @@ void UEditorEngine::RenderViewports()
 	AnimSequenceViewerPanel->RenderPreview(this);
 	AnimGraphEditorPanel->RenderPreview(this);
 	BlendSpaceEditorPanel->RenderPreview(this);
+	ParticleSystemEditorPanel->RenderPreview(this);
 	AnimMontageEditorPanel->RenderPreview(this);
 	AimOffsetEditorPanel->RenderPreview(this);
 }
@@ -1837,6 +1842,7 @@ void UEditorEngine::PreExit()
 	if (AnimSequenceViewerPanel) AnimSequenceViewerPanel->Release();
 	if (AnimGraphEditorPanel) AnimGraphEditorPanel->Release();
 	if (BlendSpaceEditorPanel) BlendSpaceEditorPanel->Release();
+	if (ParticleSystemEditorPanel) ParticleSystemEditorPanel->Release();
 	if (AnimMontageEditorPanel) AnimMontageEditorPanel->Release();
 	if (AimOffsetEditorPanel) AimOffsetEditorPanel->Release();
 	if (ContentDrawerPanel) ContentDrawerPanel->Release();
@@ -2134,6 +2140,10 @@ void UEditorEngine::SaveAllAssets()
 	if (BlendSpaceEditorPanel)
 	{
 		BlendSpaceEditorPanel->SaveIfDirty();
+	}
+	if (ParticleSystemEditorPanel)
+	{
+		ParticleSystemEditorPanel->SaveIfDirty();
 	}
 }
 

@@ -1012,7 +1012,7 @@ namespace
 	}
 
 	// UClass에 등록된 프로퍼티를 타입에 맞는 위젯으로 그린다
-	void DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont)
+	bool DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont)
 	{
 		void* ValuePtr = reinterpret_cast<char*>(Object) + Property.Offset;
 		const FString Label = "##" + Property.Name;
@@ -1271,15 +1271,18 @@ namespace
 		{
 			Object->PostEditChangeProperty(Property);
 		}
+		return bChanged;
 	}
 
 	// 클래스 계층을 따라 올라가며 각 단계의 프로퍼티를 표시
-	void DrawProperties(UObject* Object, ImFont* CustomFont)
+	bool DrawProperties(UObject* Object, ImFont* CustomFont)
 	{
 		if (!Object)
 		{
-			return;
+			return false;
 		}
+
+		bool bAnyChanged = false;
 
 		TArray<UClass*> ClassChain;
 		for (UClass* Class = Object->GetClass(); Class; Class = Class->Super)
@@ -1322,7 +1325,7 @@ namespace
 					}
 					const bool bReadOnly = Property.HasAnyFlags(CPF_EditConst);
 					if (bReadOnly) ImGui::BeginDisabled();
-					DrawProperty(Object, Property, CustomFont);
+					bAnyChanged |= DrawProperty(Object, Property, CustomFont);
 					if (bReadOnly) ImGui::EndDisabled();
 				}
 				if (ScriptComponent)
@@ -1332,6 +1335,7 @@ namespace
 			}
 			ImGui::PopID();
 		}
+		return bAnyChanged;
 	}
 
 	void DrawActorHeader(AActor* Actor, UActorComponent*& OutSelectedComponent)
@@ -1379,14 +1383,14 @@ namespace
 // 보조 함수들이 이 파일의 익명 네임스페이스에 있어 구현은 옮기지 않고 넘겨 준다.
 namespace FPropertyEditor
 {
-	void DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont)
+	bool DrawProperty(UObject* Object, const FProperty& Property, ImFont* CustomFont)
 	{
-		::DrawProperty(Object, Property, CustomFont);
+		return ::DrawProperty(Object, Property, CustomFont);
 	}
 
-	void DrawObjectProperties(UObject* Object, ImFont* CustomFont)
+	bool DrawObjectProperties(UObject* Object, ImFont* CustomFont)
 	{
-		DrawProperties(Object, CustomFont);
+		return DrawProperties(Object, CustomFont);
 	}
 }
 

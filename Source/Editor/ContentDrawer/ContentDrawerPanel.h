@@ -42,6 +42,9 @@ public:
 	// Import 버튼. 인자는 지금 보고 있는 폴더이며 바이너리가 여기에 만들어진다.
 	void SetImportFbxFilesCallback(std::function<void(const FString&)> InCallback) { OnImportFbxFiles = std::move(InCallback); }
 
+	void SetCreateParticleSystemCallback(std::function<void(const FString&)> Callback) { OnCreateParticleSystem = std::move(Callback); }
+	void SetOpenParticleSystemCallback(std::function<void(const FString&)> Callback) { OnOpenParticleSystem = std::move(Callback); }
+
 private:
 	void OpenItem(const fs::path& Path);
 	void RefreshFbxFolderCache();
@@ -66,6 +69,9 @@ private:
 	std::function<void(const FString&, bool)> OnCreateBlendSpace;
 	std::function<void(const FString&)> OnOpenBlendSpace;
 	std::function<void(const FString&)> OnOpenSkeletalMesh;
+	std::function<void(const FString&)> OnCreateParticleSystem;
+	std::function<void(const FString&)> OnOpenParticleSystem;
+
 	char NewAssetName[64] = "NewWidget";
 	char SearchText[256] = "";
 	bool bOpenCreateWidget = false;
@@ -76,6 +82,7 @@ private:
 	bool bNewBlendSpace2D = true;
 	bool bOpenCreateAnimationAsset = false;
 	bool bNewAnimationAssetMontage = true;
+	bool bOpenCreateParticleSystem = false;
 
 	fs::path AssetRootPath = "Assets";
 	fs::path CurrentPath = "Assets";

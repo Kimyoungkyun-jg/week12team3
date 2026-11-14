@@ -24,6 +24,7 @@ public:
 	UParticleSystemComponent();
 
 	void SetTemplate(UParticleSystem* InTemplate);
+	void ResetSystem();
 
 	virtual void PostEditChangeProperty(const FProperty& Property) override;
 	virtual void TickComponent(float DeltaTime) override;

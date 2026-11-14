@@ -36,6 +36,7 @@
 #include "Editor/Animation/AnimGraphEditorPanel.h"
 #include "Editor/Animation/BlendSpaceEditorPanel.h"
 #include "Editor/Animation/AnimationAssetEditorPanels.h"
+#include "Editor/Particles/ParticleSystemEditorPanel.h"
 
 #include "Editor/Rendering/Outline.h"
 #include "Editor/Rendering/OutLineRenderer.h"
@@ -218,6 +219,7 @@ private:
 	FBlendSpaceEditorPanel* BlendSpaceEditorPanel = nullptr;
 	FAnimMontageEditorPanel* AnimMontageEditorPanel = nullptr;
 	FAimOffsetEditorPanel* AimOffsetEditorPanel = nullptr;
+	FParticleSystemEditorPanel* ParticleSystemEditorPanel = nullptr;
 
 	UWorld* EditorWorld = nullptr;
 	UWorld* PlayWorld = nullptr;
