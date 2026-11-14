@@ -61,6 +61,22 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 			InitParticle(Particle);
 		}
 
+
+		if (Particle.RelativeTime < FadeInEnd)
+		{
+			float Fade = Particle.RelativeTime / FadeInEnd;
+			Particle.Color.A = ParticleColor.A * FMath::Lerp(0.0, 1.0, Fade);
+		}
+		else if (Particle.RelativeTime > FadeOutStart)
+		{
+			float Fade = (Particle.RelativeTime - FadeOutStart) / (1 - FadeOutStart);
+			Particle.Color.A = ParticleColor.A * FMath::Clamp(1 - FMath::Lerp(0.0, 1.0, Fade), 0.0, 1.0);
+		}
+		else
+		{
+			Particle.Color.A = ParticleColor.A * 1.0f;
+		}
+
 		Particle.Location += Particle.Velocity * DeltaTime;
 	}
 }
@@ -74,11 +90,11 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 void UParticleSystemComponent::InitParticle(FBaseParticle& Particle)
 {
 	FVector WorldLocation = GetWorldLocation();
-	Particle.Location = { WorldLocation.X + RandomRange(-0.3f, 0.3f), WorldLocation.Y + RandomRange(-0.3f, 0.3f), WorldLocation.Z };
-	Particle.Velocity = { RandomRange(-0.3f, 0.3f), RandomRange(-0.3f, 0.3f), RandomRange(1.0f, 2.0f) };
-	Particle.Lifetime = RandomRange(2.0f, 4.0f);
-	Particle.Size = RandomRange(0.5f, 1.5f);
-	Particle.Color = { 1.0f, 0.0f, 0.0f, 1.0f };
+	Particle.Location = { WorldLocation.X + RandomRange(-SpreadRadius, SpreadRadius), WorldLocation.Y + RandomRange(-SpreadRadius, SpreadRadius), WorldLocation.Z };
+	Particle.Velocity = { RandomRange(-SpreadRadius, SpreadRadius), RandomRange(-SpreadRadius, SpreadRadius), RandomRange(MinRiseSpeed, MaxRiseSpeed) };
+	Particle.Lifetime = RandomRange(MinLifetime, MaxLifetime);
+	Particle.Size = RandomRange(MinSize, MaxSize);
+	Particle.Color = ParticleColor;
 	Particle.RelativeTime = 0.0f;
 }
 
