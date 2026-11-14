@@ -22,8 +22,6 @@ public:
 
 	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext) override;
 	
-	void SubmitParticleToRenderQueue(FRenderQueue& RenderQueue, int32 ParticleIndex, const FMatrix& WorldMatrix, float CameraDistanceSquared);
-
 public:
 	UPROPERTY(EditAnywhere)
 	int32 ParticleCount = 20;
@@ -52,7 +50,10 @@ public:
 	float SpreadRadius = 0.3f;
 
 	UPROPERTY(EditAnywhere)
-	FLinearColor ParticleColor{ 1.0f, 0.0f, 0.0f, 1.0f };
+	FLinearColor StartColor{ 1.0f, 0.9f, 0.3f, 1.0f };
+
+	UPROPERTY(EditAnywhere)
+	FLinearColor EndColor{ 1.0f, 0.1f, 0.0f, 1.0f };
 
 	UPROPERTY(EditAnywhere)
 	float FadeInEnd = 0.1f;

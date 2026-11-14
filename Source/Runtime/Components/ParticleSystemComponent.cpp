@@ -1,15 +1,10 @@
 #include "EnginePCH.h"
 #include "Components/ParticleSystemComponent.h"
 #include "Asset/AssetManager.h"
-#include "Render/RenderCommand.h"
 #include "Render/RenderPacket.h"
-
-#include "Camera/CameraActor.h"
-#include "Camera/CameraComponent.h"
 
 #include "BillboardComponent.h"
 
-#include "Engine/World.h"
 #include <random>
 
 namespace
@@ -61,20 +56,24 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 			InitParticle(Particle);
 		}
 
-		
+		Particle.Color.R = FMath::Lerp(StartColor.R, EndColor.R, Particle.RelativeTime);
+		Particle.Color.G = FMath::Lerp(StartColor.G, EndColor.G, Particle.RelativeTime);
+		Particle.Color.B = FMath::Lerp(StartColor.B, EndColor.B, Particle.RelativeTime);
+		float BaseAlpha = FMath::Lerp(StartColor.A, EndColor.A, Particle.RelativeTime);
+
 		if (Particle.RelativeTime < FadeInEnd)
 		{
 			float Fade = Particle.RelativeTime / FadeInEnd;
-			Particle.Color.A = ParticleColor.A * FMath::Lerp(0.0, 1.0, Fade);
+			Particle.Color.A = BaseAlpha * FMath::Lerp(0.0, 1.0, Fade);
 		}
 		else if (Particle.RelativeTime > FadeOutStart)
 		{
 			float Fade = (Particle.RelativeTime - FadeOutStart) / (1 - FadeOutStart);
-			Particle.Color.A = ParticleColor.A * FMath::Clamp(1 - FMath::Lerp(0.0, 1.0, Fade), 0.0, 1.0);
+			Particle.Color.A = BaseAlpha * FMath::Clamp(1 - FMath::Lerp(0.0, 1.0, Fade), 0.0, 1.0);
 		}
 		else
 		{
-			Particle.Color.A = ParticleColor.A * 1.0f;
+			Particle.Color.A = BaseAlpha * 1.0f;
 		}
 
 		Particle.Size = Particle.BaseSize * FMath::Lerp(StartScale, EndScale, Particle.RelativeTime);
@@ -97,7 +96,7 @@ void UParticleSystemComponent::InitParticle(FBaseParticle& Particle)
 	Particle.Lifetime = RandomRange(MinLifetime, MaxLifetime);
 	Particle.BaseSize = RandomRange(MinSize, MaxSize);
 	Particle.Size = Particle.BaseSize;
-	Particle.Color = ParticleColor;
+	Particle.Color = StartColor;
 	Particle.RelativeTime = 0.0f;
 }
 
@@ -128,8 +127,8 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 		Constant.AtlasColSize = (float)AtlasCols;
 		Constant.AtlasRowSize = (float)AtlasRows;
 		Constant.Alpha = Particles[i].Color.A;
-		Constant.DecodeSRGB = 0.0f;
 		Constant.Tint = FVector4(Particles[i].Color.R, Particles[i].Color.G, Particles[i].Color.B, 1.0f);
+		Constant.DecodeSRGB = 0.0f;
 		Constants.Add(Constant);
 
 		// RenderQueue 에 보낼 데이터 넣기 
@@ -143,12 +142,4 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 
 		RenderQueue.Add(Packet);
 	}
-}
-
-void UParticleSystemComponent::SubmitParticleToRenderQueue(
-	FRenderQueue& RenderQueue,
-	const int32 ParticleIndex,
-	const FMatrix& WorldMatrix,
-	const float CameraDistanceSquared)
-{
 }
