@@ -25,6 +25,7 @@ public:
 
 	void SetTemplate(UParticleSystem* InTemplate);
 
+	virtual void PostEditChangeProperty(const FProperty& Property) override;
 	virtual void TickComponent(float DeltaTime) override;
 	virtual FBox CalcLocalBounds() const override;
 	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext) override;

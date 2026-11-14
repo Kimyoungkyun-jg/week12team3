@@ -36,9 +36,6 @@ class UParticleModuleRequired : public UParticleModule
 public:
 	UPROPERTY(EditAnywhere)
 	UMaterialInterface* Material = nullptr;
-
-	UPROPERTY(EditAnywhere)
-	bool bUseLocalSpace = false;
 };
 
 UCLASS()

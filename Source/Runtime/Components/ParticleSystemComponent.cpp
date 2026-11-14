@@ -26,6 +26,19 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 	OnTransformDirty();
 }
 
+void UParticleSystemComponent::PostEditChangeProperty(const FProperty& Property)
+{
+	Super::PostEditChangeProperty(Property);
+
+	if (Property.Name == "Template")
+	{
+		EmitterRuntimeData.Reset();
+		Material = nullptr;
+		bEmitterInitialized = false;
+		OnTransformDirty();
+	}
+}
+
 void UParticleSystemComponent::TickComponent(float DeltaTime)
 {
 	Super::TickComponent(DeltaTime);
@@ -74,17 +87,23 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 		{
 			continue;
 		}
-
 		const bool bMeshEmitter = Runtime->MeshTypeDataModule != nullptr;
-		float ParticleRadius = 0.5f;
+		float MeshRadius = 0.5f;
 
 		if (bMeshEmitter && Runtime->MeshTypeDataModule->Mesh)
 		{
 			const FBox& MeshBounds = Runtime->MeshTypeDataModule->Mesh->GetRenderBounds();
 			const FVector Scale = Runtime->MeshTypeDataModule->MeshScale;
-			const FVector ScaledMin = MeshBounds.Min * Scale;
-			const FVector ScaledMax = MeshBounds.Max * Scale;
-			ParticleRadius = std::max(ScaledMin.Size(), ScaledMax.Size());
+			MeshRadius = 0.0f;
+			for (int32 CornerIndex = 0; CornerIndex < 8; ++CornerIndex)
+			{
+				FVector Corner(
+					(CornerIndex & 1) ? MeshBounds.Max.X : MeshBounds.Min.X,
+					(CornerIndex & 2) ? MeshBounds.Max.Y : MeshBounds.Min.Y,
+					(CornerIndex & 4) ? MeshBounds.Max.Z : MeshBounds.Min.Z);
+				Corner *= Scale;
+				MeshRadius = std::max(MeshRadius, Corner.Size());
+			}
 		}
 
 		for (int32 Index = 0; Index < Runtime->Instance.GetActiveParticleCount(); ++Index)
@@ -94,16 +113,17 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 			{
 				continue;
 			}
-
+			float ParticleRadius = MeshRadius;
 			if (!bMeshEmitter)
 			{
-				ParticleRadius = std::max(std::abs(Particle->Size.X), std::abs(Particle->Size.Y)) * 0.5f;
+				const float HalfWidth = std::abs(Particle->Size.X) * 0.5f;
+				const float HalfHeight = std::abs(Particle->Size.Y) * 0.5f;
+				ParticleRadius = FVector(HalfWidth, HalfHeight, 0.0f).Size();
 			}
 
 			Extent = std::max(Extent, Particle->Location.Size() + ParticleRadius);
 		}
 	}
-
 	return FBox{ FVector(-Extent, -Extent, -Extent), FVector(Extent, Extent, Extent) };
 }
 
@@ -258,28 +278,6 @@ void UParticleSystemComponent::InitializeParticleSystem()
 	}
 
 	Template->CreateDefaultSetup();
-
-	if (Template->GetEmitters().Num() == 1)
-	{
-		UParticleEmitter* MeshEmitter = Template->CreateEmitter(FName("Emitter_Mesh"));
-
-		if (MeshEmitter)
-		{
-			UParticleModuleTypeDataMesh* MeshTypeData = MeshEmitter->CreateMeshTypeData();
-			MeshTypeData->Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Cube");
-			MeshTypeData->MeshScale = FVector(10.0f, 10.0f, 10.0f);
-			MeshEmitter->GetLODLevel(0)->GetSpawnModule()->SpawnRate = 2.0f;
-
-			for (UParticleModule* Module : MeshEmitter->GetLODLevel(0)->GetModules())
-			{
-				if (UParticleModuleLocation* LocationModule = Cast<UParticleModuleLocation>(Module))
-				{
-					LocationModule->MinOffset = FVector(100.0f, 0.0f, 0.0f);
-					LocationModule->MaxOffset = FVector(100.0f, 0.0f, 0.0f);
-				}
-			}
-		}
-	}
 
 	EmitterRuntimeData.Reset();
 	Material = nullptr;
