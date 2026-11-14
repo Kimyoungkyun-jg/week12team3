@@ -18,9 +18,15 @@ public:
 	virtual void TickComponent(float DeltaTime) override;
 	virtual FBox CalcLocalBounds() const override;
 
+	void InitParticle(FBaseParticle& Particle);
+
 	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext) override;
 	
 	void SubmitParticleToRenderQueue(FRenderQueue& RenderQueue, int32 ParticleIndex, const FMatrix& WorldMatrix, float CameraDistanceSquared);
+
+public:
+	UPROPERTY(EditAnywhere)
+	int32 ParticleCount = 20;
 
 private:
 	TArray<FSubUVConstants> Constants;

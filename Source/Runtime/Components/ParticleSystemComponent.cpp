@@ -10,7 +10,19 @@
 #include "BillboardComponent.h"
 
 #include "Engine/World.h"
+#include <random>
 
+namespace
+{
+	static std::mt19937 Generator{
+		std::random_device{}()
+	};
+	static std::uniform_real_distribution<float> Distribution(0.0f, 1.0f);
+
+	float RandomRange(float Min, float Max) {
+		return Min + Distribution(Generator) * (Max - Min);
+	}
+}
 
 UParticleSystemComponent::UParticleSystemComponent()
 {
@@ -28,11 +40,12 @@ void UParticleSystemComponent::BeginPlay()
 	Super::BeginPlay();
 	Particles.Reset();
 
-	FBaseParticle Particle{};
-	Particle.Size = 10.0f;
-	Particle.Color = { 1.0f, 0.0f, 0.0f, 1.0f };
-	Particle.Location = GetWorldLocation();
-	Particles.Add(Particle);
+	for (int32 i = 0; i < ParticleCount; i++)
+	{
+		FBaseParticle Particle{};
+		InitParticle(Particle);
+		Particles.Add(Particle);
+	}
 }
 
 void UParticleSystemComponent::TickComponent(float DeltaTime)
@@ -46,6 +59,16 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 	return FBox{ FVector(-Extent, -Extent, -Extent), FVector(Extent, Extent, Extent) };
 }
 
+void UParticleSystemComponent::InitParticle(FBaseParticle& Particle)
+{
+	FVector WorldLocation = GetWorldLocation();
+	Particle.Location = { WorldLocation.X + RandomRange(-0.3f, 0.3f), WorldLocation.Y + RandomRange(-0.3f, 0.3f), WorldLocation.Z };
+	Particle.Velocity = { RandomRange(-0.3f, 0.3f), RandomRange(-0.3f, 0.3f), RandomRange(1.0f, 2.0f) };
+	Particle.Lifetime = RandomRange(2.0f, 4.0f);
+	Particle.Size = RandomRange(0.5f, 1.5f);
+	Particle.Color = { 1.0f, 0.0f, 0.0f, 1.0f };
+	Particle.RelativeTime = 0.0f;
+}
 
 void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext)
 {
@@ -72,6 +95,7 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 		Constant.AtlasRowSize = 1.0f;
 		Constant.Alpha = Particles[i].Color.A;
 		Constant.DecodeSRGB = 0.0f;
+		Constant.Tint = FVector4(Particles[i].Color.R, Particles[i].Color.G, Particles[i].Color.B, 1.0f);
 		Constants.Add(Constant);
 
 		// RenderQueue 에 보낼 데이터 넣기 
