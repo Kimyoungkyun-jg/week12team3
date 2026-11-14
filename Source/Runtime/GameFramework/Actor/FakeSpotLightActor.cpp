@@ -75,12 +75,12 @@ AFakeSpotLightActor::AFakeSpotLightActor()
 
 		if (!BillboardMaterialInstance)
 		{
-			HTR_LOG(Warning, "Failed to create instance of icon billboard material for FakeSpotLightActor.");
+			HTR_LOG(Warning, "Failed to create instance of fake light billboard material for FakeSpotLightActor.");
 			return;
 		}
 
 		BillboardMaterialInstance->SetTexture0Override(BillboardTexture);
-		IconBillboardComponent->SetMaterial(0, BillboardMaterialInstance);
+		FakeLightBillboardComponent->SetMaterial(0, BillboardMaterialInstance);
 	}
 
 	// 아이콘
@@ -106,13 +106,13 @@ AFakeSpotLightActor::AFakeSpotLightActor()
 			return;
 		}
 		UMaterialInstanceDynamic* BillboardMaterialInstance = UMaterial::CreateDynamicInstance(BillboardMaterial);
-		if (!BillboardMaterial)
+
+		if (!BillboardMaterialInstance)
 		{
-			HTR_LOG(
-				Warning,
-				"Failed to create instance of icon billboard material for FakeSpotLightActor."
-			);
+			HTR_LOG(Warning, "Failed to create instance of icon billboard material for FakeSpotLightActor.");
+			return;
 		}
+
 		BillboardMaterialInstance->SetTexture0Override(BillboardTexture);
 		IconBillboardComponent->SetMaterial(0, BillboardMaterialInstance);
 	}

@@ -355,23 +355,21 @@ namespace
 		}
 
 		// 바로 위 위젯이 드롭을 받는다
-		if (ImGui::BeginDragDropTarget())
+		if (Material && ImGui::BeginDragDropTarget())
 		{
 			if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::Texture))
 			{
 				UTexture2D* DroppedTexture = *static_cast<UTexture2D**>(Payload->Data);
 
-				if (Material)
+				while (static_cast<int32>(Material->Textures.Num()) <= SlotIndex)
 				{
-					while (static_cast<int32>(Material->Textures.Num()) <= SlotIndex)
-					{
-						Material->Textures.Add(nullptr);
-					}
-
-					Material->Textures[SlotIndex] = DroppedTexture;
-					Texture = DroppedTexture;
+					Material->Textures.Add(nullptr);
 				}
+
+				Material->Textures[SlotIndex] = DroppedTexture;
+				Texture = DroppedTexture;
 			}
+
 			ImGui::EndDragDropTarget();
 		}
 
@@ -970,25 +968,14 @@ namespace
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-1.0f);
 
-					const char* SamplerItems[] = { "Linear Clamp", "Linear Wrap" };
-					Override->SamplerState = static_cast<ESamplerState>(i);
-					EditorUIScale::LimitNextComboPopupWidth();
-					if (ImGui::BeginCombo("##SamplerState", SamplerItems[SamplerIndex]))
-					{
-						for (int i = 0; i < IM_ARRAYSIZE(SamplerItems); ++i)
-						{
-							if (ImGui::Selectable(SamplerItems[i], SamplerIndex == i))
-							{
-								Override = EnsureMaterialOverride(MeshComponent, Slot, Effective, Override);
-								if (Override)
-								{
-									Override->SamplerState = static_cast<ESamplerState>(i);
-									Effective = Override;
-								}
-							}
-						}
-						ImGui::EndCombo();
-					}
+					// 5: Sampler State
+					FMaterialRenderProxy StateProxy = ReadProxy();
+
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0);
+					ImGui::Text("Sampler");
+					ImGui::TableSetColumnIndex(1);
+					ImGui::TextDisabled(StateProxy.SamplerState == ESamplerState::LinearWrap ? "Linear Wrap (Parent)" : "Linear Clamp (Parent)");
 
 					ImGui::TableNextRow();
 
@@ -999,26 +986,12 @@ namespace
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-1.0f);
 
-					const char* BlendItems[] = { "Opaque", "Alpha Blend" };
-					Override->SetBlendState(static_cast<EBlendState>(i));
-					EditorUIScale::LimitNextComboPopupWidth();
-					if (ImGui::BeginCombo("##BlendState", BlendItems[BlendIndex]))
-					{
-						for (int i = 0; i < IM_ARRAYSIZE(BlendItems); ++i)
-						{
-							if (ImGui::Selectable(BlendItems[i], BlendIndex == i))
-							{
-								Override = EnsureMaterialOverride(MeshComponent, Slot, Effective, Override);
-								if (Override)
-								{
-									Override->SetBlendState(static_cast<EBlendState>(i));
-									Effective = Override;
-								}
-							}
-						}
-						ImGui::EndCombo();
-					}
-
+					// 6: Blend State
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0);
+					ImGui::Text("Blend Mode");
+					ImGui::TableSetColumnIndex(1);
+					ImGui::TextDisabled(StateProxy.BlendState == EBlendState::Opaque ? "Opaque (Parent)" : "Non-Opaque (Parent)");
 					// TEAM5 material controls share the same instance-on-edit policy.
 					auto Row = [](const char* Label)
 					{
@@ -1095,7 +1068,6 @@ namespace
 					DrawParameterOverrideReset(Override, FName("WorldUVTileSize"));
 					if (ImGui::IsItemHovered()) ImGui::SetTooltip("X=0 disables world tiling. Y=0 uses X for both axes. Use Linear Wrap to repeat.");
 					Row("Local Tile Axes");
-					Row("Local Tile Axes");
 					FMaterialRenderProxy LocalProxy = ReadProxy();
 					bool Local = LocalProxy.bWorldUVLocalSpace;
 
@@ -1109,15 +1081,10 @@ namespace
 
 					DrawParameterOverrideReset(Override, FName("WorldUVLocalSpace"));
 					Row("Override Shading");
-					bool OverrideShading = Effective && Effective->bOverrideShadingModel;
-					if (ImGui::Checkbox("##OverrideShading", &OverrideShading)) if (UMaterial* M = Commit()) M->bOverrideShadingModel = OverrideShading;
+					ImGui::TextDisabled("Inherited from Parent Material");
+
 					Row("Shading Model");
-					int Model = static_cast<int>(Effective ? Effective->ShadingModel : ELightingModel::Phong);
-					const char* Models[] = { "Gouraud", "Lambert", "Blinn-Phong", "Unlit" };
-					ImGui::BeginDisabled(!OverrideShading);
-					if (ImGui::Combo("##MaterialShadingModel", &Model, Models, IM_ARRAYSIZE(Models)))
-						if (UMaterial* M = Commit()) M->ShadingModel = static_cast<ELightingModel>(Model);
-					ImGui::EndDisabled();
+					ImGui::TextDisabled("Inherited from Parent Material");
 					ImGui::EndTable();
 				}
 				ImGui::TreePop();
