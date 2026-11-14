@@ -156,7 +156,20 @@ void FAssetEditorPanel::OpenAsset(const FString& InPath)
 		Loaded = FFbxAssetLoader::LoadAsset(InPath, Error);
 	}
 	if (!Loaded) { HTR_LOG(Warning, "Cannot preview asset {}: {}", InPath, Error); return; }
-	Release(); Path = InPath; Asset = Loaded; Status.clear(); SetOpen(true);
+	if (bDirty && Asset && Path != InPath)
+	{
+		SaveMaterial();
+		if (bDirty)
+		{
+			return;
+		}
+	}
+	Release();
+	Path = InPath;
+	Asset = Loaded;
+	Status.clear();
+	bDirty = false;
+	SetOpen(true);
 	UStaticMesh* Mesh = Cast<UStaticMesh>(Asset);
 	UMaterial* Material = Cast<UMaterial>(Asset);
 

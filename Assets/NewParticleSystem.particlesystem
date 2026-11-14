@@ -99,7 +99,7 @@
                                                 "Class": "UParticleModuleRequired",
                                                 "Value": {
                                                     "Properties": {
-                                                        "Material": null
+                                                        "Material": "NewMaterialasd.material"
                                                     }
                                                 }
                                             },

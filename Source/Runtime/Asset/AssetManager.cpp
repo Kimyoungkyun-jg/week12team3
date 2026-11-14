@@ -233,16 +233,6 @@ void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgre
 			OnProgress(i + 1, Total, Key);
 		}
 	}
-	for (const fs::path& File : Files)
-	{
-		const FString Path = FbxPath::ToString(File);
-		if (GetAssetExtension(Path) != ".particlesystem")
-		{
-			continue;
-		}
-		const FString Key = FbxPath::ToString(fs::relative(File, AssetRoot));
-		LoadAsset(Key, Path);
-	}
 
 	// 스캔 순서는 정해져 있지 않으므로 모든 바이너리를 본 뒤에 비교한다.
 	FbxImportCandidates.Reset();
@@ -573,6 +563,10 @@ UMaterial* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
 		}
 
 		Material->InitializeRenderResources(*Template);
+		if (Material->PSOType == EPSOType::StaticMesh_Opaque || Material->PSOType == EPSOType::StaticMesh_Translucent)
+		{
+			Material->SetBlendState(Material->BlendState);
+		}
 	}
 
 	Get().RegisterAsset(Key, Material);
