@@ -7,7 +7,7 @@
 #include "Render/Vertex.h"
 #include "Render/Texture2D.h"
 #include "Render/RenderCommand.h"
-
+#include "Render/MaterialInstance.h"
 #include "Render/RenderResourceManager.h"
 
 #include "Asset/ObjImporter/ObjImporter.h"
@@ -465,9 +465,9 @@ void UAssetManager::CreateBoneWeightHeatmapMaterial()
 	RegisterAsset("BoneWeightHeatmapMaterial", HeatmapMaterial);
 }
 
-UMaterial* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
+UMaterialInterface* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
 {
-	if (UMaterial* Cached = GetAssetByPath<UMaterial>(AssetPath))
+	if (UMaterialInterface* Cached = GetAssetByPath<UMaterialInterface>(AssetPath))
 	{
 		return Cached;
 	}
@@ -527,15 +527,15 @@ UMaterial* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
 		return nullptr;
 	}
 
-	if (!Cast<UMaterialInstance>(Material))
+	if (UMaterial* BaseMaterial = Cast<UMaterial>(Material))
 	{
 		UMaterial* Template = nullptr;
 
-		if (Material->PSOType == EPSOType::Particle_Sprite)
+		if (BaseMaterial->PSOType == EPSOType::Particle_Sprite)
 		{
 			Template = GetAssetByPath<UMaterial>("ParticleSpriteMaterial");
 		}
-		else if (Material->PSOType == EPSOType::Particle_AlphaBlend || Material->PSOType == EPSOType::Particle_Additive)
+		else if (BaseMaterial->PSOType == EPSOType::Particle_AlphaBlend || BaseMaterial->PSOType == EPSOType::Particle_Additive)
 		{
 			Template = GetAssetByPath<UMaterial>("SubUVMaterial");
 		}
@@ -546,15 +546,16 @@ UMaterial* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
 
 		if (!Template)
 		{
-			delete Material;
+			delete BaseMaterial;
 			LoadingMaterials.erase(Key);
 			return nullptr;
 		}
 
-		Material->InitializeRenderResources(*Template);
-		if (Material->PSOType == EPSOType::StaticMesh_Opaque || Material->PSOType == EPSOType::StaticMesh_Translucent)
+		BaseMaterial->InitializeRenderResources(*Template);
+
+		if (BaseMaterial->PSOType == EPSOType::StaticMesh_Opaque || BaseMaterial->PSOType == EPSOType::StaticMesh_Translucent)
 		{
-			Material->SetBlendState(Material->BlendState);
+			BaseMaterial->SetBlendState(BaseMaterial->BlendState);
 		}
 	}
 
@@ -563,7 +564,7 @@ UMaterial* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
 	return Material;
 }
 
-bool UAssetManager::SaveMaterialAsset(const FString& AssetPath, UMaterial& Material)
+bool UAssetManager::SaveMaterialAsset(const FString& AssetPath, UMaterialInterface& Material)
 {
 	const FString Key = AssetPath.rfind("Assets/", 0) == 0 ? AssetPath.substr(7) : AssetPath;
 
@@ -574,7 +575,7 @@ bool UAssetManager::SaveMaterialAsset(const FString& AssetPath, UMaterial& Mater
 
 	if (UMaterialInstance* Instance = Cast<UMaterialInstance>(&Material))
 	{
-		if (!Instance->Parent || Instance->Parent->GetPath().empty())
+		if (Instance->IsDynamicInstance() || !Instance->GetParent() || Instance->GetParent()->GetPath().empty())
 		{
 			return false;
 		}

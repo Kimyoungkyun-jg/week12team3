@@ -77,11 +77,8 @@ public:
 
 	static UMaterialInstanceDynamic* CreateDynamicInstance(UMaterialInterface* Parent);
 
-	// 경로가 있는(=에셋으로 등록된) 가장 가까운 원본. 자신이 에셋이면 자신
-	const UMaterial* GetBaseAsset() const;
-
-	static json SaveMaterial(const UMaterial* Material);
-	static UMaterial* LoadMaterial(const json& In);
+	static json SaveMaterial(const UMaterialInterface* Material);
+	static UMaterialInterface* LoadMaterial(const json& In);
 
 	const uint16 SortID;
 
@@ -92,7 +89,7 @@ public:
 	// 머티리얼 참조 하나를 Slot에 읽고 쓴다.
 	// 에셋이면 경로만, 인스턴스면 기준 에셋 + 값을 그 자리에 쓰고, 불러올 때 인스턴스를 새로 만든다.
 	// null이면 빈 Record({})로 기록되고, 불러오면 nullptr이 된다.
-	static void SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterial*& Material);
+	static void SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterialInterface*& Material);
 
 	void CopySettingsFrom(const UMaterial& Source);
 	void InitializeRenderResources(const UMaterial& Template);

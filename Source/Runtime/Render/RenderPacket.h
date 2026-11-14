@@ -88,7 +88,7 @@ struct FStaticDrawItem
 
 struct FStaticDrawGroup
 {
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	UStaticMesh* Mesh = nullptr;
 	uint8 LODIndex = 0;
 	std::vector<FStaticDrawItem> Items;

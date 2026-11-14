@@ -37,8 +37,14 @@ public:
 	bool LineTraceComponentForView(const FRay& WorldRay, FHitResult& OutHit, const FMatrix& BillboardWorldMatrix);
 
 	virtual int32 GetNumMaterials() const override { return 1; }
-	virtual UMaterial* GetMaterial(int32 SlotIndex) const override { return SlotIndex == 0 ? Material : nullptr; }
-	virtual void SetMaterial(int32 SlotIndex, UMaterial* InMaterial) override { if (SlotIndex == 0) Material = InMaterial; }
+	virtual UMaterialInterface* GetMaterial(int32 SlotIndex) const override { return SlotIndex == 0 ? Material : nullptr; }
+	virtual void SetMaterial(int32 SlotIndex, UMaterialInterface* InMaterial) override
+	{
+		if (SlotIndex == 0)
+		{
+			Material = InMaterial;
+		}
+	}
 
 	void SetTintSource(const ULightComponentBase* InSource) { TintSource = InSource; }
 
@@ -63,7 +69,7 @@ public:
 	void SetIconSize(float S) { IconSize = S; }
 
 protected:
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	UStaticMesh* QuadMesh = nullptr;
 	FSubUVConstants IconParams{ 0.0f, 1.0f, 1.0f, 1.0f };	// CurrentFrame, RowSize, ColSize, Alpha
 private:

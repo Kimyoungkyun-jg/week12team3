@@ -44,13 +44,13 @@ public:
     const FReferenceSkeleton& GetRefSkeleton() const { return RefSkeleton; }
 
     // Renderer가 바인드할 런타임 머티리얼 목록
-    TArray<UMaterial*> Materials;
+	TArray<UMaterialInterface*> Materials;
 
     TUniquePtr<FVertexBuffer> VertexBuffer;
     TUniquePtr<FIndexBuffer> IndexBuffer;
 
     const FSkeletalMeshData& GetMeshData() const { return MeshData; }
-    UMaterial* GetMaterial(uint32 SlotIndex) const;
+	UMaterialInterface* GetMaterial(uint32 SlotIndex) const;
 
     void RebuildRenderData();
     const FLODSphere& GetLocalLODSphere() const { return LocalLODSphere; }

@@ -26,7 +26,7 @@ USkeletalMesh::~USkeletalMesh()
     IndexBuffer = nullptr;
 }
 
-UMaterial* USkeletalMesh::GetMaterial(uint32 SlotIndex) const
+UMaterialInterface* USkeletalMesh::GetMaterial(uint32 SlotIndex) const
 {
     if (SlotIndex < Materials.size() && Materials[SlotIndex])
     {

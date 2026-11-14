@@ -92,7 +92,7 @@ void FStaticMeshSceneProxy::UpdateRenderState()
     }
     if (!Mesh || !StaticMeshComponent) return;
 
-    std::vector<UMaterial*> Materials;
+    std::vector<UMaterialInterface*> Materials;
     Materials.reserve(Mesh->MeshData.MaterialSlots.Num());
     for (uint32 Slot = 0; Slot < static_cast<uint32>(Mesh->MeshData.MaterialSlots.Num()); ++Slot)
         Materials.push_back(StaticMeshComponent->GetMaterial(Slot));

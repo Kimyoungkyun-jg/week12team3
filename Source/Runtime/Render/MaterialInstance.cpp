@@ -4,6 +4,8 @@
 #include "MaterialRenderProxy.h"
 #include "Asset/AssetManager.h"
 #include "Serialization/TypeSerializer.h"
+#include "Serialization/StructuredArchive.h"
+#include "Serialization/StructuredArchiveSlots.h"
 
 UMaterialInstance::UMaterialInstance()
 	: SortID(NextSortID++)

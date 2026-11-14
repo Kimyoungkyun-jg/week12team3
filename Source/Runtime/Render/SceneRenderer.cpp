@@ -1307,7 +1307,7 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 			{
 				FGatherChunk& Out = GatherChunks[ChunkIndex];      // 이 조각 전용. 다른 스레드는 절대 안 건드림
 				// (머티리얼, 메시, LOD) 묶음 찾기. 조합이 몇 개뿐이라 선형 탐색이면 충분하고, 바로 전 묶음을 먼저 본다.
-				const auto FindGroup = [&Out](UMaterial* Material, UStaticMesh* Mesh, uint8 LOD) -> FStaticDrawGroup&
+				const auto FindGroup = [&Out](UMaterialInterface* Material, UStaticMesh* Mesh, uint8 LOD) -> FStaticDrawGroup&
 					{
 						if (Out.LastGroup < Out.Groups.size())
 						{

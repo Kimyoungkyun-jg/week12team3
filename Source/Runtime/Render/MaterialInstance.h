@@ -27,6 +27,11 @@ public:
 	void SetBaseColorOverride(const FVector4& Value);
 	void SetTexture0Override(UTexture2D* Texture);
 
+	bool HasBaseColorOverride() const { return bOverrideBaseColor; }
+	const FVector4& GetBaseColorOverride() const { return BaseColorOverride; }
+	bool HasTexture0Override() const { return bOverrideTexture0; }
+	UTexture2D* GetTexture0Override() const { return Texture0Override; }
+
 	virtual bool IsDynamicInstance() const = 0;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 

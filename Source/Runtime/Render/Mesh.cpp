@@ -23,11 +23,11 @@ UMaterialInterface* UStaticMesh::GetMaterial(uint32 SlotIndex) const
 	return UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
 }
 
-size_t UStaticMesh::FMaterialSlotsHash::operator()(const std::vector<UMaterial*>& Slots) const
+size_t UStaticMesh::FMaterialSlotsHash::operator()(const std::vector<UMaterialInterface*>& Slots) const
 {
     size_t Hash = 0;
-    for (const UMaterial* Material : Slots)
-        Hash ^= std::hash<const UMaterial*>{}(Material) + 0x9e3779b9u + (Hash << 6) + (Hash >> 2);
+	for (const UMaterialInterface* Material : Slots)
+        Hash ^= std::hash<const UMaterialInterface*>{}(Material) + 0x9e3779b9u + (Hash << 6) + (Hash >> 2);
     return Hash;
 }
 
@@ -62,7 +62,7 @@ void UStaticMesh::RebuildRenderData()
         Proxy->OnMeshRenderDataChanged();
 }
 
-TSharedPtr<const FMeshRenderState> UStaticMesh::GetRenderState(const std::vector<UMaterial*>& Materials)
+TSharedPtr<const FMeshRenderState> UStaticMesh::GetRenderState(const std::vector<UMaterialInterface*>& Materials)
 {
     auto& WeakState = RenderStates[Materials];
     if (auto State = WeakState.lock()) return State;
@@ -76,7 +76,7 @@ TSharedPtr<const FMeshRenderState> UStaticMesh::GetRenderState(const std::vector
         Range.FirstSection = State->Sections.Num();
         for (const FStaticMeshSection& Section : GetMeshData(LOD).Sections)
         {
-            UMaterial* Material = Section.MaterialSlotIndex < Materials.size()
+			UMaterialInterface* Material = Section.MaterialSlotIndex < Materials.size()
                 ? Materials[Section.MaterialSlotIndex] : GetMaterial(Section.MaterialSlotIndex);
             if (Material) State->Sections.Add({ Material, Section.StartIndex, Section.IndexCount });
         }

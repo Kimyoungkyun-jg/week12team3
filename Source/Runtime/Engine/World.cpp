@@ -348,7 +348,7 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FViewContext* 
 			{
 				FGatherChunk& Out = GatherChunks[ChunkIndex];      // 이 조각 전용. 다른 스레드는 절대 안 건드림
 				// (머티리얼, 메시, LOD) 묶음 찾기. 조합이 몇 개뿐이라 선형 탐색이면 충분하고, 바로 전 묶음을 먼저 본다.
-				const auto FindGroup = [&Out](UMaterial* Material, UStaticMesh* Mesh, uint8 LOD) -> FStaticDrawGroup&
+				const auto FindGroup = [&Out](UMaterialInterface* Material, UStaticMesh* Mesh, uint8 LOD) -> FStaticDrawGroup&
 					{
 						if (Out.LastGroup < Out.Groups.size())
 						{
@@ -404,7 +404,7 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FViewContext* 
 						const FCachedMeshSection& Section = Proxy->GetSection(CachedLOD.FirstSection + i);
 						Out.LODTriangles[LOD] += Section.IndexCount / 3;
 
-						if (bStaticGroups && Section.Material && Section.Material->BlendState == EBlendState::Opaque)
+						if (bStaticGroups && Section.Material && Section.Material->GetBlendState() == EBlendState::Opaque)
 						{
 							FStaticDrawGroup& Group = FindGroup(Section.Material, Mesh, static_cast<uint8>(LOD));
 							Group.Items.push_back({ Proxy, Slot, Section.StartIndex, Section.IndexCount, bOccludedByGpu ? 1u : 0u });
