@@ -59,6 +59,8 @@ struct FParticleInstancedBatch
 	UMaterial* Material = nullptr;
 	uint32 StartInstance = 0;
 	uint32 InstanceCount = 0;
+	bool bIsMesh = false;
+	EBlendState BlendState = EBlendState::AlphaBlend;
 };
 
 struct FGpuParticleEmitterResources

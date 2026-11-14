@@ -7,6 +7,7 @@
 #include "Containers/Map.h"
 #include "Curves/CurveFloat.h"
 #include "Render/Material.h"
+#include "Render/Mesh.h"
 #include "ParticleSystem.generated.h"
 
 class UClass;
@@ -141,6 +142,7 @@ class UParticleModuleTypeDataSprite : public UParticleModuleTypeDataBase
 {
 	GENERATED_BODY()
 public:
+	const char* GetDisplayName() const override { return "TypeData Sprite"; }
 	EParticleEmitterType GetEmitterType() const override { return EParticleEmitterType::Sprite; }
 };
 
@@ -149,7 +151,19 @@ class UParticleModuleTypeDataGpuSprite : public UParticleModuleTypeDataBase
 {
 	GENERATED_BODY()
 public:
+	const char* GetDisplayName() const override { return "TypeData GPU Sprite"; }
 	EParticleEmitterType GetEmitterType() const override { return EParticleEmitterType::GpuSprite; }
+};
+
+UCLASS()
+class UParticleModuleTypeDataMesh : public UParticleModuleTypeDataBase
+{
+	GENERATED_BODY()
+public:
+	const char* GetDisplayName() const override { return "TypeData Mesh"; }
+	EParticleEmitterType GetEmitterType() const override { return EParticleEmitterType::Mesh; }
+	UPROPERTY(EditAnywhere)
+	UStaticMesh* Mesh = nullptr;
 };
 
 UCLASS()

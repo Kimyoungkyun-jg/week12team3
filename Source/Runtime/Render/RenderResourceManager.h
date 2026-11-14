@@ -35,6 +35,9 @@ enum class EPSOType : uint8
 	DBufferDecal_DepthReconstruction,
 	Particle_Instanced,
 	Particle_GpuInstanced,
+	Particle_MeshOpaque,
+	Particle_MeshTranslucent,
+	Particle_MeshAdditive,
 	Count
 };
 

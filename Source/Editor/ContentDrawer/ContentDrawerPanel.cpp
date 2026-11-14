@@ -943,17 +943,16 @@ FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString&
 	return nullptr;
 }
 
-FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterial* Material)
+FTexture2D* FContentDrawerPanel::RenderStaticMeshThumbnail(
+	const FString& CacheKey,
+	UStaticMesh* Mesh,
+	UMaterial* OverrideMaterial)
 {
-	if (!Material)
+	if (!Mesh)
 	{
+		ThumbnailCache[CacheKey] = nullptr;
 		return nullptr;
 	}
-
-	const FString MatKey = !Material->GetPath().empty()
-		? Material->GetPath()
-		: std::to_string(reinterpret_cast<uintptr_t>(Material));
-	const FString CacheKey = "MAT:" + MatKey;
 
 	auto It = ThumbnailCache.find(CacheKey);
 	if (It != ThumbnailCache.end())
@@ -968,13 +967,6 @@ FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterial* Materia
 		return nullptr;
 	}
 
-	UStaticMesh* SphereMesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
-	if (!SphereMesh)
-	{
-		ThumbnailCache[CacheKey] = nullptr;
-		return nullptr;
-	}
-
 	if (ThumbnailActor && ThumbnailActor->GetSkeletalMeshComponent())
 	{
 		ThumbnailActor->GetSkeletalMeshComponent()->SetVisibility(false);
@@ -982,14 +974,20 @@ FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterial* Materia
 
 	UStaticMeshComponent* MeshComp = MaterialThumbnailActor->GetStaticMeshComponent();
 	MeshComp->SetVisibility(true);
-	MeshComp->SetStaticMesh(SphereMesh);
-	MeshComp->SetMaterial(0, Material);
+	MeshComp->ClearOverrideMaterials();
+	MeshComp->SetStaticMesh(Mesh);
+	if (OverrideMaterial)
+	{
+		MeshComp->SetMaterial(0, OverrideMaterial);
+	}
 
+	const FBox Bounds = Mesh->GetRenderBounds();
+	const FVector Center = (Bounds.Min + Bounds.Max) * 0.5f;
+	const float Radius = std::max(0.1f, (Bounds.Max - Bounds.Min).Length() * 0.5f);
+	const float HalfFov = FMath::DegreesToRadians(ThumbnailClient.GetViewFOV()) * 0.5f;
+	const float Distance = Radius * 1.15f / std::max(std::sin(HalfFov), 0.01f);
 	ThumbnailClient.SetViewRotation(FRotator(15.0f, 160.0f, 0.0f));
-	const FBox Bounds = SphereMesh->GetRenderBounds();
-	ThumbnailClient.FocusOnBounds(
-		(Bounds.Min + Bounds.Max) * 0.5f,
-		std::max(0.1f, (Bounds.Max - Bounds.Min).Length() * 0.5f));
+	ThumbnailClient.SetViewLocation(Center - ThumbnailClient.GetViewForward() * Distance);
 
 	if (UEditorEngine* EdEngine = Cast<UEditorEngine>(GEngine))
 	{
@@ -1029,6 +1027,52 @@ FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterial* Materia
 
 	ThumbnailCache[CacheKey] = nullptr;
 	return nullptr;
+}
+
+FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterial* Material)
+{
+	if (!Material)
+	{
+		return nullptr;
+	}
+
+	const FString MatKey = !Material->GetPath().empty()
+		? Material->GetPath()
+		: std::to_string(reinterpret_cast<uintptr_t>(Material));
+	const FString CacheKey = "MAT:" + MatKey;
+
+	auto It = ThumbnailCache.find(CacheKey);
+	if (It != ThumbnailCache.end())
+	{
+		return It->second.get();
+	}
+
+	UStaticMesh* SphereMesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
+	return RenderStaticMeshThumbnail(CacheKey, SphereMesh, Material);
+}
+
+FTexture2D* FContentDrawerPanel::GetOrCreateStaticMeshThumbnail(UStaticMesh* Mesh)
+{
+	if (!Mesh)
+	{
+		return nullptr;
+	}
+
+	const FString MeshKey = !Mesh->GetPath().empty()
+		? Mesh->GetPath()
+		: std::to_string(reinterpret_cast<uintptr_t>(Mesh));
+	return RenderStaticMeshThumbnail("MESH:" + MeshKey, Mesh, nullptr);
+}
+
+ID3D11ShaderResourceView* FContentDrawerPanel::GetStaticMeshThumbnailSRV(UStaticMesh* Mesh)
+{
+	if (!ActiveInstance || !Mesh)
+	{
+		return nullptr;
+	}
+
+	FTexture2D* Tex = ActiveInstance->GetOrCreateStaticMeshThumbnail(Mesh);
+	return Tex ? Tex->GetSRV() : nullptr;
 }
 
 ID3D11ShaderResourceView* FContentDrawerPanel::GetMaterialThumbnailSRV(UMaterial* Material)
@@ -1090,6 +1134,7 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 		const float PaneHeight = std::max(EditorUIScale::Px(180.0f), Avail.y);
 
 		// 왼쪽 목록 창
+		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.45f, 0.30f, 0.38f, 1.00f));
 		if (ImGui::BeginChild("##MaterialListPane", ImVec2(ListPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
 		{
 			if (ImGui::Selectable(NullLabel, InOutMaterial == nullptr, ImGuiSelectableFlags_NoAutoClosePopups))
@@ -1122,6 +1167,7 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 			}
 		}
 		ImGui::EndChild();
+		ImGui::PopStyleColor();
 
 		ImGui::SameLine();
 
@@ -1148,6 +1194,115 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 				: FString(NullLabel);
 			ImGui::Separator();
 			ImGui::TextWrapped("%s", CurrentLabel.c_str());
+		}
+		ImGui::EndChild();
+
+		ImGui::EndCombo();
+	}
+
+	ImGui::EndGroup();
+	ImGui::PopID();
+	return bChanged;
+}
+
+bool FContentDrawerPanel::DrawStaticMeshPicker(
+	const char* Label,
+	UStaticMesh*& InOutMesh,
+	const char* NullLabel)
+{
+	bool bChanged = false;
+	const float InlineThumbSize = EditorUIScale::Px(64.0f);
+	const FString PreviewText =
+		(InOutMesh && !InOutMesh->GetPath().empty()) ? InOutMesh->GetPath() : FString(NullLabel);
+
+	ImGui::PushID(Label);
+
+	if (ID3D11ShaderResourceView* InlineSRV = GetStaticMeshThumbnailSRV(InOutMesh))
+	{
+		ImGui::Image(reinterpret_cast<ImTextureID>(InlineSRV), ImVec2(InlineThumbSize, InlineThumbSize));
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("%s", PreviewText.c_str());
+	}
+	else
+	{
+		ImGui::BeginDisabled(true);
+		ImGui::Button(NullLabel, ImVec2(InlineThumbSize, InlineThumbSize));
+		ImGui::EndDisabled();
+	}
+
+	ImGui::SameLine();
+	ImGui::BeginGroup();
+	ImGui::TextUnformatted(Label);
+	ImGui::SetNextItemWidth(-1.0f);
+	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSizeConstraints(
+		ImVec2(EditorUIScale::Px(420.0f), EditorUIScale::Px(220.0f)),
+		ImVec2(EditorUIScale::Px(760.0f), EditorUIScale::Px(460.0f)));
+
+	if (ImGui::BeginCombo("##StaticMeshPicker", PreviewText.c_str()))
+	{
+		const ImVec2 Avail = ImGui::GetContentRegionAvail();
+		const float PreviewPaneWidth = EditorUIScale::Px(176.0f);
+		const float Spacing = ImGui::GetStyle().ItemSpacing.x;
+		const float ListPaneWidth = std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing);
+		const float PaneHeight = std::max(EditorUIScale::Px(180.0f), Avail.y);
+
+		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.45f, 0.30f, 0.38f, 1.00f));
+		if (ImGui::BeginChild("##MeshListPane", ImVec2(ListPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
+		{
+			if (ImGui::Selectable(NullLabel, InOutMesh == nullptr, ImGuiSelectableFlags_NoAutoClosePopups))
+			{
+				InOutMesh = nullptr;
+				bChanged = true;
+			}
+			if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+				ImGui::CloseCurrentPopup();
+
+			const TArray<UStaticMesh*> Candidates = EditorSort::CollectSorted<UStaticMesh>(
+				TObjectIterator<UStaticMesh>(),
+				[](const UStaticMesh* M) { return M->GetPath(); },
+				[](const UStaticMesh* M) { return !M->IsRetired() && !M->GetPath().empty(); });
+
+			for (UStaticMesh* Candidate : Candidates)
+			{
+				const bool bSelected = (Candidate == InOutMesh);
+				ImGui::PushID(Candidate);
+				if (ImGui::Selectable(Candidate->GetPath().c_str(), bSelected, ImGuiSelectableFlags_NoAutoClosePopups))
+				{
+					InOutMesh = Candidate;
+					bChanged = true;
+				}
+				if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+					ImGui::CloseCurrentPopup();
+				if (bSelected && ImGui::IsWindowAppearing())
+					ImGui::SetScrollHereY();
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndChild();
+		ImGui::PopStyleColor();
+
+		ImGui::SameLine();
+
+		if (ImGui::BeginChild("##MeshThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
+		{
+			const float LargeThumbSize = EditorUIScale::Px(136.0f);
+			const float PadX = std::max(0.0f, (ImGui::GetContentRegionAvail().x - LargeThumbSize) * 0.5f);
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + PadX);
+
+			if (ID3D11ShaderResourceView* ThumbSRV = GetStaticMeshThumbnailSRV(InOutMesh))
+			{
+				ImGui::Image(reinterpret_cast<ImTextureID>(ThumbSRV), ImVec2(LargeThumbSize, LargeThumbSize));
+			}
+			else
+			{
+				ImGui::BeginDisabled(true);
+				ImGui::Button(NullLabel, ImVec2(LargeThumbSize, LargeThumbSize));
+				ImGui::EndDisabled();
+			}
+
+			ImGui::Separator();
+			ImGui::TextWrapped("%s", PreviewText.c_str());
 		}
 		ImGui::EndChild();
 

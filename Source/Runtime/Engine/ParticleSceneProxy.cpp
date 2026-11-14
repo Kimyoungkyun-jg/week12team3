@@ -114,50 +114,91 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 	const uint32 StartInstance = static_cast<uint32>(OutInstances.Num());
 	OutInstances.Reserve(StartInstance + static_cast<uint32>(Count));
 
+	UStaticMesh* BatchMesh = nullptr;
 	UMaterial* BatchMaterial = nullptr;
+	bool bBatchIsMesh = false;
 	uint32 BatchStart = StartInstance;
 	uint32 BatchCount = 0;
 
 	for (const FSortedSprite& Entry : Sorted)
 	{
 		const FParticleSpriteRenderData& Sprite = DynamicData.Sprites[Entry.Index];
-		UMaterial* SpriteMat = Sprite.Material ? Sprite.Material : Material;
-		if (BatchCount > 0 && SpriteMat != BatchMaterial)
+		UStaticMesh* EntryMesh = Sprite.bIsMesh ? Sprite.Mesh : QuadMesh;
+		if (!EntryMesh) continue;
+		UMaterial* EntryMat = Sprite.Material
+			? Sprite.Material
+			: (Sprite.bIsMesh ? EntryMesh->GetMaterial(0) : Material);
+		if (!EntryMat) continue;
+
+		if (BatchCount > 0 && (EntryMesh != BatchMesh || EntryMat != BatchMaterial || Sprite.bIsMesh != bBatchIsMesh))
 		{
 			FParticleInstancedBatch Batch{};
-			Batch.Mesh = QuadMesh;
+			Batch.Mesh = BatchMesh;
 			Batch.Material = BatchMaterial;
 			Batch.StartInstance = BatchStart;
 			Batch.InstanceCount = BatchCount;
+			Batch.bIsMesh = bBatchIsMesh;
+			Batch.BlendState = BatchMaterial->BlendState;
 			OutBatches.Add(Batch);
 			BatchStart = static_cast<uint32>(OutInstances.Num());
 			BatchCount = 0;
 		}
-		BatchMaterial = SpriteMat;
-
-		FMatrix World = View.BuildBillboardMatrix(Sprite.Location, Sprite.Width, Sprite.Height);
-		const float C = std::cos(Sprite.Rotation);
-		const float S = std::sin(Sprite.Rotation);
-		for (int Axis = 0; Axis < 3; ++Axis)
-		{
-			const float Right = World.M[1][Axis];
-			const float Up = World.M[2][Axis];
-			World.M[1][Axis] = C * Right + S * Up;
-			World.M[2][Axis] = C * Up - S * Right;
-		}
+		BatchMesh = EntryMesh;
+		BatchMaterial = EntryMat;
+		bBatchIsMesh = Sprite.bIsMesh;
 
 		FParticleInstanceData Instance{};
-		Instance.World = World;
-		Instance.TintAndAlpha = FVector4(
-			Sprite.Constants.Tint.X,
-			Sprite.Constants.Tint.Y,
-			Sprite.Constants.Tint.Z,
-			Sprite.Constants.Alpha);
-		Instance.SubUVParams = FVector4(
-			Sprite.Constants.CurrentFrame,
-			Sprite.Constants.AtlasRowSize,
-			Sprite.Constants.AtlasColSize,
-			Sprite.Constants.DecodeSRGB);
+		if (Sprite.bIsMesh)
+		{
+			const float C = std::cos(Sprite.Rotation);
+			const float S = std::sin(Sprite.Rotation);
+			FMatrix World = FMatrix::Identity;
+			World.M[0][0] = C * Sprite.MeshScale.X;
+			World.M[0][1] = S * Sprite.MeshScale.X;
+			World.M[1][0] = -S * Sprite.MeshScale.Y;
+			World.M[1][1] = C * Sprite.MeshScale.Y;
+			World.M[2][2] = Sprite.MeshScale.Z;
+			World.M[3][0] = Sprite.Location.X;
+			World.M[3][1] = Sprite.Location.Y;
+			World.M[3][2] = Sprite.Location.Z;
+			if (Sprite.bUseLocalSpace)
+				World = World * DynamicData.LocalToWorld;
+
+			const FVector4& BaseCol = EntryMat->BaseColor;
+			const bool bHasTex = !EntryMat->Textures.IsEmpty() && EntryMat->Textures[0] != nullptr;
+			Instance.World = World;
+			Instance.TintAndAlpha = FVector4(
+				Sprite.Constants.Tint.X * BaseCol.X,
+				Sprite.Constants.Tint.Y * BaseCol.Y,
+				Sprite.Constants.Tint.Z * BaseCol.Z,
+				Sprite.Constants.Alpha * BaseCol.W);
+			Instance.SubUVParams = FVector4(bHasTex ? 1.0f : 0.0f, 1.0f, 1.0f, 0.0f);
+		}
+		else
+		{
+			FMatrix World = View.BuildBillboardMatrix(Sprite.Location, Sprite.Width, Sprite.Height);
+			const float C = std::cos(Sprite.Rotation);
+			const float S = std::sin(Sprite.Rotation);
+			for (int Axis = 0; Axis < 3; ++Axis)
+			{
+				const float Right = World.M[1][Axis];
+				const float Up = World.M[2][Axis];
+				World.M[1][Axis] = C * Right + S * Up;
+				World.M[2][Axis] = C * Up - S * Right;
+			}
+
+			Instance.World = World;
+			Instance.TintAndAlpha = FVector4(
+				Sprite.Constants.Tint.X,
+				Sprite.Constants.Tint.Y,
+				Sprite.Constants.Tint.Z,
+				Sprite.Constants.Alpha);
+			Instance.SubUVParams = FVector4(
+				Sprite.Constants.CurrentFrame,
+				Sprite.Constants.AtlasRowSize,
+				Sprite.Constants.AtlasColSize,
+				Sprite.Constants.DecodeSRGB);
+		}
 		OutInstances.Add(Instance);
 		++BatchCount;
 	}
@@ -165,10 +206,12 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 	if (BatchCount > 0)
 	{
 		FParticleInstancedBatch Batch{};
-		Batch.Mesh = QuadMesh;
+		Batch.Mesh = BatchMesh;
 		Batch.Material = BatchMaterial;
 		Batch.StartInstance = BatchStart;
 		Batch.InstanceCount = BatchCount;
+		Batch.bIsMesh = bBatchIsMesh;
+		Batch.BlendState = BatchMaterial->BlendState;
 		OutBatches.Add(Batch);
 	}
 }

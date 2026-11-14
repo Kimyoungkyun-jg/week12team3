@@ -18,6 +18,10 @@ struct FParticleSpriteRenderData
 	float Rotation = 0.0f;
 	UMaterial* Material = nullptr;
 	FSubUVConstants Constants{};
+	UStaticMesh* Mesh = nullptr;
+	FVector MeshScale = FVector::OneVector;
+	bool bIsMesh = false;
+	bool bUseLocalSpace = false;
 };
 
 struct FParticleDynamicGpuEmitterData
@@ -62,7 +66,7 @@ public:
 	virtual const FParticleSceneProxy* AsParticleSceneProxy() const override { return this; }
 	bool HasParticles() const
 	{
-		return (!DynamicData.Sprites.IsEmpty() || !DynamicData.GpuEmitters.IsEmpty()) && QuadMesh && Material;
+		return (!DynamicData.Sprites.IsEmpty() || !DynamicData.GpuEmitters.IsEmpty()) && Material;
 	}
 
 private:

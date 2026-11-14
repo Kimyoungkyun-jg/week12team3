@@ -14,6 +14,7 @@ namespace fs = std::filesystem;
 
 class AStaticMeshActor;
 class UMaterial;
+class UStaticMesh;
 
 class FContentDrawerPanel : public IEditorPanel
 {
@@ -33,6 +34,11 @@ public:
 		UMaterial*& InOutMaterial,
 		const char* NullLabel = "(Default)",
 		const UMaterial* HighlightBase = nullptr);
+	static ID3D11ShaderResourceView* GetStaticMeshThumbnailSRV(UStaticMesh* Mesh);
+	static bool DrawStaticMeshPicker(
+		const char* Label,
+		UStaticMesh*& InOutMesh,
+		const char* NullLabel = "(None)");
 	static void InvalidateMaterialThumbnail(const FString& Path);
 
 	// .widget 파일을 더블클릭하면 불린다 (UI 에디터가 연다).
@@ -108,4 +114,6 @@ private:
 	void InitThumbnailStudio();
 	FTexture2D* GetOrCreateSkeletalMeshThumbnail(const FString& FbxPath);
 	FTexture2D* GetOrCreateMaterialThumbnail(UMaterial* Material);
+	FTexture2D* GetOrCreateStaticMeshThumbnail(UStaticMesh* Mesh);
+	FTexture2D* RenderStaticMeshThumbnail(const FString& CacheKey, UStaticMesh* Mesh, UMaterial* OverrideMaterial);
 };

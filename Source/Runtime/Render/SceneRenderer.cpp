@@ -1291,16 +1291,10 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 
 	RenderCommand::BindConstantBuffer(3, FogConstants, EShaderBindFlagBits::Pixel);
 	PrepareDrawData(Renderer, RenderData);
-	TArray<FMeshDrawBatch> Batches;
-	FMeshPassProcessor Processor;
-	if (Processor.Build(View, RenderData.RenderQueue, &RenderData,
-		EMeshPassType::Translucent, Batches))
-	{
-		Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
-		Renderer->DrawMeshes(Batches);
-	}
 
-	if (!RenderData.ParticleBatches.IsEmpty() && !RenderData.ParticleInstances.IsEmpty())
+	const bool bHasInstancedParticles = !RenderData.ParticleBatches.IsEmpty() && !RenderData.ParticleInstances.IsEmpty();
+	bool bInstancedReady = false;
+	if (bHasInstancedParticles)
 	{
 		const uint32 TotalInstances = static_cast<uint32>(RenderData.ParticleInstances.Num());
 		if (!RenderData.ParticleInstanceBuffer || RenderData.ParticleInstanceCapacity < TotalInstances)
@@ -1314,9 +1308,7 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 		if (!RenderData.ParticleBatchCB)
 			RenderData.ParticleBatchCB = RenderCommand::CreateConstantBuffer(16);
 
-		FPipelineState* ParticlePSO = FRenderResourceManager::GetPSO(EPSOType::Particle_Instanced);
-		if (RenderData.ParticleInstanceBuffer && RenderData.ParticleBatchCB &&
-			ParticlePSO && ParticlePSO->Shader && ParticlePSO->Shader->VertexShader && ParticlePSO->Shader->PixelShader)
+		if (RenderData.ParticleInstanceBuffer && RenderData.ParticleBatchCB)
 		{
 			if (void* Mapped = RenderCommand::MapWriteDiscard(RenderData.ParticleInstanceBuffer.get()))
 			{
@@ -1324,39 +1316,82 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 					TotalInstances * sizeof(FParticleInstanceData));
 				RenderCommand::Unmap(RenderData.ParticleInstanceBuffer.get());
 			}
+			bInstancedReady = true;
+		}
+	}
 
-			Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
-			RenderCommand::BindPipelineState(*ParticlePSO);
-			RenderCommand::BindConstantBuffer(0, Renderer->GetViewConstantBuffer(), EShaderBindFlagBits::Vertex);
-			RenderCommand::BindShaderResource(1, RenderData.ParticleInstanceBuffer.get(), EShaderBindFlagBits::Vertex);
+	auto DrawParticleBatches = [&](bool bOpaqueMeshPass)
+	{
+		if (!bInstancedReady) return;
+		struct FParticleBatchConstants
+		{
+			uint32 StartInstance = 0;
+			uint32 Pad[3] = {};
+		};
+		EPSOType BoundPSOType = EPSOType::Count;
+		bool bCommonBound = false;
 
-			struct FParticleBatchConstants
+		for (const FParticleInstancedBatch& Batch : RenderData.ParticleBatches)
+		{
+			const bool bIsOpaqueMesh = Batch.bIsMesh && Batch.BlendState == EBlendState::Opaque;
+			if (bIsOpaqueMesh != bOpaqueMeshPass) continue;
+			if (!Batch.Mesh || !Batch.Material || Batch.InstanceCount == 0) continue;
+			FIndexBuffer* IndexBuffer = Batch.Mesh->GetIndexBuffer(0);
+			if (!IndexBuffer) continue;
+
+			EPSOType TargetPSO = EPSOType::Particle_Instanced;
+			if (Batch.bIsMesh)
 			{
-				uint32 StartInstance = 0;
-				uint32 Pad[3] = {};
-			};
+				if (Batch.BlendState == EBlendState::Opaque) TargetPSO = EPSOType::Particle_MeshOpaque;
+				else if (Batch.BlendState == EBlendState::Additive) TargetPSO = EPSOType::Particle_MeshAdditive;
+				else TargetPSO = EPSOType::Particle_MeshTranslucent;
+			}
+			FPipelineState* PSO = FRenderResourceManager::GetPSO(TargetPSO);
+			if (!PSO || !PSO->Shader || !PSO->Shader->VertexShader || !PSO->Shader->PixelShader) continue;
 
-			for (const FParticleInstancedBatch& Batch : RenderData.ParticleBatches)
+			if (!bCommonBound)
 			{
-				if (!Batch.Mesh || !Batch.Material || Batch.InstanceCount == 0) continue;
-				FIndexBuffer* IndexBuffer = Batch.Mesh->GetIndexBuffer(0);
-				if (!IndexBuffer) continue;
-
-				FParticleBatchConstants BatchConst{ Batch.StartInstance, { 0, 0, 0 } };
-				RenderCommand::UpdateBufferData(RenderData.ParticleBatchCB.get(), &BatchConst, sizeof(BatchConst));
-				RenderCommand::BindConstantBuffer(1, RenderData.ParticleBatchCB.get(), EShaderBindFlagBits::Vertex);
-				RenderCommand::BindMesh(Batch.Mesh, 0);
-
-				UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
-				RenderCommand::BindShaderResource(0, AtlasTex, EShaderBindFlagBits::Pixel);
-				RenderCommand::BindSamplerState(0, Batch.Material->SamplerState, EShaderBindFlagBits::Pixel);
-				RenderCommand::DrawIndexedInstanced(IndexBuffer->GetIndexCount(), Batch.InstanceCount, 0, 0, 0);
+				Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
+				RenderCommand::BindConstantBuffer(0, Renderer->GetViewConstantBuffer(), EShaderBindFlagBits::Vertex);
+				RenderCommand::BindShaderResource(1, RenderData.ParticleInstanceBuffer.get(), EShaderBindFlagBits::Vertex);
+				bCommonBound = true;
+			}
+			if (BoundPSOType != TargetPSO)
+			{
+				RenderCommand::BindPipelineState(*PSO);
+				BoundPSOType = TargetPSO;
 			}
 
+			FParticleBatchConstants BatchConst{ Batch.StartInstance, { 0, 0, 0 } };
+			RenderCommand::UpdateBufferData(RenderData.ParticleBatchCB.get(), &BatchConst, sizeof(BatchConst));
+			RenderCommand::BindConstantBuffer(1, RenderData.ParticleBatchCB.get(), EShaderBindFlagBits::Vertex);
+			RenderCommand::BindMesh(Batch.Mesh, 0);
+
+			UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
+			RenderCommand::BindShaderResource(0, AtlasTex, EShaderBindFlagBits::Pixel);
+			RenderCommand::BindSamplerState(0, Batch.Material->SamplerState, EShaderBindFlagBits::Pixel);
+			RenderCommand::DrawIndexedInstanced(IndexBuffer->GetIndexCount(), Batch.InstanceCount, 0, 0, 0);
+		}
+
+		if (bCommonBound)
+		{
 			RenderCommand::BindShaderResource(1, static_cast<const FStructuredBuffer*>(nullptr), EShaderBindFlagBits::Vertex);
 			RenderCommand::BindConstantBuffer(1, nullptr, EShaderBindFlagBits::Vertex);
 		}
+	};
+
+	DrawParticleBatches(true);
+
+	TArray<FMeshDrawBatch> Batches;
+	FMeshPassProcessor Processor;
+	if (Processor.Build(View, RenderData.RenderQueue, &RenderData,
+		EMeshPassType::Translucent, Batches))
+	{
+		Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
+		Renderer->DrawMeshes(Batches);
 	}
+
+	DrawParticleBatches(false);
 
 	if (!RenderData.GpuParticleBatches.IsEmpty())
 	{

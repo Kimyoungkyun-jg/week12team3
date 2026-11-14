@@ -365,7 +365,7 @@ void FParticleEmitterInstance::Initialize(UParticleEmitter* Emitter, uint32 Seed
 	CurrentLODLevel = LODs[0];
 	if (!CurrentLODLevel) { Resize(0); return; }
 	const EParticleEmitterType Type = CurrentLODLevel->GetOrCreateTypeData()->GetEmitterType();
-	if (Type != EParticleEmitterType::Sprite && Type != EParticleEmitterType::GpuSprite) { Resize(0); return; }
+	if (Type != EParticleEmitterType::Sprite && Type != EParticleEmitterType::GpuSprite && Type != EParticleEmitterType::Mesh) { Resize(0); return; }
 	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
 	if (Type == EParticleEmitterType::GpuSprite)
 	{
@@ -446,7 +446,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 		if (DeltaTime <= 0.0f) return;
 	}
 	const EParticleEmitterType EmitterType = CurrentLODLevel->GetOrCreateTypeData()->GetEmitterType();
-	if (EmitterType != EParticleEmitterType::Sprite && EmitterType != EParticleEmitterType::GpuSprite) return;
+	if (EmitterType != EParticleEmitterType::Sprite && EmitterType != EParticleEmitterType::GpuSprite && EmitterType != EParticleEmitterType::Mesh) return;
 	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
 	const bool bIsGpu = (EmitterType == EParticleEmitterType::GpuSprite);
 
@@ -631,11 +631,22 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 		{
 			const bool bLocal = LOD->RequiredModule->bUseLocalSpace;
 			const FMatrix InvWorld = bLocal ? FMatrix::Identity : GetWorldMatrix().Inverse();
+			const auto* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule);
+			UStaticMesh* MeshAsset = MeshTypeData ? MeshTypeData->Mesh : nullptr;
+			const FVector MeshBaseExtent = MeshAsset
+				? (MeshAsset->GetRenderBounds().Max - MeshAsset->GetRenderBounds().Min) * 0.5f
+				: FVector::ZeroVector;
+			const float MeshBaseRadius = MeshAsset ? MeshBaseExtent.Length() : 0.0f;
 			for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index)
 			{
 				DECLARE_PARTICLE_CONST(Particle, Emitter.ParticleData + static_cast<size_t>(Emitter.ParticleIndices[Index]) * static_cast<size_t>(Emitter.ParticleStride));
 				const FVector LocalPos = bLocal ? Particle.Location : InvWorld.TransformPosition(Particle.Location);
-				const float Radius = 0.5f * std::sqrt(Particle.Size.X * Particle.Size.X + Particle.Size.Y * Particle.Size.Y);
+				float Radius = 0.5f * std::sqrt(Particle.Size.X * Particle.Size.X + Particle.Size.Y * Particle.Size.Y);
+				if (MeshAsset)
+				{
+					const float MaxAxisScale = std::max({ std::abs(Particle.Size.X), std::abs(Particle.Size.Y), std::abs(Particle.Size.Z) });
+					Radius = std::max(1.0f, MeshBaseRadius * MaxAxisScale);
+				}
 				const FVector Extent(Radius, Radius, Radius);
 				ExpandParticleBox(LocalBounds, bHasBounds, LocalPos - Extent, LocalPos + Extent);
 			}
@@ -856,30 +867,49 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			continue;
 		}
 
-		if (EmitterType != EParticleEmitterType::Sprite) continue;
+		if (EmitterType != EParticleEmitterType::Sprite && EmitterType != EParticleEmitterType::Mesh) continue;
+		const bool bIsMeshEmitter = (EmitterType == EParticleEmitterType::Mesh);
+		const auto* MeshTypeData = bIsMeshEmitter ? Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule) : nullptr;
+		UStaticMesh* MeshAsset = MeshTypeData ? MeshTypeData->Mesh : nullptr;
+		if (bIsMeshEmitter && !MeshAsset) continue;
+
 		const bool bLocal = LOD->RequiredModule->bUseLocalSpace;
 		if (!bLocal)
 			bHasWorldSpaceParticles = true;
 		const UParticleModuleSubUV* SubUVModule = nullptr;
-		for (const UParticleModule* Module : LOD->Modules)
+		if (!bIsMeshEmitter)
 		{
-			if (Module && Module->bEnabled)
+			for (const UParticleModule* Module : LOD->Modules)
 			{
-				if (const auto* Candidate = Cast<UParticleModuleSubUV>(Module))
-					SubUVModule = Candidate;
+				if (Module && Module->bEnabled)
+				{
+					if (const auto* Candidate = Cast<UParticleModuleSubUV>(Module))
+						SubUVModule = Candidate;
+				}
 			}
 		}
 		const float AtlasRowSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesVertical)) : 1.0f;
 		const float AtlasColSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesHorizontal)) : 1.0f;
 		const uint32 SubUVOffset = SubUVModule ? Emitter.GetModuleDataOffset(SubUVModule) : 0;
-		UMaterial* EmitterMaterial = LOD->RequiredModule->Material;
+		UMaterial* EmitterMaterial = LOD->RequiredModule->Material
+			? LOD->RequiredModule->Material
+			: (MeshAsset ? MeshAsset->GetMaterial(0) : nullptr);
+		const float MeshBaseRadius = MeshAsset
+			? ((MeshAsset->GetRenderBounds().Max - MeshAsset->GetRenderBounds().Min) * 0.5f).Length()
+			: 0.0f;
 
 		if (!Emitter.ParticleData || !Emitter.ParticleIndices) continue;
 		for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index)
 		{
 			DECLARE_PARTICLE_CONST(Particle, Emitter.ParticleData + static_cast<size_t>(Emitter.ParticleIndices[Index]) * static_cast<size_t>(Emitter.ParticleStride));
 			FParticleSpriteRenderData& Sprite = Data.Sprites.AddDefaulted_GetRef();
-			Sprite.Location = bLocal ? Data.LocalToWorld.TransformPosition(Particle.Location) : Particle.Location;
+			Sprite.bIsMesh = bIsMeshEmitter;
+			Sprite.bUseLocalSpace = bLocal;
+			Sprite.Mesh = MeshAsset;
+			Sprite.MeshScale = Particle.Size;
+			Sprite.Location = bIsMeshEmitter
+				? Particle.Location
+				: (bLocal ? Data.LocalToWorld.TransformPosition(Particle.Location) : Particle.Location);
 			Sprite.Width = std::abs(Particle.Size.X * (bLocal ? Data.WorldScale.Y : 1.0f));
 			Sprite.Height = std::abs(Particle.Size.Y * (bLocal ? Data.WorldScale.Z : 1.0f));
 			Sprite.Rotation = Particle.Rotation;
@@ -900,9 +930,18 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			Sprite.Constants.DecodeSRGB = 0.0f;
 			if (!Data.bFixedBounds)
 			{
-				const float Radius = 0.5f * std::sqrt(Sprite.Width * Sprite.Width + Sprite.Height * Sprite.Height);
+				float Radius = 0.5f * std::sqrt(Sprite.Width * Sprite.Width + Sprite.Height * Sprite.Height);
+				FVector BoundsCenter = Sprite.Location;
+				if (bIsMeshEmitter)
+				{
+					const FVector Scale3D = bLocal ? (Particle.Size * Data.WorldScale) : Particle.Size;
+					const float MaxAxisScale = std::max({ std::abs(Scale3D.X), std::abs(Scale3D.Y), std::abs(Scale3D.Z) });
+					Radius = std::max(1.0f, MeshBaseRadius * MaxAxisScale);
+					if (bLocal)
+						BoundsCenter = Data.LocalToWorld.TransformPosition(Particle.Location);
+				}
 				const FVector Extent(Radius, Radius, Radius);
-				ExpandParticleBox(Data.Bounds, bHasBounds, Sprite.Location - Extent, Sprite.Location + Extent);
+				ExpandParticleBox(Data.Bounds, bHasBounds, BoundsCenter - Extent, BoundsCenter + Extent);
 			}
 		}
 	}

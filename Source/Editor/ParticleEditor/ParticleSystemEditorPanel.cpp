@@ -5,6 +5,7 @@
 #include "Editor/EditorUI/EditorSort.h"
 #include "Editor/HitoriEd/EditorEngine.h"
 #include "Editor/HitoriEd/EditorResourcePaths.h"
+#include "Asset/AssetManager.h"
 #include "Asset/FbxImporter/FbxPath.h"
 #include "Particles/ParticleSystem.h"
 #include "UObject/Casts.h"
@@ -18,6 +19,7 @@
 #include "GameFramework/Actor/SkyLightActor.h"
 #include "Render/SkyboxRenderer.h"
 #include "Render/Material.h"
+#include "Render/Mesh.h"
 #include "Engine/World.h"
 #include <implot.h>
 #include <algorithm>
@@ -343,14 +345,26 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 				ImGui::SameLine();
 				ImGui::Checkbox("S", &Emitter->bIsSolo);
 				UParticleModuleTypeDataBase* TypeData = LOD->GetOrCreateTypeData();
-				int TypeIdx = (TypeData && TypeData->GetEmitterType() == EParticleEmitterType::GpuSprite) ? 1 : 0;
+				const EParticleEmitterType CurType = TypeData ? TypeData->GetEmitterType() : EParticleEmitterType::Sprite;
+				int TypeIdx = (CurType == EParticleEmitterType::GpuSprite) ? 1 : (CurType == EParticleEmitterType::Mesh ? 2 : 0);
 				ImGui::SetNextItemWidth(-1.0f);
-				if (ImGui::Combo("##EmitterType", &TypeIdx, "Sprite\0GPU Sprite\0"))
+				if (ImGui::Combo("##EmitterType", &TypeIdx, "Sprite\0GPU Sprite\0Mesh\0"))
 				{
-					UClass* TargetClass = (TypeIdx == 1)
-						? UParticleModuleTypeDataGpuSprite::StaticClass()
-						: UParticleModuleTypeDataSprite::StaticClass();
-					LOD->SetTypeData(TargetClass);
+					UClass* TargetClass = UParticleModuleTypeDataSprite::StaticClass();
+					if (TypeIdx == 1)
+						TargetClass = UParticleModuleTypeDataGpuSprite::StaticClass();
+					else if (TypeIdx == 2)
+						TargetClass = UParticleModuleTypeDataMesh::StaticClass();
+					const bool bWasTypeDataSelected = (SelectedModule == TypeData);
+					UParticleModuleTypeDataBase* NewTypeData = LOD->SetTypeData(TargetClass);
+					if (auto* NewMeshType = Cast<UParticleModuleTypeDataMesh>(NewTypeData))
+					{
+						if (!NewMeshType->Mesh)
+							NewMeshType->Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Cube");
+						LOD->GetOrCreateRequired()->Material = NewMeshType->Mesh ? NewMeshType->Mesh->GetMaterial(0) : nullptr;
+					}
+					if (bWasTypeDataSelected)
+						SelectedModule = NewTypeData;
 					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 						PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
 				}
@@ -385,6 +399,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					return bDeleteRequested;
 				};
 
+				DrawModuleRow(LOD->GetOrCreateTypeData(), ImVec4(0.32f, 0.45f, 0.30f, 0.65f), false);
 				DrawModuleRow(LOD->GetOrCreateRequired(), ImVec4(0.55f, 0.50f, 0.20f, 0.65f), false);
 				DrawModuleRow(LOD->GetOrCreateSpawn(), ImVec4(0.60f, 0.25f, 0.25f, 0.65f), false);
 
@@ -463,6 +478,17 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 	ImGui::TextUnformatted("Properties");
 	ImGui::Separator();
 
+	auto DrawTypeDataMeshPicker = [&](UParticleLODLevel* LOD, UParticleModuleTypeDataMesh* MeshType)
+	{
+		if (!LOD || !MeshType) return;
+		if (FContentDrawerPanel::DrawStaticMeshPicker("Static Mesh", MeshType->Mesh, "(None)"))
+		{
+			LOD->GetOrCreateRequired()->Material = MeshType->Mesh ? MeshType->Mesh->GetMaterial(0) : nullptr;
+			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+				PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
+		}
+	};
+
 	if (SelectedModule)
 	{
 		ImGui::Text("Module: %s", SelectedModule->GetDisplayName());
@@ -473,7 +499,25 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		}
 		ImGui::Separator();
 
-		if (auto* Req = Cast<UParticleModuleRequired>(SelectedModule))
+		if (auto* MeshType = Cast<UParticleModuleTypeDataMesh>(SelectedModule))
+		{
+			UParticleLODLevel* OwnerLOD = (SelectedEmitter && !SelectedEmitter->GetLODLevels().IsEmpty())
+				? SelectedEmitter->GetLODLevels()[0]
+				: nullptr;
+			if (!OwnerLOD && EditingSystem)
+			{
+				for (UParticleEmitter* E : EditingSystem->GetEmitters())
+				{
+					if (E && !E->GetLODLevels().IsEmpty() && E->GetLODLevels()[0] && E->GetLODLevels()[0]->TypeDataModule == MeshType)
+					{
+						OwnerLOD = E->GetLODLevels()[0];
+						break;
+					}
+				}
+			}
+			DrawTypeDataMeshPicker(OwnerLOD, MeshType);
+		}
+		else if (auto* Req = Cast<UParticleModuleRequired>(SelectedModule))
 		{
 			ImGui::DragInt("Max Particles", &Req->MaxParticles, 1.0f, 1, 100000);
 			ImGui::DragFloat("Emitter Duration", &Req->EmitterDuration, 0.05f, 0.0f, 300.0f);
@@ -576,6 +620,15 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			SelectedEmitter->EmitterName = NameBuf;
 		ImGui::Checkbox("Solo", &SelectedEmitter->bIsSolo);
 		ImGui::DragFloat("Play Rate", &SelectedEmitter->PlayRate, 0.05f, 0.0f, 20.0f);
+		if (!SelectedEmitter->GetLODLevels().IsEmpty())
+		{
+			UParticleLODLevel* LOD = SelectedEmitter->GetLODLevels()[0];
+			if (auto* MeshType = LOD ? Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule) : nullptr)
+			{
+				ImGui::Separator();
+				DrawTypeDataMeshPicker(LOD, MeshType);
+			}
+		}
 	}
 	else if (EditingSystem)
 	{
