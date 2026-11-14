@@ -366,6 +366,7 @@ void FParticleEmitterInstance::Initialize(UParticleEmitter* Emitter, uint32 Seed
 	if (!CurrentLODLevel) { Resize(0); return; }
 	const EParticleEmitterType Type = CurrentLODLevel->GetOrCreateTypeData()->GetEmitterType();
 	if (Type != EParticleEmitterType::Sprite && Type != EParticleEmitterType::GpuSprite && Type != EParticleEmitterType::Mesh) { Resize(0); return; }
+	Emitter->CacheEmitterModuleInfo();
 	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
 	if (Type == EParticleEmitterType::GpuSprite)
 	{
@@ -374,7 +375,8 @@ void FParticleEmitterInstance::Initialize(UParticleEmitter* Emitter, uint32 Seed
 		return;
 	}
 	UpdateStride();
-	Resize(Required->MaxParticles);
+	const int32 MaxAllowed = std::clamp(Required->MaxParticles, 0, 65535);
+	Resize(std::min(4, MaxAllowed));
 }
 
 void FParticleEmitterInstance::SetLODLevel(int32 NewLODIndex)
@@ -387,6 +389,7 @@ void FParticleEmitterInstance::SetLODLevel(int32 NewLODIndex)
 	CurrentLODLevelIndex = ClampedIndex;
 	CurrentLODLevel = LODs[ClampedIndex];
 	if (!CurrentLODLevel) return;
+	SpriteTemplate->CacheEmitterModuleInfo();
 	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
 	if (IsGpuEmitter())
 	{
@@ -395,7 +398,8 @@ void FParticleEmitterInstance::SetLODLevel(int32 NewLODIndex)
 		return;
 	}
 	UpdateStride();
-	Resize(Required->MaxParticles);
+	const int32 MaxAllowed = std::clamp(Required->MaxParticles, 0, 65535);
+	Resize(std::min(std::max(4, ActiveParticles), MaxAllowed));
 }
 
 void FParticleEmitterInstance::Reset()
@@ -449,16 +453,25 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 	if (EmitterType != EParticleEmitterType::Sprite && EmitterType != EParticleEmitterType::GpuSprite && EmitterType != EParticleEmitterType::Mesh) return;
 	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
 	const bool bIsGpu = (EmitterType == EParticleEmitterType::GpuSprite);
+	const int32 MaxAllowed = std::clamp(Required->MaxParticles, 0, 65535);
 
 	if (bIsGpu)
 	{
-		MaxActiveParticles = std::clamp(Required->MaxParticles, 0, 65535);
+		MaxActiveParticles = MaxAllowed;
 		LastGpuDeltaTime = DeltaTime;
 		if (MaxActiveParticles <= 0) return;
 	}
 	else
 	{
-		Resize(Required->MaxParticles);
+		if (MaxAllowed <= 0)
+		{
+			Resize(0);
+			return;
+		}
+		if (MaxActiveParticles > MaxAllowed)
+			Resize(MaxAllowed);
+		else if (MaxActiveParticles == 0)
+			Resize(std::min(4, MaxAllowed));
 		if (!ParticleData || !ParticleIndices || MaxActiveParticles <= 0) return;
 
 		// 살아 있는 파티클은 방출이 끝난 뒤에도 수명이 다할 때까지 갱신한다.
@@ -474,9 +487,9 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 			}
 			Particle.Location += Particle.Velocity * DeltaTime;
 			Particle.Rotation += Particle.RotationRate * DeltaTime;
-			for (const UParticleModule* Module : CurrentLODLevel->Modules)
+			for (const UParticleModule* Module : CurrentLODLevel->UpdateModules)
 			{
-				if (!Module || !Module->bEnabled) continue;
+				if (!Module) continue;
 				Module->Update(Particle, DeltaTime, GetModuleDataOffset(Module));
 				if (!InstanceParameters) continue;
 				if (const auto* ColorMod = Cast<UParticleModuleColor>(Module))
@@ -508,7 +521,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 		? std::clamp(Duration - StartTime, 0.0, static_cast<double>(DeltaTime))
 		: static_cast<double>(DeltaTime);
 	const UParticleModuleSpawn* SpawnModule = CurrentLODLevel->GetOrCreateSpawn();
-	const int32 Available = bIsGpu ? MaxActiveParticles : std::max(0, MaxActiveParticles - ActiveParticles);
+	const int32 Available = bIsGpu ? MaxActiveParticles : std::max(0, MaxAllowed - ActiveParticles);
 	int32 ToSpawn = 0;
 	if (SpawnModule->bEnabled)
 	{
@@ -543,8 +556,8 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 			FBaseParticle Base;
 			Base.Location = Required->bUseLocalSpace ? FVector::ZeroVector : Origin;
 			Random.InstanceParams = InstanceParameters;
-			for (const UParticleModule* Module : CurrentLODLevel->Modules)
-				if (Module && Module->bEnabled) Module->Spawn(Base, Random);
+			for (const UParticleModule* Module : CurrentLODLevel->SpawnModules)
+				if (Module) Module->Spawn(Base, Random);
 			FGpuParticle GpuP;
 			GpuP.Position = Base.Location;
 			GpuP.RelativeTime = 0.0f;
@@ -563,6 +576,12 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 		}
 		return;
 	}
+	const int32 RequiredCapacity = ActiveParticles + ToSpawn;
+	if (RequiredCapacity > MaxActiveParticles)
+	{
+		const int32 GrownCapacity = std::max(RequiredCapacity, MaxActiveParticles * 2);
+		Resize(std::min(GrownCapacity, MaxAllowed));
+	}
 	for (int32 Index = 0; Index < ToSpawn && ActiveParticles < MaxActiveParticles; ++Index)
 	{
 		const uint16 SlotIndex = ParticleIndices[ActiveParticles];
@@ -572,8 +591,9 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 		DECLARE_PARTICLE(Particle, Addr);
 		Particle.Location = Required->bUseLocalSpace ? FVector::ZeroVector : Origin;
 		Random.InstanceParams = InstanceParameters;
-		for (const UParticleModule* Module : CurrentLODLevel->Modules)
-			if (Module && Module->bEnabled) Module->Spawn(Particle, Random);
+		for (const UParticleModule* Module : CurrentLODLevel->SpawnModules)
+			if (Module) Module->Spawn(Particle, Random);
+		Particle.BaseAlpha = Particle.Color.A;
 		Particle.Lifetime = std::max(Particle.Lifetime, 0.001f);
 		++ActiveParticles;
 		++ParticleCounter;
@@ -827,7 +847,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 							ColorOverLife->ColorR ? ColorOverLife->ColorR->GetFloatValue(T) : 1.0f,
 							ColorOverLife->ColorG ? ColorOverLife->ColorG->GetFloatValue(T) : 1.0f,
 							ColorOverLife->ColorB ? ColorOverLife->ColorB->GetFloatValue(T) : 1.0f,
-							ColorOverLife->Alpha ? ColorOverLife->Alpha->GetFloatValue(T) : 1.0f);
+							ColorOverLife->EvaluateAlphaScale(T));
 					}
 					if (!ColorOverLife->ParameterName.empty())
 					{
@@ -891,9 +911,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 		const float AtlasRowSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesVertical)) : 1.0f;
 		const float AtlasColSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesHorizontal)) : 1.0f;
 		const uint32 SubUVOffset = SubUVModule ? Emitter.GetModuleDataOffset(SubUVModule) : 0;
-		UMaterial* EmitterMaterial = LOD->RequiredModule->Material
-			? LOD->RequiredModule->Material
-			: (MeshAsset ? MeshAsset->GetMaterial(0) : nullptr);
+		UMaterial* EmitterMaterial = LOD->RequiredModule->Material;
 		const float MeshBaseRadius = MeshAsset
 			? ((MeshAsset->GetRenderBounds().Max - MeshAsset->GetRenderBounds().Min) * 0.5f).Length()
 			: 0.0f;
@@ -1016,7 +1034,11 @@ void UParticleSystemComponent::LoadTemplateIfNeeded()
 void UParticleSystemComponent::UpdateEmitterStrides()
 {
 	for (FParticleEmitterInstance& Instance : EmitterInstances)
+	{
+		if (Instance.SpriteTemplate)
+			Instance.SpriteTemplate->CacheEmitterModuleInfo();
 		Instance.UpdateStride();
+	}
 }
 
 void UParticleSystemComponent::UpdateLOD(float Distance)

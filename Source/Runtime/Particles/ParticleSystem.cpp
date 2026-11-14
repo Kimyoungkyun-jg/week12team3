@@ -99,6 +99,23 @@ void UParticleModuleSize::Update(FBaseParticle& Particle, float, uint32) const
 	Particle.Size = Start + (End - Start) * T;
 }
 
+void UParticleModuleInitialSize::Spawn(FBaseParticle& Particle, FParticleRandom& Random) const
+{
+	if (bUniformScale)
+	{
+		const float Scale = Random.Range(MinSize.X, MaxSize.X);
+		Particle.BaseSize = FVector(Scale, Scale, Scale);
+	}
+	else
+	{
+		Particle.BaseSize = FVector(
+			Random.Range(MinSize.X, MaxSize.X),
+			Random.Range(MinSize.Y, MaxSize.Y),
+			Random.Range(MinSize.Z, MaxSize.Z));
+	}
+	Particle.Size = Particle.BaseSize;
+}
+
 UParticleModuleSizeByLife::UParticleModuleSizeByLife()
 {
 	ScaleX = NewObject<UCurveFloat>(this);
@@ -144,6 +161,22 @@ UParticleModuleColorOverLife::UParticleModuleColorOverLife()
 	Alpha->AddKey(1.0f, 0.0f);
 }
 
+float UParticleModuleColorOverLife::EvaluateAlphaScale(float RelativeTime) const
+{
+	const float T = std::clamp(RelativeTime, 0.0f, 1.0f);
+	if (bUseFadeInOut)
+	{
+		const float InEnd = std::clamp(FadeInEnd, 0.0f, 1.0f);
+		const float OutStart = std::clamp(FadeOutStart, InEnd, 1.0f);
+		if (InEnd > 0.0f && T < InEnd)
+			return std::clamp(T / InEnd, 0.0f, 1.0f);
+		if (OutStart < 1.0f && T > OutStart)
+			return std::clamp(1.0f - (T - OutStart) / (1.0f - OutStart), 0.0f, 1.0f);
+		return 1.0f;
+	}
+	return Alpha ? std::clamp(Alpha->GetFloatValue(T), 0.0f, 1.0f) : 1.0f;
+}
+
 void UParticleModuleColorOverLife::Update(FBaseParticle& Particle, float, uint32) const
 {
 	const float T = std::clamp(Particle.RelativeTime, 0.0f, 1.0f);
@@ -154,8 +187,9 @@ void UParticleModuleColorOverLife::Update(FBaseParticle& Particle, float, uint32
 	const float R = ColorR ? ColorR->GetFloatValue(T) : 1.0f;
 	const float G = ColorG ? ColorG->GetFloatValue(T) : 1.0f;
 	const float B = ColorB ? ColorB->GetFloatValue(T) : 1.0f;
-	const float A = Alpha ? Alpha->GetFloatValue(T) : 1.0f;
-	Particle.Color = FColor(ToByte(R), ToByte(G), ToByte(B), ToByte(A));
+	const float AlphaScale = EvaluateAlphaScale(T);
+	const uint8 FinalAlpha = static_cast<uint8>(std::lround(static_cast<float>(Particle.BaseAlpha) * AlphaScale));
+	Particle.Color = FColor(ToByte(R), ToByte(G), ToByte(B), FinalAlpha);
 }
 
 void UParticleModuleColorOverLife::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
@@ -271,6 +305,24 @@ UParticleLODLevel* UParticleEmitter::AddLODLevel()
 	LOD->GetOrCreateTypeData();
 	LODLevels.Add(LOD);
 	return LOD;
+}
+
+void UParticleEmitter::CacheEmitterModuleInfo()
+{
+	for (UParticleLODLevel* LOD : LODLevels)
+	{
+		if (!LOD) continue;
+		LOD->SpawnModules.Reset();
+		LOD->UpdateModules.Reset();
+		for (UParticleModule* Module : LOD->Modules)
+		{
+			if (!Module || !Module->bEnabled) continue;
+			if (Module->RunsOnSpawn())
+				LOD->SpawnModules.Add(Module);
+			if (Module->RunsOnUpdate())
+				LOD->UpdateModules.Add(Module);
+		}
+	}
 }
 
 UParticleEmitter* UParticleSystem::AddEmitter()

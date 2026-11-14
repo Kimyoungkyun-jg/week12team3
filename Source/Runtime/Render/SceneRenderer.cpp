@@ -1370,7 +1370,8 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 			UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
 			RenderCommand::BindShaderResource(0, AtlasTex, EShaderBindFlagBits::Pixel);
 			RenderCommand::BindSamplerState(0, Batch.Material->SamplerState, EShaderBindFlagBits::Pixel);
-			RenderCommand::DrawIndexedInstanced(IndexBuffer->GetIndexCount(), Batch.InstanceCount, 0, 0, 0);
+			const uint32 DrawIndexCount = Batch.IndexCount > 0 ? Batch.IndexCount : IndexBuffer->GetIndexCount();
+			RenderCommand::DrawIndexedInstanced(DrawIndexCount, Batch.InstanceCount, Batch.StartIndex, 0, 0);
 		}
 
 		if (bCommonBound)

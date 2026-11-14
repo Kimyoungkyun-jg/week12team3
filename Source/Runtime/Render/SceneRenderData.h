@@ -59,6 +59,8 @@ struct FParticleInstancedBatch
 	UMaterial* Material = nullptr;
 	uint32 StartInstance = 0;
 	uint32 InstanceCount = 0;
+	uint32 StartIndex = 0;
+	uint32 IndexCount = 0;
 	bool bIsMesh = false;
 	EBlendState BlendState = EBlendState::AlphaBlend;
 };

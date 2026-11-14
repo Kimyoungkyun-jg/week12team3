@@ -101,7 +101,8 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 	}
 	if (UseColorOverLife != 0)
 	{
-		p.Color = saturate(SampleCurveLUT(128, T));
+		float4 curveColor = saturate(SampleCurveLUT(128, T));
+		p.Color = float4(curveColor.rgb, p.BaseColor.a * curveColor.a);
 	}
 	if (HasColorOverride != 0)
 	{

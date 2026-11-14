@@ -116,104 +116,151 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 
 	UStaticMesh* BatchMesh = nullptr;
 	UMaterial* BatchMaterial = nullptr;
-	bool bBatchIsMesh = false;
 	uint32 BatchStart = StartInstance;
 	uint32 BatchCount = 0;
 
-	for (const FSortedSprite& Entry : Sorted)
+	auto FlushSpriteBatch = [&]()
 	{
-		const FParticleSpriteRenderData& Sprite = DynamicData.Sprites[Entry.Index];
-		UStaticMesh* EntryMesh = Sprite.bIsMesh ? Sprite.Mesh : QuadMesh;
-		if (!EntryMesh) continue;
-		UMaterial* EntryMat = Sprite.Material
-			? Sprite.Material
-			: (Sprite.bIsMesh ? EntryMesh->GetMaterial(0) : Material);
-		if (!EntryMat) continue;
-
-		if (BatchCount > 0 && (EntryMesh != BatchMesh || EntryMat != BatchMaterial || Sprite.bIsMesh != bBatchIsMesh))
-		{
-			FParticleInstancedBatch Batch{};
-			Batch.Mesh = BatchMesh;
-			Batch.Material = BatchMaterial;
-			Batch.StartInstance = BatchStart;
-			Batch.InstanceCount = BatchCount;
-			Batch.bIsMesh = bBatchIsMesh;
-			Batch.BlendState = BatchMaterial->BlendState;
-			OutBatches.Add(Batch);
-			BatchStart = static_cast<uint32>(OutInstances.Num());
-			BatchCount = 0;
-		}
-		BatchMesh = EntryMesh;
-		BatchMaterial = EntryMat;
-		bBatchIsMesh = Sprite.bIsMesh;
-
-		FParticleInstanceData Instance{};
-		if (Sprite.bIsMesh)
-		{
-			const float C = std::cos(Sprite.Rotation);
-			const float S = std::sin(Sprite.Rotation);
-			FMatrix World = FMatrix::Identity;
-			World.M[0][0] = C * Sprite.MeshScale.X;
-			World.M[0][1] = S * Sprite.MeshScale.X;
-			World.M[1][0] = -S * Sprite.MeshScale.Y;
-			World.M[1][1] = C * Sprite.MeshScale.Y;
-			World.M[2][2] = Sprite.MeshScale.Z;
-			World.M[3][0] = Sprite.Location.X;
-			World.M[3][1] = Sprite.Location.Y;
-			World.M[3][2] = Sprite.Location.Z;
-			if (Sprite.bUseLocalSpace)
-				World = World * DynamicData.LocalToWorld;
-
-			const FVector4& BaseCol = EntryMat->BaseColor;
-			const bool bHasTex = !EntryMat->Textures.IsEmpty() && EntryMat->Textures[0] != nullptr;
-			Instance.World = World;
-			Instance.TintAndAlpha = FVector4(
-				Sprite.Constants.Tint.X * BaseCol.X,
-				Sprite.Constants.Tint.Y * BaseCol.Y,
-				Sprite.Constants.Tint.Z * BaseCol.Z,
-				Sprite.Constants.Alpha * BaseCol.W);
-			Instance.SubUVParams = FVector4(bHasTex ? 1.0f : 0.0f, 1.0f, 1.0f, 0.0f);
-		}
-		else
-		{
-			FMatrix World = View.BuildBillboardMatrix(Sprite.Location, Sprite.Width, Sprite.Height);
-			const float C = std::cos(Sprite.Rotation);
-			const float S = std::sin(Sprite.Rotation);
-			for (int Axis = 0; Axis < 3; ++Axis)
-			{
-				const float Right = World.M[1][Axis];
-				const float Up = World.M[2][Axis];
-				World.M[1][Axis] = C * Right + S * Up;
-				World.M[2][Axis] = C * Up - S * Right;
-			}
-
-			Instance.World = World;
-			Instance.TintAndAlpha = FVector4(
-				Sprite.Constants.Tint.X,
-				Sprite.Constants.Tint.Y,
-				Sprite.Constants.Tint.Z,
-				Sprite.Constants.Alpha);
-			Instance.SubUVParams = FVector4(
-				Sprite.Constants.CurrentFrame,
-				Sprite.Constants.AtlasRowSize,
-				Sprite.Constants.AtlasColSize,
-				Sprite.Constants.DecodeSRGB);
-		}
-		OutInstances.Add(Instance);
-		++BatchCount;
-	}
-
-	if (BatchCount > 0)
-	{
+		if (BatchCount == 0) return;
 		FParticleInstancedBatch Batch{};
 		Batch.Mesh = BatchMesh;
 		Batch.Material = BatchMaterial;
 		Batch.StartInstance = BatchStart;
 		Batch.InstanceCount = BatchCount;
-		Batch.bIsMesh = bBatchIsMesh;
+		Batch.bIsMesh = false;
 		Batch.BlendState = BatchMaterial->BlendState;
 		OutBatches.Add(Batch);
+		BatchStart = static_cast<uint32>(OutInstances.Num());
+		BatchCount = 0;
+	};
+
+	for (int32 SortedIdx = 0; SortedIdx < Count;)
+	{
+		const FParticleSpriteRenderData& FirstSprite = DynamicData.Sprites[Sorted[SortedIdx].Index];
+		if (FirstSprite.bIsMesh)
+		{
+			FlushSpriteBatch();
+			int32 RunEnd = SortedIdx + 1;
+			while (RunEnd < Count)
+			{
+				const FParticleSpriteRenderData& NextSprite = DynamicData.Sprites[Sorted[RunEnd].Index];
+				if (!NextSprite.bIsMesh || NextSprite.Mesh != FirstSprite.Mesh || NextSprite.Material != FirstSprite.Material)
+					break;
+				++RunEnd;
+			}
+
+			UStaticMesh* EntryMesh = FirstSprite.Mesh;
+			if (EntryMesh)
+			{
+				const FStaticMeshData& MeshData = EntryMesh->GetMeshData(0);
+				const bool bHasSections = !MeshData.Sections.IsEmpty();
+				const int32 SectionCount = bHasSections ? static_cast<int32>(MeshData.Sections.Num()) : 1;
+
+				for (int32 SecIdx = 0; SecIdx < SectionCount; ++SecIdx)
+				{
+					const uint32 SecStartIndex = bHasSections ? MeshData.Sections[SecIdx].StartIndex : 0;
+					const uint32 SecIndexCount = bHasSections ? MeshData.Sections[SecIdx].IndexCount : 0;
+					if (bHasSections && SecIndexCount == 0) continue;
+
+					const uint32 SlotIndex = bHasSections ? MeshData.Sections[SecIdx].MaterialSlotIndex : 0;
+					UMaterial* EntryMat = FirstSprite.Material
+						? FirstSprite.Material
+						: EntryMesh->GetMaterial(SlotIndex);
+					if (!EntryMat) continue;
+
+					const uint32 SecBatchStart = static_cast<uint32>(OutInstances.Num());
+					const FVector4& BaseCol = EntryMat->BaseColor;
+					const bool bHasTex = !EntryMat->Textures.IsEmpty() && EntryMat->Textures[0] != nullptr;
+
+					for (int32 RunIdx = SortedIdx; RunIdx < RunEnd; ++RunIdx)
+					{
+						const FParticleSpriteRenderData& Sprite = DynamicData.Sprites[Sorted[RunIdx].Index];
+						const float C = std::cos(Sprite.Rotation);
+						const float S = std::sin(Sprite.Rotation);
+						FMatrix World = FMatrix::Identity;
+						World.M[0][0] = C * Sprite.MeshScale.X;
+						World.M[0][1] = S * Sprite.MeshScale.X;
+						World.M[1][0] = -S * Sprite.MeshScale.Y;
+						World.M[1][1] = C * Sprite.MeshScale.Y;
+						World.M[2][2] = Sprite.MeshScale.Z;
+						World.M[3][0] = Sprite.Location.X;
+						World.M[3][1] = Sprite.Location.Y;
+						World.M[3][2] = Sprite.Location.Z;
+						if (Sprite.bUseLocalSpace)
+							World = World * DynamicData.LocalToWorld;
+
+						FParticleInstanceData Instance{};
+						Instance.World = World;
+						Instance.TintAndAlpha = FVector4(
+							Sprite.Constants.Tint.X * BaseCol.X,
+							Sprite.Constants.Tint.Y * BaseCol.Y,
+							Sprite.Constants.Tint.Z * BaseCol.Z,
+							Sprite.Constants.Alpha * BaseCol.W);
+						Instance.SubUVParams = FVector4(bHasTex ? 1.0f : 0.0f, 1.0f, 1.0f, 0.0f);
+						OutInstances.Add(Instance);
+					}
+
+					FParticleInstancedBatch Batch{};
+					Batch.Mesh = EntryMesh;
+					Batch.Material = EntryMat;
+					Batch.StartInstance = SecBatchStart;
+					Batch.InstanceCount = static_cast<uint32>(RunEnd - SortedIdx);
+					Batch.StartIndex = SecStartIndex;
+					Batch.IndexCount = SecIndexCount;
+					Batch.bIsMesh = true;
+					Batch.BlendState = EntryMat->BlendState;
+					OutBatches.Add(Batch);
+				}
+			}
+
+			BatchStart = static_cast<uint32>(OutInstances.Num());
+			SortedIdx = RunEnd;
+			continue;
+		}
+
+		UStaticMesh* EntryMesh = QuadMesh;
+		UMaterial* EntryMat = FirstSprite.Material ? FirstSprite.Material : Material;
+		if (!EntryMesh || !EntryMat)
+		{
+			++SortedIdx;
+			continue;
+		}
+
+		if (BatchCount > 0 && (EntryMesh != BatchMesh || EntryMat != BatchMaterial))
+			FlushSpriteBatch();
+
+		BatchMesh = EntryMesh;
+		BatchMaterial = EntryMat;
+
+		FMatrix World = View.BuildBillboardMatrix(FirstSprite.Location, FirstSprite.Width, FirstSprite.Height);
+		const float C = std::cos(FirstSprite.Rotation);
+		const float S = std::sin(FirstSprite.Rotation);
+		for (int Axis = 0; Axis < 3; ++Axis)
+		{
+			const float Right = World.M[1][Axis];
+			const float Up = World.M[2][Axis];
+			World.M[1][Axis] = C * Right + S * Up;
+			World.M[2][Axis] = C * Up - S * Right;
+		}
+
+		FParticleInstanceData Instance{};
+		Instance.World = World;
+		Instance.TintAndAlpha = FVector4(
+			FirstSprite.Constants.Tint.X,
+			FirstSprite.Constants.Tint.Y,
+			FirstSprite.Constants.Tint.Z,
+			FirstSprite.Constants.Alpha);
+		Instance.SubUVParams = FVector4(
+			FirstSprite.Constants.CurrentFrame,
+			FirstSprite.Constants.AtlasRowSize,
+			FirstSprite.Constants.AtlasColSize,
+			FirstSprite.Constants.DecodeSRGB);
+		OutInstances.Add(Instance);
+		++BatchCount;
+		++SortedIdx;
 	}
+
+	FlushSpriteBatch();
 }
 
 void FParticleSceneProxy::SubmitGpuEmitters(TArray<FGpuParticleBatch>& OutBatches, const FViewContext& View) const

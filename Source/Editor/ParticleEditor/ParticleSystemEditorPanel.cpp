@@ -361,7 +361,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					{
 						if (!NewMeshType->Mesh)
 							NewMeshType->Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Cube");
-						LOD->GetOrCreateRequired()->Material = NewMeshType->Mesh ? NewMeshType->Mesh->GetMaterial(0) : nullptr;
+						LOD->GetOrCreateRequired()->Material = nullptr;
 					}
 					if (bWasTypeDataSelected)
 						SelectedModule = NewTypeData;
@@ -441,6 +441,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					AddModItem("Initial Color", UParticleModuleColor::StaticClass());
 					AddModItem("Color Over Life", UParticleModuleColorOverLife::StaticClass());
 					AddModItem("Initial Size", UParticleModuleSize::StaticClass());
+					AddModItem("Initial Size (Random)", UParticleModuleInitialSize::StaticClass());
 					AddModItem("Size By Life", UParticleModuleSizeByLife::StaticClass());
 					AddModItem("Initial Rotation", UParticleModuleRotation::StaticClass());
 					AddModItem("SubImage Index", UParticleModuleSubUV::StaticClass());
@@ -483,7 +484,7 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		if (!LOD || !MeshType) return;
 		if (FContentDrawerPanel::DrawStaticMeshPicker("Static Mesh", MeshType->Mesh, "(None)"))
 		{
-			LOD->GetOrCreateRequired()->Material = MeshType->Mesh ? MeshType->Mesh->GetMaterial(0) : nullptr;
+			LOD->GetOrCreateRequired()->Material = nullptr;
 			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 				PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
 		}
@@ -591,11 +592,39 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			strncpy_s(ParamBuf, ColOverLife->ParameterName.c_str(), _TRUNCATE);
 			if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
 				ColOverLife->ParameterName = ParamBuf;
+			ImGui::Checkbox("Use Fade In/Out", &ColOverLife->bUseFadeInOut);
+			if (ColOverLife->bUseFadeInOut)
+			{
+				ImGui::SliderFloat("Fade In End", &ColOverLife->FadeInEnd, 0.0f, 1.0f);
+				ImGui::SliderFloat("Fade Out Start", &ColOverLife->FadeOutStart, 0.0f, 1.0f);
+			}
 		}
 		else if (auto* Sz = Cast<UParticleModuleSize>(SelectedModule))
 		{
 			ImGui::DragFloat3("Start Size", &Sz->Start.X, 0.05f, 0.0f, 100.0f);
 			ImGui::DragFloat3("End Size", &Sz->End.X, 0.05f, 0.0f, 100.0f);
+		}
+		else if (auto* InitSz = Cast<UParticleModuleInitialSize>(SelectedModule))
+		{
+			ImGui::Checkbox("Uniform Scale", &InitSz->bUniformScale);
+			if (InitSz->bUniformScale)
+			{
+				if (ImGui::DragFloat("Min Size", &InitSz->MinSize.X, 0.05f, 0.0f, 100.0f))
+				{
+					InitSz->MinSize.Y = InitSz->MinSize.X;
+					InitSz->MinSize.Z = InitSz->MinSize.X;
+				}
+				if (ImGui::DragFloat("Max Size", &InitSz->MaxSize.X, 0.05f, 0.0f, 100.0f))
+				{
+					InitSz->MaxSize.Y = InitSz->MaxSize.X;
+					InitSz->MaxSize.Z = InitSz->MaxSize.X;
+				}
+			}
+			else
+			{
+				ImGui::DragFloat3("Min Size", &InitSz->MinSize.X, 0.05f, 0.0f, 100.0f);
+				ImGui::DragFloat3("Max Size", &InitSz->MaxSize.X, 0.05f, 0.0f, 100.0f);
+			}
 		}
 		else if (auto* Rot = Cast<UParticleModuleRotation>(SelectedModule))
 		{
