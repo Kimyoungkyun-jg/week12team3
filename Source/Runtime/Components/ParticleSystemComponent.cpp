@@ -118,6 +118,90 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 	};
 }
 
+void UParticleSystemComponent::SubmitSpriteEmitter(const FParticleEmitterInstance& Instance, FRenderQueue& RenderQueue,
+	const FViewContext& ViewContext, uint32& ConstantIndex)
+{
+	const uint32 FirstConstant = ConstantIndex;
+	ConstantIndex += static_cast<uint32>(Instance.ActiveParticles);
+
+	UStaticMesh* Quad = UAssetManager::GetAssetByPath<UStaticMesh>("ParticleQuad");
+	const auto* Required = Instance.CurrentLODLevel->RequiredModule;
+	UMaterial* Material = Required && Required->Material
+		? Required->Material
+		: UAssetManager::GetAssetByPath<UMaterial>("BillboardMaterial");
+
+	if (!Quad || !Material)
+	{
+		return;
+	}
+
+	for (int32 Index = 0; Index < Instance.ActiveParticles; ++Index)
+	{
+		const FBaseParticle& Particle = Instance.GetActiveParticle(Index);
+		const FMatrix World = ViewContext.BuildBillboardMatrix(Particle.Location, Particle.Size.X, Particle.Size.Y);
+		const FVector CameraDelta = Particle.Location - ViewContext.CameraPosition;
+
+		FRenderPacket Packet{};
+		Packet.Mesh = Quad;
+		Packet.Material = Material;
+		Packet.Model = RenderQueue.StoreWorldMatrix(World);
+		Packet.CameraToParticleDistance = CameraDelta.Dot(CameraDelta);
+		Packet.MaterialParamData = &SpriteConstants[FirstConstant + static_cast<uint32>(Index)];
+		Packet.MaterialParamDataSize = sizeof(FSubUVConstants);
+		RenderQueue.Add(Packet);
+	}
+}
+
+void UParticleSystemComponent::SubmitMeshEmitter(const FParticleEmitterInstance& Instance, const UParticleModuleTypeDataMesh& TypeData,
+	FRenderQueue& RenderQueue, const FViewContext& ViewContext)
+{
+	UStaticMesh* Mesh = TypeData.Mesh;
+	constexpr uint8 MeshLODIndex = 0;
+
+	if (!Mesh || !Mesh->GetVertexBuffer(MeshLODIndex) || !Mesh->GetIndexBuffer(MeshLODIndex))
+	{
+		return;
+	}
+
+	const FStaticMeshData& MeshData = Mesh->GetMeshData(MeshLODIndex);
+
+	for (int32 Index = 0; Index < Instance.ActiveParticles; ++Index)
+	{
+		const FBaseParticle& Particle = Instance.GetActiveParticle(Index);
+
+		FMatrix World = FMatrix::MakeTranslation(Particle.Location);
+
+		// Scale
+		constexpr float MeshScale = 0.2f;
+		World.M[0][0] = Particle.Size.X * MeshScale;
+		World.M[1][1] = Particle.Size.Y * MeshScale;
+		World.M[2][2] = Particle.Size.Z * MeshScale;
+
+		const FMatrix* StoredWorld = RenderQueue.StoreWorldMatrix(World);
+		const FVector CameraDelta = Particle.Location - ViewContext.CameraPosition;
+		const float DistanceSquared = CameraDelta.Dot(CameraDelta);
+
+		for (const FStaticMeshSection& Section : MeshData.Sections)
+		{
+			UMaterial* Material = Mesh->GetMaterial(Section.MaterialSlotIndex);
+			if (!Material || Section.IndexCount == 0)
+			{
+				continue;
+			}
+
+			FRenderPacket Packet{};
+			Packet.Mesh = Mesh;
+			Packet.Model = StoredWorld;
+			Packet.Material = Material;
+			Packet.StartIndex = Section.StartIndex;
+			Packet.IndexCount = Section.IndexCount;
+			Packet.LODIndex = MeshLODIndex;
+			Packet.CameraToParticleDistance = DistanceSquared;
+			RenderQueue.Add(Packet);
+		}
+	}
+}
+
 void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext)
 {
 	const UWorld* World = GetWorld();
@@ -126,44 +210,20 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 		return;
 	}
 
-	UStaticMesh* Quad = UAssetManager::GetAssetByPath<UStaticMesh>("ParticleQuad");
-	UMaterial* DefaultMaterial = UAssetManager::GetAssetByPath<UMaterial>("BillboardMaterial");
-
-	if (!Quad || !DefaultMaterial)
-	{
-		return;
-	}
-
 	uint32 ConstantIndex = 0;
 
 	for (const auto& Instance : EmitterInstances)
 	{
-		if (Instance->CurrentLODLevel->TypeDataModule)
+		const auto* TypeMeshData = Instance->CurrentLODLevel->TypeDataModule;
+
+		if (!TypeMeshData)
 		{
-			continue;
+			SubmitSpriteEmitter(*Instance, RenderQueue, ViewContext, ConstantIndex);
 		}
-
-		const auto* Required = Instance->CurrentLODLevel->RequiredModule;
-		UMaterial* Material = Required && Required->Material
-			? Required->Material
-			: DefaultMaterial;
-
-		for (int32 Index = 0; Index < Instance->ActiveParticles; ++Index)
+		else if (const auto* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(TypeMeshData))
 		{
-			const FBaseParticle& Particle = Instance->GetActiveParticle(Index);
-			const FMatrix World = ViewContext.BuildBillboardMatrix(Particle.Location, Particle.Size.X, Particle.Size.Y);
-			const FVector CameraDelta = Particle.Location - ViewContext.CameraPosition;
-
-			FRenderPacket Packet{};
-			Packet.Mesh = Quad;
-			Packet.Material = Material;
-			Packet.Model = RenderQueue.StoreWorldMatrix(World);
-			Packet.CameraToParticleDistance = CameraDelta.Dot(CameraDelta);
-			Packet.MaterialParamData = &SpriteConstants[ConstantIndex];
-			Packet.MaterialParamDataSize = sizeof(FSubUVConstants);
-			RenderQueue.Add(Packet);
-
-			++ConstantIndex;
+			SubmitMeshEmitter(*Instance, *MeshTypeData, RenderQueue, ViewContext);
 		}
 	}
+
 }

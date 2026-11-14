@@ -6,7 +6,7 @@
 #include "ParticleSystemComponent.generated.h"
 
 class UParticleSystem;
-
+class UParticleModuleTypeDataMesh;
 
 UCLASS()
 class UParticleSystemComponent : public UPrimitiveComponent
@@ -26,6 +26,19 @@ public:
 
 	bool ShouldPreviewInEditor() const { return bPreviewInEditor; }
 	bool HasTemplate() const { return Template != nullptr; }
+
+private:
+	void SubmitSpriteEmitter(
+		const FParticleEmitterInstance& Instance,
+		FRenderQueue& RenderQueue,
+		const FViewContext& ViewContext,
+		uint32& ConstantIndex);
+
+	void SubmitMeshEmitter(
+		const FParticleEmitterInstance& Instance,
+		const UParticleModuleTypeDataMesh& TypeData,
+		FRenderQueue& RenderQueue,
+		const FViewContext& ViewContext);
 
 private:
 	UParticleSystem* Template = nullptr;

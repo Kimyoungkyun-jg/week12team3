@@ -4,6 +4,7 @@
 #include "ParticleModule.generated.h"
 
 class UMaterial;
+class UStaticMesh;
 struct FBaseParticle;
 
 UCLASS()
@@ -55,6 +56,15 @@ class UParticleModuleTypeDataBase : public UParticleModule
 };
 
 UCLASS()
+class UParticleModuleTypeDataMesh : public UParticleModuleTypeDataBase
+{
+	GENERATED_BODY()
+
+public:
+	UStaticMesh* Mesh = nullptr;
+};
+
+UCLASS()
 class UParticleModuleColorOverLife : public UParticleModule
 {
 	GENERATED_BODY()
@@ -62,4 +72,30 @@ class UParticleModuleColorOverLife : public UParticleModule
 public:
 	virtual bool RunsOnUpdate() const { return true; }
 	void Update(FBaseParticle& Particle) const override;
+};
+
+UCLASS()
+class UParticleModuleInitialSize : public UParticleModule
+{
+	GENERATED_BODY()
+
+public:
+	bool RunsOnSpawn() const override { return true; }
+	void Spawn(FBaseParticle& Particle) const override;
+
+	float MinSize = 0.1f;
+	float MaxSize = 0.25f;
+};
+
+UCLASS()
+class UParticleModuleInitialVelocity : public UParticleModule
+{
+	GENERATED_BODY()
+
+public:
+	bool RunsOnSpawn() const override { return true; }
+	void Spawn(FBaseParticle& Particle) const override;
+
+	FVector MinVelocity{ -2.0f, -2.0f, 1.0f };
+	FVector MaxVelocity{ 2.0f, 2.0f, 3.0f };
 };

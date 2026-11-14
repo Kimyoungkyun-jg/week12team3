@@ -195,7 +195,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& EmitterLocat
 		}
 	}
 
-	const FVector InitialVelocity{ 0.0f, 0.0f, 3.0f };
+	const FVector InitialVelocity{ 0.0f, 0.0f, 1.0f };
 	SpawnParticles(SpawnCount, EmitterLocation, InitialVelocity);
 	SpawnRemainder = NextRemainder;
 }
