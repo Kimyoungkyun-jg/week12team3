@@ -37,10 +37,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 {
 	SetContentRootToExecutableDir();
 	WindowsCrashHandler::Install();
-#if defined(_DEBUG)
-	constexpr DWORD TestCrashCode = 0xE0420001;
-	RaiseException(TestCrashCode, EXCEPTION_NONCONTINUABLE, 0, nullptr);
-#endif
 
 	{
 		FEngineLoop EngineLoop;
