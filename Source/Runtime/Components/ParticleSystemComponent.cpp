@@ -51,6 +51,18 @@ void UParticleSystemComponent::BeginPlay()
 void UParticleSystemComponent::TickComponent(float DeltaTime)
 {
 	Super::TickComponent(DeltaTime);
+
+	for (auto & Particle : Particles)
+	{
+		Particle.RelativeTime += DeltaTime / Particle.Lifetime;
+		
+		if (Particle.RelativeTime >= 1.0f)
+		{
+			InitParticle(Particle);
+		}
+
+		Particle.Location += Particle.Velocity * DeltaTime;
+	}
 }
 
 FBox UParticleSystemComponent::CalcLocalBounds() const
