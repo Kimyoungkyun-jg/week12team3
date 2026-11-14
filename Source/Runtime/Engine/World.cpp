@@ -23,6 +23,7 @@
 #include "Components/ParticleSubUVComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/ExponentialHeightFogComponent.h"
+#include "Components/ParticleSystemComponent.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Asset/LOD/StaticMeshLODSelector.h"
@@ -192,6 +193,17 @@ void UWorld::Tick(float RealDeltaTime)
 				Comp->SetParticles(10);
 			}
 			Comp->TickComponent(DeltaTime);
+		}
+		for (TObjectIterator<UParticleSystemComponent> Comp; Comp; ++Comp)
+		{
+			if (!Comp || !Comp->IsRegistered() || Comp->GetWorld() != this)
+			{
+				continue;
+			}	
+			if (Comp->ShouldPreviewInEditor())
+			{
+				Comp->TickComponent(DeltaTime);
+			}
 		}
 		// 스프링 암 컴포넌트도 에디터에서 틱이 돌아야 한다
 		for (TObjectIterator<USpringArmComponent> Comp; Comp; ++Comp)
