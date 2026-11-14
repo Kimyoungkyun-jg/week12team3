@@ -111,16 +111,31 @@ json UMaterial::SaveMaterial(const UMaterialInterface* Material)
 	json Out;
 	Out["Base"] = Instance->GetParent()->GetPath();
 
-	if (Instance->HasBaseColorOverride())
+	json Parameters = json::array();
+
+	for (const FMaterialParameterOverride& Override : Instance->GetParameterOverrides())
 	{
-		Out["BaseColor"] = Instance->GetBaseColorOverride();
+		json Parameter;
+		Parameter["Name"] = Override.ParameterName.ToString();
+		Parameter["Type"] = static_cast<uint8>(Override.Type);
+
+		if (Override.Type == EMaterialParameterType::Scalar)
+		{
+			Parameter["Scalar"] = Override.ScalarValue;
+		}
+		else if (Override.Type == EMaterialParameterType::Vector)
+		{
+			Parameter["Vector"] = Override.VectorValue;
+		}
+		else if (Override.Type == EMaterialParameterType::Texture)
+		{
+			Parameter["Texture"] = Override.TextureValue ? Override.TextureValue->GetPath() : FString();
+		}
+
+		Parameters.push_back(Parameter);
 	}
 
-	if (Instance->HasTexture0Override())
-	{
-		UTexture2D* Texture = Instance->GetTexture0Override();
-		Out["Texture0Override"] = Texture ? Texture->GetPath() : FString();
-	}
+	Out["Parameters"] = Parameters;
 
 	return Out;
 }
@@ -157,6 +172,36 @@ UMaterialInterface* UMaterial::LoadMaterial(const json& In)
 	}
 
 	Instance->SetParent(Base);
+
+	if (In.contains("Parameters") && In["Parameters"].is_array())
+	{
+		for (const json& Parameter : In["Parameters"])
+		{
+			if (!Parameter.is_object() || !Parameter.contains("Name") || !Parameter.contains("Type"))
+			{
+				continue;
+			}
+
+			const FName Name(Parameter["Name"].get<FString>());
+			const EMaterialParameterType Type = static_cast<EMaterialParameterType>(Parameter["Type"].get<uint8>());
+
+			if (Type == EMaterialParameterType::Scalar && Parameter.contains("Scalar"))
+			{
+				Instance->SetScalarParameterValue(Name, Parameter["Scalar"].get<float>());
+			}
+			else if (Type == EMaterialParameterType::Vector && Parameter.contains("Vector"))
+			{
+				FVector4 Value;
+				Parameter["Vector"].get_to(Value);
+				Instance->SetVectorParameterValue(Name, Value);
+			}
+			else if (Type == EMaterialParameterType::Texture && Parameter.contains("Texture"))
+			{
+				const FString Path = Parameter["Texture"].get<FString>();
+				Instance->SetTextureParameterValue(Name, Path.empty() ? nullptr : UAssetManager::Get().LoadTexture(Path));
+			}
+		}
+	}
 
 	if (In.contains("BaseColor"))
 	{

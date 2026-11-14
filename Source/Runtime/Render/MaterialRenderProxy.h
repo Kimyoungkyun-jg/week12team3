@@ -1,12 +1,14 @@
 #pragma once
 
 #include "Render/Material.h"
+#include "Render/MaterialInstance.h"
 
 struct FMaterialRenderProxy
 {
 	const UMaterial* BaseMaterial = nullptr;
 
 	TArray<UTexture2D*> Textures;
+	TArray<FMaterialParameterOverride> ParameterOverrides;
 
 	FVector4 BaseColor = FVector4(1, 1, 1, 1);
 	FVector SpecularColor = FVector(1, 1, 1);

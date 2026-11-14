@@ -2,9 +2,24 @@
 
 #include "MaterialInterface.h"
 #include "MaterialInstance.generated.h"
+#include "Core/NameTypes.h"
 
 class UTexture2D;
+enum class EMaterialParameterType : uint8
+{
+	Scalar,
+	Vector,
+	Texture
+};
 
+struct FMaterialParameterOverride
+{
+	FName ParameterName;
+	EMaterialParameterType Type = EMaterialParameterType::Scalar;
+	float ScalarValue = 0.0f;
+	FVector4 VectorValue = FVector4(0, 0, 0, 0);
+	UTexture2D* TextureValue = nullptr;
+};
 UCLASS()
 class UMaterialInstance : public UMaterialInterface
 {
@@ -24,9 +39,15 @@ public:
 	ESamplerState GetSamplerState() const override;
 	uint16 GetSortID() const override { return SortID; }
 
-	void SetBaseColorOverride(const FVector4& Value);
-	void SetTexture0Override(UTexture2D* Texture);
-
+	void SetScalarParameterValue(const FName& ParameterName, float Value);
+	void SetVectorParameterValue(const FName& ParameterName, const FVector4& Value);
+	void SetTextureParameterValue(const FName& ParameterName, UTexture2D* Texture);
+	void ClearParameterOverride(const FName& ParameterName);
+	bool HasParameterOverride(const FName& ParameterName) const;
+	const FMaterialParameterOverride* GetParameterOverride(const FName& ParameterName) const;
+	const TArray<FMaterialParameterOverride>& GetParameterOverrides() const { return ParameterOverrides; }
+	void SetBaseColorOverride(const FVector4& Value) { SetVectorParameterValue(FName("BaseColor"), Value); }
+	void SetTexture0Override(UTexture2D* Texture) { SetTextureParameterValue(FName("Texture0"), Texture); }
 	bool HasBaseColorOverride() const { return bOverrideBaseColor; }
 	const FVector4& GetBaseColorOverride() const { return BaseColorOverride; }
 	bool HasTexture0Override() const { return bOverrideTexture0; }
@@ -38,14 +59,12 @@ public:
 protected:
 	UMaterialInterface* Parent = nullptr;
 
-	bool bOverrideBaseColor = false;
 	FVector4 BaseColorOverride = FVector4(1, 1, 1, 1);
-
-	bool bOverrideTexture0 = false;
-	UTexture2D* Texture0Override = nullptr;
 
 	const uint16 SortID;
 	inline static uint16 NextSortID = 0;
+
+	TArray<FMaterialParameterOverride> ParameterOverrides;
 };
 
 UCLASS()

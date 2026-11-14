@@ -28,6 +28,8 @@
 #include "Asset/AssetManager.h"
 #include "Asset/FbxImporter/FbxPath.h"
 #include "Render/Material.h"
+#include "Render/MaterialInstance.h"
+#include "Render/MaterialRenderProxy.h"
 #include "Render/Texture2D.h"
 #include "Text/Font.h"
 #include "UObject/UObjectIterator.h"
@@ -359,18 +361,9 @@ namespace
 			{
 				UTexture2D* DroppedTexture = *static_cast<UTexture2D**>(Payload->Data);
 
-				// 머티리얼이 없으면 기본 머티리얼에서 시작한다
 				if (!Material)
 				{
-					Material = UMaterial::CreateInstance(UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial"));
-					*MaterialPtr = Material;
-				}
-				// 공유 에셋이면 지금 복제한다.
-				// 이 시점까지 미루면 손대지 않은 오브젝트는 계속 공유 에셋을 쓴다.
-				else if (Material->bIsInstance == false)
-				{
-					Material = UMaterial::CreateInstance(Material);
-					*MaterialPtr = Material;
+					return;
 				}
 
 				if (Material)
@@ -402,105 +395,6 @@ namespace
 			ImGui::TextDisabled("(비어 있음)");
 		}
 		ImGui::EndGroup();
-
-		ImGui::PopID();
-	}
-
-	void DrawDecalMaterial(UDecalComponent* Decal)
-	{
-		if (!Decal)
-			return;
-
-		ImGui::PushID(Decal);
-
-		if (ImGui::CollapsingHeader(
-			"Decal Material",
-			ImGuiTreeNodeFlags_DefaultOpen))
-		{
-			UMaterial* Material = Decal->GetDecalMaterial();
-
-			const UMaterial* Base =
-				Material ? Material->GetBaseAsset() : nullptr;
-
-			const FString Preview =
-				Base ? Base->GetPath() :
-				Material ? FString("(Instance)") :
-				FString("(None)");
-
-			EditorUIScale::LimitNextComboPopupWidth();
-			if (ImGui::BeginCombo(
-				"Material",
-				Preview.c_str()))
-			{
-				if (ImGui::Selectable(
-					"(None)",
-					Material == nullptr))
-				{
-					Decal->SetDecalMaterial(nullptr);
-				}
-
-				const TArray<UMaterial*> Candidates = EditorSort::CollectSorted<UMaterial>(
-					TObjectIterator<UMaterial>(),
-					[](const UMaterial* M) { return M->GetPath(); },
-					[](const UMaterial* M) { return !M->IsRetired() && !M->GetPath().empty(); });
-
-				for (UMaterial* Candidate : Candidates)
-				{
-
-					const bool bSelected =
-						Candidate == Material ||
-						Candidate == Base;
-
-					if (ImGui::Selectable(
-						Candidate->GetPath().c_str(),
-						bSelected))
-					{
-						Decal->SetDecalMaterial(Candidate);
-					}
-				}
-
-				ImGui::EndCombo();
-			}
-
-			Material = Decal->GetDecalMaterial();
-
-			// 기존 함수는 텍스처 변경 시 공유 에셋을 복제해
-			// 컴포넌트 전용 머티리얼 인스턴스로 바꾼다.
-			ImGui::TextUnformatted("Base Color");
-			DrawTextureSlot(&Material, 0);
-
-			ImGui::TextUnformatted("Normal Map");
-			DrawTextureSlot(&Material, 1);
-
-			Decal->SetDecalMaterial(Material);
-
-			if (Material)
-			{
-				FVector4 Color = Material->BaseColor;
-
-				if (ImGui::ColorEdit4(
-					"Material BaseColor",
-					&Color.X))
-				{
-					if (!Material->bIsInstance)
-					{
-						Material =
-							UMaterial::CreateInstance(Material);
-					}
-
-					if (Material)
-					{
-						Material->BaseColor = Color;
-						Decal->SetDecalMaterial(Material);
-					}
-				}
-
-				if (ImGui::Button("Clear Material"))
-				{
-					Decal->SetDecalMaterial(nullptr);
-				}
-			}
-		}
 
 		ImGui::PopID();
 	}
@@ -673,108 +567,266 @@ namespace
 		}
 	}
 
-	UMaterial* EnsureMaterialOverride(UMeshComponent* MeshComponent, int32 Slot, UMaterial* Effective, UMaterial* Override)
+	UMaterialInstanceDynamic* EnsureMaterialOverride(UMeshComponent* MeshComponent, int32 Slot, UMaterialInterface*& Effective, UMaterialInterface*& Override)
 	{
-		// 이 컴포넌트 전용 인스턴스가 아니면 지금 적용 중인 머티리얼을 복제해서 덮어쓰기로 만든다.
-		// 메시의 머티리얼은 같은 메시를 쓰는 모든 액터가 공유하므로 직접 고치면 안 된다.
-		if (Override && Override->bIsInstance)	return Override;
+		if (UMaterialInstanceDynamic* Dynamic = Cast<UMaterialInstanceDynamic>(Override))
+		{
+			return Dynamic;
+		}
 
-		UMaterial* Source = Effective ? Effective : UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
+		UMaterialInterface* Parent = Effective ? Effective : UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
+		if (!Parent)
+		{
+			return nullptr;
+		}
 
-		Override = UMaterial::CreateInstance(Source);
-		MeshComponent->SetMaterial(Slot, Override);
+		UMaterialInstanceDynamic* Dynamic = UMaterial::CreateDynamicInstance(Parent);
+		if (!Dynamic)
+		{
+			return nullptr;
+		}
 
-		return Override;
+		Override = Dynamic;
+		Effective = Dynamic;
+		MeshComponent->SetMaterial(Slot, Dynamic);
+
+		return Dynamic;
 	}
 
-	bool SetMaterialTexture(UMeshComponent* MeshComponent, int32 MaterialSlot, int32 TextureSlot, UTexture2D* Texture, UMaterial*& Effective, UMaterial*& Override) {
-		UTexture2D* Current{ Effective && Effective->Textures.IsValidIndex(TextureSlot) ? Effective->Textures[TextureSlot] : nullptr };
-		if (Current == Texture) {
-			return false;
+	void DrawParameterOverrideReset(UMaterialInterface* Override, const FName& ParameterName)
+	{
+		UMaterialInstanceDynamic* Dynamic = Cast<UMaterialInstanceDynamic>(Override);
+		if (!Dynamic || !Dynamic->HasParameterOverride(ParameterName))
+		{
+			return;
 		}
 
-		Override = EnsureMaterialOverride(MeshComponent, MaterialSlot, Effective, Override);
-		if (!Override) {
-			return false;
+		const FString ID = ParameterName.ToString();
+		ImGui::SameLine();
+		ImGui::PushID(ID.c_str());
+
+		if (ImGui::SmallButton("Reset"))
+		{
+			Dynamic->ClearParameterOverride(ParameterName);
 		}
 
-		while (!Override->Textures.IsValidIndex(TextureSlot)) {
-			Override->Textures.Add(nullptr);
-		}
-		Override->Textures[TextureSlot] = Texture;
-		Effective = Override;
-		return true;
+		ImGui::PopID();
 	}
 
-	void DrawMaterialTextureSlot(UMeshComponent* MeshComponent, int32 MaterialSlot, int32 TextureSlot, const char* Label, UMaterial*& Effective, UMaterial*& Override) {
-		const float ThumbnailSize{ EditorUIScale::Px(64.0f) };
-		const float ItemThumbnailSize{ EditorUIScale::Px(24.0f) };
-		UTexture2D* Texture{ Effective && Effective->Textures.IsValidIndex(TextureSlot) ? Effective->Textures[TextureSlot] : nullptr };
+	template<typename TEnsureOverride>
+	void DrawMaterialTextureSlot(int32 MaterialSlot, int32 TextureSlot, const FName& ParameterName, const char* Label, UMaterialInterface*& Effective, UMaterialInterface*& Override, TEnsureOverride&& EnsureOverride)
+	{
+		const float ThumbnailSize = EditorUIScale::Px(64.0f);
+		const float ItemThumbnailSize = EditorUIScale::Px(24.0f);
+
+		FMaterialRenderProxy Proxy{};
+		if (Effective)
+		{
+			Effective->GetRenderProxy(Proxy);
+		}
+
+		UTexture2D* Texture = Proxy.Textures.IsValidIndex(TextureSlot) ? Proxy.Textures[TextureSlot] : nullptr;
 
 		ImGui::TableNextRow();
 		ImGui::TableSetColumnIndex(0);
 		ImGui::TextUnformatted(Label);
 		ImGui::TableSetColumnIndex(1);
+		ImGui::PushID(MaterialSlot);
 		ImGui::PushID(TextureSlot);
 
-		if (Texture && Texture->GetResource()) {
+		if (Texture && Texture->GetResource())
+		{
 			ImGui::Image((ImTextureID)Texture->GetResource()->GetSRV(), { ThumbnailSize, ThumbnailSize });
-			if (ImGui::IsItemHovered()) {
+			if (ImGui::IsItemHovered())
+			{
 				ImGui::SetTooltip("%s", Texture->GetPath().c_str());
 			}
-		} else {
+		}
+		else
+		{
 			ImGui::Button("Empty", { ThumbnailSize, ThumbnailSize });
 		}
 
-		if (ImGui::BeginDragDropTarget()) {
-			if (const ImGuiPayload* Payload{ ImGui::AcceptDragDropPayload(EditorDragDrop::Texture) }) {
-				UTexture2D* DroppedTexture{ *static_cast<UTexture2D**>(Payload->Data) };
-				if (SetMaterialTexture(MeshComponent, MaterialSlot, TextureSlot, DroppedTexture, Effective, Override)) {
-					Texture = DroppedTexture;
-				}
+		auto ApplyTexture = [&](UTexture2D* NewTexture)
+		{
+			if (UMaterialInstanceDynamic* Dynamic = EnsureOverride())
+			{
+				Dynamic->SetTextureParameterValue(ParameterName, NewTexture);
+				Effective = Dynamic;
+				Override = Dynamic;
+				Texture = NewTexture;
 			}
+		};
+
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload(EditorDragDrop::Texture))
+			{
+				ApplyTexture(*static_cast<UTexture2D**>(Payload->Data));
+			}
+
 			ImGui::EndDragDropTarget();
 		}
 
-		const FString CurrentPath{ Texture ? Texture->GetPath() : "" };
-		const FString CurrentFileName{ Texture ? GetAssetDisplayName(CurrentPath) : "None" };
+		const FString CurrentPath = Texture ? Texture->GetPath() : "";
+		const FString CurrentFileName = Texture ? GetAssetDisplayName(CurrentPath) : "None";
+
 		ImGui::SetNextItemWidth(-1.0f);
 		EditorUIScale::LimitNextComboPopupWidth();
-		const bool Open{ ImGui::BeginCombo("##Texture", CurrentFileName.c_str()) };
-		if (ImGui::IsItemHovered() && Texture) {
-			ImGui::SetTooltip("%s", CurrentPath.c_str());
-		}
 
-		if (Open) {
-			if (ImGui::Selectable("None", Texture == nullptr)) {
-				SetMaterialTexture(MeshComponent, MaterialSlot, TextureSlot, nullptr, Effective, Override);
+		if (ImGui::BeginCombo("##Texture", CurrentFileName.c_str()))
+		{
+			if (ImGui::Selectable("None", Texture == nullptr))
+			{
+				ApplyTexture(nullptr);
 			}
 
 			const TArray<UTexture2D*> Textures = EditorSort::CollectSorted<UTexture2D>(
 				TObjectIterator<UTexture2D>(),
-				[](const UTexture2D* T) { return GetAssetDisplayName(T->GetPath()); },
-				[](UTexture2D* T) { return !T->IsRetired() && T->GetResource() && !T->GetPath().empty(); });
+				[](const UTexture2D* T)
+				{ return GetAssetDisplayName(T->GetPath()); },
+				[](UTexture2D* T)
+				{ return !T->IsRetired() && T->GetResource() && !T->GetPath().empty(); });
 
-			for (UTexture2D* ItemTexture : Textures) {
+			for (UTexture2D* ItemTexture : Textures)
+			{
+				const bool Selected = ItemTexture == Texture;
+				const FString ItemPath = ItemTexture->GetPath();
+				const FString ItemFileName = GetAssetDisplayName(ItemPath);
 
-				const bool Selected{ ItemTexture == Texture };
-				const FString ItemPath{ ItemTexture->GetPath() };
-				const FString ItemFileName{ GetAssetDisplayName(ItemPath) };
 				ImGui::PushID(ItemTexture);
 				ImGui::Image((ImTextureID)ItemTexture->GetResource()->GetSRV(), { ItemThumbnailSize, ItemThumbnailSize });
 				ImGui::SameLine();
-				if (ImGui::Selectable(ItemFileName.c_str(), Selected, ImGuiSelectableFlags_None, { 0.0f, ItemThumbnailSize })) {
-					SetMaterialTexture(MeshComponent, MaterialSlot, TextureSlot, ItemTexture, Effective, Override);
+
+				if (ImGui::Selectable(ItemFileName.c_str(), Selected, ImGuiSelectableFlags_None, { 0.0f, ItemThumbnailSize }))
+				{
+					ApplyTexture(ItemTexture);
 				}
-				if (ImGui::IsItemHovered()) {
+
+				if (ImGui::IsItemHovered())
+				{
 					ImGui::SetTooltip("%s", ItemPath.c_str());
 				}
-				if (Selected) {
+				if (Selected)
+				{
 					ImGui::SetItemDefaultFocus();
 				}
+
 				ImGui::PopID();
 			}
+
 			ImGui::EndCombo();
+		}
+
+		DrawParameterOverrideReset(Override, ParameterName);
+
+		ImGui::PopID();
+		ImGui::PopID();
+	}
+
+	void DrawDecalMaterial(UDecalComponent* Decal)
+	{
+		if (!Decal)
+		{
+			return;
+		}
+
+		ImGui::PushID(Decal);
+
+		if (ImGui::CollapsingHeader("Decal Material", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			UMaterialInterface* Material = Decal->GetDecalMaterial();
+			UMaterial* Base = Material ? Material->GetBaseMaterial() : nullptr;
+
+			const FString Preview = Material ? (Base ? Base->GetPath() : FString("(Instance)")) : FString("(None)");
+
+			EditorUIScale::LimitNextComboPopupWidth();
+
+			if (ImGui::BeginCombo("Material", Preview.c_str()))
+			{
+				if (ImGui::Selectable("(None)", Material == nullptr))
+				{
+					Decal->SetDecalMaterial(nullptr);
+				}
+
+				const TArray<UMaterial*> Candidates = EditorSort::CollectSorted<UMaterial>(
+					TObjectIterator<UMaterial>(),
+					[](const UMaterial* M)
+					{ return M->GetPath(); },
+					[](const UMaterial* M)
+					{ return !M->IsRetired() && !M->GetPath().empty(); });
+
+				for (UMaterial* Candidate : Candidates)
+				{
+					const bool bSelected = Candidate == Material || Candidate == Base;
+
+					if (ImGui::Selectable(Candidate->GetPath().c_str(), bSelected))
+					{
+						Decal->SetDecalMaterial(Candidate);
+					}
+				}
+
+				ImGui::EndCombo();
+			}
+
+			Material = Decal->GetDecalMaterial();
+
+			UMaterialInterface* Effective = Material;
+			UMaterialInterface* Override = Material;
+
+			auto EnsureOverride = [&]() -> UMaterialInstanceDynamic*
+			{
+				if (UMaterialInstanceDynamic* Dynamic = Cast<UMaterialInstanceDynamic>(Override))
+				{
+					return Dynamic;
+				}
+
+				UMaterialInterface* Parent = Effective ? Effective : UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
+				if (!Parent)
+				{
+					return nullptr;
+				}
+
+				UMaterialInstanceDynamic* Dynamic = UMaterial::CreateDynamicInstance(Parent);
+				if (!Dynamic)
+				{
+					return nullptr;
+				}
+
+				Effective = Dynamic;
+				Override = Dynamic;
+				Decal->SetDecalMaterial(Dynamic);
+				return Dynamic;
+			};
+
+			DrawMaterialTextureSlot(0, 0, FName("Texture0"), "Base Color", Effective, Override, EnsureOverride);
+			DrawMaterialTextureSlot(0, 1, FName("Texture1"), "Normal Map", Effective, Override, EnsureOverride);
+
+			if (Effective)
+			{
+				FMaterialRenderProxy Proxy{};
+				Effective->GetRenderProxy(Proxy);
+
+				FVector4 Color = Proxy.BaseColor;
+
+				if (ImGui::ColorEdit4("Material BaseColor", &Color.X))
+				{
+					if (UMaterialInstanceDynamic* Dynamic = EnsureOverride())
+					{
+						Dynamic->SetVectorParameterValue(FName("BaseColor"), Color);
+						Effective = Dynamic;
+						Override = Dynamic;
+						Decal->SetDecalMaterial(Dynamic);
+					}
+				}
+
+				DrawParameterOverrideReset(Override, FName("BaseColor"));
+
+				if (ImGui::Button("Clear Material"))
+				{
+					Decal->SetDecalMaterial(nullptr);
+				}
+			}
 		}
 
 		ImGui::PopID();
@@ -803,8 +855,23 @@ namespace
 			FString SlotLabel = std::format("[{}] {}", Slot, MeshComponent->GetMaterialSlotName(Slot));
 			bool bOpen = ImGui::TreeNode(SlotLabel.c_str());
 
-			UMaterial* Override = MeshComponent->GetOverrideMaterial(Slot);
-			UMaterial* Effective = MeshComponent->GetMaterial(Slot);
+			UMaterialInterface* Override = MeshComponent->GetOverrideMaterial(Slot);
+			UMaterialInterface* Effective = MeshComponent->GetMaterial(Slot);
+
+			auto EnsureOverride = [&]() -> UMaterialInstanceDynamic*
+			{
+				return EnsureMaterialOverride(MeshComponent, Slot, Effective, Override);
+			};
+
+			auto ReadProxy = [&]() -> FMaterialRenderProxy
+			{
+				FMaterialRenderProxy Proxy{};
+				if (Effective)
+				{
+					Effective->GetRenderProxy(Proxy);
+				}
+				return Proxy;
+			};
 
 			ImGui::SameLine();
 
@@ -832,8 +899,8 @@ namespace
 					ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Override Shading").x);
 					ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
-					DrawMaterialTextureSlot(MeshComponent, Slot, 0, "Texture", Effective, Override);
-					DrawMaterialTextureSlot(MeshComponent, Slot, 1, "Normal Map", Effective, Override);
+					DrawMaterialTextureSlot(Slot, 0, FName("Texture0"), "Texture", Effective, Override, EnsureOverride);
+					DrawMaterialTextureSlot(Slot, 1, FName("Texture1"), "Normal Map", Effective, Override, EnsureOverride);
 
 					ImGui::TableNextRow();
 
@@ -844,16 +911,18 @@ namespace
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-1.0f);
 
-					FVector4 TempColor = Effective ? Effective->BaseColor : FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+					FMaterialRenderProxy Proxy = ReadProxy();
+					FVector4 TempColor = Proxy.BaseColor;
+
 					if (EditLinearColor("##BaseColor", &TempColor.X, true))
 					{
-						Override = EnsureMaterialOverride(MeshComponent, Slot, Effective, Override);
-						if (Override)
+						if (UMaterialInstanceDynamic* Dynamic = EnsureOverride())
 						{
-							Override->BaseColor = TempColor;
-							Effective = Override;
+							Dynamic->SetVectorParameterValue(FName("BaseColor"), TempColor);
 						}
 					}
+
+					DrawParameterOverrideReset(Override, FName("BaseColor"));
 
 					ImGui::TableNextRow();
 					
@@ -863,16 +932,18 @@ namespace
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-1.0f);
 					
-					float TempShininess =Effective ? Effective->Shininess : 32.0f;
+					FMaterialRenderProxy Proxy = ReadProxy();
+					float TempShininess = Proxy.Shininess;
+
 					if (ImGui::DragFloat("##Shininess", &TempShininess, 0.5f, 1.0f, 256.0f))
 					{
-						Override = EnsureMaterialOverride(MeshComponent, Slot, Effective, Override);
-						if (Override)
+						if (UMaterialInstanceDynamic* Dynamic = EnsureOverride())
 						{
-							Override->Shininess = TempShininess;
-							Effective = Override;
+							Dynamic->SetScalarParameterValue(FName("Shininess"), TempShininess);
 						}
 					}
+
+					DrawParameterOverrideReset(Override, FName("Shininess"));
 
 					ImGui::TableNextRow();
 					
@@ -883,16 +954,18 @@ namespace
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-1.0f);
 
-					FVector2 TempUVScrollSpeed = Effective ? Effective->UVScrollSpeed : FVector2();
+					FMaterialRenderProxy Proxy = ReadProxy();
+					FVector2 TempUVScrollSpeed = Proxy.UVScrollSpeed;
+
 					if (ImGui::DragFloat2("##UVScrollSpeed", &TempUVScrollSpeed.X, 0.01f))
 					{
-						Override = EnsureMaterialOverride(MeshComponent, Slot, Effective, Override);
-						if (Override)
+						if (UMaterialInstanceDynamic* Dynamic = EnsureOverride())
 						{
-							Override->UVScrollSpeed = TempUVScrollSpeed;
-							Effective = Override;
+							Dynamic->SetVectorParameterValue(FName("UVScrollSpeed"), FVector4(TempUVScrollSpeed.X, TempUVScrollSpeed.Y, 0.0f, 0.0f));
 						}
 					}
+
+					DrawParameterOverrideReset(Override, FName("UVScrollSpeed"));
 
 					ImGui::TableNextRow();
 
@@ -958,35 +1031,74 @@ namespace
 						ImGui::TableNextRow(); ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(Label);
 						ImGui::TableSetColumnIndex(1); ImGui::SetNextItemWidth(-1.0f);
 					};
-					auto Commit = [&]() -> UMaterial*
+					auto Commit = [&]() -> UMaterialInstanceDynamic*
 					{
-						Override = EnsureMaterialOverride(MeshComponent, Slot, Effective, Override);
-						if (Override) Effective = Override;
-						return Override;
+						return EnsureOverride();
 					};
-					auto Factor = [&](const char* Label, float UMaterial::* Member)
+
+					auto ScalarParameter = [&](const char* Label, const FName& Name, float Value)
 					{
-						Row(Label); float Value = Effective ? Effective->*Member : 1.0f;
+						Row(Label);
+
 						if (ImGui::DragFloat(Label, &Value, 0.02f, 0.0f, 100.0f))
-							if (UMaterial* M = Commit()) M->*Member = Value;
+						{
+							if (UMaterialInstanceDynamic* Dynamic = Commit())
+							{
+								Dynamic->SetScalarParameterValue(Name, Value);
+							}
+						}
+
+						DrawParameterOverrideReset(Override, Name);
 					};
-					auto Color = [&](const char* Label, FVector UMaterial::* Member, const FVector& Default)
+
+					auto ColorParameter = [&](const char* Label, const FName& Name, const FVector& Value)
 					{
-						Row(Label); FVector Value = Effective ? Effective->*Member : Default;
-						if (EditLinearColor(Label, &Value.X)) if (UMaterial* M = Commit()) M->*Member = Value;
+						Row(Label);
+
+						FVector Color = Value;
+
+						if (EditLinearColor(Label, &Color.X))
+						{
+							if (UMaterialInstanceDynamic* Dynamic = Commit())
+							{
+								Dynamic->SetVectorParameterValue(Name, FVector4(Color.X, Color.Y, Color.Z, 1.0f));
+							}
+						}
+
+						DrawParameterOverrideReset(Override, Name);
 					};
-					Color("Specular Color", &UMaterial::SpecularColor, FVector(1,1,1));
-					Factor("Specular Factor", &UMaterial::SpecularFactor);
-					Color("Emissive Color", &UMaterial::EmissiveColor, FVector(0,0,0));
-					Factor("Emissive Factor", &UMaterial::EmissiveFactor);
+					FMaterialRenderProxy Proxy = ReadProxy();
+
+					ColorParameter("Specular Color", FName("SpecularColor"), Proxy.SpecularColor);
+					ScalarParameter("Specular Factor", FName("SpecularFactor"), Proxy.SpecularFactor);
+					ColorParameter("Emissive Color", FName("EmissiveColor"), Proxy.EmissiveColor);
+					ScalarParameter("Emissive Factor", FName("EmissiveFactor"), Proxy.EmissiveFactor);
 					Row("UV Tiling");
-					FVector2 Tiling = Effective ? Effective->UVTiling : FVector2(1,1);
+					FMaterialRenderProxy TilingProxy = ReadProxy();
+					FVector2 Tiling = TilingProxy.UVTiling;
+
 					if (ImGui::DragFloat2("##UVTiling", &Tiling.X, 0.05f, 0.01f, 1000.0f))
-						if (UMaterial* M = Commit()) M->UVTiling = Tiling;
+					{
+						if (UMaterialInstanceDynamic* Dynamic = Commit())
+						{
+							Dynamic->SetVectorParameterValue(FName("UVTiling"), FVector4(Tiling.X, Tiling.Y, 0.0f, 0.0f));
+						}
+					}
+
+					DrawParameterOverrideReset(Override, FName("UVTiling"));
 					Row("World Tile Size");
-					FVector2 Tile = Effective ? Effective->WorldUVTileSize : FVector2(0,0);
+					FMaterialRenderProxy WorldTileProxy = ReadProxy();
+					FVector2 Tile = WorldTileProxy.WorldUVTileSize;
+
 					if (ImGui::DragFloat2("##WorldTileSize", &Tile.X, 0.05f, 0.0f, 10000.0f))
-						if (UMaterial* M = Commit()) M->WorldUVTileSize = Tile;
+					{
+						if (UMaterialInstanceDynamic* Dynamic = Commit())
+						{
+							Dynamic->SetVectorParameterValue(FName("WorldUVTileSize"), FVector4(Tile.X, Tile.Y, 0.0f, 0.0f));
+						}
+					}
+
+					DrawParameterOverrideReset(Override, FName("WorldUVTileSize"));
 					if (ImGui::IsItemHovered()) ImGui::SetTooltip("X=0 disables world tiling. Y=0 uses X for both axes. Use Linear Wrap to repeat.");
 					Row("Local Tile Axes");
 					bool Local = Effective && Effective->bWorldUVLocalSpace;

@@ -72,12 +72,9 @@ AFakeSpotLightActor::AFakeSpotLightActor()
 		}
 
 		UMaterialInstanceDynamic* BillboardMaterialInstance = UMaterial::CreateDynamicInstance(BillboardMaterial);
-		if (!BillboardMaterial)
+
+		if (!BillboardMaterialInstance)
 		{
-			HTR_LOG(
-				Warning,
-				"Failed to create instance of billboard material for FakeSpotLightActor."
-			);
 			return;
 		}
 		BillboardMaterialInstance->SetTexture0Override(BillboardTexture);
