@@ -24,6 +24,7 @@ class USkeleton;
 class UBlendSpace1D;
 class UBlendSpace2D;
 class USoundWave;
+class UParticleSystem;
 
 namespace fs = std::filesystem;
 
@@ -101,6 +102,8 @@ public:
 	static UBlendSpace* LoadBlendSpace(const FString& AssetPath);
 	static bool SaveBlendSpace1D(const FString& AssetPath, UBlendSpace1D& BlendSpace);
 	static bool SaveBlendSpace2D(const FString& AssetPath, UBlendSpace2D& BlendSpace);
+	static UParticleSystem* LoadParticleSystem(const FString& AssetPath);
+	static bool SaveParticleSystem(const FString& AssetPath, UParticleSystem& ParticleSystem);
 	static void GetAnimSequencesForSkeleton(const USkeleton* Skeleton, TArray<UAnimSequence*>& OutSequences);
 	static void GetAllAnimSequences(TArray<UAnimSequence*>& OutSequences);
 	static void GetSkeletalMeshesForSkeleton(const USkeleton* Skeleton, TArray<USkeletalMesh*>& OutMeshes);

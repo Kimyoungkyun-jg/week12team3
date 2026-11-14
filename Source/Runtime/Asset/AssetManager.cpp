@@ -24,6 +24,9 @@
 
 #include "Engine/Classes/Sound/SoundWave.h"
 
+#include "Particles/ParticleSystem.h"
+#include "Serialization/JsonArchive.h"
+
 #include "Render/ImageLoader.h"
 #include <algorithm>
 #include <cctype>
@@ -192,10 +195,13 @@ void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgre
 		// 키와 경로는 UTF-8이다. generic_string()은 ANSI 코드페이지로 바꾸므로 한글·이모지 이름에서 깨지거나 예외가 난다.
 		FString Key = FbxPath::ToString(fs::relative(Files[i], AssetRoot));
 		FString Path = FbxPath::ToString(Files[i]);
-		AssetPathMap.Add(Key, Path);
-		LoadAsset(Key, Path);
-
 		const FString Extension = GetAssetExtension(Path);
+		AssetPathMap.Add(Key, Path);
+
+		if (Extension != ".particlesystem")
+		{
+			LoadAsset(Key, Path);
+		}
 		if (Extension == ".fbx") FbxFiles.Add(Path);
 		else if (Extension == ".fbxbin")
 		{
@@ -224,6 +230,17 @@ void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgre
 			OnProgress(i + 1, Total, Key);
 		}
 	}
+	for (const fs::path& File : Files)
+	{
+		const FString Path = FbxPath::ToString(File);
+		if (GetAssetExtension(Path) != ".particlesystem")
+		{
+			continue;
+		}
+		const FString Key = FbxPath::ToString(fs::relative(File, AssetRoot));
+		LoadAsset(Key, Path);
+	}
+
 	// 스캔 순서는 정해져 있지 않으므로 모든 바이너리를 본 뒤에 비교한다.
 	FbxImportCandidates.Reset();
 	for (const FString& Path : FbxFiles)
@@ -268,6 +285,10 @@ void UAssetManager::LoadAsset(const FString& Key, const FString& Path) {
 	}
 	if (Extension == ".blendspace") {
 		LoadBlendSpace(Key);
+	}
+	if (Extension == ".particlesystem")
+	{
+		LoadParticleSystem(Key);
 	}
 }
 
@@ -680,6 +701,66 @@ bool UAssetManager::SaveBlendSpace2D(const FString& AssetPath, UBlendSpace2D& Bl
 	Out << Data.dump(2);
 	if (!Out) return false;
 	Get().RegisterAsset(Key, &BlendSpace);
+	return true;
+}
+
+UParticleSystem* UAssetManager::LoadParticleSystem(const FString& AssetPath)
+{
+	if (UParticleSystem* Cached = GetAssetByPath<UParticleSystem>(AssetPath))
+	{
+		return Cached;
+	}
+
+	const FString Key = AssetPath.rfind("Assets/", 0) == 0 ? AssetPath.substr(7) : AssetPath;
+	if (FbxPath::FromString(Key).extension() != ".particlesystem")
+	{
+		return nullptr;
+	}
+
+	UParticleSystem* ParticleSystem = NewObject<UParticleSystem>();
+	const fs::path File = ContentPaths::AssetRoot / FbxPath::FromString(Key);
+
+	if (!FJsonArchive::LoadObject(ParticleSystem, FbxPath::ToString(File)))
+	{
+		delete ParticleSystem;
+		return nullptr;
+	}
+
+	Get().RegisterAsset(Key, ParticleSystem);
+	return ParticleSystem;
+}
+
+bool UAssetManager::SaveParticleSystem(const FString& AssetPath, UParticleSystem& ParticleSystem)
+{
+	const FString Key = AssetPath.rfind("Assets/", 0) == 0 ? AssetPath.substr(7) : AssetPath;
+	if (FbxPath::FromString(Key).extension() != ".particlesystem")
+	{
+		return false;
+	}
+
+	const fs::path File = ContentPaths::AssetRoot / FbxPath::FromString(Key);
+	fs::path Temp = File;
+	Temp += L".editing";
+
+	std::error_code Ec;
+	fs::create_directories(File.parent_path(), Ec);
+	if (Ec)
+	{
+		return false;
+	}
+
+	if (!FJsonArchive::SaveObject(&ParticleSystem, FbxPath::ToString(Temp)))
+	{
+		return false;
+	}
+
+	if (!MoveFileExW(Temp.c_str(), File.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+	{
+		fs::remove(Temp, Ec);
+		return false;
+	}
+
+	Get().RegisterAsset(Key, &ParticleSystem);
 	return true;
 }
 
