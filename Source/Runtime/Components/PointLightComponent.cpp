@@ -10,7 +10,25 @@ UPointLightComponent::~UPointLightComponent() {}
 
 FLightSceneProxy* UPointLightComponent::CreateSceneProxy() const
 {
-    return new FPointLightSceneProxy(this);
+	FPointLightProxyData Data;
+	FillBaseProxyData(Data);
+	Data.AttenuationRadius = GetAttenuationRadius();
+	Data.FalloffExponent = LightFalloffExponent;
+	Data.SourceRadius = SourceRadius;
+	return new FPointLightSceneProxy(Data);
+}
+
+void UPointLightComponent::UpdateSceneProxy()
+{
+	if (auto* Proxy = static_cast<FPointLightSceneProxy*>(SceneProxy))
+	{
+		FPointLightProxyData Data;
+		FillBaseProxyData(Data);
+		Data.AttenuationRadius = GetAttenuationRadius();
+		Data.FalloffExponent = LightFalloffExponent;
+		Data.SourceRadius = SourceRadius;
+		Proxy->SetProxyData(Data);
+	}
 }
 
 namespace

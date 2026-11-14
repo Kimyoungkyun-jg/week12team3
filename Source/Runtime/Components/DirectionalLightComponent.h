@@ -32,6 +32,9 @@ public:
 
 	static constexpr uint32 MaxDynamicShadowCascades = 4;
 
+protected:
+	void UpdateSceneProxy() override;
+
 private:
 	// 광원의 각반지름(도). PCSS 반그림자 폭 = tan(각반지름) x 가림막~수신점 거리.
 	// 실제 태양은 약 0.27도 (언리얼 LightSourceAngle 기본 0.5357도는 지름).

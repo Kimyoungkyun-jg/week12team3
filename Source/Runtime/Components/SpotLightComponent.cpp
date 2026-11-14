@@ -78,7 +78,29 @@ namespace
 
 FLightSceneProxy* USpotLightComponent::CreateSceneProxy() const
 {
-	return new FSpotLightSceneProxy(this);
+	FSpotLightProxyData Data;
+	FillBaseProxyData(Data);
+	Data.AttenuationRadius = GetAttenuationRadius();
+	Data.FalloffExponent = GetFalloff();
+	Data.SourceRadius = GetSourceRadius();
+	Data.InnerConeAngle = InnerConeAngle;
+	Data.OuterConeAngle = OuterConeAngle;
+	return new FSpotLightSceneProxy(Data);
+}
+
+void USpotLightComponent::UpdateSceneProxy()
+{
+	if (auto* Proxy = static_cast<FSpotLightSceneProxy*>(SceneProxy))
+	{
+		FSpotLightProxyData Data;
+		FillBaseProxyData(Data);
+		Data.AttenuationRadius = GetAttenuationRadius();
+		Data.FalloffExponent = GetFalloff();
+		Data.SourceRadius = GetSourceRadius();
+		Data.InnerConeAngle = InnerConeAngle;
+		Data.OuterConeAngle = OuterConeAngle;
+		Proxy->SetProxyData(Data);
+	}
 }
 
 void USpotLightComponent::DrawDebug(FLineBatcher* LineBatcher) const

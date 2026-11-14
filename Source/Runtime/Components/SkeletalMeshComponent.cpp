@@ -85,6 +85,8 @@ void USkeletalMeshComponent::TickComponent(float DeltaTime)
 {
 	Super::TickComponent(DeltaTime);
 	// Any main view that gathered this component since the previous tick can keep it active.
+	if (GetSceneProxy())
+		bVisibleSinceLastTick = GetSceneProxy()->ConsumeRenderedFlag();
 	const bool bTickPose = !bOnlyTickPoseWhenRendered || bVisibleSinceLastTick;
 	bVisibleSinceLastTick = false;
 	if (!bTickPose) return;
@@ -158,6 +160,8 @@ void USkeletalMeshComponent::SetSkeletalMesh(USkeletalMesh* InSkeletalMesh)
 			if (SingleNode->SetAnimationAsset(AnimSequence) && AnimSequence) SingleNode->Play();
 		}
 	}
+	MarkRenderStateDirty();
+	OnTransformDirty();
 }
 
 bool USkeletalMeshComponent::SetAnimInstanceClass(UClass* InAnimClass)
@@ -312,6 +316,7 @@ void USkeletalMeshComponent::SetBoneWeightHeatmap(bool bEnable, int32 BoneIndex)
 	if (bBoneWeightHeatmap || bEnable) bVertexColorsDirty = true;
 	bBoneWeightHeatmap = bEnable;
 	HeatmapBone = BoneIndex;
+	PushSkinningToProxy();
 }
 
 void USkeletalMeshComponent::UpdateBoneMatrices()
@@ -378,11 +383,13 @@ void USkeletalMeshComponent::UpdateSkinning()
 				SkinnedBounds = SkeletalMesh->CalcSkinnedBounds(SkinningMatrices);
 				MarkTransformDirty();
 			}
+			PushSkinningToProxy();
 			return;
 		}
 	}
 	PerformCPUSkinning();
 	AppliedMode = ESkinningMode::CPU;
+	PushSkinningToProxy();
 }
 
 FVertexBuffer* USkeletalMeshComponent::DispatchComputeSkinning(uint32 LOD)
@@ -577,7 +584,57 @@ FBox USkeletalMeshComponent::CalcLocalBounds() const
 
 FPrimitiveSceneProxy* USkeletalMeshComponent::CreateSceneProxy()
 {
-	return new FSkeletalMeshSceneProxy(this);
+	return new FSkeletalMeshSceneProxy(BuildProxyData(), BuildTransformData());
+}
+
+void USkeletalMeshComponent::PushRenderStateToProxy()
+{
+	if (auto* Proxy = static_cast<FSkeletalMeshSceneProxy*>(GetSceneProxy()))
+		Proxy->SetSkeletalMeshData(BuildProxyData());
+}
+
+void USkeletalMeshComponent::PushSkinningToProxy()
+{
+	if (auto* Proxy = static_cast<FSkeletalMeshSceneProxy*>(GetSceneProxy()))
+	{
+		Proxy->SetSkinningData(
+			static_cast<uint8>(AppliedMode),
+			SkinnedVertexBuffer.get(),
+			SkinningMatricesBuffer.get(),
+			bBoneWeightHeatmap);
+	}
+}
+
+FSkeletalMeshProxyData USkeletalMeshComponent::BuildProxyData() const
+{
+	FSkeletalMeshProxyData Data;
+	Data.BaseState = BuildBaseRenderState();
+	Data.SkeletalMesh = SkeletalMesh;
+	Data.AppliedMode = static_cast<uint8>(AppliedMode);
+	Data.CPUSkinnedVertexBuffer = SkinnedVertexBuffer.get();
+	Data.SkinningMatricesBuffer = SkinningMatricesBuffer.get();
+	Data.bBoneWeightHeatmap = bBoneWeightHeatmap;
+	if (SkeletalMesh)
+	{
+		auto State = MakeShared<FMeshRenderState>();
+		State->LODCount = static_cast<uint8>(std::min(SkeletalMesh->GetLODCount(), 4u));
+		for (uint32 I = 0; I < 3; ++I)
+			State->LODThresholdSq[I] = SkeletalMesh->ScreenThresholds[I] * SkeletalMesh->ScreenThresholds[I];
+		for (uint32 LOD = 0; LOD < State->LODCount; ++LOD)
+		{
+			auto& Range = State->LODs[LOD];
+			Range.FirstSection = State->Sections.Num();
+			for (const FSkeletalMeshSection& Section : SkeletalMesh->GetMeshData(LOD).Sections)
+			{
+				UMaterial* Material = GetMaterial(Section.MaterialSlotIndex);
+				if (Material)
+					State->Sections.Add({ Material, Section.StartIndex, Section.IndexCount });
+			}
+			Range.NumSections = State->Sections.Num() - Range.FirstSection;
+		}
+		Data.RenderState = State;
+	}
+	return Data;
 }
 
 FVertexBuffer* USkeletalMeshComponent::GetSkinnedVertexBuffer(uint32 LOD)

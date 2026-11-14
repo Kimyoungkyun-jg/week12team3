@@ -407,14 +407,14 @@ bool FMeshPassProcessor::Build(const TArray<FPrimitiveSceneProxy*>& ShadowMeshes
 		Batch.Pipeline = *Pipeline;
 		Batch.VertexBuffer = Proxy->GetVertexBuffer(LOD);
 		Batch.IndexBuffer = Proxy->GetIndexBuffer(LOD);
-		if (USkeletalMeshComponent* SkelComp = Cast<USkeletalMeshComponent>(Proxy->GetComponent()))
+		if (USkeletalMesh* SkelMesh = Proxy->GetSkeletalMesh())
 		{
 			Batch.bSkeletalMesh = true;
-			Batch.bComputeSkinned = SkelComp->GetAppliedSkinningMode() == ESkinningMode::Compute;
-			Batch.SkinningMatricesBuffer = SkelComp->GetSkinningMatricesBuffer();
+			Batch.bComputeSkinned = Proxy->IsComputeSkinned();
+			Batch.SkinningMatricesBuffer = Proxy->GetSkinningMatricesBuffer();
 			if (Batch.SkinningMatricesBuffer)
 			{
-				Batch.VertexBuffer = Proxy->GetSkeletalMesh()->GetVertexBuffer(LOD);
+				Batch.VertexBuffer = SkelMesh->GetVertexBuffer(LOD);
 				Batch.Pipeline.Shader = FRenderResourceManager::GetGPUSkinningShadowDepthShaderProgram();
 			}
 		}

@@ -38,13 +38,14 @@ public:
 
 	virtual int32 GetNumMaterials() const override { return 1; }
 	virtual UMaterial* GetMaterial(int32 SlotIndex) const override { return SlotIndex == 0 ? Material : nullptr; }
-	virtual void SetMaterial(int32 SlotIndex, UMaterial* InMaterial) override { if (SlotIndex == 0) Material = InMaterial; }
+	virtual void SetMaterial(int32 SlotIndex, UMaterial* InMaterial) override { if (SlotIndex == 0) { Material = InMaterial; MarkRenderStateDirty(); } }
 
-	void SetTintSource(const ULightComponentBase* InSource) { TintSource = InSource; }
+	void SetTintSource(const ULightComponentBase* InSource) { TintSource = InSource; MarkRenderStateDirty(); }
 
 	virtual const FStaticMeshData* GetMeshData() const override { return QuadMesh ? &QuadMesh->GetMeshData() : nullptr; }
 	virtual FBox CalcLocalBounds() const override;
 	virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
+	virtual void PushRenderStateToProxy() override;
 	UStaticMesh* GetQuadMesh() const { return QuadMesh; }
 
 	void GetWorldTransformedMatrix(FMatrix* OutWorldMatrix) const;
@@ -59,10 +60,12 @@ public:
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 
 	bool IsEditorIcon() const { return bEditorIcon; }
-	void SetEditorIcon(bool IsEditorIcon) { bEditorIcon = IsEditorIcon; }
-	void SetIconSize(float S) { IconSize = S; }
+	void SetEditorIcon(bool IsEditorIcon) { bEditorIcon = IsEditorIcon; MarkRenderStateDirty(); }
+	void SetIconSize(float S) { IconSize = S; MarkRenderStateDirty(); }
 
 protected:
+	virtual FBillboardProxyData BuildBillboardProxyData() const;
+
 	UMaterial* Material = nullptr;
 	UStaticMesh* QuadMesh = nullptr;
 	FSubUVConstants IconParams{ 0.0f, 1.0f, 1.0f, 1.0f };	// CurrentFrame, RowSize, ColSize, Alpha

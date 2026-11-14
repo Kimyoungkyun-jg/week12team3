@@ -97,6 +97,7 @@
                                                 "Value": {
                                                     "Properties": {
                                                         "EmitterDuration": 1.0,
+                                                        "Material": null,
                                                         "MaxParticles": 1024,
                                                         "bEnabled": true,
                                                         "bLooping": true,

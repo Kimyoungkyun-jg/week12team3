@@ -28,6 +28,11 @@ public:
 	void Release();
 	void RequestThumbnailRefresh() { bRefreshThumbnails = true; AnimSequenceDisplayNames.clear(); }
 	static ID3D11ShaderResourceView* GetMaterialThumbnailSRV(UMaterial* Material);
+	static bool DrawMaterialPicker(
+		const char* Label,
+		UMaterial*& InOutMaterial,
+		const char* NullLabel = "(Default)",
+		const UMaterial* HighlightBase = nullptr);
 	static void InvalidateMaterialThumbnail(const FString& Path);
 
 	// .widget 파일을 더블클릭하면 불린다 (UI 에디터가 연다).

@@ -140,6 +140,7 @@ void UParticleSubUVComponent::TickComponent(float DeltaTime)
 			Deactivate();
 		}
 		else Particle.SubUVFrame = std::min(static_cast<uint32>(Particle.Age * FrameRate), TotalFrames - 1);
+		PushRenderStateToProxy();
 		return;
 	}
 
@@ -180,6 +181,7 @@ void UParticleSubUVComponent::TickComponent(float DeltaTime)
 			Particle.SubUVFrame %= TotalFrames;
 		}
 	}
+	PushRenderStateToProxy();
 }
 
 // 뷰 기준으로 파티클 상수와 렌더 패킷을 구성
@@ -310,4 +312,32 @@ void UParticleSubUVComponent::SubmitParticleToRenderQueue(
 bool UParticleSubUVComponent::UsesOpaqueMaterial() const
 {
     return Material && Material->BlendState == EBlendState::Opaque;
+}
+
+void UParticleSubUVComponent::PushRenderStateToProxy()
+{
+	if (auto* Proxy = static_cast<FBillboardSceneProxy*>(GetSceneProxy()))
+		Proxy->SetBillboardData(BuildBillboardProxyData());
+}
+
+FBillboardProxyData UParticleSubUVComponent::BuildBillboardProxyData() const
+{
+	FBillboardProxyData Data = Super::BuildBillboardProxyData();
+	Data.bSubUVEmitter = true;
+	Data.bActive = IsActive();
+	Data.bOpaqueMaterial = UsesOpaqueMaterial();
+	Data.ColSize = ColSize;
+	Data.RowSize = RowSize;
+	Data.SubUVParticles.Reserve(Particles.Num());
+	for (const FParticle& P : Particles)
+	{
+		FBillboardSubUVParticleData Item;
+		Item.Location = P.Location;
+		Item.Scale = P.Scale;
+		Item.Alpha = P.Alpha;
+		Item.SubUVFrame = P.SubUVFrame;
+		Item.bAlive = P.bAlive;
+		Data.SubUVParticles.Add(Item);
+	}
+	return Data;
 }

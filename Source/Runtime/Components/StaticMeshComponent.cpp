@@ -32,7 +32,30 @@ void UStaticMeshComponent::TickComponent(float DeltaTime)
 
 FPrimitiveSceneProxy* UStaticMeshComponent::CreateSceneProxy()
 {
-	return new FStaticMeshSceneProxy(this);
+	return new FStaticMeshSceneProxy(BuildProxyData(), BuildTransformData());
+}
+
+void UStaticMeshComponent::PushRenderStateToProxy()
+{
+	if (auto* Proxy = static_cast<FStaticMeshSceneProxy*>(GetSceneProxy()))
+		Proxy->SetStaticMeshData(BuildProxyData());
+}
+
+FStaticMeshProxyData UStaticMeshComponent::BuildProxyData() const
+{
+	FStaticMeshProxyData Data;
+	Data.BaseState = BuildBaseRenderState();
+	Data.StaticMesh = StaticMesh;
+	Data.bEditorIcon = bEditorIcon;
+	if (StaticMesh)
+	{
+		const int32 SlotCount = GetNumMaterials();
+		std::vector<UMaterial*> ResolvedMaterials(SlotCount);
+		for (int32 i = 0; i < SlotCount; ++i)
+			ResolvedMaterials[i] = GetMaterial(i);
+		Data.RenderState = StaticMesh->GetRenderState(ResolvedMaterials);
+	}
+	return Data;
 }
 
 void UStaticMeshComponent::SetStaticMesh(UStaticMesh* InStaticMesh)

@@ -9,6 +9,8 @@ FString SkeletonKeyFromPath(const std::filesystem::path& Path);
 #include "Editor/ContentDrawer/ContentDrawerPanel.h"
 #include "Editor/Animation/AnimSequenceDisplayName.h"
 #include "Editor/EditorUI/EditorUIScale.h"
+#include "Editor/EditorUI/EditorSort.h"
+#include "UObject/UObjectIterator.h"
 #include "Asset/AssetManager.h"
 #include "Asset/FbxImporter/FbxAssetBake.h"
 #include "Asset/FbxImporter/FbxAssetLoader.h"
@@ -1038,6 +1040,123 @@ ID3D11ShaderResourceView* FContentDrawerPanel::GetMaterialThumbnailSRV(UMaterial
 
 	FTexture2D* Tex = ActiveInstance->GetOrCreateMaterialThumbnail(Material);
 	return Tex ? Tex->GetSRV() : nullptr;
+}
+
+bool FContentDrawerPanel::DrawMaterialPicker(
+	const char* Label,
+	UMaterial*& InOutMaterial,
+	const char* NullLabel,
+	const UMaterial* HighlightBase)
+{
+	bool bChanged = false;
+	const float InlineThumbSize = EditorUIScale::Px(64.0f);
+	const UMaterial* DisplayBase = HighlightBase ? HighlightBase : (InOutMaterial ? InOutMaterial->GetBaseAsset() : nullptr);
+	const FString PreviewText =
+		(InOutMaterial && !InOutMaterial->GetPath().empty()) ? InOutMaterial->GetPath() :
+		DisplayBase ? DisplayBase->GetPath() :
+		InOutMaterial ? FString("(Instance)") :
+		FString(NullLabel);
+
+	ImGui::PushID(Label);
+
+	if (ID3D11ShaderResourceView* InlineSRV = GetMaterialThumbnailSRV(InOutMaterial))
+	{
+		ImGui::Image(reinterpret_cast<ImTextureID>(InlineSRV), ImVec2(InlineThumbSize, InlineThumbSize));
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("%s", PreviewText.c_str());
+	}
+	else
+	{
+		ImGui::BeginDisabled(true);
+		ImGui::Button(NullLabel, ImVec2(InlineThumbSize, InlineThumbSize));
+		ImGui::EndDisabled();
+	}
+
+	ImGui::SameLine();
+	ImGui::BeginGroup();
+	ImGui::TextUnformatted(Label);
+	ImGui::SetNextItemWidth(-1.0f);
+	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSizeConstraints(
+		ImVec2(EditorUIScale::Px(420.0f), EditorUIScale::Px(220.0f)),
+		ImVec2(EditorUIScale::Px(760.0f), EditorUIScale::Px(460.0f)));
+
+	if (ImGui::BeginCombo("##MaterialPicker", PreviewText.c_str()))
+	{
+		const ImVec2 Avail = ImGui::GetContentRegionAvail();
+		const float PreviewPaneWidth = EditorUIScale::Px(176.0f);
+		const float Spacing = ImGui::GetStyle().ItemSpacing.x;
+		const float ListPaneWidth = std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing);
+		const float PaneHeight = std::max(EditorUIScale::Px(180.0f), Avail.y);
+
+		// 왼쪽 목록 창
+		if (ImGui::BeginChild("##MaterialListPane", ImVec2(ListPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
+		{
+			if (ImGui::Selectable(NullLabel, InOutMaterial == nullptr, ImGuiSelectableFlags_NoAutoClosePopups))
+			{
+				InOutMaterial = nullptr;
+				bChanged = true;
+			}
+			if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+				ImGui::CloseCurrentPopup();
+
+			const TArray<UMaterial*> Candidates = EditorSort::CollectSorted<UMaterial>(
+				TObjectIterator<UMaterial>(),
+				[](const UMaterial* M) { return M->GetPath(); },
+				[](const UMaterial* M) { return !M->IsRetired() && !M->GetPath().empty(); });
+
+			for (UMaterial* Candidate : Candidates)
+			{
+				const bool bSelected = (Candidate == InOutMaterial) || (HighlightBase && Candidate == HighlightBase);
+				ImGui::PushID(Candidate);
+				if (ImGui::Selectable(Candidate->GetPath().c_str(), bSelected, ImGuiSelectableFlags_NoAutoClosePopups))
+				{
+					InOutMaterial = Candidate;
+					bChanged = true;
+				}
+				if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+					ImGui::CloseCurrentPopup();
+				if (bSelected && ImGui::IsWindowAppearing())
+					ImGui::SetScrollHereY();
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndChild();
+
+		ImGui::SameLine();
+
+		// 오른쪽 선택 썸네일 창
+		if (ImGui::BeginChild("##MaterialThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
+		{
+			const float LargeThumbSize = EditorUIScale::Px(136.0f);
+			const float PadX = std::max(0.0f, (ImGui::GetContentRegionAvail().x - LargeThumbSize) * 0.5f);
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + PadX);
+
+			if (ID3D11ShaderResourceView* ThumbSRV = GetMaterialThumbnailSRV(InOutMaterial))
+			{
+				ImGui::Image(reinterpret_cast<ImTextureID>(ThumbSRV), ImVec2(LargeThumbSize, LargeThumbSize));
+			}
+			else
+			{
+				ImGui::BeginDisabled(true);
+				ImGui::Button(NullLabel, ImVec2(LargeThumbSize, LargeThumbSize));
+				ImGui::EndDisabled();
+			}
+
+			const FString CurrentLabel = InOutMaterial
+				? (!InOutMaterial->GetPath().empty() ? InOutMaterial->GetPath() : PreviewText)
+				: FString(NullLabel);
+			ImGui::Separator();
+			ImGui::TextWrapped("%s", CurrentLabel.c_str());
+		}
+		ImGui::EndChild();
+
+		ImGui::EndCombo();
+	}
+
+	ImGui::EndGroup();
+	ImGui::PopID();
+	return bChanged;
 }
 
 void FContentDrawerPanel::InvalidateMaterialThumbnail(const FString& Path)

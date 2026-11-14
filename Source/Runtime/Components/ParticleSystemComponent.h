@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Components/SceneComponent.h"
+#include "Components/PrimitiveComponent.h"
 #include "Particles/ParticleSystem.h"
 #include "Serialization/StructuredArchive.h"
 #include "Serialization/StructuredArchiveSlots.h"
@@ -8,6 +8,7 @@
 
 class FScene;
 class FParticleSceneProxy;
+struct FParticleDynamicData;
 struct FGpuParticleEmitterResources;
 
 #define DECLARE_PARTICLE(Name, Address) \
@@ -60,6 +61,11 @@ struct FParticleEmitterInstance
 	uint32 GpuWriteCursor = 0;
 	float LastGpuDeltaTime = 0.0f;
 	bool bGpuResetRequested = false;
+	FBox GpuTrailBoundsCurr{};
+	FBox GpuTrailBoundsPrev{};
+	bool bHasGpuTrailBoundsCurr = false;
+	bool bHasGpuTrailBoundsPrev = false;
+	float GpuTrailTimer = 0.0f;
 
 	FParticleEmitterInstance() = default;
 	~FParticleEmitterInstance();
@@ -80,7 +86,7 @@ struct FParticleEmitterInstance
 };
 
 UCLASS()
-class UParticleSystemComponent : public USceneComponent
+class UParticleSystemComponent : public UPrimitiveComponent
 {
 	GENERATED_BODY()
 public:
@@ -108,10 +114,13 @@ public:
 	TArray<FParticleSysParam>& GetInstanceParamList() { return InstanceParamList; }
 	void SyncInstanceParameters();
 
-	using USceneComponent::Serialize;
+	using UPrimitiveComponent::Serialize;
 	void Serialize(FStructuredArchive::FRecord Record) override;
-	void MarkRenderStateDirty() override;
-	void OnTransformDirty() override;
+	FBox CalcLocalBounds() const override;
+	FPrimitiveSceneProxy* CreateSceneProxy() override;
+	void PushTransformToProxy() override;
+	void PushRenderStateToProxy() override;
+	FParticleDynamicData BuildDynamicData();
 
 	UPROPERTY()
 	FString TemplatePath;
@@ -123,12 +132,8 @@ public:
 	float CustomTimeDilation = 1.0f;
 
 private:
-	friend class FScene;
-	bool ShouldCreateRenderState() const override { return true; }
-	void CreateRenderState() override;
-	void DestroyRenderState() override;
 	void LoadTemplateIfNeeded();
-	FParticleSceneProxy* SceneProxy = nullptr;
+	FBox CalcFixedLocalBounds() const;
 	UParticleSystem* Template = nullptr;
 	TArray<FParticleEmitterInstance> EmitterInstances;
 	TArray<FParticleSysParam> InstanceParamList;

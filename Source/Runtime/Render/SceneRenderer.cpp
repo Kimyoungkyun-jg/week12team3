@@ -155,7 +155,7 @@ void FSceneRenderer::InitViews(FRenderer* Renderer, const FSceneRenderOptions& O
 			Light->GetLightShaderParameters(Parameters);
 			const int32 Index = RenderData.VisibleLights.Add(Parameters);
 			RenderData.VisibleLightProxies.Add(Light);
-			if (Light->GetLightComponent() == RenderData.PreviewLight) RenderData.PreviewLightIndex = Index;
+			if (Light->GetComponentKey() == reinterpret_cast<uintptr_t>(RenderData.PreviewLight)) RenderData.PreviewLightIndex = Index;
 		};
 
 	const FScene& Scene = World->GetScene();
@@ -1431,8 +1431,8 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 
 	for (FPrimitiveSceneProxy* Proxy : VisibleProxies)
 	{
-		if (USkeletalMeshComponent* Component = Cast<USkeletalMeshComponent>(Proxy->GetComponent()))
-			Component->MarkVisibleForAnimationTick();
+		if (Proxy)
+			Proxy->MarkRendered();
 	}
 
 	RenderStats.TotalPrimitives = Scene.PrimitiveSceneProxies.Num();
@@ -1524,6 +1524,10 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 					FPrimitiveSceneProxy* Proxy = VisibleProxies[VisibleIndex];   // 읽기만
 					if (!Proxy->IsVisible()) continue;
 
+					if (Proxy->AsParticleSceneProxy())
+					{
+						continue;
+					}
 					UStaticMesh* Mesh = Proxy->GetMesh();
 					if (!Mesh)
 					{
@@ -1599,23 +1603,12 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 			for (uint32 VisibleIndex : GatherChunks[c].SlowPathIndices)
 			{
 				FPrimitiveSceneProxy* Proxy = VisibleProxies[VisibleIndex];
-				UPrimitiveComponent* Primitive = Proxy->GetComponent();
-				if (!Primitive || !Primitive->IsVisible())
+				if (!Proxy || !Proxy->IsVisible())
 					continue;
 
 				const uint32 FirstNew = RenderQueue.Num();
-
-				// 프록시 캐시가 없는 스태틱 메시는 기존처럼 LOD를 골라 제출하고, 그 외는 컴포넌트에 맡긴다.
-				UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(Primitive);
-				if (StaticMeshComponent && StaticMeshComponent->GetStaticMesh())
-				{
-					const uint32 LOD = SelectedLODs[VisibleIndex];
-					StaticMeshComponent->SubmitToRenderQueue(RenderQueue, LOD);
-				}
-				else
-				{
-					Primitive->SubmitToRenderQueue(RenderQueue, View);
-				}
+				const uint32 LOD = SelectedLODs[VisibleIndex];
+				Proxy->SubmitToRenderQueue(RenderQueue, View, LOD);
 
 				// continue 없이 항상 여기까지 와서 새 패킷에 여유 칸을 배정한다.
 				for (uint32 p = FirstNew; p < RenderQueue.Num(); ++p)
@@ -1640,30 +1633,20 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 				RenderStats.LODTriangles[L] += GatherChunks[c].LODTriangles[L];
 			}
 
+		Scene.UpdateParticleLODs(View.CameraPosition);
+
 		struct FSortedParticleProxy
 		{
 			const FParticleSceneProxy* Proxy = nullptr;
 			float DistanceSq = 0.0f;
 		};
 		TArray<FSortedParticleProxy> VisibleParticles;
-		for (const FParticleSceneProxy* Proxy : Scene.GetParticleProxies())
+		for (const FPrimitiveSceneProxy* Proxy : VisibleProxies)
 		{
-			if (!Proxy->IsShown(View.bGameView)) continue;
-			if (UParticleSystemComponent* ParticleComp = Proxy->GetComponent())
-			{
-				const float Distance = (ParticleComp->GetWorldLocation() - View.CameraPosition).Length();
-				ParticleComp->UpdateLOD(Distance);
-			}
-			if (!Proxy->HasParticles()) continue;
-			if (Frustum)
-			{
-				uint32 PlaneMask = FrustumAllPlanesMask;
-				if (ClassifyBoxInFrustum(Proxy->GetBounds(), *Frustum, PlaneMask) == EFrustumTest::Outside) continue;
-			}
-			const FBox& B = Proxy->GetBounds();
-			const FVector Center = (B.Min + B.Max) * 0.5f;
-			const FVector Delta = Center - View.CameraPosition;
-			VisibleParticles.Add({ Proxy, Delta.Dot(Delta) });
+			const FParticleSceneProxy* ParticleProxy = Proxy ? Proxy->AsParticleSceneProxy() : nullptr;
+			if (!ParticleProxy || !ParticleProxy->HasParticles()) continue;
+			const FVector Delta = ParticleProxy->GetBounds().Center - View.CameraPosition;
+			VisibleParticles.Add({ ParticleProxy, Delta.Dot(Delta) });
 		}
 		std::sort(VisibleParticles.begin(), VisibleParticles.end(),
 			[](const FSortedParticleProxy& A, const FSortedParticleProxy& B)
@@ -1828,8 +1811,7 @@ void FSceneRenderer::BuildProjectedDecalMeshDrawLists()
 		{
 			if (!bBVHReady ||
 				!Proxy ||
-				Proxy->GetScene() != &Scene ||
-				!Proxy->GetComponent())
+				Proxy->GetScene() != &Scene)
 			{
 				return false;
 			}

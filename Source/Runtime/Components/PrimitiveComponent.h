@@ -7,9 +7,9 @@
 #include "Render/GeometryGenerator.h"
 #include "Collision/HitResult.h"
 #include "Core/Delegate/Delegate.h"
+#include "Engine/PrimitiveSceneProxy.h"
 #include "PrimitiveComponent.generated.h"
 
-class FPrimitiveSceneProxy;
 class AActor;
 class UPrimitiveComponent;
 
@@ -125,9 +125,15 @@ protected:
 	virtual void CreateRenderState() override;
 	virtual void DestroyRenderState() override;
 
+	virtual void PushTransformToProxy();
+	virtual void PushRenderStateToProxy();
 
 	bool TraceMesh(const FRay& WorldRay, const FStaticMeshData& Mesh, const FMatrix& WorldMatrix, FHitResult& OutResult);
 	bool TraceMeshLocal(const FRay& LocalRay, const FStaticMeshData& Mesh, float& OutT);
+
+protected:
+	FPrimitiveTransformData BuildTransformData() const;
+	FPrimitiveRenderStateData BuildBaseRenderState() const;
 
 private:
 	friend class FScene;

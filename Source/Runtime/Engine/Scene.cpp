@@ -15,12 +15,15 @@ void FScene::AddPrimitive(UPrimitiveComponent* Component)
 	Proxy->Scene = this;
 	Proxy->PackedIndex = PrimitiveSceneProxies.Num();
 	Component->SceneProxy = Proxy;
+	PrimitiveProxyComponents.Add(Proxy, Component);
 	MarkDirty(Proxy);
 	MarkRenderStateDirty(Proxy);
 
 	PrimitiveSceneProxies.Add(Proxy);
 	PrimitiveBounds.Add(FAABB{});
 	PrimitiveFlags.Add(0);
+	if (UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Component))
+		ParticleComponents.Add(ParticleComp);
 
 	bElementListChanged = true;
 }
@@ -56,6 +59,13 @@ void FScene::RemovePrimitive(UPrimitiveComponent* Component)
 		if (Found != INDEX_NONE) RenderStateDirtyProxies.RemoveAtSwap(Found);
 	}
 
+	if (UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Component))
+	{
+		const int32 ParticleIndex = ParticleComponents.Find(ParticleComp);
+		if (ParticleIndex != INDEX_NONE)
+			ParticleComponents.RemoveAtSwap(ParticleIndex);
+	}
+	PrimitiveProxyComponents.Remove(Proxy);
 	Component->SceneProxy = nullptr;
 	delete Proxy;
 
@@ -67,13 +77,15 @@ void FScene::RemoveAllPrimitives()
 	// 하나씩 RemovePrimitive하면 대기열 검색(Find)이 물체 수만큼 반복되므로 통째로 비운다.
 	for (FPrimitiveSceneProxy* Proxy : PrimitiveSceneProxies)
 	{
-		if (UPrimitiveComponent* Component = Proxy->GetComponent())
-			Component->SceneProxy = nullptr;
+		if (UPrimitiveComponent** Found = PrimitiveProxyComponents.Find(Proxy); Found && *Found)
+			(*Found)->SceneProxy = nullptr;
 		delete Proxy;
 	}
+	PrimitiveProxyComponents.Empty();
 	PrimitiveSceneProxies.Reset();
 	PrimitiveBounds.Reset();
 	PrimitiveFlags.Reset();
+	ParticleComponents.Reset();
 	DirtyProxies.Reset();
 	RenderStateDirtyProxies.Reset();
 	BVH.Clear();
@@ -81,32 +93,16 @@ void FScene::RemoveAllPrimitives()
 	InvalidateAllShadows();
 }
 
-void FScene::AddParticle(UParticleSystemComponent* Component)
+void FScene::UpdateParticleLODs(const FVector& CameraPosition)
 {
-	if (!Component || Component->SceneProxy) return;
-	FParticleSceneProxy* Proxy = new FParticleSceneProxy(Component);
-	Component->SceneProxy = Proxy;
-	ParticleSceneProxies.Add(Proxy);
-}
-
-void FScene::RemoveParticle(UParticleSystemComponent* Component)
-{
-	if (!Component || !Component->SceneProxy) return;
-	FParticleSceneProxy* Proxy = Component->SceneProxy;
-	const int32 Index = ParticleSceneProxies.Find(Proxy);
-	if (Index != INDEX_NONE) ParticleSceneProxies.RemoveAtSwap(Index);
-	Component->SceneProxy = nullptr;
-	delete Proxy;
-}
-
-void FScene::RemoveAllParticles()
-{
-	for (FParticleSceneProxy* Proxy : ParticleSceneProxies)
+	for (UParticleSystemComponent* Component : ParticleComponents)
 	{
-		if (UParticleSystemComponent* Component = Proxy->GetComponent()) Component->SceneProxy = nullptr;
-		delete Proxy;
+		if (Component)
+		{
+			const float Distance = (Component->GetWorldLocation() - CameraPosition).Length();
+			Component->UpdateLOD(Distance);
+		}
 	}
-	ParticleSceneProxies.Reset();
 }
 
 void FScene::AddLight(ULightComponent* Component)
@@ -123,6 +119,7 @@ void FScene::AddLight(ULightComponent* Component)
 
 	Proxy->Scene = this;
 	Component->SceneProxy = Proxy;
+	LightProxyComponents.Add(Proxy, Component);
 
 	if (Component->GetLightType() == ELightType::Directional)
 	{
@@ -188,6 +185,7 @@ void FScene::RemoveLight(ULightComponent* Component)
 	}
 
 	Component->SceneProxy = nullptr;
+	LightProxyComponents.Remove(Proxy);
 	delete Proxy;
 }
 
@@ -195,10 +193,25 @@ void FScene::RemoveAllLights()
 {
 	for (FLightSceneInfo* Info : Lights) delete Info;
 	Lights.Reset();
-	for (FLightSceneProxy* Proxy : DirectionalLightProxies) delete Proxy;
-	for (FLightSceneProxy* Proxy : LocalLightProxies)       delete Proxy;
+	for (FLightSceneProxy* Proxy : DirectionalLightProxies)
+	{
+		if (ULightComponent** Found = LightProxyComponents.Find(Proxy))
+		{
+			if (*Found) (*Found)->SceneProxy = nullptr;
+		}
+		delete Proxy;
+	}
+	for (FLightSceneProxy* Proxy : LocalLightProxies)
+	{
+		if (ULightComponent** Found = LightProxyComponents.Find(Proxy))
+		{
+			if (*Found) (*Found)->SceneProxy = nullptr;
+		}
+		delete Proxy;
+	}
 	DirectionalLightProxies.Reset();
 	LocalLightProxies.Reset();
+	LightProxyComponents.Empty();
 	SkyLights.Reset();
 	SkyLightEnvironments.clear();
 }
@@ -239,11 +252,15 @@ const FSkyLightEnvironment* FScene::FindSkyLightEnvironment(const FString& Sourc
 
 void FScene::UpdateAllTransforms()
 {
+	const bool bAnyRenderStateChanged = RenderStateDirtyProxies.Num() > 0;
 	for (FPrimitiveSceneProxy* Proxy : RenderStateDirtyProxies)
 	{
-		// CastShadow·표시 여부·메시가 바뀌면 그림자 결과가 달라질 수 있다. 드물게 일어나므로 Caster 여부와 무관하게 기록한다.
-		RecordShadowInvalidation(Proxy->GetBounds());
-		Proxy->UpdateRenderState();
+		// 파티클처럼 그림자를 안 드리우는 동적 프록시는 매 틱 그림자 무효화를 건너뛴다
+		if (!Proxy->AsParticleSceneProxy() || Proxy->bCastsShadow)
+			RecordShadowInvalidation(Proxy->GetBounds());
+		if (UPrimitiveComponent* Component = FindPrimitiveComponent(Proxy))
+			Component->PushRenderStateToProxy();
+		PrimitiveBounds[Proxy->PackedIndex] = Proxy->GetBounds();
 		PrimitiveFlags[Proxy->PackedIndex] = Proxy->IsVisible() ? 1 : 0;
 		Proxy->bRenderStateQueued = false;
 	}
@@ -252,7 +269,8 @@ void FScene::UpdateAllTransforms()
 	for (FPrimitiveSceneProxy* Proxy : DirtyProxies)
 	{
 		const FAABB OldBounds = Proxy->GetBounds();
-		Proxy->UpdateTransform();
+		if (UPrimitiveComponent* Component = FindPrimitiveComponent(Proxy))
+			Component->PushTransformToProxy();
 		// 그림자가 사라진 자리(이전)와 새로 생긴 자리(이후)를 모두 지워야 한다.
 		if (Proxy->bCastsShadow)
 		{
@@ -264,23 +282,7 @@ void FScene::UpdateAllTransforms()
 		Proxy->bQueuedForUpdate = false;
 	}
 
-	//const int32 Count = Proxies.Num();
-	//for (int32 i = 0; i < Count; ++i)
-	//{
-	//	FPrimitiveSceneProxy* Proxy = Proxies[i];
-	//	Proxy->UpdateTransform();
-
-	//	const FAABB& Bounds = Proxy->GetBounds();
-	//	if (PrimitiveBounds[i].Center != Bounds.Center || PrimitiveBounds[i].Extent != Bounds.Extent)
-	//	{
-	//		bBoundsChanged = true;
-	//	}
-
-	//	PrimitiveBounds[i] = Proxy->GetBounds();
-	//	PrimitiveFlags[i] = Proxy->GetComponent()->IsVisible() ? 1 : 0;
-	//}
-
-	const bool bAnyMoved = DirtyProxies.Num() > 0;
+	const bool bAnyMoved = DirtyProxies.Num() > 0 || bAnyRenderStateChanged;
 	DirtyProxies.Reset();
 
 
@@ -298,17 +300,24 @@ void FScene::UpdateAllTransforms()
 void FScene::BuildBVH()
 {
 	BVH.Clear();
-	// BillboardComponents.Reset();
 
 	TArray<FPrimitiveSceneProxy*> Elements;
 	Elements.Reserve(PrimitiveSceneProxies.Num());
 	for (FPrimitiveSceneProxy* Proxy : PrimitiveSceneProxies)
 	{
-		if (Proxy && Proxy->GetComponent())
+		if (Proxy && FindPrimitiveComponent(Proxy))
 			Elements.Add(Proxy);
 	}
 
 	BVH.Build(std::span(Elements.GetData(), Elements.Num()));
+}
+
+UPrimitiveComponent* FScene::FindPrimitiveComponent(const FPrimitiveSceneProxy* Proxy) const
+{
+	if (!Proxy)
+		return nullptr;
+	UPrimitiveComponent* const* Found = PrimitiveProxyComponents.Find(const_cast<FPrimitiveSceneProxy*>(Proxy));
+	return Found ? *Found : nullptr;
 }
 
 void FScene::RecordShadowInvalidation(const FAABB& Bounds)

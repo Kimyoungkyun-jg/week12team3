@@ -1,11 +1,63 @@
 #pragma once
 
-#include "Components/LightComponent.h"
 #include "SceneManagement.h"
 #include "Render/LightRenderData.h"
 #include "Render/LightSceneInfo.h"
 #include "Render/SceneView.h"
+#include "Math/Color.h"
+#include "Math/Rotator.h"
 #include "Math/Sphere.h"
+#include <cstdint>
+
+struct FLightProxyBaseData
+{
+	uintptr_t ComponentKey = 0;
+	FVector WorldLocation = FVector::ZeroVector;
+	FRotator WorldRotation{};
+	FVector Forward = FVector(1.0f, 0.0f, 0.0f);
+	FVector Right = FVector(0.0f, 1.0f, 0.0f);
+	FColor LightColor = FColor(255, 255, 255, 255);
+	float Intensity = 1.0f;
+	bool bVisible = true;
+	bool bHiddenInGame = false;
+	bool bCastShadows = true;
+	float ShadowResolutionScale = 1.0f;
+	float ShadowBias = 0.5f;
+	float ShadowSlopeBias = 0.5f;
+	float ShadowSharpen = 0.0f;
+};
+
+struct FDirectionalLightProxyData : FLightProxyBaseData
+{
+	float AngularRadiusDegrees = 0.27f;
+	float DynamicShadowDistanceMovableLight = 200.0f;
+	uint32 DynamicShadowCascades = 4;
+	float CascadeDistributionExponent = 3.0f;
+	float CascadeTransitionFraction = 0.1f;
+	float ShadowDistanceFadeoutFraction = 0.1f;
+};
+
+struct FPointLightProxyData : FLightProxyBaseData
+{
+	float AttenuationRadius = 5.0f;
+	float FalloffExponent = 1.0f;
+	float SourceRadius = 0.02f;
+};
+
+struct FSpotLightProxyData : FPointLightProxyData
+{
+	float InnerConeAngle = 15.0f;
+	float OuterConeAngle = 30.0f;
+};
+
+struct FRectLightProxyData : FLightProxyBaseData
+{
+	float AttenuationRadius = 5.0f;
+	float HalfWidth = 3.0f;
+	float HalfHeight = 3.0f;
+	float BarnDoorAngle = 88.0f;
+	float BarnDoorLength = 2.0f;
+};
 
 // MSVC 최적화
 // 가상함수 테이블과 패딩 방지
@@ -18,40 +70,34 @@ public:
 class FLightSceneProxy : public FLightSceneProxyFixLayout
 {
 public:
-	FLightSceneProxy(const ULightComponent* InLightComponent)
-		: LightComponent(InLightComponent) {}
+	explicit FLightSceneProxy(const FLightProxyBaseData& InBaseData)
+		: BaseData(InBaseData) {}
 	virtual ~FLightSceneProxy() = default;
 
 	virtual void GetLightShaderParameters(FLightRenderParameters& OutParameters) const = 0;
 
-	const ULightComponent* GetLightComponent() const { return LightComponent; }
-	bool IsVisible() const { return LightComponent ? LightComponent->IsVisible() : false; }
-	bool IsEnabled() const { return LightComponent && LightComponent->GetIntensity() > 0.0f; }
-	bool IsShown(bool bGameView) const { return LightComponent ? LightComponent->IsShown(bGameView) : false; }
+	uintptr_t GetComponentKey() const { return BaseData.ComponentKey; }
+	bool IsVisible() const { return BaseData.bVisible; }
+	bool IsEnabled() const { return BaseData.Intensity > 0.0f; }
+	bool IsShown(bool bGameView) const { return BaseData.bVisible && !(bGameView && BaseData.bHiddenInGame); }
 
-	// 컴포넌트 값을 매 프레임 읽는다. 에디터에서 잘못 입력한 값은 여기서 범위를 맞춘다.
+	// 에디터 입력 범위는 프록시 조회 시점에 맞춰 사용한다
 	FLightShadowSettings GetShadowSettings() const
 	{
 		FLightShadowSettings Settings{};
-		if (!LightComponent)
-		{
-			Settings.bCastShadows = false;
-			return Settings;
-		}
-		Settings.Light = LightComponent;
-		Settings.bCastShadows = LightComponent->CastsShadows();
-		Settings.ResolutionScale = FMath::Clamp(LightComponent->GetShadowResolutionScale(), 0.0625f, 4.0f);
-		Settings.Bias = std::max(LightComponent->GetShadowBias(), 0.0f);
-		Settings.SlopeBias = std::max(LightComponent->GetShadowSlopeBias(), 0.0f);
-		Settings.Sharpen = FMath::Clamp(LightComponent->GetShadowSharpen(), 0.0f, 1.0f);
+		Settings.bCastShadows = BaseData.bCastShadows;
+		Settings.ResolutionScale = FMath::Clamp(BaseData.ShadowResolutionScale, 0.0625f, 4.0f);
+		Settings.Bias = std::max(BaseData.ShadowBias, 0.0f);
+		Settings.SlopeBias = std::max(BaseData.ShadowSlopeBias, 0.0f);
+		Settings.Sharpen = FMath::Clamp(BaseData.ShadowSharpen, 0.0f, 1.0f);
 		return Settings;
 	}
 
-	bool CastsDynamicShadow() const { return LightComponent && LightComponent->CastsShadows(); }
-	float GetUserShadowBias() const { return LightComponent ? std::max(LightComponent->GetShadowBias(), 0.0f) : 0.0f; }
-	float GetUserShadowSlopeBias() const { return LightComponent ? std::max(LightComponent->GetShadowSlopeBias(), 0.0f) : 0.0f; }
-	float GetShadowResolutionScale() const { return LightComponent ? FMath::Clamp(LightComponent->GetShadowResolutionScale(), 0.0625f, 4.0f) : 1.0f; }
-	float GetShadowSharpen() const { return LightComponent ? FMath::Clamp(LightComponent->GetShadowSharpen(), 0.0f, 1.0f) : 0.0f; }
+	bool CastsDynamicShadow() const { return BaseData.bCastShadows; }
+	float GetUserShadowBias() const { return std::max(BaseData.ShadowBias, 0.0f); }
+	float GetUserShadowSlopeBias() const { return std::max(BaseData.ShadowSlopeBias, 0.0f); }
+	float GetShadowResolutionScale() const { return FMath::Clamp(BaseData.ShadowResolutionScale, 0.0625f, 4.0f); }
+	float GetShadowSharpen() const { return FMath::Clamp(BaseData.ShadowSharpen, 0.0f, 1.0f); }
 
 	virtual bool IsDirectional() const { return false; }
 	// 라이트가 영향을 주는 공간. 채널 배정, 뷰 컬링, Caster 판정에 쓴다.
@@ -87,7 +133,7 @@ public:
 	FLightSceneInfo* GetLightSceneInfo() const { return LightSceneInfo; }
 
 protected:
-	const ULightComponent* LightComponent = nullptr;
+	FLightProxyBaseData BaseData{};
 
 private:
 	friend class FScene;
@@ -99,7 +145,9 @@ private:
 class FDirectionalLightSceneProxy : public FLightSceneProxy
 {
 public:
-	using FLightSceneProxy::FLightSceneProxy;
+	explicit FDirectionalLightSceneProxy(const FDirectionalLightProxyData& InData)
+		: FLightSceneProxy(InData), Data(InData) {}
+	void SetProxyData(const FDirectionalLightProxyData& InData) { BaseData = InData; Data = InData; }
 	void GetLightShaderParameters(FLightRenderParameters& Out) const override;
 
 	bool IsDirectional() const override { return true; }
@@ -112,6 +160,11 @@ public:
 
 	// 카메라에서 SplitIndex번째 캐스케이드 경계까지의 거리
 	float GetSplitDistance(const FSceneView& View, uint32 SplitIndex) const;
+
+	static constexpr uint32 MaxDynamicShadowCascades = 4;
+
+private:
+	FDirectionalLightProxyData Data{};
 };
 
 class FLocalLightSceneProxy : public FLightSceneProxy
@@ -123,30 +176,45 @@ public:
 class FPointLightSceneProxy : public FLocalLightSceneProxy
 {
 public:
-	using FLocalLightSceneProxy::FLocalLightSceneProxy;
+	explicit FPointLightSceneProxy(const FPointLightProxyData& InData)
+		: FLocalLightSceneProxy(InData), Data(InData) {}
+	void SetProxyData(const FPointLightProxyData& InData) { BaseData = InData; Data = InData; }
 	void GetLightShaderParameters(FLightRenderParameters& Out) const override;
 
 	FSphere GetBoundingSphere() const override;
 	bool GetWholeSceneProjectedShadowInitializer(const FSceneView& View,
 		TArray<FWholeSceneProjectedShadowInitializer>& OutInitializers) const override;
+
+private:
+	FPointLightProxyData Data{};
 };
 
 class FSpotLightSceneProxy : public FLocalLightSceneProxy
 {
 public:
-	using FLocalLightSceneProxy::FLocalLightSceneProxy;
+	explicit FSpotLightSceneProxy(const FSpotLightProxyData& InData)
+		: FLocalLightSceneProxy(InData), Data(InData) {}
+	void SetProxyData(const FSpotLightProxyData& InData) { BaseData = InData; Data = InData; }
 	void GetLightShaderParameters(FLightRenderParameters& Out) const override;
 
 	FSphere GetBoundingSphere() const override;
 	bool GetWholeSceneProjectedShadowInitializer(const FSceneView& View,
 		TArray<FWholeSceneProjectedShadowInitializer>& OutInitializers) const override;
+
+private:
+	FSpotLightProxyData Data{};
 };
 
 class FRectLightSceneProxy : public FLocalLightSceneProxy
 {
 public:
-	using FLocalLightSceneProxy::FLocalLightSceneProxy;
+	explicit FRectLightSceneProxy(const FRectLightProxyData& InData)
+		: FLocalLightSceneProxy(InData), Data(InData) {}
+	void SetProxyData(const FRectLightProxyData& InData) { BaseData = InData; Data = InData; }
 	void GetLightShaderParameters(FLightRenderParameters& Out) const override;
+
+private:
+	FRectLightProxyData Data{};
 };
 
 class FAmbientLightSceneProxy

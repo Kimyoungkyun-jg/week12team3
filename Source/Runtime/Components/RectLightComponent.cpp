@@ -100,5 +100,27 @@ void URectLightComponent::DrawDebug(FLineBatcher* LineBatcher) const
 
 FLightSceneProxy* URectLightComponent::CreateSceneProxy() const
 {
-    return new FRectLightSceneProxy(this);
+	FRectLightProxyData Data;
+	FillBaseProxyData(Data);
+	Data.AttenuationRadius = GetAttenuationRadius();
+	Data.HalfWidth = HalfWidth;
+	Data.HalfHeight = HalfHeight;
+	Data.BarnDoorAngle = BarnDoorAngle;
+	Data.BarnDoorLength = BarnDoorLength;
+	return new FRectLightSceneProxy(Data);
+}
+
+void URectLightComponent::UpdateSceneProxy()
+{
+	if (auto* Proxy = static_cast<FRectLightSceneProxy*>(SceneProxy))
+	{
+		FRectLightProxyData Data;
+		FillBaseProxyData(Data);
+		Data.AttenuationRadius = GetAttenuationRadius();
+		Data.HalfWidth = HalfWidth;
+		Data.HalfHeight = HalfHeight;
+		Data.BarnDoorAngle = BarnDoorAngle;
+		Data.BarnDoorLength = BarnDoorLength;
+		Proxy->SetProxyData(Data);
+	}
 }

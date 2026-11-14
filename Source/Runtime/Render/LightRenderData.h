@@ -55,12 +55,9 @@ struct FLightShadowRenderData
 	float Sharpen;   // 0~1, PCF 결과의 반그림자 폭을 좁힌다
 };
 
-class ULightComponent;
-
 // 광원 컴포넌트의 그림자 설정을 렌더 스레드 쪽으로 옮긴 사본. VisibleLights와 같은 순서로 둔다. GPU에 올리지 않는다.
 struct FLightShadowSettings
 {
-	const ULightComponent* Light = nullptr; // 그림자 캐시가 프레임 사이에 같은 광원인지 비교하는 키
 	bool bCastShadows = true;
 	float ResolutionScale = 1.0f;
 	float Bias = 0.0f;

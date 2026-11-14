@@ -113,6 +113,7 @@ void UPrimitiveComponent::SetCastShadow(bool NewValue)
 	if (bCastShadow != NewValue)
 	{
 		bCastShadow = NewValue;
+		MarkRenderStateDirty();
 	}
 }
 
@@ -121,6 +122,7 @@ void UPrimitiveComponent::SetReceiveShadow(bool NewValue)
 	if (bReceiveShadow != NewValue)
 	{
 		bReceiveShadow = NewValue;
+		MarkRenderStateDirty();
 	}
 }
 
@@ -137,6 +139,42 @@ void UPrimitiveComponent::CreateRenderState()
 {
 	Super::CreateRenderState();
 	GetWorld()->GetScene().AddPrimitive(this);
+}
+
+void UPrimitiveComponent::PushTransformToProxy()
+{
+	if (SceneProxy)
+		SceneProxy->ApplyTransformData(BuildTransformData());
+}
+
+void UPrimitiveComponent::PushRenderStateToProxy()
+{
+	if (SceneProxy)
+		SceneProxy->ApplyBaseRenderState(BuildBaseRenderState());
+}
+
+FPrimitiveTransformData UPrimitiveComponent::BuildTransformData() const
+{
+	FPrimitiveTransformData Data;
+	Data.LocalToWorld = GetWorldMatrix();
+	Data.WorldToLocal = Data.LocalToWorld.Inverse();
+	const FBox WorldBox = CalcLocalBounds().GetWorldAABB(Data.LocalToWorld);
+	Data.WorldBounds.Center = (WorldBox.Min + WorldBox.Max) * 0.5f;
+	Data.WorldBounds.Extent = (WorldBox.Max - WorldBox.Min) * 0.5f;
+	Data.WorldScale3D = GetWorldScale3D();
+	return Data;
+}
+
+FPrimitiveRenderStateData UPrimitiveComponent::BuildBaseRenderState() const
+{
+	FPrimitiveRenderStateData Data;
+	Data.bVisible = IsVisible();
+	Data.bShownInGame = IsShown(true);
+	Data.bShownInEditor = IsShown(false);
+	Data.bCastsShadow = bCastShadow;
+	Data.bReceiveShadow = bReceiveShadow;
+	Data.bReceiveDecal = bReceiveDecal;
+	return Data;
 }
 
 void UPrimitiveComponent::DestroyRenderState()

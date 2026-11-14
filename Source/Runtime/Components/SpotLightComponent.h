@@ -21,12 +21,13 @@ public:
 	ELightType GetLightType() const override { return ELightType::Spot; }
 
 	float GetInnerConeAngle() const { return InnerConeAngle; }
-	void SetInnerConeAngle(float InAngle) { InnerConeAngle = InAngle; }
+	void SetInnerConeAngle(float InAngle) { InnerConeAngle = InAngle; MarkRenderStateDirty(); }
 
 	float GetOuterConeAngle() const { return OuterConeAngle; }
-	void SetOuterConeAngle(float InAngle) { OuterConeAngle = InAngle; }
+	void SetOuterConeAngle(float InAngle) { OuterConeAngle = InAngle; MarkRenderStateDirty(); }
 
-	
+protected:
+	void UpdateSceneProxy() override;
 
 private:
 	// 원뿔 중심축 기준 반각(도). 

@@ -21,9 +21,9 @@ public:
 	bool CastsShadows() const { return bCastShadows; }
 
 	// Setter
-	void SetIntensity(float InIntensity) { Intensity = InIntensity; }
-	void SetLightColor(FColor InLightColor) { LightColor = InLightColor; }
-	void SetCastShadows(bool bInCastShadows) { bCastShadows = bInCastShadows; }
+	void SetIntensity(float InIntensity) { Intensity = InIntensity; MarkRenderStateDirty(); }
+	void SetLightColor(FColor InLightColor) { LightColor = InLightColor; MarkRenderStateDirty(); }
+	void SetCastShadows(bool bInCastShadows) { bCastShadows = bInCastShadows; MarkRenderStateDirty(); }
 
 
 protected:

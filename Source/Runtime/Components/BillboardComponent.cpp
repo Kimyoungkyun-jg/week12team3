@@ -177,5 +177,28 @@ void UBillboardComponent::Serialize(FStructuredArchive::FRecord Record)
 
 FPrimitiveSceneProxy* UBillboardComponent::CreateSceneProxy()
 {
-	return new FBillboardSceneProxy(this);
+	return new FBillboardSceneProxy(BuildBillboardProxyData(), BuildTransformData());
+}
+
+void UBillboardComponent::PushRenderStateToProxy()
+{
+	if (auto* Proxy = static_cast<FBillboardSceneProxy*>(GetSceneProxy()))
+		Proxy->SetBillboardData(BuildBillboardProxyData());
+}
+
+FBillboardProxyData UBillboardComponent::BuildBillboardProxyData() const
+{
+	FBillboardProxyData Data;
+	Data.BaseState = BuildBaseRenderState();
+	Data.QuadMesh = QuadMesh;
+	Data.Material = Material;
+	Data.IconSize = IconSize;
+	Data.bEditorIcon = bEditorIcon;
+
+	FSubUVConstants CurrentIconParams = IconParams;
+	CurrentIconParams.Tint = TintSource ? TintSource->GetLightColor().ToVector4() : FVector4(1, 1, 1, 1);
+	CurrentIconParams.DecodeSRGB = 0.0f;
+	static_assert(sizeof(Data.IconParams) == sizeof(CurrentIconParams), "FBillboardSubUVConstants must match FSubUVConstants");
+	std::memcpy(&Data.IconParams, &CurrentIconParams, sizeof(Data.IconParams));
+	return Data;
 }

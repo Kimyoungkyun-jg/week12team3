@@ -4,6 +4,8 @@
 #include "Render/LineBatcher.h"
 #include "LightComponent.generated.h"
 
+struct FLightProxyBaseData;
+
 UCLASS()
 class ULightComponent : public ULightComponentBase
 {
@@ -17,10 +19,10 @@ public:
 	float GetShadowSlopeBias() const { return ShadowSlopeBias; }
 	float GetShadowSharpen() const { return ShadowSharpen; }
 
-	void SetShadowResolutionScale(float InScale) { ShadowResolutionScale = InScale; }
-	void SetShadowBias(float InBias) { ShadowBias = InBias; }
-	void SetShadowSlopeBias(float InSlopeBias) { ShadowSlopeBias = InSlopeBias; }
-	void SetShadowSharpen(float InSharpen) { ShadowSharpen = InSharpen; }
+	void SetShadowResolutionScale(float InScale) { ShadowResolutionScale = InScale; MarkRenderStateDirty(); }
+	void SetShadowBias(float InBias) { ShadowBias = InBias; MarkRenderStateDirty(); }
+	void SetShadowSlopeBias(float InSlopeBias) { ShadowSlopeBias = InSlopeBias; MarkRenderStateDirty(); }
+	void SetShadowSharpen(float InSharpen) { ShadowSharpen = InSharpen; MarkRenderStateDirty(); }
 
 	virtual ELightType GetLightType() const = 0;
 	virtual void DrawDebug(FLineBatcher* LineBatcher) const;
@@ -29,8 +31,13 @@ public:
 	{
 		return NULL;
 	}
+	void MarkRenderStateDirty() override;
+	void OnTransformDirty() override { MarkRenderStateDirty(); }
+	void PostEditChangeProperty(const FProperty& Property) override;
 	FLightSceneProxy* SceneProxy = nullptr;
 protected:
+	void FillBaseProxyData(FLightProxyBaseData& OutData) const;
+	virtual void UpdateSceneProxy() {}
 	virtual bool ShouldCreateRenderState() const override
 	{ return true; }
 

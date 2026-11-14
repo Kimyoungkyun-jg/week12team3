@@ -12,7 +12,7 @@ public:
 	virtual ~ULocalLightComponent() override;
 
 	float GetAttenuationRadius() const { return AttenuationRadius; }
-	void SetAttenuationRadius(float InAttenuationRadius) { AttenuationRadius = std::max(InAttenuationRadius, 0.01f); }
+	void SetAttenuationRadius(float InAttenuationRadius) { AttenuationRadius = std::max(InAttenuationRadius, 0.01f); MarkRenderStateDirty(); }
 
 private:
 	UPROPERTY(EditAnywhere)

@@ -420,57 +420,12 @@ namespace
 			ImGuiTreeNodeFlags_DefaultOpen))
 		{
 			UMaterial* Material = Decal->GetDecalMaterial();
+			const UMaterial* Base = Material ? Material->GetBaseAsset() : nullptr;
 
-			const UMaterial* Base =
-				Material ? Material->GetBaseAsset() : nullptr;
-
-			const FString Preview =
-				Base ? Base->GetPath() :
-				Material ? FString("(Instance)") :
-				FString("(None)");
-
-			EditorUIScale::LimitNextComboPopupWidth();
-			if (ImGui::BeginCombo(
-				"Material",
-				Preview.c_str()))
+			UMaterial* SelectedMaterial = Material;
+			if (FContentDrawerPanel::DrawMaterialPicker("Material", SelectedMaterial, "(None)", Base))
 			{
-				if (ImGui::Selectable(
-					"(None)",
-					Material == nullptr))
-				{
-					Decal->SetDecalMaterial(nullptr);
-				}
-
-				const TArray<UMaterial*> Candidates = EditorSort::CollectSorted<UMaterial>(
-					TObjectIterator<UMaterial>(),
-					[](const UMaterial* M) { return M->GetPath(); },
-					[](const UMaterial* M) { return !M->IsRetired() && !M->GetPath().empty(); });
-
-				for (UMaterial* Candidate : Candidates)
-				{
-					ImGui::PushID(Candidate);
-					if (ID3D11ShaderResourceView* ThumbSRV = FContentDrawerPanel::GetMaterialThumbnailSRV(Candidate))
-					{
-						ImGui::Image(reinterpret_cast<ImTextureID>(ThumbSRV), ImVec2(24.0f, 24.0f));
-						ImGui::SameLine();
-					}
-
-					const bool bSelected =
-						Candidate == Material ||
-						Candidate == Base;
-
-					if (ImGui::Selectable(
-						Candidate->GetPath().c_str(),
-						bSelected,
-						0,
-						ImVec2(0.0f, 24.0f)))
-					{
-						Decal->SetDecalMaterial(Candidate);
-					}
-					ImGui::PopID();
-				}
-
-				ImGui::EndCombo();
+				Decal->SetDecalMaterial(SelectedMaterial);
 			}
 
 			Material = Decal->GetDecalMaterial();
@@ -719,7 +674,6 @@ namespace
 
 	void DrawMaterialTextureSlot(UMeshComponent* MeshComponent, int32 MaterialSlot, int32 TextureSlot, const char* Label, UMaterial*& Effective, UMaterial*& Override) {
 		const float ThumbnailSize{ EditorUIScale::Px(64.0f) };
-		const float ItemThumbnailSize{ EditorUIScale::Px(24.0f) };
 		UTexture2D* Texture{ Effective && Effective->Textures.IsValidIndex(TextureSlot) ? Effective->Textures[TextureSlot] : nullptr };
 
 		ImGui::TableNextRow();
@@ -750,41 +704,81 @@ namespace
 		const FString CurrentPath{ Texture ? Texture->GetPath() : "" };
 		const FString CurrentFileName{ Texture ? GetAssetDisplayName(CurrentPath) : "None" };
 		ImGui::SetNextItemWidth(-1.0f);
-		EditorUIScale::LimitNextComboPopupWidth();
+		ImGui::SetNextWindowSize({ EditorUIScale::Px(460.0f), EditorUIScale::Px(240.0f) }, ImGuiCond_Appearing);
+		ImGui::SetNextWindowSizeConstraints(
+			{ EditorUIScale::Px(380.0f), EditorUIScale::Px(200.0f) },
+			{ EditorUIScale::Px(720.0f), EditorUIScale::Px(420.0f) });
 		const bool Open{ ImGui::BeginCombo("##Texture", CurrentFileName.c_str()) };
 		if (ImGui::IsItemHovered() && Texture) {
 			ImGui::SetTooltip("%s", CurrentPath.c_str());
 		}
 
 		if (Open) {
-			if (ImGui::Selectable("None", Texture == nullptr)) {
-				SetMaterialTexture(MeshComponent, MaterialSlot, TextureSlot, nullptr, Effective, Override);
+			const ImVec2 Avail{ ImGui::GetContentRegionAvail() };
+			const float PreviewPaneWidth{ EditorUIScale::Px(160.0f) };
+			const float Spacing{ ImGui::GetStyle().ItemSpacing.x };
+			const float ListPaneWidth{ std::max(EditorUIScale::Px(180.0f), Avail.x - PreviewPaneWidth - Spacing) };
+			const float PaneHeight{ std::max(EditorUIScale::Px(160.0f), Avail.y) };
+
+			if (ImGui::BeginChild("##TextureListPane", { ListPaneWidth, PaneHeight }, ImGuiChildFlags_Borders)) {
+				if (ImGui::Selectable("None", Texture == nullptr, ImGuiSelectableFlags_NoAutoClosePopups)) {
+					if (SetMaterialTexture(MeshComponent, MaterialSlot, TextureSlot, nullptr, Effective, Override)) {
+						Texture = nullptr;
+					}
+				}
+				if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+					ImGui::CloseCurrentPopup();
+				}
+
+				const TArray<UTexture2D*> Textures = EditorSort::CollectSorted<UTexture2D>(
+					TObjectIterator<UTexture2D>(),
+					[](const UTexture2D* T) { return GetAssetDisplayName(T->GetPath()); },
+					[](UTexture2D* T) { return !T->IsRetired() && T->GetResource() && !T->GetPath().empty(); });
+
+				for (UTexture2D* ItemTexture : Textures) {
+					const bool Selected{ ItemTexture == Texture };
+					const FString ItemPath{ ItemTexture->GetPath() };
+					const FString ItemFileName{ GetAssetDisplayName(ItemPath) };
+					ImGui::PushID(ItemTexture);
+					if (ImGui::Selectable(ItemFileName.c_str(), Selected, ImGuiSelectableFlags_NoAutoClosePopups)) {
+						if (SetMaterialTexture(MeshComponent, MaterialSlot, TextureSlot, ItemTexture, Effective, Override)) {
+							Texture = ItemTexture;
+						}
+					}
+					if (ImGui::IsItemHovered()) {
+						ImGui::SetTooltip("%s", ItemPath.c_str());
+						if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+							ImGui::CloseCurrentPopup();
+						}
+					}
+					if (Selected && ImGui::IsWindowAppearing()) {
+						ImGui::SetScrollHereY();
+					}
+					ImGui::PopID();
+				}
 			}
+			ImGui::EndChild();
 
-			const TArray<UTexture2D*> Textures = EditorSort::CollectSorted<UTexture2D>(
-				TObjectIterator<UTexture2D>(),
-				[](const UTexture2D* T) { return GetAssetDisplayName(T->GetPath()); },
-				[](UTexture2D* T) { return !T->IsRetired() && T->GetResource() && !T->GetPath().empty(); });
+			ImGui::SameLine();
 
-			for (UTexture2D* ItemTexture : Textures) {
+			if (ImGui::BeginChild("##TextureThumbPane", { PreviewPaneWidth, PaneHeight }, ImGuiChildFlags_Borders)) {
+				const float LargeThumbSize{ EditorUIScale::Px(128.0f) };
+				const float PadX{ std::max(0.0f, (ImGui::GetContentRegionAvail().x - LargeThumbSize) * 0.5f) };
+				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + PadX);
 
-				const bool Selected{ ItemTexture == Texture };
-				const FString ItemPath{ ItemTexture->GetPath() };
-				const FString ItemFileName{ GetAssetDisplayName(ItemPath) };
-				ImGui::PushID(ItemTexture);
-				ImGui::Image((ImTextureID)ItemTexture->GetResource()->GetSRV(), { ItemThumbnailSize, ItemThumbnailSize });
-				ImGui::SameLine();
-				if (ImGui::Selectable(ItemFileName.c_str(), Selected, ImGuiSelectableFlags_None, { 0.0f, ItemThumbnailSize })) {
-					SetMaterialTexture(MeshComponent, MaterialSlot, TextureSlot, ItemTexture, Effective, Override);
+				if (Texture && Texture->GetResource()) {
+					ImGui::Image((ImTextureID)Texture->GetResource()->GetSRV(), { LargeThumbSize, LargeThumbSize });
+				} else {
+					ImGui::BeginDisabled(true);
+					ImGui::Button("None", { LargeThumbSize, LargeThumbSize });
+					ImGui::EndDisabled();
 				}
-				if (ImGui::IsItemHovered()) {
-					ImGui::SetTooltip("%s", ItemPath.c_str());
-				}
-				if (Selected) {
-					ImGui::SetItemDefaultFocus();
-				}
-				ImGui::PopID();
+
+				ImGui::Separator();
+				ImGui::TextWrapped("%s", Texture ? Texture->GetPath().c_str() : "None");
 			}
+			ImGui::EndChild();
+
 			ImGui::EndCombo();
 		}
 

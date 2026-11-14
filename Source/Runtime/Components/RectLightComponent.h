@@ -19,11 +19,14 @@ public:
 	float GetWidth() const { return HalfWidth * 2.0f; }
 	float GetHeight() const { return HalfHeight * 2.0f; }
 
-	void SetBarnDoorAngle(float InAngle) { BarnDoorAngle = std::max(0.0f, InAngle); }
+	void SetBarnDoorAngle(float InAngle) { BarnDoorAngle = std::max(0.0f, InAngle); MarkRenderStateDirty(); }
 	float GetBarnDoorAngle() const { return BarnDoorAngle; }
 
-	void SetBarnDoorLength(float InLength) { BarnDoorLength = std::clamp(InLength, 0.0f, 90.0f); }
+	void SetBarnDoorLength(float InLength) { BarnDoorLength = std::clamp(InLength, 0.0f, 90.0f); MarkRenderStateDirty(); }
 	float GetBarnDoorLength() const { return BarnDoorLength; }
+
+protected:
+	void UpdateSceneProxy() override;
 
 private:
 	UPROPERTY(EditAnywhere)

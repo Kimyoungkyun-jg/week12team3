@@ -15,7 +15,6 @@
 #include <unordered_map>
 
 class UParticleSystemComponent;
-class FParticleSceneProxy;
 
 class FScene
 {
@@ -24,10 +23,7 @@ public:
 	void RemovePrimitive(UPrimitiveComponent* Component);
 	// 모든 프록시를 한 번에 지운다. 액터를 통째로 지우기 전(ClearWorld)에 불러야 지워진 컴포넌트를 가리키는 프록시가 남지 않는다.
 	void RemoveAllPrimitives();
-	void AddParticle(UParticleSystemComponent* Component);
-	void RemoveParticle(UParticleSystemComponent* Component);
-	void RemoveAllParticles();
-	const TArray<FParticleSceneProxy*>& GetParticleProxies() const { return ParticleSceneProxies; }
+	void UpdateParticleLODs(const FVector& CameraPosition);
 
 	void AddLight(ULightComponent* Component);
 	void RemoveLight(ULightComponent* Component);
@@ -50,6 +46,7 @@ public:
 
 	void MarkDirty(FPrimitiveSceneProxy* Proxy);
 	void MarkRenderStateDirty(FPrimitiveSceneProxy* Proxy);
+	UPrimitiveComponent* FindPrimitiveComponent(const FPrimitiveSceneProxy* Proxy) const;
 
 	// 그림자 캐시 무효화 기록. 뷰마다 처리한 Version이 다르므로 지우지 않고 쌓다가 한도를 넘으면 오래된 절반을 버린다.
 	FShadowInvalidationList GetShadowInvalidations() const
@@ -80,7 +77,9 @@ public:
 	TArray<USkyLightComponent*>           SkyLights;               // 프록시 없음
 
 private:
-	TArray<FParticleSceneProxy*> ParticleSceneProxies;
+	TArray<UParticleSystemComponent*> ParticleComponents;
+	TMap<FLightSceneProxy*, ULightComponent*> LightProxyComponents;
+	TMap<FPrimitiveSceneProxy*, UPrimitiveComponent*> PrimitiveProxyComponents;
 	void RecordShadowInvalidation(const FAABB& Bounds);
 	void InvalidateAllShadows();
 

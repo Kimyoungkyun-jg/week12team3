@@ -15,6 +15,8 @@
 #include <vector>
 #include "Math/QuadTree.h"
 
+class ULightComponent;
+
 struct FRenderStats
 {
 	uint32 TotalPrimitives = 0;

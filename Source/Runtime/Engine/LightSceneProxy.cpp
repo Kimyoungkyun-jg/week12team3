@@ -1,11 +1,7 @@
 #include "EnginePCH.h"
 #include "LightSceneProxy.h"
 #include "Render/ShadowRendering.h"
-
-#include "Components/DirectionalLightComponent.h"
-#include "Components/PointLightComponent.h"
-#include "Components/SpotLightComponent.h"
-#include "Components/RectLightComponent.h"
+#include "Components/LightComponentBase.h"
 
 namespace
 {
@@ -41,121 +37,99 @@ namespace
 
 void FDirectionalLightSceneProxy::GetLightShaderParameters(FLightRenderParameters& Out) const
 {
-	const UDirectionalLightComponent* Dir = static_cast<const UDirectionalLightComponent*>(LightComponent);
-
-	FTransform Transform;
-	Transform.Rotation = Dir->GetWorldRotation();
-	const FLinearColor Color(Dir->GetLightColor());
+	const FLinearColor Color(BaseData.LightColor);
 
 	Out = FLightRenderParameters{};
-	Out.Position = Dir->GetWorldLocation();
 	Out.Type = static_cast<uint32>(ELightType::Directional);
-	Out.Position = Dir->GetWorldLocation();
-	Out.Direction = Transform.GetForward();
+	Out.Position = BaseData.WorldLocation;
+	Out.Direction = BaseData.Forward;
 	Out.Color = FVector(Color.R, Color.G, Color.B);
-	Out.Intensity = Dir->GetIntensity();
-	Out.SourceSize = std::tan(FMath::DegreesToRadians(FMath::Clamp(Dir->GetAngularRadiusDegrees(), 0.0f, 10.0f)));
+	Out.Intensity = BaseData.Intensity;
+	Out.SourceSize = std::tan(FMath::DegreesToRadians(FMath::Clamp(Data.AngularRadiusDegrees, 0.0f, 10.0f)));
 }
 
 void FPointLightSceneProxy::GetLightShaderParameters(FLightRenderParameters& Out) const
 {
-	const auto* PointLightComponent = static_cast<const UPointLightComponent*>(LightComponent);
-	const FLinearColor Color(PointLightComponent->GetLightColor());
+	const FLinearColor Color(BaseData.LightColor);
 
 	Out = FLightRenderParameters{};
 	Out.Type = static_cast<uint32>(ELightType::Point);
-	Out.Position = PointLightComponent->GetWorldLocation();
-	Out.Radius = PointLightComponent->GetAttenuationRadius();
+	Out.Position = BaseData.WorldLocation;
+	Out.Radius = Data.AttenuationRadius;
 	Out.Color = FVector(Color.R, Color.G, Color.B);
-	Out.Intensity = PointLightComponent->GetIntensity();
-	Out.FalloffExponent = PointLightComponent->GetFalloff();
-	Out.SourceSize = PointLightComponent->GetSourceRadius();
+	Out.Intensity = BaseData.Intensity;
+	Out.FalloffExponent = Data.FalloffExponent;
+	Out.SourceSize = Data.SourceRadius;
 }
 
 void FSpotLightSceneProxy::GetLightShaderParameters(FLightRenderParameters& Out) const
 {
-	const auto* SpotLightComponent = static_cast<const USpotLightComponent*>(LightComponent);
-	const FLinearColor Color(SpotLightComponent->GetLightColor());
-
-	FTransform Transform;
-	Transform.Rotation = SpotLightComponent->GetWorldRotation();
-
-	const float Outer = FMath::Clamp(SpotLightComponent->GetOuterConeAngle(), 0.0f, 89.0f);
-	const float Inner = FMath::Clamp(SpotLightComponent->GetInnerConeAngle(), 0.0f, Outer);
+	const FLinearColor Color(BaseData.LightColor);
+	const float Outer = FMath::Clamp(Data.OuterConeAngle, 0.0f, 89.0f);
+	const float Inner = FMath::Clamp(Data.InnerConeAngle, 0.0f, Outer);
 
 	Out = FLightRenderParameters{};
-	Out.Position = SpotLightComponent->GetWorldLocation();
-	Out.Radius = SpotLightComponent->GetAttenuationRadius();
+	Out.Position = BaseData.WorldLocation;
+	Out.Radius = Data.AttenuationRadius;
 	Out.Color = FVector(Color.R, Color.G, Color.B);
-	Out.Intensity = SpotLightComponent->GetIntensity();
-	Out.FalloffExponent = SpotLightComponent->GetFalloff();
+	Out.Intensity = BaseData.Intensity;
+	Out.FalloffExponent = Data.FalloffExponent;
 
 	Out.Type = static_cast<uint32>(ELightType::Spot);
-	Out.Direction = Transform.GetForward();
+	Out.Direction = BaseData.Forward;
 	Out.InnerConeCos = std::cos(FMath::DegreesToRadians(Inner));
 	Out.OuterConeCos = std::cos(FMath::DegreesToRadians(Outer));
-	Out.SourceSize = SpotLightComponent->GetSourceRadius();
+	Out.SourceSize = Data.SourceRadius;
 }
 
 void FRectLightSceneProxy::GetLightShaderParameters(FLightRenderParameters& Out) const
 {
-	const auto* RectLightComponent = static_cast<const URectLightComponent*>(LightComponent);
-	const FLinearColor Color(RectLightComponent->GetLightColor());
-
-	FTransform Transform;
-	Transform.Rotation = RectLightComponent->GetWorldRotation();
+	const FLinearColor Color(BaseData.LightColor);
 
 	Out = FLightRenderParameters{};
 	Out.Type = static_cast<uint32>(ELightType::Rect);
-	Out.Position = RectLightComponent->GetWorldLocation();
-	Out.Radius = RectLightComponent->GetAttenuationRadius();
+	Out.Position = BaseData.WorldLocation;
+	Out.Radius = Data.AttenuationRadius;
 	Out.Color = FVector(Color.R, Color.G, Color.B);
-	Out.Intensity = RectLightComponent->GetIntensity();
+	Out.Intensity = BaseData.Intensity;
 	Out.FalloffExponent = 1.0f;
-	Out.Direction = Transform.GetForward();
-	Out.Right = Transform.GetRight();
-	Out.HalfWidth = RectLightComponent->GetWidth() * 0.5f;
-	Out.HalfHeight = RectLightComponent->GetHeight() * 0.5f;
+	Out.Direction = BaseData.Forward;
+	Out.Right = BaseData.Right;
+	Out.HalfWidth = Data.HalfWidth;
+	Out.HalfHeight = Data.HalfHeight;
 
-	const float AngleRad = FMath::DegreesToRadians(FMath::Clamp(RectLightComponent->GetBarnDoorAngle(), 0.0f, 90.0f));
+	const float AngleRad = FMath::DegreesToRadians(FMath::Clamp(Data.BarnDoorAngle, 0.0f, 90.0f));
 	Out.BarnDoorCos = std::cos(AngleRad);
 	Out.BarnDoorSin = std::sin(AngleRad);
-	Out.BarnDoorLength = std::max(RectLightComponent->GetBarnDoorLength(), 0.0f);
+	Out.BarnDoorLength = std::max(Data.BarnDoorLength, 0.0f);
 }
 
-// ---------- 그림자 Initializer ----------
+// 그림자 Initializer
 
 float FDirectionalLightSceneProxy::GetLightSourceAngle() const
 {
-	const UDirectionalLightComponent* Dir = static_cast<const UDirectionalLightComponent*>(LightComponent);
-	return 2.0f * FMath::Clamp(Dir->GetAngularRadiusDegrees(), 0.0f, 10.0f);
+	return 2.0f * FMath::Clamp(Data.AngularRadiusDegrees, 0.0f, 10.0f);
 }
 
 uint32 FDirectionalLightSceneProxy::GetNumViewDependentWholeSceneShadows(const FSceneView& View) const
 {
-	const UDirectionalLightComponent* Dir = static_cast<const UDirectionalLightComponent*>(LightComponent);
-	// 거리 0이면 동적 그림자 끔 (언리얼 주석: "A value of 0 disables the dynamic shadow")
-	if (Dir->GetDynamicShadowDistanceMovableLight() <= 0.0f) return 0;
-	// 콘솔 r.Shadow.CSM.MaxCascades(CSM Count)가 라이트 설정의 상한이 된다 (언리얼과 같음).
-	const uint32 MaxCascades = std::clamp(GShadowCVars.CSMMaxCascades, 1u, UDirectionalLightComponent::MaxDynamicShadowCascades);
-	return std::clamp(Dir->GetDynamicShadowCascades(), 1u, MaxCascades);
+	if (Data.DynamicShadowDistanceMovableLight <= 0.0f) return 0;
+	const uint32 MaxCascades = std::clamp(GShadowCVars.CSMMaxCascades, 1u, MaxDynamicShadowCascades);
+	return std::clamp(Data.DynamicShadowCascades, 1u, MaxCascades);
 }
 
 bool FDirectionalLightSceneProxy::GetViewDependentWholeSceneProjectedShadowInitializer(const FSceneView& View, int32 InCascadeIndex,
 	FWholeSceneProjectedShadowInitializer& OutInitializer) const
 {
-	const UDirectionalLightComponent* Dir = static_cast<const UDirectionalLightComponent*>(LightComponent);
-
 	const FSphere Bounds = GetShadowSplitBounds(View, InCascadeIndex, &OutInitializer.CascadeSettings);
 	const float R = Bounds.Radius;
 	if (R <= 0.0f) return false;
 
 	OutInitializer.PreShadowTranslation = Bounds.Center * -1.0f;
-	OutInitializer.WorldToLight = Dir->GetWorldRotation().Quaternion().ToFMatrix().GetTransposed();
+	OutInitializer.WorldToLight = BaseData.WorldRotation.Quaternion().ToFMatrix().GetTransposed();
 	OutInitializer.Scales = FVector2(1.0f / R, 1.0f / R);
 	OutInitializer.SubjectBounds = FBoxSphereBounds(FVector::ZeroVector, FVector(R), R);
 	OutInitializer.WAxis = FVector4(0, 0, 0, 1);
-	// 구 뒤쪽(빛 쪽)으로 더 늘려 화면 밖에서 그림자를 드리우는 Caster도 담는다.
 	OutInitializer.MinLightW = -R * 2.0f;
 	OutInitializer.MaxDistanceToCastInLightW = R;
 	OutInitializer.bOnePassPointLightShadow = false;
@@ -164,15 +138,13 @@ bool FDirectionalLightSceneProxy::GetViewDependentWholeSceneProjectedShadowIniti
 
 FSphere FDirectionalLightSceneProxy::GetShadowSplitBounds(const FSceneView& View, int32 InCascadeIndex, FShadowCascadeSettings* OutCascadeSettings) const
 {
-	const UDirectionalLightComponent* Dir = static_cast<const UDirectionalLightComponent*>(LightComponent);
 	const int32 NumCascades = static_cast<int32>(GetNumViewDependentWholeSceneShadows(View));
 
 	const float SplitNear = GetSplitDistance(View, InCascadeIndex);
 	float SplitFar = GetSplitDistance(View, InCascadeIndex + 1);
 	const float FadePlane = SplitFar;
 
-	// 마지막이 아니면 다음 캐스케이드와 섞을 구간만큼 뒤로 늘린다 (언리얼과 같은 방식).
-	const float TransitionFraction = FMath::Clamp(Dir->GetCascadeTransitionFraction(), 0.0f, 0.3f);
+	const float TransitionFraction = FMath::Clamp(Data.CascadeTransitionFraction, 0.0f, 0.3f);
 	const float FadeExtension = (SplitFar - SplitNear) * TransitionFraction;
 	const bool bLastCascade = InCascadeIndex >= NumCascades - 1;
 	if (!bLastCascade) SplitFar += FadeExtension;
@@ -181,10 +153,6 @@ FSphere FDirectionalLightSceneProxy::GetShadowSplitBounds(const FSceneView& View
 	float RadiusSquared = 0.0f;
 	if (View.bIsPerspective)
 	{
-		// 언리얼 GetShadowSplitBoundsDepthRange: FOV와 near/far만으로 구를 정한다.
-		// 반지름이 카메라 위치·회전과 무관하게 항상 같아야 텍셀 스냅 격자가 프레임마다 흔들리지 않는다.
-		// (월드 좌표 코너로 구하면 원점에서 먼 곳에서 float 오차로 반지름이 매 프레임 조금씩 바뀌어 그림자가 떨린다)
-		// 엔진 투영 행렬은 X가 앞쪽이라 가로/세로 배율이 M[1][0], M[2][1]에 있다.
 		const float TanX = 1.0f / std::max(std::abs(View.ProjectionMatrix.M[1][0]), KINDA_SMALL_NUMBER);
 		const float TanY = 1.0f / std::max(std::abs(View.ProjectionMatrix.M[2][1]), KINDA_SMALL_NUMBER);
 		const float DiagonalScaleSq = TanX * TanX + TanY * TanY;
@@ -217,14 +185,12 @@ FSphere FDirectionalLightSceneProxy::GetShadowSplitBounds(const FSceneView& View
 		OutCascadeSettings->SplitFar = SplitFar;
 		OutCascadeSettings->ShadowSplitIndex = InCascadeIndex;
 		OutCascadeSettings->SplitFarFadeRegion = bLastCascade ? 0.0f : FadeExtension;
-		// 앞 캐스케이드가 이 캐스케이드 안쪽으로 늘린 길이
 		const float PrevNear = InCascadeIndex > 0 ? GetSplitDistance(View, InCascadeIndex - 1) : SplitNear;
 		OutCascadeSettings->SplitNearFadeRegion = InCascadeIndex > 0 ? (SplitNear - PrevNear) * TransitionFraction : 0.0f;
 
 		if (bLastCascade)
 		{
-			// 마지막 캐스케이드는 끝부분에서 그림자 자체를 서서히 끈다.
-			const float Fadeout = (SplitFar - SplitNear) * FMath::Clamp(Dir->GetShadowDistanceFadeoutFraction(), 0.0f, 1.0f);
+			const float Fadeout = (SplitFar - SplitNear) * FMath::Clamp(Data.ShadowDistanceFadeoutFraction, 0.0f, 1.0f);
 			OutCascadeSettings->FadePlaneOffset = SplitFar - Fadeout;
 		}
 		else
@@ -239,29 +205,25 @@ FSphere FDirectionalLightSceneProxy::GetShadowSplitBounds(const FSceneView& View
 
 float FDirectionalLightSceneProxy::GetSplitDistance(const FSceneView& View, uint32 SplitIndex) const
 {
-	const UDirectionalLightComponent* Dir = static_cast<const UDirectionalLightComponent*>(LightComponent);
 	const float ShadowNear = View.NearClip;
-	const float ShadowFar = std::min(Dir->GetDynamicShadowDistanceMovableLight(), View.FarClip);
-	const float Exponent = FMath::Clamp(Dir->GetCascadeDistributionExponent(), 1.0f, 4.0f);
+	const float ShadowFar = std::min(Data.DynamicShadowDistanceMovableLight, View.FarClip);
+	const float Exponent = FMath::Clamp(Data.CascadeDistributionExponent, 1.0f, 4.0f);
 	return ShadowNear + ComputeAccumulatedScale(Exponent, static_cast<int32>(SplitIndex),
 		static_cast<int32>(GetNumViewDependentWholeSceneShadows(View))) * (ShadowFar - ShadowNear);
 }
 
 FSphere FPointLightSceneProxy::GetBoundingSphere() const
 {
-	const auto* Point = static_cast<const UPointLightComponent*>(LightComponent);
-	return FSphere(Point->GetWorldLocation(), Point->GetAttenuationRadius());
+	return FSphere(BaseData.WorldLocation, Data.AttenuationRadius);
 }
 
 bool FPointLightSceneProxy::GetWholeSceneProjectedShadowInitializer(const FSceneView& View,
 	TArray<FWholeSceneProjectedShadowInitializer>& OutInitializers) const
 {
-	const auto* Point = static_cast<const UPointLightComponent*>(LightComponent);
-	const FVector LightPos = Point->GetWorldLocation();
-	const float Radius = Point->GetAttenuationRadius();
+	const FVector LightPos = BaseData.WorldLocation;
+	const float Radius = Data.AttenuationRadius;
 	if (Radius <= 0.0f) return false;
 
-	// 큐브 6면 (+X, -X, +Y, -Y, +Z, -Z). 엔진 투영 행렬은 X를 앞쪽으로 받는다.
 	const FRotator Faces[6] =
 	{
 		FRotator{ 0, 0, 0 },
@@ -277,7 +239,7 @@ bool FPointLightSceneProxy::GetWholeSceneProjectedShadowInitializer(const FScene
 		FWholeSceneProjectedShadowInitializer& OutInitializer = OutInitializers.AddDefaulted_GetRef();
 		OutInitializer.PreShadowTranslation = LightPos * -1.0f;
 		OutInitializer.WorldToLight = Faces[FaceIndex].Quaternion().ToFMatrix().GetTransposed();
-		OutInitializer.Scales = FVector2(1.0f, 1.0f);   // 90도 시야
+		OutInitializer.Scales = FVector2(1.0f, 1.0f);
 		OutInitializer.SubjectBounds = FBoxSphereBounds(FVector::ZeroVector, FVector(Radius), Radius);
 		OutInitializer.WAxis = FVector4(0, 0, 1, 0);
 		OutInitializer.MinLightW = Radius * 0.02f;
@@ -290,32 +252,25 @@ bool FPointLightSceneProxy::GetWholeSceneProjectedShadowInitializer(const FScene
 
 FSphere FSpotLightSceneProxy::GetBoundingSphere() const
 {
-	const auto* Spot = static_cast<const USpotLightComponent*>(LightComponent);
-	const float Radius = Spot->GetAttenuationRadius();
-	const float CosOuter = std::cos(FMath::DegreesToRadians(FMath::Clamp(Spot->GetOuterConeAngle(), 0.0f, 89.0f)));
-
-	FTransform Transform;
-	Transform.Rotation = Spot->GetWorldRotation();
-
-	// 언리얼과 같은 근사: 원뿔 축 중간점에서 원뿔 가장자리 끝까지의 거리 (코사인 법칙)
+	const float Radius = Data.AttenuationRadius;
+	const float CosOuter = std::cos(FMath::DegreesToRadians(FMath::Clamp(Data.OuterConeAngle, 0.0f, 89.0f)));
 	const float BoundsRadius = std::sqrt(1.25f * Radius * Radius - Radius * Radius * CosOuter);
-	return FSphere(Spot->GetWorldLocation() + Transform.GetForward() * (0.5f * Radius), BoundsRadius);
+	return FSphere(BaseData.WorldLocation + BaseData.Forward * (0.5f * Radius), BoundsRadius);
 }
 
 bool FSpotLightSceneProxy::GetWholeSceneProjectedShadowInitializer(const FSceneView& View,
 	TArray<FWholeSceneProjectedShadowInitializer>& OutInitializers) const
 {
-	const auto* Spot = static_cast<const USpotLightComponent*>(LightComponent);
-	const FVector LightPos = Spot->GetWorldLocation();
-	const float Radius = Spot->GetAttenuationRadius();
+	const FVector LightPos = BaseData.WorldLocation;
+	const float Radius = Data.AttenuationRadius;
 	if (Radius <= 0.0f) return false;
 
-	const float Outer = FMath::Clamp(Spot->GetOuterConeAngle(), 1.0f, 89.0f);
+	const float Outer = FMath::Clamp(Data.OuterConeAngle, 1.0f, 89.0f);
 	const float InvTan = 1.0f / std::tan(FMath::DegreesToRadians(Outer));
 
 	FWholeSceneProjectedShadowInitializer& OutInitializer = OutInitializers.AddDefaulted_GetRef();
 	OutInitializer.PreShadowTranslation = LightPos * -1.0f;
-	OutInitializer.WorldToLight = Spot->GetWorldRotation().Quaternion().ToFMatrix().GetTransposed();
+	OutInitializer.WorldToLight = BaseData.WorldRotation.Quaternion().ToFMatrix().GetTransposed();
 	OutInitializer.Scales = FVector2(InvTan, InvTan);
 	OutInitializer.SubjectBounds = FBoxSphereBounds(FVector::ZeroVector, FVector(Radius), Radius);
 	OutInitializer.WAxis = FVector4(0, 0, 1, 0);

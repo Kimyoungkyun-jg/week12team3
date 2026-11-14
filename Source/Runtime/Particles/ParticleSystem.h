@@ -373,6 +373,12 @@ public:
 	UPROPERTY(EditAnywhere)
 	float PlayRate = 1.0f;
 	UPROPERTY(EditAnywhere)
+	bool bUseFixedRelativeBoundingBox = false;
+	UPROPERTY(EditAnywhere)
+	FVector FixedBoundsMin = FVector(-100.0f, -100.0f, -100.0f);
+	UPROPERTY(EditAnywhere)
+	FVector FixedBoundsMax = FVector(100.0f, 100.0f, 100.0f);
+	UPROPERTY(EditAnywhere)
 	TArray<float> LODDistances;
 private:
 	UPROPERTY(Instanced)

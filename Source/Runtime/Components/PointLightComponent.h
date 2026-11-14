@@ -17,12 +17,13 @@ public:
 	ELightType GetLightType() const override { return ELightType::Point; }
 
 	float GetFalloff() const { return LightFalloffExponent; }
-	void SetFalloff(float InFalloff) { LightFalloffExponent = InFalloff; }
+	void SetFalloff(float InFalloff) { LightFalloffExponent = InFalloff; MarkRenderStateDirty(); }
 	float GetSourceRadius() const { return SourceRadius; }
-	void SetSourceRadius(float InRadius) { SourceRadius = InRadius; }
+	void SetSourceRadius(float InRadius) { SourceRadius = InRadius; MarkRenderStateDirty(); }
 
 
 protected:
+	void UpdateSceneProxy() override;
 	UPROPERTY(EditAnywhere)
 	float LightFalloffExponent = 1.0f;
 	UPROPERTY(EditAnywhere)

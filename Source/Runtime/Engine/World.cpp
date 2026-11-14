@@ -240,7 +240,6 @@ void UWorld::ClearWorld()
 	// 액터를 지우기 전에 렌더 프록시와 틱 등록부터 푼다. ClearActors는 액터를 delete만 하므로,
 	// 그대로 두면 지워진 컴포넌트를 가리키는 프록시가 FScene에 남아 다음 프레임에 터진다.
 	Scene.RemoveAllLights();
-	Scene.RemoveAllParticles();
 	Scene.RemoveAllPrimitives();
 	HTR_LOG(Info, "{} : ", PersistentLevel->GetActorNum());
 	bIsClearingWorld = false;
@@ -375,6 +374,10 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FViewContext* 
 					FPrimitiveSceneProxy* Proxy = VisibleProxies[VisibleIndex];   // 읽기만
 					if (!Proxy->IsVisible()) continue;
 
+					if (Proxy->AsParticleSceneProxy())
+					{
+						continue;
+					}
 					UStaticMesh* Mesh = Proxy->GetMesh();
 					if (!Mesh)
 					{
@@ -438,23 +441,12 @@ void UWorld::GatherRenderPackets(FRenderQueue& RenderQueue, const FViewContext* 
 			for (uint32 VisibleIndex : GatherChunks[c].SlowPathIndices)
 			{
 				FPrimitiveSceneProxy* Proxy = VisibleProxies[VisibleIndex];
-				UPrimitiveComponent* Primitive = Proxy->GetComponent();
-				if (!Primitive || !Primitive->IsVisible())
+				if (!Proxy || !Proxy->IsVisible())
 					continue;
 
 				const uint32 FirstNew = RenderQueue.Num();
-
-				// 프록시 캐시가 없는 스태틱 메시는 기존처럼 LOD를 골라 제출하고, 그 외는 컴포넌트에 맡긴다.
-				UStaticMeshComponent* StaticMeshComponent = LODView ? Cast<UStaticMeshComponent>(Primitive) : nullptr;
-				if (StaticMeshComponent && StaticMeshComponent->GetStaticMesh())
-				{
-					const uint32 LOD = SelectedLODs[VisibleIndex];
-					StaticMeshComponent->SubmitToRenderQueue(RenderQueue, LOD);
-				}
-				else
-				{
-					Primitive->SubmitToRenderQueue(RenderQueue, LODView ? *LODView : FViewContext{});
-				}
+				const uint32 LOD = LODView ? SelectedLODs[VisibleIndex] : 0u;
+				Proxy->SubmitToRenderQueue(RenderQueue, LODView ? *LODView : FViewContext{}, LOD);
 
 				// continue 없이 항상 여기까지 와서 새 패킷에 여유 칸을 배정한다.
 				for (uint32 p = FirstNew; p < RenderQueue.Num(); ++p)
@@ -698,7 +690,7 @@ bool UWorld::SweepSingle(const FRay& WorldRay, float MaxDistance, float Radius, 
 		},
 		[&](FPrimitiveSceneProxy* Proxy, float& InOutNearestT)
 		{
-			UPrimitiveComponent* Component = Proxy ? Proxy->GetComponent() : nullptr;
+			UPrimitiveComponent* Component = Scene.FindPrimitiveComponent(Proxy);
 			if (!Component || !Component->IsShown(true) ||
 				!Component->GetOwner() || !Component->GetOwner()->GetActorEnableCollision() ||
 				Component->GetOwner() == IgnoreActor || Component->GetOwner()->GetWorld() != this)
@@ -779,14 +771,14 @@ bool UWorld::LineTraceSingle(const FRay& WorldRay, FHitResult& OutHit,
 				if (!RayIntersectsMesh(LocalRay, Mesh->GetMeshData(), T))
 					return false;
 
-				OutHit.HitComponent = Proxy->GetComponent();
+				OutHit.HitComponent = Scene.FindPrimitiveComponent(Proxy);
 				OutHit.Distance = T;
 				OutHit.ImpactPoint = WorldRay.Origin + WorldRay.Direction * T;
 				InOutNearestT = T;
 				return true;
 			}
 
-			UPrimitiveComponent* Component = Proxy ? Proxy->GetComponent() : nullptr;
+			UPrimitiveComponent* Component = Scene.FindPrimitiveComponent(Proxy);
 
 			if (!Component || !Component->IsVisible())
 				return false;

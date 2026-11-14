@@ -480,37 +480,10 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			ImGui::Checkbox("Looping", &Req->bLooping);
 			ImGui::Checkbox("Use Local Space", &Req->bUseLocalSpace);
 
-			const FString Preview = Req->Material ? Req->Material->GetPath() : FString("(Default)");
-			EditorUIScale::LimitNextComboPopupWidth();
-			if (ImGui::BeginCombo("Material", Preview.c_str()))
+			if (FContentDrawerPanel::DrawMaterialPicker("Material", Req->Material, "(Default)"))
 			{
-				if (ImGui::Selectable("(Default)", Req->Material == nullptr))
-				{
-					Req->Material = nullptr;
-					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-						PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
-				}
-				const TArray<UMaterial*> Candidates = EditorSort::CollectSorted<UMaterial>(
-					TObjectIterator<UMaterial>(),
-					[](const UMaterial* M) { return M->GetPath(); },
-					[](const UMaterial* M) { return !M->IsRetired() && !M->GetPath().empty(); });
-				for (UMaterial* Candidate : Candidates)
-				{
-					ImGui::PushID(Candidate);
-					if (ID3D11ShaderResourceView* ThumbSRV = FContentDrawerPanel::GetMaterialThumbnailSRV(Candidate))
-					{
-						ImGui::Image(reinterpret_cast<ImTextureID>(ThumbSRV), ImVec2(24.0f, 24.0f));
-						ImGui::SameLine();
-					}
-					if (ImGui::Selectable(Candidate->GetPath().c_str(), Candidate == Req->Material, 0, ImVec2(0.0f, 24.0f)))
-					{
-						Req->Material = Candidate;
-						if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-							PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
-					}
-					ImGui::PopID();
-				}
-				ImGui::EndCombo();
+				if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+					PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
 			}
 		}
 		else if (auto* Spawn = Cast<UParticleModuleSpawn>(SelectedModule))

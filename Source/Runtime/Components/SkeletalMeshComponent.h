@@ -92,6 +92,9 @@ private:
 	{
 		return !SkinningMatrices.IsEmpty() && (bSkinningMatricesDirty || bVertexColorsDirty || AppliedMode != GetDesiredSkinningMode());
 	}
+	virtual void PushRenderStateToProxy() override;
+	void PushSkinningToProxy();
+	FSkeletalMeshProxyData BuildProxyData() const;
 	bool bBoneWeightHeatmap = false;
 	int32 HeatmapBone = -1;
 	bool bVertexColorsDirty = false;   // 히트맵 on/off나 선택 본이 바뀌었다. 포즈는 그대로라 본 행렬은 다시 구하지 않는다

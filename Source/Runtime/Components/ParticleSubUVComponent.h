@@ -55,6 +55,11 @@ public:
 
 	void SetParticles(int32 InParticleCount = 10);
 
+	virtual void PushRenderStateToProxy() override;
+
+protected:
+	virtual FBillboardProxyData BuildBillboardProxyData() const override;
+
 private:
 	void RespawnParticle(FParticle& Particle);
 
