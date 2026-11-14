@@ -45,7 +45,7 @@ public:
 	virtual bool RunsOnSpawn() const { return true; }
 	void Spawn(FBaseParticle& Particle) const override;
 
-	float LifetimeSeconds = 2.0f;
+	float LifetimeSeconds = 1.0f;
 };
 
 UCLASS()

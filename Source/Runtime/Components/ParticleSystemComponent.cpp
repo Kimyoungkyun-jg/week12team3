@@ -2,6 +2,8 @@
 #include "Components/ParticleSystemComponent.h"
 
 #include "Particles/ParticleSystem.h" 
+#include "Particles/ParticleModule.h"
+
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Asset/AssetManager.h"
 #include "Render/RenderPacket.h"
@@ -90,8 +92,9 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 			const FVector4 Color = Particle.Color.ToVector4();
 
 			FSubUVConstants Constants{};
-			Constants.AtlasRowSize = 1.0f;
-			Constants.AtlasColSize = 1.0f;
+			Constants.AtlasRowSize = 8.0f;
+			Constants.AtlasColSize = 8.0f;
+			Constants.CurrentFrame = 0.0f;
 			Constants.Alpha = Color.W;
 			Constants.Tint = Color;
 			Constants.DecodeSRGB = 0.0f;
@@ -124,9 +127,9 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 	}
 
 	UStaticMesh* Quad = UAssetManager::GetAssetByPath<UStaticMesh>("ParticleQuad");
-	UMaterial* Material = UAssetManager::GetAssetByPath<UMaterial>("BillboardMaterial");
+	UMaterial* DefaultMaterial = UAssetManager::GetAssetByPath<UMaterial>("BillboardMaterial");
 
-	if (!Quad || !Material)
+	if (!Quad || !DefaultMaterial)
 	{
 		return;
 	}
@@ -139,6 +142,11 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 		{
 			continue;
 		}
+
+		const auto* Required = Instance->CurrentLODLevel->RequiredModule;
+		UMaterial* Material = Required && Required->Material
+			? Required->Material
+			: DefaultMaterial;
 
 		for (int32 Index = 0; Index < Instance->ActiveParticles; ++Index)
 		{

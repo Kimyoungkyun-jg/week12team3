@@ -176,12 +176,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& EmitterLocat
 		}
 	}
 
-	const float RequestCount = SpawnRemainder + std::max(0.0f, SpawnRate) * DeltaTime;
-	if (!std::isfinite(RequestCount))
-	{
-		return;
-	}
-
+	const float RequestCount = SpawnRemainder + SpawnRate * DeltaTime;
 	const float WholeCount = std::floor(RequestCount);
 	const float NextRemainder = RequestCount - WholeCount;
 
@@ -200,7 +195,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& EmitterLocat
 		}
 	}
 
-	const FVector InitialVelocity{ 0.0f, 0.0f, 30.0f };
+	const FVector InitialVelocity{ 0.0f, 0.0f, 3.0f };
 	SpawnParticles(SpawnCount, EmitterLocation, InitialVelocity);
 	SpawnRemainder = NextRemainder;
 }

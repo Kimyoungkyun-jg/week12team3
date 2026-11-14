@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "ParticleActor.h"
 
+#include "Asset/AssetManager.h"
 #include "Particles/ParticleModule.h"
 #include "Particles/ParticleEmitterInstance.h"
 
@@ -40,6 +41,7 @@ UParticleSystem* AParticleActor::MakeTestParticleSystem(UObject* Outer)
 	Emitter->LODLevels.Add(LOD);
 
 	LOD->RequiredModule = NewObject<UParticleModuleRequired>(LOD);
+	LOD->RequiredModule->Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");
 
 	auto* Spawn = NewObject<UParticleModuleSpawn>(LOD);
 	Spawn->Rate = 10.0f;
