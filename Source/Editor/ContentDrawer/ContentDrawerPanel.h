@@ -75,6 +75,7 @@ private:
 	bool bOpenCreateBlendSpace = false;
 	bool bNewBlendSpace2D = true;
 	bool bOpenCreateAnimationAsset = false;
+	bool bOpenCreateParticleSystem = false;
 	bool bNewAnimationAssetMontage = true;
 
 	fs::path AssetRootPath = "Assets";

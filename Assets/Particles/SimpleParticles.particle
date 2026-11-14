@@ -1,0 +1,145 @@
+{
+    "Class": "UParticleSystem",
+    "Object": {
+        "Properties": {
+            "Emitters": [
+                {
+                    "Class": "UParticleEmitter",
+                    "Value": {
+                        "Properties": {
+                            "EmitterName": "Particle Emitter",
+                            "LODLevels": [
+                                {
+                                    "Class": "UParticleLODLevel",
+                                    "Value": {
+                                        "Properties": {
+                                            "Level": 0,
+                                            "Modules": [
+                                                {
+                                                    "Class": "UParticleModuleLifetime",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "Max": 3.0,
+                                                            "Min": 1.0,
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleSize",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "End": {
+                                                                "X": 5.0,
+                                                                "Y": 5.0,
+                                                                "Z": 5.0
+                                                            },
+                                                            "Start": {
+                                                                "X": 1.0,
+                                                                "Y": 1.0,
+                                                                "Z": 1.0
+                                                            },
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleVelocity",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "Max": {
+                                                                "X": 0.0,
+                                                                "Y": 0.0,
+                                                                "Z": 1.0
+                                                            },
+                                                            "Min": {
+                                                                "X": 0.0,
+                                                                "Y": 0.0,
+                                                                "Z": 1.0
+                                                            },
+                                                            "ParameterName": "",
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleColor",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "End": 4294967295,
+                                                            "ParameterName": "",
+                                                            "Start": 4294967295,
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleSubUV",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "PlayRate": 0.10000000149011612,
+                                                            "SubImageIndex": {
+                                                                "Class": "UCurveFloat",
+                                                                "Value": {
+                                                                    "CurveData": "{\n  \"DefaultValue\": 0.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 0,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0926268100738525\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                }
+                                                            },
+                                                            "SubImagesHorizontal": 8,
+                                                            "SubImagesVertical": 8,
+                                                            "bEnabled": true,
+                                                            "bUseLinearOverLife": true
+                                                        }
+                                                    }
+                                                }
+                                            ],
+                                            "RequiredModule": {
+                                                "Class": "UParticleModuleRequired",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "EmitterDuration": 1.0,
+                                                        "MaxParticles": 1024,
+                                                        "bEnabled": true,
+                                                        "bLooping": true,
+                                                        "bUseLocalSpace": false
+                                                    }
+                                                }
+                                            },
+                                            "SpawnModule": {
+                                                "Class": "UParticleModuleSpawn",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "Bursts": [],
+                                                        "Rate": 10.0,
+                                                        "bEnabled": true
+                                                    }
+                                                }
+                                            },
+                                            "TypeDataModule": {
+                                                "Class": "UParticleModuleTypeDataSprite",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "bEnabled": true
+                                                    }
+                                                }
+                                            },
+                                            "bEnabled": true
+                                        }
+                                    }
+                                }
+                            ],
+                            "PlayRate": 0.30000001192092896,
+                            "bIsSolo": false
+                        }
+                    }
+                }
+            ],
+            "LODDistances": [],
+            "PlayRate": 1.0,
+            "SecondsBeforeInactive": 1.0,
+            "UpdateTimeFPS": 240.0,
+            "WarmupTickRate": 1.0,
+            "WarmupTime": 20.100000381469727
+        }
+    },
+    "Version": 1
+}

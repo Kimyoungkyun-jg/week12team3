@@ -29,6 +29,7 @@
 #include "Editor/LevelViewportLayout.h"
 #include "Editor/ContentDrawer/ContentDrawerPanel.h"
 #include "Editor/AssetEditor/AssetEditorPanel.h"
+#include "Editor/ParticleEditor/ParticleSystemEditorPanel.h"
 #include "Editor/UIEditor/UIEditorPanel.h"
 #include "Editor/SkeletalMeshEditor/Retarget/PoseRetargetPanel.h"
 #include "Editor/SkeletalMeshEditor/SkeletalMeshViewer.h"
@@ -210,6 +211,7 @@ private:
 	FEditorCommand Duplicate;
 	FContentDrawerPanel* ContentDrawerPanel = nullptr;
 	FAssetEditorPanel* AssetEditorPanel = nullptr;
+	FParticleSystemEditorPanel* ParticleSystemEditorPanel = nullptr;
 	FUIEditorPanel* UIEditorPanel = nullptr;
 	FPoseRetargetPanel* PoseRetargetPanel = nullptr;
 	FSkeletalMeshViewerPanel* SkeletalMeshViewerPanel = nullptr;

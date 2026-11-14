@@ -8,6 +8,7 @@
 #include "Render/RenderResourceManager.h"
 #include "Engine/World.h"
 #include "Engine/ParticleSceneProxy.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Tasks/Tasks.h"
 #include "Core/Stats/LightweightStats.h"
 #include "Core/StatOverlay.h"
@@ -1031,6 +1032,83 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 	}
 	if (!Options.bShowWorldNormal && Options.bDrawPrimitives)
 	{
+		if (!RenderData.GpuParticleBatches.IsEmpty())
+		{
+			Graph.AddComputePass("GpuParticleSimulate", [this]
+			{
+				FComputeShader* InjectCS = FRenderResourceManager::GetGpuParticleInjectShader();
+				FComputeShader* SimCS = FRenderResourceManager::GetGpuParticleSimulateShader();
+				if (!InjectCS || !SimCS) return;
+
+				for (const FGpuParticleBatch& Batch : RenderData.GpuParticleBatches)
+				{
+					if (Batch.EmitterId == 0 || Batch.MaxParticles == 0) continue;
+					FGpuParticleEmitterResources& Res = RenderData.GpuParticleBuffers[Batch.EmitterId];
+					if (!Res.ParticleBuffer || Res.MaxParticles != Batch.MaxParticles)
+					{
+						Res.ParticleBuffer = RenderCommand::CreateRWStructuredBuffer(Batch.ParticleStride, Batch.MaxParticles);
+						Res.MaxParticles = Batch.MaxParticles;
+						if (Res.ParticleBuffer)
+							RenderCommand::ClearUnorderedAccess(Res.ParticleBuffer.get(), 0);
+					}
+					else if (Batch.bResetRequested && Res.ParticleBuffer)
+					{
+						RenderCommand::ClearUnorderedAccess(Res.ParticleBuffer.get(), 0);
+					}
+					if (!Res.ParticleBuffer) continue;
+
+					if (!Res.CurveLUTBuffer)
+						Res.CurveLUTBuffer = RenderCommand::CreateDynamicStructuredBuffer(384, sizeof(FVector4));
+					if (!Res.SimCB)
+						Res.SimCB = RenderCommand::CreateConstantBuffer(sizeof(FGpuParticleSimParams));
+					if (!Res.DrawCB)
+						Res.DrawCB = RenderCommand::CreateConstantBuffer(sizeof(FGpuParticleDrawParams));
+					if (!Res.CurveLUTBuffer || !Res.SimCB || !Res.DrawCB) continue;
+
+					if (void* MappedLUT = RenderCommand::MapWriteDiscard(Res.CurveLUTBuffer.get()))
+					{
+						std::memcpy(MappedLUT, Batch.CurveLUT.GetData(), 384 * sizeof(FVector4));
+						RenderCommand::Unmap(Res.CurveLUTBuffer.get());
+					}
+					RenderCommand::UpdateBufferData(Res.SimCB.get(), &Batch.SimParams, sizeof(FGpuParticleSimParams));
+
+					if (Batch.SpawnCount > 0 && !Batch.PendingSpawnBytes.IsEmpty())
+					{
+						if (!Res.SpawnUploadBuffer || Res.SpawnCapacity < Batch.SpawnCount)
+						{
+							const uint32 NewCap = std::max(Batch.SpawnCount, 64u);
+							Res.SpawnUploadBuffer = RenderCommand::CreateDynamicStructuredBuffer(NewCap, Batch.ParticleStride);
+							Res.SpawnCapacity = Res.SpawnUploadBuffer ? NewCap : 0;
+						}
+						if (Res.SpawnUploadBuffer)
+						{
+							if (void* MappedSpawn = RenderCommand::MapWriteDiscard(Res.SpawnUploadBuffer.get()))
+							{
+								std::memcpy(MappedSpawn, Batch.PendingSpawnBytes.GetData(), Batch.PendingSpawnBytes.Num());
+								RenderCommand::Unmap(Res.SpawnUploadBuffer.get());
+							}
+							RenderCommand::BindComputeShader(InjectCS);
+							RenderCommand::BindConstantBuffer(0, Res.SimCB.get(), EShaderBindFlagBits::Compute);
+							RenderCommand::BindShaderResource(0, Res.SpawnUploadBuffer.get(), EShaderBindFlagBits::Compute);
+							RenderCommand::BindUnorderedAccess(0, Res.ParticleBuffer.get());
+							RenderCommand::Dispatch((Batch.SpawnCount + 63u) / 64u, 1, 1);
+							RenderCommand::UnbindShaderResources(0, 1, EShaderBindFlagBits::Compute);
+						}
+					}
+
+					RenderCommand::BindComputeShader(SimCS);
+					RenderCommand::BindConstantBuffer(0, Res.SimCB.get(), EShaderBindFlagBits::Compute);
+					RenderCommand::BindShaderResource(1, Res.CurveLUTBuffer.get(), EShaderBindFlagBits::Compute);
+					RenderCommand::BindUnorderedAccess(0, Res.ParticleBuffer.get());
+					RenderCommand::Dispatch((Batch.MaxParticles + 255u) / 256u, 1, 1);
+
+					RenderCommand::UnbindUnorderedAccess(0);
+					RenderCommand::UnbindShaderResources(1, 1, EShaderBindFlagBits::Compute);
+					RenderCommand::BindComputeShader(nullptr);
+				}
+			});
+		}
+
 		if (!Graph.AddRasterPass(MakeViewportPass("Translucent", SceneColor, Depth),
 			[this, Renderer, GetFog = Callbacks.TranslucentFogConstants]
 			{
@@ -1203,6 +1281,97 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 	{
 		Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
 		Renderer->DrawMeshes(Batches);
+	}
+
+	if (!RenderData.ParticleBatches.IsEmpty() && !RenderData.ParticleInstances.IsEmpty())
+	{
+		const uint32 TotalInstances = static_cast<uint32>(RenderData.ParticleInstances.Num());
+		if (!RenderData.ParticleInstanceBuffer || RenderData.ParticleInstanceCapacity < TotalInstances)
+		{
+			uint32 NewCapacity = std::max(RenderData.ParticleInstanceCapacity * 2u, 256u);
+			while (NewCapacity < TotalInstances) NewCapacity *= 2u;
+			RenderData.ParticleInstanceBuffer = RenderCommand::CreateDynamicStructuredBuffer(
+				NewCapacity, sizeof(FParticleInstanceData));
+			RenderData.ParticleInstanceCapacity = RenderData.ParticleInstanceBuffer ? NewCapacity : 0;
+		}
+		if (!RenderData.ParticleBatchCB)
+			RenderData.ParticleBatchCB = RenderCommand::CreateConstantBuffer(16);
+
+		FPipelineState* ParticlePSO = FRenderResourceManager::GetPSO(EPSOType::Particle_Instanced);
+		if (RenderData.ParticleInstanceBuffer && RenderData.ParticleBatchCB &&
+			ParticlePSO && ParticlePSO->Shader && ParticlePSO->Shader->VertexShader && ParticlePSO->Shader->PixelShader)
+		{
+			if (void* Mapped = RenderCommand::MapWriteDiscard(RenderData.ParticleInstanceBuffer.get()))
+			{
+				std::memcpy(Mapped, RenderData.ParticleInstances.GetData(),
+					TotalInstances * sizeof(FParticleInstanceData));
+				RenderCommand::Unmap(RenderData.ParticleInstanceBuffer.get());
+			}
+
+			Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
+			RenderCommand::BindPipelineState(*ParticlePSO);
+			RenderCommand::BindConstantBuffer(0, Renderer->GetViewConstantBuffer(), EShaderBindFlagBits::Vertex);
+			RenderCommand::BindShaderResource(1, RenderData.ParticleInstanceBuffer.get(), EShaderBindFlagBits::Vertex);
+
+			struct FParticleBatchConstants
+			{
+				uint32 StartInstance = 0;
+				uint32 Pad[3] = {};
+			};
+
+			for (const FParticleInstancedBatch& Batch : RenderData.ParticleBatches)
+			{
+				if (!Batch.Mesh || !Batch.Material || Batch.InstanceCount == 0) continue;
+				FIndexBuffer* IndexBuffer = Batch.Mesh->GetIndexBuffer(0);
+				if (!IndexBuffer) continue;
+
+				FParticleBatchConstants BatchConst{ Batch.StartInstance, { 0, 0, 0 } };
+				RenderCommand::UpdateBufferData(RenderData.ParticleBatchCB.get(), &BatchConst, sizeof(BatchConst));
+				RenderCommand::BindConstantBuffer(1, RenderData.ParticleBatchCB.get(), EShaderBindFlagBits::Vertex);
+				RenderCommand::BindMesh(Batch.Mesh, 0);
+
+				UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
+				RenderCommand::BindShaderResource(0, AtlasTex, EShaderBindFlagBits::Pixel);
+				RenderCommand::BindSamplerState(0, Batch.Material->SamplerState, EShaderBindFlagBits::Pixel);
+				RenderCommand::DrawIndexedInstanced(IndexBuffer->GetIndexCount(), Batch.InstanceCount, 0, 0, 0);
+			}
+
+			RenderCommand::BindShaderResource(1, static_cast<const FStructuredBuffer*>(nullptr), EShaderBindFlagBits::Vertex);
+			RenderCommand::BindConstantBuffer(1, nullptr, EShaderBindFlagBits::Vertex);
+		}
+	}
+
+	if (!RenderData.GpuParticleBatches.IsEmpty())
+	{
+		FPipelineState* GpuPSO = FRenderResourceManager::GetPSO(EPSOType::Particle_GpuInstanced);
+		if (GpuPSO && GpuPSO->Shader && GpuPSO->Shader->VertexShader && GpuPSO->Shader->PixelShader)
+		{
+			Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
+			RenderCommand::BindPipelineState(*GpuPSO);
+			RenderCommand::BindConstantBuffer(0, Renderer->GetViewConstantBuffer(), EShaderBindFlagBits::Vertex);
+
+			for (const FGpuParticleBatch& Batch : RenderData.GpuParticleBatches)
+			{
+				if (!Batch.Mesh || !Batch.Material || Batch.MaxParticles == 0) continue;
+				FGpuParticleEmitterResources* Res = RenderData.GpuParticleBuffers.Find(Batch.EmitterId);
+				if (!Res || !Res->ParticleBuffer || !Res->DrawCB) continue;
+				FIndexBuffer* IndexBuffer = Batch.Mesh->GetIndexBuffer(0);
+				if (!IndexBuffer) continue;
+
+				RenderCommand::UpdateBufferData(Res->DrawCB.get(), &Batch.DrawParams, sizeof(FGpuParticleDrawParams));
+				RenderCommand::BindConstantBuffer(1, Res->DrawCB.get(), EShaderBindFlagBits::Vertex);
+				RenderCommand::BindShaderResource(1, Res->ParticleBuffer.get(), EShaderBindFlagBits::Vertex);
+				RenderCommand::BindMesh(Batch.Mesh, 0);
+
+				UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
+				RenderCommand::BindShaderResource(0, AtlasTex, EShaderBindFlagBits::Pixel);
+				RenderCommand::BindSamplerState(0, Batch.Material->SamplerState, EShaderBindFlagBits::Pixel);
+				RenderCommand::DrawIndexedInstanced(IndexBuffer->GetIndexCount(), Batch.MaxParticles, 0, 0, 0);
+			}
+
+			RenderCommand::BindShaderResource(1, static_cast<const FStructuredBuffer*>(nullptr), EShaderBindFlagBits::Vertex);
+			RenderCommand::BindConstantBuffer(1, nullptr, EShaderBindFlagBits::Vertex);
+		}
 	}
 	RenderCommand::BindConstantBuffer(3, nullptr, EShaderBindFlagBits::Pixel);
 }
@@ -1454,19 +1623,44 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 				RenderStats.LODTriangles[L] += GatherChunks[c].LODTriangles[L];
 			}
 
+		struct FSortedParticleProxy
+		{
+			const FParticleSceneProxy* Proxy = nullptr;
+			float DistanceSq = 0.0f;
+		};
+		TArray<FSortedParticleProxy> VisibleParticles;
 		for (const FParticleSceneProxy* Proxy : Scene.GetParticleProxies())
 		{
-			if (!Proxy->HasParticles() || !Proxy->IsShown(View.bGameView)) continue;
+			if (!Proxy->IsShown(View.bGameView)) continue;
+			if (UParticleSystemComponent* ParticleComp = Proxy->GetComponent())
+			{
+				const float Distance = (ParticleComp->GetWorldLocation() - View.CameraPosition).Length();
+				ParticleComp->UpdateLOD(Distance);
+			}
+			if (!Proxy->HasParticles()) continue;
 			if (Frustum)
 			{
 				uint32 PlaneMask = FrustumAllPlanesMask;
 				if (ClassifyBoxInFrustum(Proxy->GetBounds(), *Frustum, PlaneMask) == EFrustumTest::Outside) continue;
 			}
-			Proxy->SubmitToRenderQueue(RenderQueue, View);
+			const FBox& B = Proxy->GetBounds();
+			const FVector Center = (B.Min + B.Max) * 0.5f;
+			const FVector Delta = Center - View.CameraPosition;
+			VisibleParticles.Add({ Proxy, Delta.Dot(Delta) });
+		}
+		std::sort(VisibleParticles.begin(), VisibleParticles.end(),
+			[](const FSortedParticleProxy& A, const FSortedParticleProxy& B)
+			{
+				return A.DistanceSq > B.DistanceSq;
+			});
+		for (const FSortedParticleProxy& Entry : VisibleParticles)
+		{
+			Entry.Proxy->SubmitInstancedParticles(Data.ParticleInstances, Data.ParticleBatches, View);
+			Entry.Proxy->SubmitGpuEmitters(Data.GpuParticleBatches, View);
 		}
 
 		if (bPrepareObjectSlots) Data.ObjectConstants.SetNum(NextExtraSlot);
-		RenderStats.DrawCalls = RenderQueue.Num() + StaticDraws;
+		RenderStats.DrawCalls = RenderQueue.Num() + StaticDraws + static_cast<uint32>(Data.ParticleBatches.Num());
 		for (uint64 T : RenderStats.LODTriangles) RenderStats.Triangles += T;
 	}
 }

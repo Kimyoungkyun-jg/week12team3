@@ -155,6 +155,13 @@ void RenderCommand::DrawIndexed(uint32 IndexCount, uint32 StartIndexLocation, in
 	RenderDevice->GetContext()->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation);
 }
 
+void RenderCommand::DrawIndexedInstanced(uint32 IndexCountPerInstance, uint32 InstanceCount,
+	uint32 StartIndexLocation, int32 BaseVertexLocation, uint32 StartInstanceLocation)
+{
+	RenderDevice->GetContext()->DrawIndexedInstanced(
+		IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
+}
+
 void RenderCommand::DrawInstance(uint32 IndexCount, uint32 StartIndexLocation, int32 BaseVertexLocation)
 {
 	//RenderDevice->GetContext()->DrawInstanced();

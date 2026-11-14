@@ -21,6 +21,9 @@ outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
 IncludeDir = {}
 IncludeDir["ImGui"] = "Source/ThirdParty/ImGui"
+IncludeDir["ImPlot"] = "Source/ThirdParty/ImPlot"
+IncludeDir["ImGuizmo"] = "Source/ThirdParty/ImGuizmo/src"
+IncludeDir["ImGuiColorGradient"] = "Source/ThirdParty/ImGuiColorGradient"
 IncludeDir["stb"]   = "Source/ThirdParty/stb"
 IncludeDir["json"]  = "Source/ThirdParty/json"
 IncludeDir["DDSLoader"] = "Source/ThirdParty/DDSLoader"
@@ -203,14 +206,27 @@ project "HitoriEditor"
 		"%{IncludeDir.ImGui}/*.cpp",
 		"%{IncludeDir.ImGui}/backends/imgui_impl_win32.*",
 		"%{IncludeDir.ImGui}/backends/imgui_impl_dx11.*",
+		"%{IncludeDir.ImPlot}/implot.h",
+		"%{IncludeDir.ImPlot}/implot_internal.h",
+		"%{IncludeDir.ImPlot}/implot.cpp",
+		"%{IncludeDir.ImPlot}/implot_items.cpp",
+		"%{IncludeDir.ImGuizmo}/ImCurveEdit.h",
+		"%{IncludeDir.ImGuizmo}/ImCurveEdit.cpp",
+		"%{IncludeDir.ImGuizmo}/ImSequencer.h",
+		"%{IncludeDir.ImGuizmo}/ImSequencer.cpp",
+		"%{IncludeDir.ImGuiColorGradient}/*.h",
+		"%{IncludeDir.ImGuiColorGradient}/*.cpp",
 	}
 	vpaths
 	{
 		["ThirdParty/ImGui/*"] = "%{IncludeDir.ImGui}/**",
+		["ThirdParty/ImPlot/*"] = "%{IncludeDir.ImPlot}/**",
+		["ThirdParty/ImGuizmo/*"] = "%{IncludeDir.ImGuizmo}/**",
+		["ThirdParty/ImGuiColorGradient/*"] = "%{IncludeDir.ImGuiColorGradient}/**",
 		["*"] = "Source/Editor/**",
 	}
 
-	filter "files:Source/ThirdParty/ImGui/**.cpp"
+	filter "files:Source/ThirdParty/**.cpp"
 		enablepch "Off"
 	filter {}
 
@@ -225,6 +241,9 @@ project "HitoriEditor"
 		"Build/Generated/Editor",    -- 추가
 		"%{IncludeDir.ImGui}",
 		"%{IncludeDir.ImGui}/backends",
+		"%{IncludeDir.ImPlot}",
+		"%{IncludeDir.ImGuizmo}",
+		"%{IncludeDir.ImGuiColorGradient}",
 		"%{IncludeDir.stb}",
 		"%{IncludeDir.json}",
 		"%{IncludeDir.lua}",

@@ -183,6 +183,7 @@ bool UEditorEngine::Init()
 	});
 	EditorUI->SetFbxImportBlockedQuery([this]() { return IsPlaying(); });
 	AssetEditorPanel = EditorUI->AddEditorPanel<FAssetEditorPanel>();
+	ParticleSystemEditorPanel = EditorUI->AddEditorPanel<FParticleSystemEditorPanel>();
 	// 다시 가져오기의 옵션은 바이너리 헤더에서 읽는다. Target Skeleton은 헤더에 없으므로,
 	// 다른 FBX의 Skeleton에 맞춘 AnimSequence면 그 Skeleton을 대상으로 다시 지정한다(메시 없는 FBX는 대상 없이 임포트되지 않는다).
 	const auto ReadReimportOptions = [](const FString& Path, FFbxAssetData& Data) -> bool
@@ -250,6 +251,10 @@ bool UEditorEngine::Init()
 		else if (Extension == ".aimoffset" && AimOffsetEditorPanel)
 		{
 			AimOffsetEditorPanel->OpenAsset(Path);
+		}
+		else if (Extension == ".particle" && ParticleSystemEditorPanel)
+		{
+			ParticleSystemEditorPanel->OpenAsset(Path);
 		}
 		else AssetEditorPanel->OpenAsset(Path);
 	});
@@ -1071,6 +1076,7 @@ void UEditorEngine::RenderViewports()
 		}
 	}
 	AssetEditorPanel->RenderPreview(this);
+	ParticleSystemEditorPanel->RenderPreview(this);
 	AnimSequenceViewerPanel->RenderPreview(this);
 	AnimGraphEditorPanel->RenderPreview(this);
 	BlendSpaceEditorPanel->RenderPreview(this);
@@ -1841,6 +1847,7 @@ void UEditorEngine::PreExit()
 	if (AimOffsetEditorPanel) AimOffsetEditorPanel->Release();
 	if (ContentDrawerPanel) ContentDrawerPanel->Release();
 	if (AssetEditorPanel) AssetEditorPanel->Release();
+	if (ParticleSystemEditorPanel) ParticleSystemEditorPanel->Release();
 	EditorWorld->ClearWorld();
 	// PIE 창이 열린 채 종료하면 Device가 살아 있을 때 Swapchain과 타깃을 먼저 정리한다.
 	DestroyPIEWindow();

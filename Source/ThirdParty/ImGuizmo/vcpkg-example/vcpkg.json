@@ -1,0 +1,12 @@
+{
+    "name": "vcpkg-example",
+    "version": "1.83",
+    "dependencies": [
+        {
+            "name": "imgui",
+            "features": ["opengl3-binding"]
+        },
+        "imguizmo",
+        "stb"
+    ]
+}

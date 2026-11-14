@@ -7,6 +7,7 @@
 
 #include <backends/imgui_impl_dx11.h>
 #include <backends/imgui_impl_win32.h>
+#include <implot.h>
 #include <d3dcompiler.h>
 #include <cstring>
 #pragma comment(lib, "d3dcompiler.lib")
@@ -222,6 +223,7 @@ bool FImGuiRenderer::Init(HWND WindowHandle, ID3D11Device* Device, ID3D11DeviceC
 {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
+	ImPlot::CreateContext();
 
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	// ImGui는 설정 폴더를 만들지 않으므로 먼저 만든다.
@@ -400,4 +402,5 @@ void FImGuiRenderer::Shutdown()
 	ShadowPreviewPS.Reset();
 	ImGui_ImplDX11_Shutdown();
 	ImGui_ImplWin32_Shutdown();
+	ImPlot::DestroyContext();
 }

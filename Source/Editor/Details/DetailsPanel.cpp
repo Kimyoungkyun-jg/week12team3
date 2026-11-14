@@ -1335,128 +1335,126 @@ namespace
 		}
 	}
 
-	void DrawParticleSystemSection(UParticleSystemComponent* Component, ImFont* CustomFont)
+	void DrawParticleSystemSection(UParticleSystemComponent* Component, ImFont*)
 	{
+		if (!Component) return;
 		ImGui::SeparatorText("Particle System");
-		if (ImGui::Button("New System"))
-		{
-			UParticleSystem* System = NewObject<UParticleSystem>(Component);
-			UParticleLODLevel* LOD = System->AddEmitter()->AddLODLevel();
-			LOD->AddModule(UParticleModuleLifetime::StaticClass());
-			LOD->AddModule(UParticleModuleLocation::StaticClass());
-			LOD->AddModule(UParticleModuleVelocity::StaticClass());
-			LOD->AddModule(UParticleModuleColor::StaticClass());
-			LOD->AddModule(UParticleModuleSize::StaticClass());
-			Component->SetTemplate(System);
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Reload") && !Component->TemplatePath.empty())
-			Component->SetTemplate(UParticleSystem::LoadFromFile(Component->TemplatePath, Component));
-		ImGui::SameLine();
-		if (ImGui::Button("Save") && Component->GetTemplate() && !Component->TemplatePath.empty())
-			Component->GetTemplate()->SaveToFile(Component->TemplatePath);
 
-		UParticleSystem* System = Component->GetTemplate();
-		if (!System) return;
-		if (Component->TemplatePath.empty()) ImGui::TextDisabled("Set TemplatePath to save this system.");
-		if (ImGui::Button("Add Emitter"))
+		namespace fs = std::filesystem;
+		TArray<FString> ParticleFiles;
+		std::error_code Ec;
+		if (fs::exists("Assets", Ec))
 		{
-			System->AddEmitter()->AddLODLevel();
-			Component->SetTemplate(System);
-		}
-		for (int32 EmitterIndex = 0; EmitterIndex < static_cast<int32>(System->GetEmitters().Num()); ++EmitterIndex)
-		{
-			UParticleEmitter* Emitter = System->GetEmitters()[EmitterIndex];
-			ImGui::PushID(Emitter);
-			if (ImGui::TreeNode(Emitter, "Emitter %d", EmitterIndex))
+			for (const fs::directory_entry& Entry : fs::recursive_directory_iterator("Assets", Ec))
 			{
-				if (ImGui::Button("Add LOD"))
+				if (!Entry.is_regular_file(Ec)) continue;
+				FString Ext = Entry.path().extension().string();
+				std::transform(Ext.begin(), Ext.end(), Ext.begin(),
+					[](unsigned char C) { return static_cast<char>(std::tolower(C)); });
+				if (Ext == ".particle")
 				{
-					Emitter->AddLODLevel();
-					Component->SetTemplate(System);
+					FString RelPath = FbxPath::ToString(Entry.path());
+					std::replace(RelPath.begin(), RelPath.end(), '\\', '/');
+					ParticleFiles.Add(RelPath);
 				}
-				for (UParticleLODLevel* LOD : Emitter->GetLODLevels())
-				{
-					ImGui::PushID(LOD);
-					if (ImGui::TreeNode(LOD, "LOD %d", LOD->Level))
-					{
-						DrawProperties(LOD, CustomFont);
-						DrawProperties(LOD->GetOrCreateRequired(), CustomFont);
-						UParticleModuleSpawn* Spawn = LOD->GetOrCreateSpawn();
-						DrawProperties(Spawn, CustomFont);
-						if (ImGui::Button("Add Burst")) Spawn->Bursts.Add(FParticleBurst{});
-						for (int32 BurstIndex = 0; BurstIndex < static_cast<int32>(Spawn->Bursts.Num()); ++BurstIndex)
-						{
-							FParticleBurst& Burst = Spawn->Bursts[BurstIndex];
-							ImGui::PushID(BurstIndex);
-							ImGui::DragFloat("Time", &Burst.Time, 0.01f, 0.0f);
-							ImGui::DragInt("Count", &Burst.Count, 1.0f, 0);
-							if (ImGui::SmallButton("Remove Burst"))
-							{
-								Spawn->Bursts.RemoveAt(BurstIndex);
-								ImGui::PopID();
-								break;
-							}
-							ImGui::PopID();
-						}
-						UParticleModuleTypeDataBase* TypeData = LOD->GetOrCreateTypeData();
-						int TypeDataIndex = TypeData->GetEmitterType() == EParticleEmitterType::GpuSprite ? 1 : 0;
-						if (ImGui::Combo("Type Data", &TypeDataIndex, "CPU Sprite\0GPU Sprite\0"))
-						{
-							TypeData = LOD->SetTypeData(TypeDataIndex == 0
-								? UParticleModuleTypeDataSprite::StaticClass()
-								: UParticleModuleTypeDataGpuSprite::StaticClass());
-							Component->SetTemplate(System);
-						}
-						if (TypeDataIndex == 1) ImGui::TextDisabled("GPU Sprite simulation is not implemented yet.");
-						DrawProperties(TypeData, CustomFont);
-						if (ImGui::Button("Add Module")) ImGui::OpenPopup("ParticleModulePopup");
-						if (ImGui::BeginPopup("ParticleModulePopup"))
-						{
-							UClass* Classes[] = { UParticleModuleLifetime::StaticClass(),
-								UParticleModuleLocation::StaticClass(), UParticleModuleVelocity::StaticClass(),
-								UParticleModuleColor::StaticClass(), UParticleModuleSize::StaticClass() };
-							for (UClass* Class : Classes)
-								if (ImGui::MenuItem(Class->Name.c_str())) LOD->AddModule(Class);
-							ImGui::EndPopup();
-						}
-						for (int32 ModuleIndex = 0; ModuleIndex < static_cast<int32>(LOD->Modules.Num()); ++ModuleIndex)
-						{
-							UParticleModule* Module = LOD->Modules[ModuleIndex];
-							ImGui::PushID(Module);
-							if (ImGui::SmallButton("Up") && ModuleIndex > 0)
-							{
-								std::swap(LOD->Modules[ModuleIndex], LOD->Modules[ModuleIndex - 1]);
-								ImGui::PopID();
-								break;
-							}
-							ImGui::SameLine();
-							if (ImGui::SmallButton("Down") && ModuleIndex + 1 < static_cast<int32>(LOD->Modules.Num()))
-							{
-								std::swap(LOD->Modules[ModuleIndex], LOD->Modules[ModuleIndex + 1]);
-								ImGui::PopID();
-								break;
-							}
-							ImGui::SameLine();
-							if (ImGui::SmallButton("Remove"))
-							{
-								LOD->Modules.RemoveAt(ModuleIndex);
-								ImGui::PopID();
-								break;
-							}
-							DrawProperties(Module, CustomFont);
-							ImGui::PopID();
-						}
-						ImGui::TreePop();
-					}
-					ImGui::PopID();
-				}
-				ImGui::TreePop();
 			}
+			std::sort(ParticleFiles.begin(), ParticleFiles.end());
+		}
+
+		const FString PreviewLabel = Component->TemplatePath.empty()
+			? "None"
+			: FbxPath::ToString(FbxPath::FromString(Component->TemplatePath).stem());
+
+		if (ImGui::BeginCombo("Particle Asset", PreviewLabel.c_str()))
+		{
+			const bool bIsNone = Component->TemplatePath.empty();
+			if (ImGui::Selectable("None", bIsNone))
+			{
+				Component->TemplatePath.clear();
+				Component->SetTemplate(nullptr);
+			}
+			if (bIsNone) ImGui::SetItemDefaultFocus();
+
+			for (const FString& FilePath : ParticleFiles)
+			{
+				const bool bSelected = (Component->TemplatePath == FilePath);
+				const FString DisplayName = FbxPath::ToString(FbxPath::FromString(FilePath).stem());
+				ImGui::PushID(FilePath.c_str());
+				if (ImGui::Selectable(DisplayName.c_str(), bSelected))
+				{
+					Component->TemplatePath = FilePath;
+					Component->SetTemplate(UParticleSystem::LoadFromFile(FilePath, Component));
+				}
+				if (bSelected) ImGui::SetItemDefaultFocus();
+				ImGui::PopID();
+			}
+			ImGui::EndCombo();
+		}
+
+		ImGui::SeparatorText("Instance Parameters");
+		if (ImGui::SmallButton("+ Add Parameter"))
+		{
+			FParticleSysParam NewParam;
+			NewParam.Name = "Param";
+			Component->GetInstanceParamList().Add(NewParam);
+			Component->SyncInstanceParameters();
+		}
+
+		TArray<FParticleSysParam>& Params = Component->GetInstanceParamList();
+		int32 RemoveIndex = -1;
+		bool bChanged = false;
+		for (int32 Index = 0; Index < static_cast<int32>(Params.Num()); ++Index)
+		{
+			FParticleSysParam& Param = Params[Index];
+			ImGui::PushID(Index);
+
+			char NameBuf[128] = {};
+			strncpy_s(NameBuf, Param.Name.c_str(), _TRUNCATE);
+			if (ImGui::InputText("Name", NameBuf, sizeof(NameBuf)))
+			{
+				Param.Name = NameBuf;
+				bChanged = true;
+			}
+
+			int TypeIdx = static_cast<int>(Param.ParamType);
+			if (ImGui::Combo("Type", &TypeIdx, "Scalar\0Vector\0Color\0"))
+			{
+				Param.ParamType = static_cast<EParticleSysParamType>(TypeIdx);
+				bChanged = true;
+			}
+
+			if (Param.ParamType == EParticleSysParamType::Scalar)
+			{
+				if (ImGui::DragFloat("Value", &Param.Scalar, 0.05f)) bChanged = true;
+			}
+			else if (Param.ParamType == EParticleSysParamType::Vector)
+			{
+				if (ImGui::DragFloat3("Value", &Param.Vector.X, 0.05f)) bChanged = true;
+			}
+			else
+			{
+				float C[4] = { Param.Color.R / 255.0f, Param.Color.G / 255.0f, Param.Color.B / 255.0f, Param.Color.A / 255.0f };
+				if (ImGui::ColorEdit4("Value", C))
+				{
+					Param.Color = FColor(
+						static_cast<uint8>(C[0] * 255.0f),
+						static_cast<uint8>(C[1] * 255.0f),
+						static_cast<uint8>(C[2] * 255.0f),
+						static_cast<uint8>(C[3] * 255.0f));
+					bChanged = true;
+				}
+			}
+
+			if (ImGui::SmallButton("Remove")) RemoveIndex = Index;
+			ImGui::Separator();
 			ImGui::PopID();
 		}
-		for (const FParticleEmitterInstance& Instance : Component->GetEmitterInstances())
-			ImGui::Text("Active particles: %d", Instance.ActiveParticles);
+		if (RemoveIndex >= 0)
+		{
+			Params.RemoveAt(static_cast<uint32>(RemoveIndex));
+			bChanged = true;
+		}
+		if (bChanged) Component->SyncInstanceParameters();
 	}
 
 	void DrawActorHeader(AActor* Actor, UActorComponent*& OutSelectedComponent)

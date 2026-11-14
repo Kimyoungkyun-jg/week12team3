@@ -72,7 +72,9 @@ constexpr FPipelineTableEntry PipelineTable[] =
 	{ EPSOType::ShadowProjection, "Resources/Shader/ShadowProjection.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::ShadowMaskR, EDepthStencilState::Disabled },
 	{ EPSOType::ShadowMaskVisualize, "Resources/Shader/ShadowMaskVisualize.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque, EDepthStencilState::Disabled },
 	{ EPSOType::StaticMesh_DBufferDecal, "Resources/Shader/ProjectedDecal.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::DecalPremultiplied, EDepthStencilState::DecalEqualReadOnly },
-	{ EPSOType::DBufferDecal_DepthReconstruction, "Resources/Shader/ProjectedDecalDepth.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::DecalPremultiplied, EDepthStencilState::Disabled }
+	{ EPSOType::DBufferDecal_DepthReconstruction, "Resources/Shader/ProjectedDecalDepth.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::DecalPremultiplied, EDepthStencilState::Disabled },
+	{ EPSOType::Particle_Instanced, "Resources/Shader/ParticleInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
+	{ EPSOType::Particle_GpuInstanced, "Resources/Shader/ParticleGpuInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly }
 };
 
 static_assert(sizeof(PipelineTable) / sizeof(PipelineTable[0]) == static_cast<size_t>(EPSOType::Count));
@@ -273,10 +275,42 @@ FComputeShader* FRenderResourceManager::GetComputeSkinningShader()
 	return Resources.ComputeSkinningShader.get();
 }
 
+FComputeShader* FRenderResourceManager::GetGpuParticleInjectShader()
+{
+	auto& Resources = Get();
+	if (!Resources.bGpuParticleInjectAttempted)
+	{
+		Resources.bGpuParticleInjectAttempted = true;
+		Resources.GpuParticleInjectShader = RenderCommand::CreateComputeShader(
+			RenderUtil::CompileShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSInjectSpawns", EShaderType::Compute));
+		if (Resources.GpuParticleInjectShader && !Resources.GpuParticleInjectShader->IsValid())
+			Resources.GpuParticleInjectShader.reset();
+	}
+	return Resources.GpuParticleInjectShader.get();
+}
+
+FComputeShader* FRenderResourceManager::GetGpuParticleSimulateShader()
+{
+	auto& Resources = Get();
+	if (!Resources.bGpuParticleSimulateAttempted)
+	{
+		Resources.bGpuParticleSimulateAttempted = true;
+		Resources.GpuParticleSimulateShader = RenderCommand::CreateComputeShader(
+			RenderUtil::CompileShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSSimulate", EShaderType::Compute));
+		if (Resources.GpuParticleSimulateShader && !Resources.GpuParticleSimulateShader->IsValid())
+			Resources.GpuParticleSimulateShader.reset();
+	}
+	return Resources.GpuParticleSimulateShader.get();
+}
+
 void FRenderResourceManager::Shutdown()
 {
 	Get().ComputeSkinningShader.reset();
 	Get().bComputeSkinningShaderAttempted = false;
+	Get().GpuParticleInjectShader.reset();
+	Get().bGpuParticleInjectAttempted = false;
+	Get().GpuParticleSimulateShader.reset();
+	Get().bGpuParticleSimulateAttempted = false;
 	Get().VertexShaderMap.Empty();
 	Get().PixelShaderMap.Empty();
 	Get().ShaderProgramMap.Empty();

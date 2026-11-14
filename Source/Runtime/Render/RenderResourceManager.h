@@ -33,6 +33,8 @@ enum class EPSOType : uint8
 	ShadowMaskVisualize,     // Shadow Mask 뷰 모드: 마스크를 화면에 띄운다
 	StaticMesh_DBufferDecal,
 	DBufferDecal_DepthReconstruction,
+	Particle_Instanced,
+	Particle_GpuInstanced,
 	Count
 };
 
@@ -62,9 +64,15 @@ public:
 	static FShaderProgram* GetShadowDepthShaderProgram();
 	static FShaderProgram* GetGPUSkinningShadowDepthShaderProgram();
 	static FComputeShader* GetComputeSkinningShader();
+	static FComputeShader* GetGpuParticleInjectShader();
+	static FComputeShader* GetGpuParticleSimulateShader();
 private:
 	TUniquePtr<FComputeShader> ComputeSkinningShader;
 	bool bComputeSkinningShaderAttempted = false;
+	TUniquePtr<FComputeShader> GpuParticleInjectShader;
+	bool bGpuParticleInjectAttempted = false;
+	TUniquePtr<FComputeShader> GpuParticleSimulateShader;
+	bool bGpuParticleSimulateAttempted = false;
 	
 	void LoadOrCompileShader(const FString& Path);
 	void InitPipelineStates();

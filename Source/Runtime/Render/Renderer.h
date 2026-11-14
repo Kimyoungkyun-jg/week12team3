@@ -33,6 +33,7 @@ public:
 
 	// 패스의 의미를 해석하지 않고 준비된 GPU 상태와 드로우만 제출한다.
 	void UploadViewMatrix(const FMatrix& ViewProjection);
+	FConstantBuffer* GetViewConstantBuffer() const { return ViewCB.get(); }
 	void DrawMeshes(std::span<const FMeshDrawBatch> Batches,
 		const std::shared_ptr<FGpuTimingHistory>& SkeletalTiming = {},
 		ESkinningMode MeasuredMode = ESkinningMode::CPU);

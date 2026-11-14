@@ -8,6 +8,9 @@ class UStaticMesh;
 class UMaterial;
 class FRenderQueue;
 struct FViewContext;
+struct FParticleInstanceData;
+struct FParticleInstancedBatch;
+struct FGpuParticleBatch;
 
 struct FParticleSpriteRenderData
 {
@@ -24,8 +27,11 @@ public:
 	explicit FParticleSceneProxy(UParticleSystemComponent* InComponent);
 	void UpdateFromComponent();
 	void SubmitToRenderQueue(FRenderQueue& Queue, const FViewContext& View) const;
+	void SubmitInstancedParticles(TArray<FParticleInstanceData>& OutInstances,
+		TArray<FParticleInstancedBatch>& OutBatches, const FViewContext& View) const;
+	void SubmitGpuEmitters(TArray<FGpuParticleBatch>& OutBatches, const FViewContext& View) const;
 	const FBox& GetBounds() const { return Bounds; }
-	bool HasParticles() const { return !Sprites.IsEmpty() && QuadMesh && Material; }
+	bool HasParticles() const { return (!Sprites.IsEmpty() || bHasGpuEmitters) && QuadMesh && Material; }
 	bool IsShown(bool bGameView) const { return bGameView ? bShownInGame : bShownInEditor; }
 	UParticleSystemComponent* GetComponent() const { return Component; }
 
@@ -37,4 +43,5 @@ private:
 	FBox Bounds{};
 	bool bShownInGame = true;
 	bool bShownInEditor = true;
+	bool bHasGpuEmitters = false;
 };
