@@ -361,14 +361,8 @@ namespace
 			{
 				UTexture2D* DroppedTexture = *static_cast<UTexture2D**>(Payload->Data);
 
-				if (!Material)
-				{
-					return;
-				}
-
 				if (Material)
 				{
-					// 슬롯이 배열 범위 밖이면 그 자리까지 늘려 준다
 					while (static_cast<int32>(Material->Textures.Num()) <= SlotIndex)
 					{
 						Material->Textures.Add(nullptr);
@@ -911,8 +905,8 @@ namespace
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-1.0f);
 
-					FMaterialRenderProxy Proxy = ReadProxy();
-					FVector4 TempColor = Proxy.BaseColor;
+					FMaterialRenderProxy BaseColorProxy = ReadProxy();
+					FVector4 TempColor = BaseColorProxy.BaseColor;
 
 					if (EditLinearColor("##BaseColor", &TempColor.X, true))
 					{
@@ -932,8 +926,8 @@ namespace
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-1.0f);
 					
-					FMaterialRenderProxy Proxy = ReadProxy();
-					float TempShininess = Proxy.Shininess;
+					FMaterialRenderProxy ShininessProxy = ReadProxy();
+					float TempShininess = ShininessProxy.Shininess;
 
 					if (ImGui::DragFloat("##Shininess", &TempShininess, 0.5f, 1.0f, 256.0f))
 					{
@@ -954,8 +948,8 @@ namespace
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-1.0f);
 
-					FMaterialRenderProxy Proxy = ReadProxy();
-					FVector2 TempUVScrollSpeed = Proxy.UVScrollSpeed;
+					FMaterialRenderProxy UVScrollProxy = ReadProxy();
+					FVector2 TempUVScrollSpeed = UVScrollProxy.UVScrollSpeed;
 
 					if (ImGui::DragFloat2("##UVScrollSpeed", &TempUVScrollSpeed.X, 0.01f))
 					{
@@ -977,7 +971,7 @@ namespace
 					ImGui::SetNextItemWidth(-1.0f);
 
 					const char* SamplerItems[] = { "Linear Clamp", "Linear Wrap" };
-					int SamplerIndex = Effective ? static_cast<int>(Effective->SamplerState) : static_cast<int>(ESamplerState::LinearClamp);
+					Override->SamplerState = static_cast<ESamplerState>(i);
 					EditorUIScale::LimitNextComboPopupWidth();
 					if (ImGui::BeginCombo("##SamplerState", SamplerItems[SamplerIndex]))
 					{
@@ -1006,7 +1000,7 @@ namespace
 					ImGui::SetNextItemWidth(-1.0f);
 
 					const char* BlendItems[] = { "Opaque", "Alpha Blend" };
-					int BlendIndex = Effective ? static_cast<int>(Effective->BlendState) : static_cast<int>(EBlendState::Opaque);
+					Override->SetBlendState(static_cast<EBlendState>(i));
 					EditorUIScale::LimitNextComboPopupWidth();
 					if (ImGui::BeginCombo("##BlendState", BlendItems[BlendIndex]))
 					{
@@ -1067,12 +1061,12 @@ namespace
 
 						DrawParameterOverrideReset(Override, Name);
 					};
-					FMaterialRenderProxy Proxy = ReadProxy();
+					FMaterialRenderProxy ParameterProxy = ReadProxy();
 
-					ColorParameter("Specular Color", FName("SpecularColor"), Proxy.SpecularColor);
-					ScalarParameter("Specular Factor", FName("SpecularFactor"), Proxy.SpecularFactor);
-					ColorParameter("Emissive Color", FName("EmissiveColor"), Proxy.EmissiveColor);
-					ScalarParameter("Emissive Factor", FName("EmissiveFactor"), Proxy.EmissiveFactor);
+					ColorParameter("Specular Color", FName("SpecularColor"), ParameterProxy.SpecularColor);
+					ScalarParameter("Specular Factor", FName("SpecularFactor"), ParameterProxy.SpecularFactor);
+					ColorParameter("Emissive Color", FName("EmissiveColor"), ParameterProxy.EmissiveColor);
+					ScalarParameter("Emissive Factor", FName("EmissiveFactor"), ParameterProxy.EmissiveFactor);
 					Row("UV Tiling");
 					FMaterialRenderProxy TilingProxy = ReadProxy();
 					FVector2 Tiling = TilingProxy.UVTiling;
@@ -1101,8 +1095,19 @@ namespace
 					DrawParameterOverrideReset(Override, FName("WorldUVTileSize"));
 					if (ImGui::IsItemHovered()) ImGui::SetTooltip("X=0 disables world tiling. Y=0 uses X for both axes. Use Linear Wrap to repeat.");
 					Row("Local Tile Axes");
-					bool Local = Effective && Effective->bWorldUVLocalSpace;
-					if (ImGui::Checkbox("##LocalTileAxes", &Local)) if (UMaterial* M = Commit()) M->bWorldUVLocalSpace = Local;
+					Row("Local Tile Axes");
+					FMaterialRenderProxy LocalProxy = ReadProxy();
+					bool Local = LocalProxy.bWorldUVLocalSpace;
+
+					if (ImGui::Checkbox("##LocalTileAxes", &Local))
+					{
+						if (UMaterialInstanceDynamic* Dynamic = Commit())
+						{
+							Dynamic->SetScalarParameterValue(FName("WorldUVLocalSpace"), Local ? 1.0f : 0.0f);
+						}
+					}
+
+					DrawParameterOverrideReset(Override, FName("WorldUVLocalSpace"));
 					Row("Override Shading");
 					bool OverrideShading = Effective && Effective->bOverrideShadingModel;
 					if (ImGui::Checkbox("##OverrideShading", &OverrideShading)) if (UMaterial* M = Commit()) M->bOverrideShadingModel = OverrideShading;

@@ -39,6 +39,8 @@ void UMaterial::ApplyImportedProperties(const FImportedMaterialProperties& Prope
 
 void UMaterial::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
 {
+	OutProxy = FMaterialRenderProxy{};
+
 	OutProxy.BaseMaterial = this;
 	OutProxy.Textures = Textures;
 	OutProxy.BaseColor = BaseColor;

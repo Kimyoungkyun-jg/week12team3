@@ -55,6 +55,8 @@ void UMaterialInstance::SetScalarParameterValue(const FName& ParameterName, floa
 		{
 			Override.Type = EMaterialParameterType::Scalar;
 			Override.ScalarValue = Value;
+			Override.VectorValue = FVector4(0, 0, 0, 0);
+			Override.TextureValue = nullptr;
 			return;
 		}
 	}
@@ -73,7 +75,9 @@ void UMaterialInstance::SetVectorParameterValue(const FName& ParameterName, cons
 		if (Override.ParameterName == ParameterName)
 		{
 			Override.Type = EMaterialParameterType::Vector;
+			Override.ScalarValue = 0.0f;
 			Override.VectorValue = Value;
+			Override.TextureValue = nullptr;
 			return;
 		}
 	}
@@ -92,6 +96,8 @@ void UMaterialInstance::SetTextureParameterValue(const FName& ParameterName, UTe
 		if (Override.ParameterName == ParameterName)
 		{
 			Override.Type = EMaterialParameterType::Texture;
+			Override.ScalarValue = 0.0f;
+			Override.VectorValue = FVector4(0, 0, 0, 0);
 			Override.TextureValue = Texture;
 			return;
 		}
@@ -253,18 +259,6 @@ void UMaterialInstance::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
 
 		ApplyMaterialParameter(OutProxy, Parameter);
 	}
-}
-
-void UMaterialInstance::SetBaseColorOverride(const FVector4& Value)
-{
-	bOverrideBaseColor = true;
-	BaseColorOverride = Value;
-}
-
-void UMaterialInstance::SetTexture0Override(UTexture2D* Texture)
-{
-	bOverrideTexture0 = true;
-	Texture0Override = Texture;
 }
 
 void UMaterialInstance::Serialize(FStructuredArchive::FRecord Record)

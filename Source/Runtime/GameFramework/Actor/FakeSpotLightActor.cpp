@@ -75,10 +75,12 @@ AFakeSpotLightActor::AFakeSpotLightActor()
 
 		if (!BillboardMaterialInstance)
 		{
+			HTR_LOG(Warning, "Failed to create instance of icon billboard material for FakeSpotLightActor.");
 			return;
 		}
+
 		BillboardMaterialInstance->SetTexture0Override(BillboardTexture);
-		FakeLightBillboardComponent->SetMaterial(0, BillboardMaterialInstance);
+		IconBillboardComponent->SetMaterial(0, BillboardMaterialInstance);
 	}
 
 	// 아이콘
