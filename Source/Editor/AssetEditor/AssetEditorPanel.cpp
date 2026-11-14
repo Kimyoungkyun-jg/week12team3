@@ -15,6 +15,7 @@
 #include "GameFramework/Actor/StaticMeshActor.h"
 #include "GameFramework/Actor/DirectionalLightActor.h"
 #include "GameFramework/Actor/SkyLightActor.h"
+#include "UObject/UObjectIterator.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/SkyLightComponent.h"
@@ -52,17 +53,129 @@ void FAssetEditorPanel::Release()
 	Asset = nullptr;
 }
 
+void FAssetEditorPanel::NewMaterial(const FString& InPath, bool bParticleSprite)
+{
+	Release();
+
+	Path = InPath;
+
+	UMaterial* Template = UAssetManager::GetAssetByPath<UMaterial>(bParticleSprite ? "ParticleSpriteMaterial" : "DefaultMaterial");
+
+	if (!Template)
+	{
+		Status = "Material template not found.";
+		SetOpen(true);
+		return;
+	}
+
+	UMaterial* NewMaterial = NewObject<UMaterial>();
+	if (!NewMaterial)
+	{
+		Status = "Failed to create Material.";
+		SetOpen(true);
+		return;
+	}
+
+	NewMaterial->CopySettingsFrom(*Template);
+	NewMaterial->bIsInstance = false;
+	NewMaterial->Parent = nullptr;
+
+	Asset = NewMaterial;
+	bDirty = true;
+
+	SaveMaterial();
+
+	if (Status == "Saved")
+	{
+		OpenAsset(InPath);
+	}
+	else
+	{
+		SetOpen(true);
+	}
+}
+
+void FAssetEditorPanel::NewMaterialInstance(const FString& InPath, const FString& ParentPath)
+{
+	Release();
+
+	Path = InPath;
+
+	UMaterial* Parent = UAssetManager::LoadMaterialAsset(ParentPath);
+
+	if (!Parent)
+	{
+		Status = "Parent Material not found.";
+		SetOpen(true);
+		return;
+	}
+
+	Asset = UMaterial::CreateInstance(Parent);
+
+	if (!Asset)
+	{
+		Status = "Failed to create Material Instance.";
+		SetOpen(true);
+		return;
+	}
+
+	bDirty = true;
+
+	SaveMaterial();
+
+	if (Status == "Saved")
+	{
+		OpenAsset(InPath);
+	}
+	else
+	{
+		SetOpen(true);
+	}
+}
+
+void FAssetEditorPanel::SaveIfDirty()
+{
+	if (IsOpen() && bDirty)
+	{
+		SaveMaterial();
+	}
+}
+
 void FAssetEditorPanel::OpenAsset(const FString& InPath)
 {
 	FString Error;
 	auto* Loaded = UAssetManager::GetAssetByPath<URenderAsset>(InPath);
-	if (!Loaded && FbxPath::FromString(InPath).extension() == ".fbxbin") Loaded = FFbxAssetLoader::LoadAsset(InPath, Error);
+
+	if (!Loaded && FbxPath::FromString(InPath).extension() == ".material")
+	{
+		Loaded = UAssetManager::LoadMaterialAsset(InPath);
+	}
+
+	if (!Loaded && FbxPath::FromString(InPath).extension() == ".fbxbin")
+	{
+		Loaded = FFbxAssetLoader::LoadAsset(InPath, Error);
+	}
 	if (!Loaded) { HTR_LOG(Warning, "Cannot preview asset {}: {}", InPath, Error); return; }
 	Release(); Path = InPath; Asset = Loaded; Status.clear(); SetOpen(true);
 	UStaticMesh* Mesh = Cast<UStaticMesh>(Asset);
 	UMaterial* Material = Cast<UMaterial>(Asset);
-	if (Material) Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
-	if (!Mesh) return;
+
+	if (Material)
+	{
+		if (Material->PSOType == EPSOType::Particle_Sprite ||
+			Material->PSOType == EPSOType::Particle_AlphaBlend ||
+			Material->PSOType == EPSOType::Particle_Additive)
+		{
+			return;
+		}
+
+		Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
+	}
+
+	if (!Mesh)
+	{
+		return;
+	}
 	PreviewWorld = UWorld::CreateWorld(EWorldType::Editor, false);
 	auto* Actor = PreviewWorld->SpawnActor<AStaticMeshActor>();
 	Actor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
@@ -102,19 +215,66 @@ void FAssetEditorPanel::RenderPreview(UEditorEngine* Engine)
 
 void FAssetEditorPanel::SaveMaterial()
 {
-	auto* Material = Cast<UMaterial>(Asset);
-	if (!Material || FbxPath::FromString(Path).extension() != ".fbxbin") return;
+	UMaterial* Material = Cast<UMaterial>(Asset);
+	if (!Material)
+	{
+		return;
+	}
+
+	const FString Extension = FbxPath::ToString(FbxPath::FromString(Path).extension());
+
+	if (Extension == ".material")
+	{
+		if (UAssetManager::SaveMaterialAsset(Path, *Material))
+		{
+			bDirty = false;
+			Status = "Saved";
+		}
+		else
+		{
+			Status = "Failed to save Material.";
+		}
+
+		return;
+	}
+
+	if (Extension != ".fbxbin")
+	{
+		return;
+	}
+
 	FFbxAssetData Data;
-	if (!FFbxAssetBake::ReadBaked(Path, Data, Status)) return;
+	if (!FFbxAssetBake::ReadBaked(Path, Data, Status))
+	{
+		return;
+	}
+
 	Data.Material.DiffuseOrFactor = Material->BaseColor;
-	Data.Material.SpecularColor = Material->SpecularColor; Data.Material.SpecularFactor = Material->SpecularFactor;
-	Data.Material.EmissiveColor = Material->EmissiveColor; Data.Material.EmissiveFactor = Material->EmissiveFactor;
-	Data.Material.Shininess = Material->Shininess; Data.Material.ShadingModel = Material->ShadingModel;
-	Data.Material.SamplerState = Material->SamplerState; Data.Material.BlendState = Material->BlendState;
+	Data.Material.SpecularColor = Material->SpecularColor;
+	Data.Material.SpecularFactor = Material->SpecularFactor;
+	Data.Material.EmissiveColor = Material->EmissiveColor;
+	Data.Material.EmissiveFactor = Material->EmissiveFactor;
+	Data.Material.Shininess = Material->Shininess;
+	Data.Material.ShadingModel = Material->ShadingModel;
+	Data.Material.SamplerState = Material->SamplerState;
+	Data.Material.BlendState = Material->BlendState;
+
 	const auto Temporary = Path + ".editing";
-	if (!FFbxAssetBake::WriteBaked(Temporary, Data, Status)) return;
+
+	if (!FFbxAssetBake::WriteBaked(Temporary, Data, Status))
+	{
+		return;
+	}
+
 	if (!MoveFileExW(FbxPath::FromString(Temporary).c_str(), FbxPath::FromString(Path).c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-	{ Status = "Could not replace material file. The previous asset is intact."; std::error_code E; fs::remove(FbxPath::FromString(Temporary), E); return; }
+	{
+		Status = "Could not replace material file. The previous asset is intact.";
+		std::error_code E;
+		fs::remove(FbxPath::FromString(Temporary), E);
+		return;
+	}
+
+	bDirty = false;
 	Status = "Saved";
 }
 
@@ -122,6 +282,12 @@ void FAssetEditorPanel::OnRender()
 {
 	const FString Title = (Asset ? FbxPath::ToString(FbxPath::FromString(Path).filename()) : FString(GetPanelName())) + "###ImportedAssetEditor";
 	bVisible = BeginPanel(Title.c_str());
+	bFocused = bVisible && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+	if (bFocused && ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyAlt && ImGui::IsKeyPressed(ImGuiKey_S, false))
+	{
+		SaveMaterial();
+	}
 	if (bVisible && !Asset)
 	{
 		ImGui::TextUnformatted("No asset is open.");
@@ -132,22 +298,213 @@ void FAssetEditorPanel::OnRender()
 	if (bVisible)
 	{
 		ImGui::TextWrapped("%s", Path.c_str());
+
 		if (auto* Material = Cast<UMaterial>(Asset))
 		{
-			if (ImGui::Button("Save Material")) SaveMaterial();
-			ImGui::SameLine(); ImGui::TextUnformatted(Status.c_str());
-			EditAssetColor("Diffuse / Factor", &Material->BaseColor.X, true);
-			EditAssetColor("Specular", &Material->SpecularColor.X);
-			ImGui::DragFloat("Specular Factor", &Material->SpecularFactor, .02f, 0, 100);
-			EditAssetColor("Emissive", &Material->EmissiveColor.X);
-			ImGui::DragFloat("Emissive Factor", &Material->EmissiveFactor, .02f, 0, 100);
-			ImGui::DragFloat("Shininess", &Material->Shininess, .5f, 1, 512);
-			int Model = static_cast<int>(Material->ShadingModel);
-			const char* Models[] = {"Gouraud", "Lambert", "Blinn-Phong", "Unlit"};
-			if (ImGui::Combo("Shading", &Model, Models, 4)) { Material->ShadingModel = static_cast<ELightingModel>(Model); Material->bOverrideShadingModel = true; }
-			int Blend = Material->BlendState == EBlendState::AlphaBlend ? 1 : 0;
-			if (ImGui::Combo("Blend", &Blend, "Opaque\0Alpha Blend\0")) Material->SetBlendState(Blend ? EBlendState::AlphaBlend : EBlendState::Opaque);
+			UMaterialInstance* Instance = Cast<UMaterialInstance>(Material);
+
+			if (ImGui::Button("Save Material"))
+			{
+				SaveMaterial();
+			}
+
+			ImGui::SameLine();
+			ImGui::TextUnformatted(bDirty ? "* Modified" : Status.c_str());
+
+			ImGui::Separator();
+
+			ImGui::TextUnformatted("Base Color");
+
+			if (Instance)
+			{
+				bool bOverride = Instance->bOverrideBaseColor;
+
+				if (ImGui::Checkbox("Override Base Color", &bOverride))
+				{
+					Instance->bOverrideBaseColor = bOverride;
+
+					if (bOverride)
+					{
+						Instance->BaseColorOverride = Material->BaseColor;
+					}
+					else
+					{
+						Instance->RefreshFromParent();
+					}
+
+					bDirty = true;
+				}
+
+				ImGui::BeginDisabled(!Instance->bOverrideBaseColor);
+			}
+
+			if (EditAssetColor("Base Color", &Material->BaseColor.X, true))
+			{
+				bDirty = true;
+
+				if (Instance)
+				{
+					Instance->BaseColorOverride = Material->BaseColor;
+				}
+			}
+
+			if (Instance)
+			{
+				ImGui::EndDisabled();
+			}
+
+			if (!Instance)
+			{
+				ImGui::Separator();
+				ImGui::TextUnformatted("Surface");
+
+				if (EditAssetColor("Specular", &Material->SpecularColor.X))
+				{
+					bDirty = true;
+				}
+
+				if (ImGui::DragFloat("Specular Factor", &Material->SpecularFactor, 0.02f, 0.0f, 100.0f))
+				{
+					bDirty = true;
+				}
+
+				if (EditAssetColor("Emissive", &Material->EmissiveColor.X))
+				{
+					bDirty = true;
+				}
+
+				if (ImGui::DragFloat("Emissive Factor", &Material->EmissiveFactor, 0.02f, 0.0f, 100.0f))
+				{
+					bDirty = true;
+				}
+
+				if (ImGui::DragFloat("Shininess", &Material->Shininess, 0.5f, 1.0f, 512.0f))
+				{
+					bDirty = true;
+				}
+
+				int Model = static_cast<int>(Material->ShadingModel);
+				const char* Models[] = { "Gouraud", "Lambert", "Blinn-Phong", "Unlit" };
+
+				if (ImGui::Combo("Shading", &Model, Models, 4))
+				{
+					Material->ShadingModel = static_cast<ELightingModel>(Model);
+					Material->bOverrideShadingModel = true;
+					bDirty = true;
+				}
+
+				int Blend = Material->BlendState == EBlendState::AlphaBlend ? 1 : 0;
+
+				if (ImGui::Combo("Blend", &Blend, "Opaque\0Alpha Blend\0"))
+				{
+					Material->SetBlendState(Blend ? EBlendState::AlphaBlend : EBlendState::Opaque);
+					bDirty = true;
+				}
+			}
+
+			if (FbxPath::FromString(Path).extension() == ".material")
+			{
+				ImGui::Separator();
+				ImGui::TextUnformatted("Textures");
+
+				if (Instance)
+				{
+					bool bOverride = Instance->bOverrideTexture0;
+
+					if (ImGui::Checkbox("Override Texture 0", &bOverride))
+					{
+						Instance->bOverrideTexture0 = bOverride;
+
+						if (bOverride)
+						{
+							Instance->Texture0Override = Material->Textures.IsEmpty() ? nullptr : Material->Textures[0];
+						}
+						else
+						{
+							Instance->RefreshFromParent();
+						}
+
+						bDirty = true;
+					}
+
+					ImGui::BeginDisabled(!Instance->bOverrideTexture0);
+				}
+
+				UTexture2D* CurrentTexture = Material->Textures.IsEmpty() ? nullptr : Material->Textures[0];
+				const FString CurrentTexturePath = CurrentTexture ? CurrentTexture->GetPath() : "None";
+
+				if (ImGui::BeginCombo("Texture Slot 0", CurrentTexturePath.c_str()))
+				{
+					if (ImGui::Selectable("None", CurrentTexture == nullptr))
+					{
+						if (Material->Textures.IsEmpty())
+						{
+							Material->Textures.Add(nullptr);
+						}
+						else
+						{
+							Material->Textures[0] = nullptr;
+						}
+
+						if (Instance)
+						{
+							Instance->Texture0Override = nullptr;
+						}
+
+						bDirty = true;
+					}
+
+					for (TObjectIterator<UTexture2D> It; It; ++It)
+					{
+						UTexture2D* Texture = *It;
+
+						if (!Texture || Texture->IsRetired() || Texture->GetPath().empty())
+						{
+							continue;
+						}
+
+						const FString TexturePath = Texture->GetPath();
+
+						if (ImGui::Selectable(TexturePath.c_str(), CurrentTexture == Texture))
+						{
+							if (Material->Textures.IsEmpty())
+							{
+								Material->Textures.Add(Texture);
+							}
+							else
+							{
+								Material->Textures[0] = Texture;
+							}
+
+							if (Instance)
+							{
+								Instance->Texture0Override = Texture;
+							}
+
+							bDirty = true;
+						}
+					}
+
+					ImGui::EndCombo();
+				}
+
+				if (Instance)
+				{
+					ImGui::EndDisabled();
+				}
+			}
 		}
+
+		if (auto* Material = Cast<UMaterial>(Asset))
+		{
+			if (Material->PSOType == EPSOType::Particle_Sprite ||
+				Material->PSOType == EPSOType::Particle_AlphaBlend ||
+				Material->PSOType == EPSOType::Particle_Additive)
+			{
+				ImGui::TextDisabled("Particle Material preview is available through Particle System Editor.");
+			}
+		}
+
 		if (auto* Skeleton = Cast<USkeleton>(Asset))
 		{
 			ImGui::Text("Bones: %d", Skeleton->RefSkeleton.GetNum());

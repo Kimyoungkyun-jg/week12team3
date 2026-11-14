@@ -28,6 +28,8 @@
 #include "Serialization/JsonArchive.h"
 
 #include "Render/ImageLoader.h"
+#include "Render/Material.h"
+#include "Serialization/JsonArchive.h"
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -164,6 +166,7 @@ void UAssetManager::Init(const FAssetLoadProgress& OnProgress)
 	Get().CreateBillboardMaterial();
 	Get().CreateParticleMaterial();
 	Get().CreateParticleSpriteMaterial();
+	Get().LoadDeferredAssets();
 	Get().CreateEditorArrowMaterial();
 	Get().CreateBoneWeightHeatmapMaterial();
 }
@@ -198,7 +201,7 @@ void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgre
 		const FString Extension = GetAssetExtension(Path);
 		AssetPathMap.Add(Key, Path);
 
-		if (Extension != ".particlesystem")
+		if (Extension != ".particlesystem" && Extension != ".material")
 		{
 			LoadAsset(Key, Path);
 		}
@@ -282,6 +285,10 @@ void UAssetManager::LoadAsset(const FString& Key, const FString& Path) {
 	}
 	if (Extension == ".obj") {
 		LoadObjStaticMesh(Path);
+	}
+	if (Extension == ".material")
+	{
+		LoadMaterialAsset(Key);
 	}
 	if (Extension == ".blendspace") {
 		LoadBlendSpace(Key);
@@ -466,6 +473,173 @@ void UAssetManager::CreateBoneWeightHeatmapMaterial()
 	HeatmapMaterial->BaseColor = FVector4{ 1.0f, 1.0f, 1.0f, 1.0f };
 	HeatmapMaterial->EmissiveColor = FVector{ 0.0f, 0.0f, 0.0f };
 	RegisterAsset("BoneWeightHeatmapMaterial", HeatmapMaterial);
+}
+
+UMaterial* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
+{
+	if (UMaterial* Cached = GetAssetByPath<UMaterial>(AssetPath))
+	{
+		return Cached;
+	}
+
+	const FString Key = AssetPath.rfind("Assets/", 0) == 0 ? AssetPath.substr(7) : AssetPath;
+	if (FbxPath::FromString(Key).extension() != ".material")
+	{
+		return nullptr;
+	}
+
+	static std::set<FString> LoadingMaterials;
+	if (!LoadingMaterials.insert(Key).second)
+	{
+		return nullptr;
+	}
+
+	const fs::path File = ContentPaths::AssetRoot / FbxPath::FromString(Key);
+	std::ifstream Input(File);
+
+	if (!Input)
+	{
+		LoadingMaterials.erase(Key);
+		return nullptr;
+	}
+
+	const json Root = json::parse(Input, nullptr, false);
+
+	if (!Root.is_object() || !Root.contains("Class") || !Root.contains("Object"))
+	{
+		LoadingMaterials.erase(Key);
+		return nullptr;
+	}
+
+	const FString ClassName = Root["Class"].get<FString>();
+	UMaterial* Material = nullptr;
+
+	if (ClassName == UMaterialInstance::StaticClass()->Name)
+	{
+		if (!Root["Object"].contains("ParentAsset"))
+		{
+			LoadingMaterials.erase(Key);
+			return nullptr;
+		}
+
+		const FString ParentPath = Root["Object"]["ParentAsset"].get<FString>();
+		UMaterial* Parent = LoadMaterialAsset(ParentPath);
+
+		if (!Parent)
+		{
+			LoadingMaterials.erase(Key);
+			return nullptr;
+		}
+
+		Material = UMaterial::CreateInstance(Parent);
+	}
+	else if (ClassName == UMaterial::StaticClass()->Name)
+	{
+		Material = NewObject<UMaterial>();
+	}
+
+	if (!Material || !FJsonArchive::LoadObject(Material, FbxPath::ToString(File)))
+	{
+		if (Material)
+		{
+			delete Material;
+		}
+		LoadingMaterials.erase(Key);
+		return nullptr;
+	}
+
+	if (!Cast<UMaterialInstance>(Material))
+	{
+		UMaterial* Template = nullptr;
+
+		if (Material->PSOType == EPSOType::Particle_Sprite)
+		{
+			Template = GetAssetByPath<UMaterial>("ParticleSpriteMaterial");
+		}
+		else if (Material->PSOType == EPSOType::Particle_AlphaBlend || Material->PSOType == EPSOType::Particle_Additive)
+		{
+			Template = GetAssetByPath<UMaterial>("SubUVMaterial");
+		}
+		else
+		{
+			Template = GetAssetByPath<UMaterial>("DefaultMaterial");
+		}
+
+		if (!Template)
+		{
+			delete Material;
+			LoadingMaterials.erase(Key);
+			return nullptr;
+		}
+
+		Material->InitializeRenderResources(*Template);
+	}
+
+	Get().RegisterAsset(Key, Material);
+	LoadingMaterials.erase(Key);
+	return Material;
+}
+
+bool UAssetManager::SaveMaterialAsset(const FString& AssetPath, UMaterial& Material)
+{
+	const FString Key = AssetPath.rfind("Assets/", 0) == 0 ? AssetPath.substr(7) : AssetPath;
+
+	if (FbxPath::FromString(Key).extension() != ".material")
+	{
+		return false;
+	}
+
+	if (UMaterialInstance* Instance = Cast<UMaterialInstance>(&Material))
+	{
+		if (!Instance->Parent || Instance->Parent->GetPath().empty())
+		{
+			return false;
+		}
+	}
+
+	const fs::path File = ContentPaths::AssetRoot / FbxPath::FromString(Key);
+	fs::path Temp = File;
+	Temp += L".editing";
+
+	std::error_code Ec;
+	fs::create_directories(File.parent_path(), Ec);
+	if (Ec)
+	{
+		return false;
+	}
+
+	if (!FJsonArchive::SaveObject(&Material, FbxPath::ToString(Temp)))
+	{
+		return false;
+	}
+
+	if (!MoveFileExW(Temp.c_str(), File.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+	{
+		fs::remove(Temp, Ec);
+		return false;
+	}
+
+	Get().RegisterAsset(Key, &Material);
+	return true;
+}
+
+void UAssetManager::LoadDeferredAssets()
+{
+	for (const auto& [Key, Path] : AssetPathMap)
+	{
+		if (GetAssetExtension(Path) == ".material")
+		{
+			LoadMaterialAsset(Key);
+		}
+	}
+
+	for (const auto& [Key, Path] : AssetPathMap)
+	{
+		if (GetAssetExtension(Path) == ".particlesystem")
+		{
+			LoadParticleSystem(Key);
+		}
+	}
 }
 
 void UAssetManager::Shutdown()

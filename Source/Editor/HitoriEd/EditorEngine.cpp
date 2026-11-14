@@ -183,6 +183,8 @@ bool UEditorEngine::Init()
 	});
 	EditorUI->SetFbxImportBlockedQuery([this]() { return IsPlaying(); });
 	AssetEditorPanel = EditorUI->AddEditorPanel<FAssetEditorPanel>();
+	ContentDrawerPanel->SetCreateMaterialCallback([this](const FString& Path, bool bParticleSprite) { AssetEditorPanel->NewMaterial(Path, bParticleSprite); });
+	ContentDrawerPanel->SetCreateMaterialInstanceCallback([this](const FString& Path, const FString& ParentPath) { AssetEditorPanel->NewMaterialInstance(Path, ParentPath); });
 	// 다시 가져오기의 옵션은 바이너리 헤더에서 읽는다. Target Skeleton은 헤더에 없으므로,
 	// 다른 FBX의 Skeleton에 맞춘 AnimSequence면 그 Skeleton을 대상으로 다시 지정한다(메시 없는 FBX는 대상 없이 임포트되지 않는다).
 	const auto ReadReimportOptions = [](const FString& Path, FFbxAssetData& Data) -> bool
@@ -606,7 +608,8 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 				(AnimSequenceViewerPanel && AnimSequenceViewerPanel->HasFocusedWindow()) ||
 				(AnimGraphEditorPanel && AnimGraphEditorPanel->HasFocusedWindow()) ||
 				(BlendSpaceEditorPanel && BlendSpaceEditorPanel->HasFocusedWindow()) ||
-				(ParticleSystemEditorPanel && ParticleSystemEditorPanel->HasFocusedWindow());
+				(ParticleSystemEditorPanel && ParticleSystemEditorPanel->HasFocusedWindow()) ||
+				(AssetEditorPanel && AssetEditorPanel->HasFocusedWindow());
 			if (bAnimEditorFocused)
 				EditorCommandUI::ProcessShortcuts({ &SaveAll });
 			else
@@ -2144,6 +2147,10 @@ void UEditorEngine::SaveAllAssets()
 	if (ParticleSystemEditorPanel)
 	{
 		ParticleSystemEditorPanel->SaveIfDirty();
+	}
+	if (AssetEditorPanel)
+	{
+		AssetEditorPanel->SaveIfDirty();
 	}
 }
 

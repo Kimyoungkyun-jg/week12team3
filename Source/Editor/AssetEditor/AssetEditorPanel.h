@@ -18,8 +18,13 @@ public:
 	const char* GetPanelName() const override { return "Asset Editor"; }
 	bool IsRootPanel() const override { return true; }
 	void OpenAsset(const FString& Path);
+	void NewMaterial(const FString& InPath, bool bParticleSprite);
+	void NewMaterialInstance(const FString& InPath, const FString& ParentPath);
 	void RenderPreview(UEditorEngine* Engine);
 	void Release();
+	void SaveIfDirty();
+	bool HasFocusedWindow() const { return IsOpen() && bFocused; }
+
 private:
 	void SaveMaterial();
 	FString Path;
@@ -30,4 +35,6 @@ private:
 	float CameraSpeed = 1.0f;
 	TUniquePtr<FSkyboxRenderer> Skybox;
 	bool bVisible = false;
+	bool bDirty = false;
+	bool bFocused = false;
 };

@@ -45,6 +45,9 @@ public:
 	void SetCreateParticleSystemCallback(std::function<void(const FString&)> Callback) { OnCreateParticleSystem = std::move(Callback); }
 	void SetOpenParticleSystemCallback(std::function<void(const FString&)> Callback) { OnOpenParticleSystem = std::move(Callback); }
 
+	void SetCreateMaterialCallback(std::function<void(const FString&, bool)> Callback) { OnCreateMaterial = std::move(Callback); }
+	void SetCreateMaterialInstanceCallback(std::function<void(const FString&, const FString&)> Callback) { OnCreateMaterialInstance = std::move(Callback); }
+
 private:
 	void OpenItem(const fs::path& Path);
 	void RefreshFbxFolderCache();
@@ -71,6 +74,14 @@ private:
 	std::function<void(const FString&)> OnOpenSkeletalMesh;
 	std::function<void(const FString&)> OnCreateParticleSystem;
 	std::function<void(const FString&)> OnOpenParticleSystem;
+	std::function<void(const FString&, bool)> OnCreateMaterial;
+	std::function<void(const FString&, const FString&)> OnCreateMaterialInstance;
+
+	bool bOpenCreateMaterial = false;
+	bool bOpenCreateMaterialInstance = false;
+
+	bool bNewMaterialParticleSprite = false;
+	FString PendingMaterialInstanceParent;
 
 	char NewAssetName[64] = "NewWidget";
 	char SearchText[256] = "";

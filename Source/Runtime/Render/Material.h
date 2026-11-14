@@ -91,6 +91,26 @@ public:
 	// 에셋이면 경로만, 인스턴스면 기준 에셋 + 값을 그 자리에 쓰고, 불러올 때 인스턴스를 새로 만든다.
 	// null이면 빈 Record({})로 기록되고, 불러오면 nullptr이 된다.
 	static void SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterial*& Material);
+
+	void CopySettingsFrom(const UMaterial& Source);
+	void InitializeRenderResources(const UMaterial& Template);
+
 private:
 	inline static uint16 NextSortID = 0;
+};
+
+UCLASS()
+class UMaterialInstance : public UMaterial
+{
+	GENERATED_BODY()
+public:
+	void SetParent(const UMaterial* InParent);
+	void RefreshFromParent();
+	void Serialize(FStructuredArchive::FRecord Record) override;
+
+	bool bOverrideBaseColor = false;
+	FVector4 BaseColorOverride = FVector4(1, 1, 1, 1);
+
+	bool bOverrideTexture0 = false;
+	UTexture2D* Texture0Override = nullptr;
 };

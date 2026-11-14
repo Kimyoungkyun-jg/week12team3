@@ -613,6 +613,11 @@ void FParticleSystemEditorPanel::DrawDetailsPanel()
 					continue;
 				}
 
+				if (Material->PSOType != EPSOType::Particle_Sprite)
+				{
+					continue;
+				}
+
 				const FString MaterialPath = Material->GetPath();
 
 				if (ImGui::Selectable(MaterialPath.c_str(), Required->Material == Material))

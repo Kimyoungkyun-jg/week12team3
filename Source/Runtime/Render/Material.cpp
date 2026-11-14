@@ -45,45 +45,18 @@ void UMaterial::SetBlendState(EBlendState InBlendState)
 
 UMaterial* UMaterial::CreateInstance(const UMaterial* Source)
 {
-	if (Source == nullptr)
+	if (!Source)
 	{
 		return nullptr;
 	}
 
-	UMaterial* Instance = NewObject<UMaterial>();
-
-	Instance->ParamLayout = Source->ParamLayout;
-	Instance->Shader = Source->Shader;
-	Instance->Textures = Source->Textures;
-	Instance->BlendState = Source->BlendState;
-	Instance->DepthStencilState = Source->DepthStencilState;
-	Instance->SamplerState = Source->SamplerState;
-	Instance->BaseColor = Source->BaseColor;
-	Instance->SpecularColor = Source->SpecularColor;
-	Instance->Shininess = Source->Shininess;
-	Instance->UVScrollSpeed = Source->UVScrollSpeed;
-	Instance->bFlipNormalY = Source->bFlipNormalY;
-	Instance->SpecularFactor = Source->SpecularFactor;
-	Instance->EmissiveColor = Source->EmissiveColor;
-	Instance->EmissiveFactor = Source->EmissiveFactor;
-	Instance->UVTiling = Source->UVTiling;
-	Instance->WorldUVTileSize = Source->WorldUVTileSize;
-	Instance->bWorldUVLocalSpace = Source->bWorldUVLocalSpace;
-	Instance->ShadingModel = Source->ShadingModel;
-	Instance->bOverrideShadingModel = Source->bOverrideShadingModel;
-	Instance->PSOType = Source->PSOType;
-
-	// ParamBuffer는 TUniquePtr라 복사할 수 없다.
-	// 원본이 갖고 있으면 같은 크기로 새로 만들어 준다. 내용은 매 프레임 갱신되므로 옮기지 않는다.
-	if (Source->ParamBuffer)
+	UMaterialInstance* Instance = NewObject<UMaterialInstance>();
+	if (!Instance)
 	{
-		Instance->ParamBuffer = RenderCommand::CreateConstantBuffer(Source->ParamBuffer->GetBufferSize());
+		return nullptr;
 	}
 
-	Instance->BaseColor = Source->BaseColor;
-	Instance->bIsInstance = true;
-	Instance->Parent = Source;
-
+	Instance->SetParent(Source);
 	return Instance;
 }
 
@@ -91,11 +64,12 @@ const UMaterial* UMaterial::GetBaseAsset() const
 {
 	for (const UMaterial* Current = this; Current; Current = Current->Parent)
 	{
-		if (!Current->GetPath().empty())
+		if (!Current->bIsInstance && !Current->GetPath().empty())
 		{
 			return Current;
 		}
 	}
+
 	return nullptr;
 }
 
@@ -286,6 +260,49 @@ void UMaterial::SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMate
 		Material->Serialize(Record.EnterRecord("Instance"));   // 그다음 값을 채운다
 }
 
+void UMaterial::CopySettingsFrom(const UMaterial& Source)
+{
+	ParamLayout = Source.ParamLayout;
+	Shader = Source.Shader;
+	Textures = Source.Textures;
+	BlendState = Source.BlendState;
+	DepthStencilState = Source.DepthStencilState;
+	SamplerState = Source.SamplerState;
+	BaseColor = Source.BaseColor;
+	SpecularColor = Source.SpecularColor;
+	Shininess = Source.Shininess;
+	UVScrollSpeed = Source.UVScrollSpeed;
+	bFlipNormalY = Source.bFlipNormalY;
+	SpecularFactor = Source.SpecularFactor;
+	EmissiveColor = Source.EmissiveColor;
+	EmissiveFactor = Source.EmissiveFactor;
+	UVTiling = Source.UVTiling;
+	WorldUVTileSize = Source.WorldUVTileSize;
+	bWorldUVLocalSpace = Source.bWorldUVLocalSpace;
+	ShadingModel = Source.ShadingModel;
+	bOverrideShadingModel = Source.bOverrideShadingModel;
+	PSOType = Source.PSOType;
+
+	ParamBuffer.reset();
+	if (Source.ParamBuffer)
+	{
+		ParamBuffer = RenderCommand::CreateConstantBuffer(Source.ParamBuffer->GetBufferSize());
+	}
+}
+
+void UMaterial::InitializeRenderResources(const UMaterial& Template)
+{
+	Shader = Template.Shader;
+	ParamLayout = Template.ParamLayout;
+	DepthStencilState = Template.DepthStencilState;
+
+	ParamBuffer.reset();
+	if (Template.ParamBuffer)
+	{
+		ParamBuffer = RenderCommand::CreateConstantBuffer(Template.ParamBuffer->GetBufferSize());
+	}
+}
+
 void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 {
 	Super::Serialize(Record);   // "Properties" (리플렉션 프로퍼티. 지금은 없음)
@@ -346,5 +363,74 @@ void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 
 		if (Ar.IsLoading())
 			Textures.Add(Path.empty() ? nullptr : FindOrLoadTexture(Path));
+	}
+}
+
+void UMaterialInstance::SetParent(const UMaterial* InParent)
+{
+	Parent = InParent;
+	bIsInstance = true;
+	RefreshFromParent();
+}
+
+void UMaterialInstance::RefreshFromParent()
+{
+	if (!Parent)
+	{
+		return;
+	}
+
+	const bool bKeepBaseColor = bOverrideBaseColor;
+	const FVector4 SavedBaseColor = BaseColorOverride;
+	const bool bKeepTexture0 = bOverrideTexture0;
+	UTexture2D* SavedTexture0 = Texture0Override;
+
+	CopySettingsFrom(*Parent);
+
+	if (bKeepBaseColor)
+	{
+		BaseColor = SavedBaseColor;
+	}
+
+	if (bKeepTexture0)
+	{
+		if (Textures.IsEmpty())
+		{
+			Textures.Add(nullptr);
+		}
+		Textures[0] = SavedTexture0;
+	}
+
+	bIsInstance = true;
+}
+
+void UMaterialInstance::Serialize(FStructuredArchive::FRecord Record)
+{
+	Super::Serialize(Record);
+
+	FArchive& Ar = Record.GetUnderlyingArchive();
+
+	FString ParentPath = Ar.IsSaving() && Parent ? Parent->GetPath() : "";
+	Record << SA_VALUE("ParentAsset", ParentPath);
+	Record << SA_VALUE("OverrideBaseColor", bOverrideBaseColor);
+	Record << SA_VALUE("OverrideTexture0", bOverrideTexture0);
+
+	if (auto Slot = Record.TryEnterField("BaseColorOverride", Ar.IsSaving() && bOverrideBaseColor))
+	{
+		Slot.GetValue() << BaseColorOverride;
+	}
+
+	FString TexturePath = Ar.IsSaving() && Texture0Override ? Texture0Override->GetPath() : "";
+
+	if (auto Slot = Record.TryEnterField("Texture0Override", Ar.IsSaving() && bOverrideTexture0))
+	{
+		Slot.GetValue() << TexturePath;
+	}
+
+	if (Ar.IsLoading())
+	{
+		Parent = UAssetManager::GetAssetByPath<UMaterial>(ParentPath);
+		Texture0Override = TexturePath.empty() ? nullptr : FindOrLoadTexture(TexturePath);
+		RefreshFromParent();
 	}
 }

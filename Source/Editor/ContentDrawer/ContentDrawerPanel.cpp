@@ -28,6 +28,7 @@ FString SkeletonKeyFromPath(const std::filesystem::path& Path);
 
 #include "Render/SkeletalMesh.h"
 #include "Render/RenderCommand.h"
+#include "Render/Material.h"
 #include "Math/MathUtility.h"
 #include "Components/LightComponent.h"
 #include "Launch/LaunchEngineLoop.h"
@@ -174,6 +175,12 @@ void FContentDrawerPanel::OnRender()
 				strcpy_s(NewAssetName, "NewParticleSystem");
 				bOpenCreateParticleSystem = true;
 			}
+			if (ImGui::MenuItem("Create Material"))
+			{
+				strcpy_s(NewAssetName, "NewMaterial");
+				bNewMaterialParticleSprite = false;
+				bOpenCreateMaterial = true;
+			}
 			if (ImGui::MenuItem("Create AnimMontage") && OnOpenAsset)
 			{
 				strcpy_s(NewAssetName, "NewMontage");
@@ -190,6 +197,8 @@ void FContentDrawerPanel::OnRender()
 		if (bOpenCreateAnimGraph) { ImGui::OpenPopup("Create AnimGraph"); bOpenCreateAnimGraph = false; }
 		if (bOpenCreateBlendSpace) { ImGui::OpenPopup("Create BlendSpace"); bOpenCreateBlendSpace = false; }
 		if (bOpenCreateParticleSystem) { ImGui::OpenPopup("Create Particle System"); bOpenCreateParticleSystem = false; }
+		if (bOpenCreateMaterial) { ImGui::OpenPopup("Create Material"); bOpenCreateMaterial = false; } 
+		if (bOpenCreateMaterialInstance) { ImGui::OpenPopup("Create Material Instance"); bOpenCreateMaterialInstance = false; }
 		if (bOpenCreateAnimationAsset) { ImGui::OpenPopup("Create Animation Asset"); bOpenCreateAnimationAsset = false; }
 		if (ImGui::BeginPopupModal("Create Animation Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 		{
@@ -267,6 +276,93 @@ void FContentDrawerPanel::OnRender()
 			if (ImGui::Button("Create"))
 			{
 				OnCreateParticleSystem(FbxPath::ToString(Target));
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndDisabled();
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Cancel"))
+			{
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
+		}
+		if (ImGui::BeginPopupModal("Create Material", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::InputText("Name", NewAssetName, sizeof(NewAssetName));
+
+			int MaterialType = bNewMaterialParticleSprite ? 1 : 0;
+
+			if (ImGui::Combo("Material Type", &MaterialType, "Surface\0Particle Sprite\0"))
+			{
+				bNewMaterialParticleSprite = MaterialType == 1;
+			}
+
+			const FString Name = NewAssetName;
+			const fs::path Target = CurrentPath / (Name + ".material");
+
+			const bool bExists = fs::exists(Target);
+			const bool bInvalid = Name.empty() || Name == "." || Name == ".." || Name.find_first_of("\\/:*?\"<>|") != FString::npos;
+
+			if (bExists)
+			{
+				ImGui::TextUnformatted("An asset with this name already exists.");
+			}
+
+			if (bInvalid)
+			{
+				ImGui::TextUnformatted("Enter a valid asset name.");
+			}
+
+			ImGui::BeginDisabled(bExists || bInvalid || !OnCreateMaterial);
+
+			if (ImGui::Button("Create"))
+			{
+				OnCreateMaterial(FbxPath::ToString(Target), bNewMaterialParticleSprite);
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndDisabled();
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Cancel"))
+			{
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
+		}
+		if (ImGui::BeginPopupModal("Create Material Instance", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::TextWrapped("Parent Material: %s", PendingMaterialInstanceParent.c_str());
+
+			ImGui::InputText("Name", NewAssetName, sizeof(NewAssetName));
+
+			const FString Name = NewAssetName;
+			const fs::path Target = CurrentPath / (Name + ".material");
+
+			const bool bExists = fs::exists(Target);
+			const bool bInvalid = Name.empty() || Name == "." || Name == ".." || Name.find_first_of("\\/:*?\"<>|") != FString::npos;
+
+			if (bExists)
+			{
+				ImGui::TextUnformatted("An asset with this name already exists.");
+			}
+
+			if (bInvalid)
+			{
+				ImGui::TextUnformatted("Enter a valid asset name.");
+			}
+
+			ImGui::BeginDisabled(bExists || bInvalid || !OnCreateMaterialInstance);
+
+			if (ImGui::Button("Create"))
+			{
+				OnCreateMaterialInstance(FbxPath::ToString(Target), PendingMaterialInstanceParent);
 				ImGui::CloseCurrentPopup();
 			}
 
@@ -488,6 +584,15 @@ void FContentDrawerPanel::OnRender()
 					if (Extension == ".fbxbin")
 					{
 						DrawFbxBinaryMenu(PathString);
+					}
+					if (Extension == ".material" && UAssetManager::GetAssetByPath<UMaterial>(PathString))
+					{
+						if (ImGui::MenuItem("Create Material Instance"))
+						{
+							PendingMaterialInstanceParent = PathString;
+							strcpy_s(NewAssetName, "NewMaterialInstance");
+							bOpenCreateMaterialInstance = true;
+						}
 					}
 					if (Extension == ".fbxbin" && Path.filename().string().starts_with("SKEL_") &&
 						ImGui::MenuItem("Create AnimGraph"))
