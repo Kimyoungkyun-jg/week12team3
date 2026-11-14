@@ -193,7 +193,7 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 						return;
 					}
 
-					UMaterial* SectionMaterial = Mesh->GetMaterial(MaterialSlotIndex);
+					UMaterialInterface* SectionMaterial = Mesh->GetMaterial(MaterialSlotIndex);
 					if (!SectionMaterial)
 					{
 						return;
@@ -318,11 +318,11 @@ void UParticleSystemComponent::InitializeParticleSystem()
 		if (!Runtime->MeshTypeDataModule)
 		{
 			UParticleModuleRequired* RequiredModule = LODLevel->GetRequiredModule();
-			Runtime->SpriteMaterial = RequiredModule ? Cast<UMaterial>(RequiredModule->Material) : nullptr;
+			Runtime->SpriteMaterial = RequiredModule ? RequiredModule->Material : nullptr;
 
-			if (!Runtime->SpriteMaterial || Runtime->SpriteMaterial->PSOType != EPSOType::Particle_Sprite)
+			if (!Runtime->SpriteMaterial || Runtime->SpriteMaterial->GetPSOType() != EPSOType::Particle_Sprite)
 			{
-				Runtime->SpriteMaterial = UAssetManager::GetAssetByPath<UMaterial>("ParticleSpriteMaterial");
+				Runtime->SpriteMaterial = UAssetManager::GetAssetByPath<UMaterialInterface>("ParticleSpriteMaterial");
 
 				if (RequiredModule && Runtime->SpriteMaterial)
 				{

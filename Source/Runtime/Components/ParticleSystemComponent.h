@@ -11,7 +11,7 @@ struct FParticleEmitterRuntimeData
 	FParticleEmitterInstance Instance;
 	FDynamicSpriteEmitterData SpriteEmitterData;
 	UParticleModuleTypeDataMesh* MeshTypeDataModule = nullptr;
-	UMaterial* SpriteMaterial = nullptr;
+	UMaterialInterface* SpriteMaterial = nullptr;
 	FSubUVConstants ParticleParams{};
 };
 

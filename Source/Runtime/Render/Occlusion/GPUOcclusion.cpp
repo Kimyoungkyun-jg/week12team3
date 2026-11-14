@@ -551,8 +551,10 @@ void FGPUOcclusion::DrawOccluders(const FPrimitiveSceneProxy* const* Proxies, co
 		{
 			const FCachedMeshSection& Section = Proxy->GetSection(CachedLOD.FirstSection + s);
 			// 반투명 부분은 뒤를 가리지 않는다.
-			if (!Section.Material || Section.Material->BlendState != EBlendState::Opaque)
+			if (!Section.Material || Section.Material->GetBlendState() != EBlendState::Opaque)
+			{
 				continue;
+			}
 
 			FOccluderBucket* Target = nullptr;
 			for (FOccluderBucket& Bucket : OccluderBuckets)

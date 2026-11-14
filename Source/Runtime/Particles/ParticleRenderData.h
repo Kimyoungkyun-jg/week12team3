@@ -5,7 +5,7 @@
 #include "Render/Vertex.h"
 #include "Math/Matrix.h"
 
-class UMaterial;
+class UMaterialInterface;
 struct FViewContext;
 
 struct FDynamicEmitterReplayDataBase
@@ -14,7 +14,7 @@ struct FDynamicEmitterReplayDataBase
 	TArray<FBaseParticle> ActiveParticles;
 	FMatrix ComponentToWorld = FMatrix::Identity;
 	FVector ComponentScale = FVector(1.0f, 1.0f, 1.0f);
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 };
 
 struct FDynamicSpriteEmitterReplayData : public FDynamicEmitterReplayDataBase
