@@ -61,7 +61,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 			InitParticle(Particle);
 		}
 
-
+		
 		if (Particle.RelativeTime < FadeInEnd)
 		{
 			float Fade = Particle.RelativeTime / FadeInEnd;
@@ -77,7 +77,9 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 			Particle.Color.A = ParticleColor.A * 1.0f;
 		}
 
+		Particle.Size = Particle.BaseSize * FMath::Lerp(StartScale, EndScale, Particle.RelativeTime);
 		Particle.Location += Particle.Velocity * DeltaTime;
+		
 	}
 }
 
@@ -93,7 +95,8 @@ void UParticleSystemComponent::InitParticle(FBaseParticle& Particle)
 	Particle.Location = { WorldLocation.X + RandomRange(-SpreadRadius, SpreadRadius), WorldLocation.Y + RandomRange(-SpreadRadius, SpreadRadius), WorldLocation.Z };
 	Particle.Velocity = { RandomRange(-SpreadRadius, SpreadRadius), RandomRange(-SpreadRadius, SpreadRadius), RandomRange(MinRiseSpeed, MaxRiseSpeed) };
 	Particle.Lifetime = RandomRange(MinLifetime, MaxLifetime);
-	Particle.Size = RandomRange(MinSize, MaxSize);
+	Particle.BaseSize = RandomRange(MinSize, MaxSize);
+	Particle.Size = Particle.BaseSize;
 	Particle.Color = ParticleColor;
 	Particle.RelativeTime = 0.0f;
 }
@@ -118,9 +121,12 @@ void UParticleSystemComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, co
 
 		// FSubUVConstatns 데이터 채우기 
 		FSubUVConstants Constant;
-		Constant.CurrentFrame = 0.0f;
-		Constant.AtlasColSize = 1.0f;
-		Constant.AtlasRowSize = 1.0f;
+		int32 TotalAtlas = AtlasRows * AtlasCols;
+		int32 Frame = static_cast<int32>(Particles[i].RelativeTime * TotalAtlas);
+		Frame = FMath::Clamp(Frame, 0, TotalAtlas - 1);
+		Constant.CurrentFrame = (float)Frame;
+		Constant.AtlasColSize = (float)AtlasCols;
+		Constant.AtlasRowSize = (float)AtlasRows;
 		Constant.Alpha = Particles[i].Color.A;
 		Constant.DecodeSRGB = 0.0f;
 		Constant.Tint = FVector4(Particles[i].Color.R, Particles[i].Color.G, Particles[i].Color.B, 1.0f);

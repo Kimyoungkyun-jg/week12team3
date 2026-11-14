@@ -44,6 +44,11 @@ public:
 	float MaxRiseSpeed = 2.0f;
 
 	UPROPERTY(EditAnywhere)
+	float StartScale = 1.0f;
+	UPROPERTY(EditAnywhere)
+	float EndScale = 2.0f;
+
+	UPROPERTY(EditAnywhere)
 	float SpreadRadius = 0.3f;
 
 	UPROPERTY(EditAnywhere)
@@ -53,6 +58,11 @@ public:
 	float FadeInEnd = 0.1f;
 	UPROPERTY(EditAnywhere)
 	float FadeOutStart = 0.7f;
+
+	UPROPERTY(EditAnywhere)
+	int32 AtlasCols = 8;
+	UPROPERTY(EditAnywhere)
+	int32 AtlasRows = 8;
 
 private:
 	TArray<FSubUVConstants> Constants;
