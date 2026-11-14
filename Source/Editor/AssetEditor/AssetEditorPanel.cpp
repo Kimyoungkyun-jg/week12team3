@@ -21,7 +21,8 @@
 #include "Components/SkyLightComponent.h"
 #include "Components/BillboardComponent.h"
 #include "Engine/World.h"
-
+#include "Render/MaterialInstance.h"
+#include "Render/MaterialRenderProxy.h"
 namespace
 {
 bool EditAssetColor(const char* Label, float* Linear, bool Alpha = false)
@@ -87,8 +88,6 @@ void FAssetEditorPanel::NewMaterial(const FString& InPath, bool bParticleSprite)
 	}
 
 	NewMaterial->CopySettingsFrom(*Template);
-	NewMaterial->bIsInstance = false;
-	NewMaterial->Parent = nullptr;
 
 	Asset = NewMaterial;
 	bDirty = true;
@@ -121,7 +120,7 @@ void FAssetEditorPanel::NewMaterialInstance(const FString& InPath, const FString
 	Path = InPath;
 	Status.clear();
 
-	UMaterial* Parent = UAssetManager::LoadMaterialAsset(ParentPath);
+	UMaterialInterface* Parent = UAssetManager::LoadMaterialAsset(ParentPath);
 
 	if (!Parent)
 	{
@@ -130,14 +129,17 @@ void FAssetEditorPanel::NewMaterialInstance(const FString& InPath, const FString
 		return;
 	}
 
-	Asset = UMaterial::CreateInstance(Parent);
+	UMaterialInstanceConstant* NewInstance = NewObject<UMaterialInstanceConstant>();
 
-	if (!Asset)
+	if (!NewInstance)
 	{
 		Status = "Failed to create Material Instance.";
 		SetOpen(true);
 		return;
 	}
+
+	NewInstance->SetParent(Parent);
+	Asset = NewInstance;
 
 	bDirty = true;
 
@@ -191,13 +193,15 @@ void FAssetEditorPanel::OpenAsset(const FString& InPath)
 	bDirty = false;
 	SetOpen(true);
 	UStaticMesh* Mesh = Cast<UStaticMesh>(Asset);
-	UMaterial* Material = Cast<UMaterial>(Asset);
+	UMaterialInterface* MaterialInterface = Cast<UMaterialInterface>(Asset);
 
-	if (Material)
+	if (MaterialInterface)
 	{
-		if (Material->PSOType == EPSOType::Particle_Sprite ||
-			Material->PSOType == EPSOType::Particle_AlphaBlend ||
-			Material->PSOType == EPSOType::Particle_Additive)
+		const EPSOType MaterialType = MaterialInterface->GetPSOType();
+
+		if (MaterialType == EPSOType::Particle_Sprite ||
+			MaterialType == EPSOType::Particle_AlphaBlend ||
+			MaterialType == EPSOType::Particle_Additive)
 		{
 			return;
 		}
@@ -212,7 +216,10 @@ void FAssetEditorPanel::OpenAsset(const FString& InPath)
 	PreviewWorld = UWorld::CreateWorld(EWorldType::Editor, false);
 	auto* Actor = PreviewWorld->SpawnActor<AStaticMeshActor>();
 	Actor->GetStaticMeshComponent()->SetStaticMesh(Mesh);
-	if (Material) Actor->GetStaticMeshComponent()->SetMaterial(0, Material);
+	if (MaterialInterface)
+	{
+		Actor->GetStaticMeshComponent()->SetMaterial(0, MaterialInterface);
+	}
 	auto* Sun = PreviewWorld->SpawnActor<ADirectionalLightActor>();
 	Sun->GetBillboardComponent()->SetVisibility(false);
 	Sun->GetArrowComponent()->SetVisibility(false);
@@ -248,7 +255,15 @@ void FAssetEditorPanel::RenderPreview(UEditorEngine* Engine)
 
 void FAssetEditorPanel::SaveMaterial()
 {
-	UMaterial* Material = Cast<UMaterial>(Asset);
+	UMaterialInterface* MaterialInterface = Cast<UMaterialInterface>(Asset);
+
+	if (!MaterialInterface)
+	{
+		return;
+	}
+
+	UMaterial* Material = MaterialInterface->GetBaseMaterial();
+
 	if (!Material)
 	{
 		return;
@@ -258,7 +273,7 @@ void FAssetEditorPanel::SaveMaterial()
 
 	if (Extension == ".material")
 	{
-		if (UAssetManager::SaveMaterialAsset(Path, *Material))
+		if (UAssetManager::SaveMaterialAsset(Path, *MaterialInterface))
 		{
 			bDirty = false;
 			Status = "Saved";
@@ -268,6 +283,12 @@ void FAssetEditorPanel::SaveMaterial()
 			Status = "Failed to save Material.";
 		}
 
+		return;
+	}
+
+	if (Cast<UMaterialInstance>(MaterialInterface))
+	{
+		Status = "Material Instance cannot be written into FBX source data.";
 		return;
 	}
 
@@ -332,9 +353,13 @@ void FAssetEditorPanel::OnRender()
 	{
 		ImGui::TextWrapped("%s", Path.c_str());
 
-		if (auto* Material = Cast<UMaterial>(Asset))
+		if (UMaterialInterface* MaterialInterface = Cast<UMaterialInterface>(Asset))
 		{
-			UMaterialInstance* Instance = Cast<UMaterialInstance>(Material);
+			UMaterial* Material = MaterialInterface->GetBaseMaterial();
+			UMaterialInstance* Instance = Cast<UMaterialInstance>(MaterialInterface);
+
+			FMaterialRenderProxy MaterialProxy{};
+			MaterialInterface->GetRenderProxy(MaterialProxy);
 
 			if (ImGui::Button("Save Material"))
 			{
@@ -348,37 +373,41 @@ void FAssetEditorPanel::OnRender()
 
 			ImGui::TextUnformatted("Base Color");
 
+			FVector4 EffectiveBaseColor = MaterialProxy.BaseColor;
+
 			if (Instance)
 			{
-				bool bOverride = Instance->bOverrideBaseColor;
+				bool bOverride = Instance->HasBaseColorOverride();
 
 				if (ImGui::Checkbox("Override Base Color", &bOverride))
 				{
-					Instance->bOverrideBaseColor = bOverride;
-
 					if (bOverride)
 					{
-						Instance->BaseColorOverride = Material->BaseColor;
+						Instance->SetBaseColorOverride(EffectiveBaseColor);
 					}
 					else
 					{
-						Instance->RefreshFromParent();
+						Instance->ClearParameterOverride(FName("BaseColor"));
 					}
 
 					bDirty = true;
 				}
 
-				ImGui::BeginDisabled(!Instance->bOverrideBaseColor);
+				ImGui::BeginDisabled(!Instance->HasBaseColorOverride());
 			}
 
-			if (EditAssetColor("Base Color", &Material->BaseColor.X, true))
+			if (EditAssetColor("Base Color", &EffectiveBaseColor.X, true))
 			{
-				bDirty = true;
-
 				if (Instance)
 				{
-					Instance->BaseColorOverride = Material->BaseColor;
+					Instance->SetBaseColorOverride(EffectiveBaseColor);
 				}
+				else
+				{
+					Material->BaseColor = EffectiveBaseColor;
+				}
+
+				bDirty = true;
 			}
 
 			if (Instance)
@@ -440,48 +469,49 @@ void FAssetEditorPanel::OnRender()
 				ImGui::Separator();
 				ImGui::TextUnformatted("Textures");
 
+				UTexture2D* CurrentTexture = MaterialProxy.Textures.IsEmpty() ? nullptr : MaterialProxy.Textures[0];
+
 				if (Instance)
 				{
-					bool bOverride = Instance->bOverrideTexture0;
+					bool bOverride = Instance->HasTexture0Override();
 
 					if (ImGui::Checkbox("Override Texture 0", &bOverride))
 					{
-						Instance->bOverrideTexture0 = bOverride;
-
 						if (bOverride)
 						{
-							Instance->Texture0Override = Material->Textures.IsEmpty() ? nullptr : Material->Textures[0];
+							Instance->SetTexture0Override(CurrentTexture);
 						}
 						else
 						{
-							Instance->RefreshFromParent();
+							Instance->ClearParameterOverride(FName("Texture0"));
 						}
 
 						bDirty = true;
 					}
 
-					ImGui::BeginDisabled(!Instance->bOverrideTexture0);
+					ImGui::BeginDisabled(!Instance->HasTexture0Override());
 				}
 
-				UTexture2D* CurrentTexture = Material->Textures.IsEmpty() ? nullptr : Material->Textures[0];
 				const FString CurrentTexturePath = CurrentTexture ? CurrentTexture->GetPath() : "None";
 
 				if (ImGui::BeginCombo("Texture Slot 0", CurrentTexturePath.c_str()))
 				{
 					if (ImGui::Selectable("None", CurrentTexture == nullptr))
 					{
-						if (Material->Textures.IsEmpty())
+						if (Instance)
 						{
-							Material->Textures.Add(nullptr);
+							Instance->SetTexture0Override(nullptr);
 						}
 						else
 						{
-							Material->Textures[0] = nullptr;
-						}
-
-						if (Instance)
-						{
-							Instance->Texture0Override = nullptr;
+							if (Material->Textures.IsEmpty())
+							{
+								Material->Textures.Add(nullptr);
+							}
+							else
+							{
+								Material->Textures[0] = nullptr;
+							}
 						}
 
 						bDirty = true;
@@ -500,18 +530,20 @@ void FAssetEditorPanel::OnRender()
 
 						if (ImGui::Selectable(TexturePath.c_str(), CurrentTexture == Texture))
 						{
-							if (Material->Textures.IsEmpty())
+							if (Instance)
 							{
-								Material->Textures.Add(Texture);
+								Instance->SetTexture0Override(Texture);
 							}
 							else
 							{
-								Material->Textures[0] = Texture;
-							}
-
-							if (Instance)
-							{
-								Instance->Texture0Override = Texture;
+								if (Material->Textures.IsEmpty())
+								{
+									Material->Textures.Add(Texture);
+								}
+								else
+								{
+									Material->Textures[0] = Texture;
+								}
 							}
 
 							bDirty = true;
@@ -528,11 +560,13 @@ void FAssetEditorPanel::OnRender()
 			}
 		}
 
-		if (auto* Material = Cast<UMaterial>(Asset))
+		if (UMaterialInterface* MaterialInterface = Cast<UMaterialInterface>(Asset))
 		{
-			if (Material->PSOType == EPSOType::Particle_Sprite ||
-				Material->PSOType == EPSOType::Particle_AlphaBlend ||
-				Material->PSOType == EPSOType::Particle_Additive)
+			const EPSOType MaterialType = MaterialInterface->GetPSOType();
+
+			if (MaterialType == EPSOType::Particle_Sprite ||
+				MaterialType == EPSOType::Particle_AlphaBlend ||
+				MaterialType == EPSOType::Particle_Additive)
 			{
 				ImGui::TextDisabled("Particle Material preview is available through Particle System Editor.");
 			}

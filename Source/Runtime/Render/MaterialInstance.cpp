@@ -6,6 +6,7 @@
 #include "Serialization/TypeSerializer.h"
 #include "Serialization/StructuredArchive.h"
 #include "Serialization/StructuredArchiveSlots.h"
+#include "Serialization/MathSerialization.h"
 
 UMaterialInstance::UMaterialInstance()
 	: SortID(NextSortID++)

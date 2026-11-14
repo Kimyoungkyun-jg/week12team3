@@ -95,11 +95,14 @@ namespace
 		// MaterialSlots를 실제 UMaterial로 변환
 		for (const FStaticMaterialSlot& Slot : Mesh->MeshData.MaterialSlots)
 		{
-			UMaterial* Material = UMaterial::CreateInstance(DefaultMaterial);
+			UMaterial* Material = NewObject<UMaterial>();
+
 			if (!Material)
 			{
 				return nullptr;
 			}
+
+			Material->CopySettingsFrom(*DefaultMaterial);
 			Material->BaseColor = Slot.BaseColor;
 			Material->ApplyImportedProperties(Slot);
 			if (Material->BaseColor.W < 1.0f)
