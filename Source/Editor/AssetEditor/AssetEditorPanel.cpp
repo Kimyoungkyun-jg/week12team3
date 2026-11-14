@@ -55,9 +55,19 @@ void FAssetEditorPanel::Release()
 
 void FAssetEditorPanel::NewMaterial(const FString& InPath, bool bParticleSprite)
 {
-	Release();
+	if (bDirty && Asset && !Asset->IsRetired())
+	{
+		SaveMaterial();
+		if (bDirty)
+		{
+			return;
+		}
+	}
 
+	Release();
+	bDirty = false;
 	Path = InPath;
+	Status.clear();
 
 	UMaterial* Template = UAssetManager::GetAssetByPath<UMaterial>(bParticleSprite ? "ParticleSpriteMaterial" : "DefaultMaterial");
 
@@ -97,9 +107,19 @@ void FAssetEditorPanel::NewMaterial(const FString& InPath, bool bParticleSprite)
 
 void FAssetEditorPanel::NewMaterialInstance(const FString& InPath, const FString& ParentPath)
 {
-	Release();
+	if (bDirty && Asset && !Asset->IsRetired())
+	{
+		SaveMaterial();
+		if (bDirty)
+		{
+			return;
+		}
+	}
 
+	Release();
+	bDirty = false;
 	Path = InPath;
+	Status.clear();
 
 	UMaterial* Parent = UAssetManager::LoadMaterialAsset(ParentPath);
 

@@ -495,8 +495,11 @@ UMaterial* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
 
 	const json Root = json::parse(Input, nullptr, false);
 
-	if (!Root.is_object() || !Root.contains("Class") || !Root.contains("Object"))
+	if (!Root.is_object() ||
+		!Root.contains("Class") || !Root["Class"].is_string() ||
+		!Root.contains("Object") || !Root["Object"].is_object())
 	{
+		HTR_LOG(Warning, "Invalid Material asset structure: {}", Key);
 		LoadingMaterials.erase(Key);
 		return nullptr;
 	}
@@ -506,13 +509,24 @@ UMaterial* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
 
 	if (ClassName == UMaterialInstance::StaticClass()->Name)
 	{
-		if (!Root["Object"].contains("ParentAsset"))
+		const json& ObjectData = Root["Object"];
+
+		if (!ObjectData.contains("ParentAsset") || !ObjectData["ParentAsset"].is_string())
 		{
+			HTR_LOG(Warning, "Material Instance '{}' has an invalid ParentAsset.", Key);
 			LoadingMaterials.erase(Key);
 			return nullptr;
 		}
 
-		const FString ParentPath = Root["Object"]["ParentAsset"].get<FString>();
+		const FString ParentPath = ObjectData["ParentAsset"].get<FString>();
+
+		if (ParentPath.empty())
+		{
+			HTR_LOG(Warning, "Material Instance '{}' has an empty ParentAsset.", Key);
+			LoadingMaterials.erase(Key);
+			return nullptr;
+		}
+
 		UMaterial* Parent = LoadMaterialAsset(ParentPath);
 
 		if (!Parent)
