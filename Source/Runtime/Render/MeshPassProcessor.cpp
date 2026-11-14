@@ -89,7 +89,7 @@ namespace
 		FMaterialRenderProxy MaterialProxy{};
 		Material->GetRenderProxy(MaterialProxy);
 
-		UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
+		const UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
 		if (!BaseMaterial)
 		{
 			return false;
@@ -170,10 +170,15 @@ namespace
 		UMaterialInterface* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options, bool bGPUSkinning, uint8 LOD,
 		const void* OverrideParams = nullptr, uint32 OverrideSize = 0)
 	{
+		if (!Mesh || !Material)
+		{
+			return false;
+		}
+
 		FMaterialRenderProxy MaterialProxy{};
 		Material->GetRenderProxy(MaterialProxy);
 
-		UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
+		const UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
 		if (!BaseMaterial)
 		{
 			return false;

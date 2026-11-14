@@ -650,7 +650,7 @@ void USkeletalMeshComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, cons
 
 	for (const FSkeletalMeshSection& Section : MeshData.Sections)
 	{
-		UMaterial* SectionMaterial = HeatmapMaterial ? HeatmapMaterial : GetMaterial(static_cast<int32>(Section.MaterialSlotIndex));
+		UMaterialInterface* SectionMaterial = HeatmapMaterial ? HeatmapMaterial : GetMaterial(static_cast<int32>(Section.MaterialSlotIndex));
 		if (!SectionMaterial) continue;
 
 		FRenderPacket Packet;

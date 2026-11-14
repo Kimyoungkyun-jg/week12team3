@@ -10,6 +10,7 @@
 #include "Collision/HitResult.h"
 #include "Collision/Ray.h"
 #include "Render/Material.h"
+#include "Render/MaterialInstance.h"
 #include "Engine/World.h"
 
 AProjectileActor::AProjectileActor()
@@ -25,7 +26,15 @@ AProjectileActor::AProjectileActor()
     static UMaterial* VisibleBulletMaterial = nullptr;
     if (!VisibleBulletMaterial)
     {
-        VisibleBulletMaterial = UMaterial::CreateInstance(UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial"));
+		UMaterial* BaseMaterial = UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
+		if (BaseMaterial)
+		{
+			VisibleBulletMaterial = NewObject<UMaterial>();
+			if (VisibleBulletMaterial)
+			{
+				VisibleBulletMaterial->CopySettingsFrom(*BaseMaterial);
+			}
+		}
         if (VisibleBulletMaterial)
         {
             VisibleBulletMaterial->BaseColor = FVector4(1.0f, 0.35f, 0.02f, 1.0f);
@@ -164,19 +173,18 @@ void AProjectileActor::HandleProjectileImpact(AActor* OtherActor, const FHitResu
     }
     else if (AStaticMeshActor* StaticMesh = Cast<AStaticMeshActor>(OtherActor))
     {
-        static UMaterial* BulletMaterial = nullptr;
+		static UMaterialInstanceDynamic* BulletMaterial = nullptr;
         if (!BulletMaterial)
         {
             UMaterial* BaseMaterial = UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
             UTexture2D* BulletTexture = UAssetManager::Get().LoadTexture("Assets/Textures/bulletdecal.png");
             if (BaseMaterial && BulletTexture)
             {
-                BulletMaterial = UMaterial::CreateInstance(BaseMaterial);
+				BulletMaterial = UMaterial::CreateDynamicInstance(BaseMaterial);
                 if (BulletMaterial)
                 {
-                    BulletMaterial->Textures.Empty();
-                    BulletMaterial->Textures.Add(BulletTexture);
-                    BulletMaterial->BaseColor = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+					BulletMaterial->SetTexture0Override(BulletTexture);
+					BulletMaterial->SetBaseColorOverride(FVector4(1.0f, 1.0f, 1.0f, 1.0f));
                 }
             }
         }

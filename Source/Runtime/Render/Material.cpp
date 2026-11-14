@@ -10,6 +10,8 @@
 #include "UObject/UObjectGlobals.h"
 #include "Serialization/TypeSerializer.h"
 #include "Serialization/MathSerialization.h"
+#include "Serialization/StructuredArchive.h"
+#include "Serialization/StructuredArchiveSlots.h"
 
 namespace
 {

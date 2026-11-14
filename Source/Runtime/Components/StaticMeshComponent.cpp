@@ -58,7 +58,7 @@ FString UStaticMeshComponent::GetMaterialSlotName(int32 SlotIndex) const
 	return StaticMesh->GetMeshData().MaterialSlots[SlotIndex].Name;
 }
 
-UMaterial* UStaticMeshComponent::GetDefaultMaterial(int32 SlotIndex) const
+UMaterialInterface* UStaticMeshComponent::GetDefaultMaterial(int32 SlotIndex) const
 {
 	return StaticMesh ? StaticMesh->GetMaterial(static_cast<uint32>(SlotIndex)) : nullptr;
 }

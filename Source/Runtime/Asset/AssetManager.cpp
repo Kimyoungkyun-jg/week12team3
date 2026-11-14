@@ -446,8 +446,19 @@ void UAssetManager::CreateParticleSpriteMaterial()
 }
 
 void UAssetManager::CreateEditorArrowMaterial() {
-	UMaterial* BaseMaterial{ GetAssetByPath<UMaterial>("DefaultMaterial") };
-	UMaterial* ArrowMaterial{ UMaterial::CreateInstance(BaseMaterial) };
+	UMaterial* BaseMaterial = GetAssetByPath<UMaterial>("DefaultMaterial");
+	if (!BaseMaterial)
+	{
+		return;
+	}
+
+	UMaterial* ArrowMaterial = NewObject<UMaterial>();
+	if (!ArrowMaterial)
+	{
+		return;
+	}
+
+	ArrowMaterial->CopySettingsFrom(*BaseMaterial);
 	ArrowMaterial->Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/EditorArrowShader.hlsl");
 	ArrowMaterial->BaseColor = FVector4{ 1.0f, 1.0f, 1.0f, 1.0f };
 	RegisterAsset("EditorArrowMaterial", ArrowMaterial);
@@ -457,8 +468,19 @@ void UAssetManager::CreateEditorArrowMaterial() {
 // BaseColor가 흰색이라 히트 색이 그대로 나온다. 조명은 Viewer가 Unlit 뷰 모드로 끈다.
 void UAssetManager::CreateBoneWeightHeatmapMaterial()
 {
-	UMaterial* HeatmapMaterial{ UMaterial::CreateInstance(GetAssetByPath<UMaterial>("DefaultMaterial")) };
-	if (!HeatmapMaterial) return;
+	UMaterial* BaseMaterial = GetAssetByPath<UMaterial>("DefaultMaterial");
+	if (!BaseMaterial)
+	{
+		return;
+	}
+
+	UMaterial* HeatmapMaterial = NewObject<UMaterial>();
+	if (!HeatmapMaterial)
+	{
+		return;
+	}
+
+	HeatmapMaterial->CopySettingsFrom(*BaseMaterial);
 	HeatmapMaterial->Textures.Empty();
 	HeatmapMaterial->BaseColor = FVector4{ 1.0f, 1.0f, 1.0f, 1.0f };
 	HeatmapMaterial->EmissiveColor = FVector{ 0.0f, 0.0f, 0.0f };

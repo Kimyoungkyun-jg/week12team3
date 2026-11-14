@@ -565,7 +565,7 @@ void UEditorEngine::RefreshImportedAssets()
 		if (!Component || !Component->GetOwner() || Component->GetOwner()->GetWorld() != EditorWorld) continue;
 
 		// 메시를 바꾸면 슬롯 덮어쓰기가 지워지므로 먼저 보관한다.
-		TArray<UMaterial*> Overrides;
+		TArray<UMaterialInterface*> Overrides;
 		for (int32 Slot = 0; Slot < Component->GetNumMaterials(); ++Slot) Overrides.Add(Current(Component->GetOverrideMaterial(Slot)));
 		if (auto* Skinned = Cast<USkinnedMeshComponent>(Component)) Skinned->SetSkeletalMesh(Current(Skinned->GetSkeletalMesh()));
 		else if (auto* Static = Cast<UStaticMeshComponent>(Component)) Static->SetStaticMesh(Current(Static->GetStaticMesh()));

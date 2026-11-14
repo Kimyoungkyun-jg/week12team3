@@ -105,7 +105,11 @@ void UMaterialInstance::Serialize(FStructuredArchive::FRecord Record)
 
 	if (Ar.IsLoading())
 	{
-		Parent = UAssetManager::LoadMaterialAsset(ParentPath);
+		Parent = UAssetManager::GetAssetByPath<UMaterialInterface>(ParentPath);
+		if (!Parent)
+		{
+			Parent = UAssetManager::LoadMaterialAsset(ParentPath);
+		}
 		Texture0Override = TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(TexturePath);
 	}
 }

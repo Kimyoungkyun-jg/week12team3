@@ -4,6 +4,7 @@
 
 #include "Asset/AssetManager.h"
 #include "Render/Material.h"
+#include "Render/MaterialInstance.h"
 #include "Render/Texture2D.h"
 
 ADecalActor::ADecalActor()
@@ -56,24 +57,17 @@ ADecalActor::ADecalActor()
 	}
 
 	// 공유 BillboardMaterial을 직접 수정하지 않는다.
-	UMaterial* IconMaterial = UMaterial::CreateInstance(BaseMaterial);
+	UMaterialInstanceDynamic* IconMaterial = UMaterial::CreateDynamicInstance(BaseMaterial);
 
 	if (!IconMaterial)
+	{
 		return;
-
-	if (IconMaterial->Textures.IsEmpty())
-	{
-		IconMaterial->Textures.Add(Icon);
-	}
-	else
-	{
-		IconMaterial->Textures[0] = Icon;
 	}
 
-	IconMaterial->BaseColor = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	IconMaterial->SetTexture0Override(Icon);
+	IconMaterial->SetBaseColorOverride(FVector4(1.0f, 1.0f, 1.0f, 1.0f));
 
-	BillboardComponent->SetMaterial(
-		0, IconMaterial);
+	BillboardComponent->SetMaterial(0, IconMaterial);
 }
 
 void ADecalActor::SetTemporaryLifetime(float Seconds)

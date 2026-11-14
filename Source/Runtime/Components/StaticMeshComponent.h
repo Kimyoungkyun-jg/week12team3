@@ -25,7 +25,7 @@ public:
 
 	virtual int32 GetNumMaterials() const override;
 	virtual FString GetMaterialSlotName(int32 SlotIndex) const override;
-	virtual UMaterial* GetDefaultMaterial(int32 SlotIndex) const override;
+	virtual UMaterialInterface* GetDefaultMaterial(int32 SlotIndex) const override;
 
 	void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext) override;
 	void SubmitToRenderQueue(FRenderQueue& Queue, uint32 LODIndex);

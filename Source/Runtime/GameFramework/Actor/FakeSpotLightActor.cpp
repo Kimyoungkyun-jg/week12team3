@@ -5,6 +5,8 @@
 #include "Asset/AssetManager.h"
 #include "Render/Material.h"
 #include "Render/Texture2D.h"
+#include "Render/Material.h"
+#include "Render/MaterialInstance.h"
 
 AFakeSpotLightActor::AFakeSpotLightActor()
 {
@@ -31,7 +33,7 @@ AFakeSpotLightActor::AFakeSpotLightActor()
 			return;
 		}
 
-		UMaterial* DecalMaterialInstance = UMaterial::CreateInstance(DecalMaterial);
+		UMaterialInstanceDynamic* DecalMaterialInstance = UMaterial::CreateDynamicInstance(DecalMaterial);
 		if (!DecalMaterialInstance)
 		{
 			HTR_LOG(
@@ -39,15 +41,9 @@ AFakeSpotLightActor::AFakeSpotLightActor()
 				"Failed to create instance of decal material for FakeSpotLightActor.");
 			return;
 		}
-		if (DecalMaterialInstance->Textures.IsEmpty())
-		{
-			DecalMaterialInstance->Textures.Add(DecalTexture);
-		}
-		else
-		{
-			DecalMaterialInstance->Textures[0] = DecalTexture;
-		}
-		DecalMaterialInstance->BaseColor = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+
+		DecalMaterialInstance->SetTexture0Override(DecalTexture);
+		DecalMaterialInstance->SetBaseColorOverride(FVector4(1.0f, 1.0f, 1.0f, 1.0f));
 		DecalComponent->SetDecalMaterial(DecalMaterialInstance);
 	}
 
@@ -75,22 +71,16 @@ AFakeSpotLightActor::AFakeSpotLightActor()
 			return;
 		}
 
-		UMaterial* BillboardMaterialInstance = UMaterial::CreateInstance(BillboardMaterial);
+		UMaterialInstanceDynamic* BillboardMaterialInstance = UMaterial::CreateDynamicInstance(BillboardMaterial);
 		if (!BillboardMaterial)
 		{
 			HTR_LOG(
 				Warning,
 				"Failed to create instance of billboard material for FakeSpotLightActor."
 			);
+			return;
 		}
-		if (BillboardMaterialInstance->Textures.IsEmpty())
-		{
-			BillboardMaterialInstance->Textures.Add(BillboardTexture);
-		}
-		else
-		{
-			BillboardMaterialInstance->Textures[0] = BillboardTexture;
-		}
+		BillboardMaterialInstance->SetTexture0Override(BillboardTexture);
 		FakeLightBillboardComponent->SetMaterial(0, BillboardMaterialInstance);
 	}
 
@@ -116,7 +106,7 @@ AFakeSpotLightActor::AFakeSpotLightActor()
 				"FakeSpotLightActor icon billboard material or texture could not be loaded.");
 			return;
 		}
-		UMaterial* BillboardMaterialInstance = UMaterial::CreateInstance(BillboardMaterial);
+		UMaterialInstanceDynamic* BillboardMaterialInstance = UMaterial::CreateDynamicInstance(BillboardMaterial);
 		if (!BillboardMaterial)
 		{
 			HTR_LOG(
@@ -124,14 +114,7 @@ AFakeSpotLightActor::AFakeSpotLightActor()
 				"Failed to create instance of icon billboard material for FakeSpotLightActor."
 			);
 		}
-		if (BillboardMaterialInstance->Textures.IsEmpty())
-		{
-			BillboardMaterialInstance->Textures.Add(BillboardTexture);
-		}
-		else
-		{
-			BillboardMaterialInstance->Textures[0] = BillboardTexture;
-		}
+		BillboardMaterialInstance->SetTexture0Override(BillboardTexture);
 		IconBillboardComponent->SetMaterial(0, BillboardMaterialInstance);
 	}
 }
