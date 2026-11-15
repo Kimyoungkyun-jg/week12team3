@@ -56,6 +56,10 @@ public:
 	void CreateEditorArrowMaterial();
 	void CreateBoneWeightHeatmapMaterial();
 
+	static UMaterialInterface* LoadMaterialAsset(const FString& AssetPath);
+	static bool SaveMaterialAsset(const FString& AssetPath, UMaterialInterface& Material);
+	void LoadDeferredAssets();
+
 	template <typename T>
 	static T* GetAssetByPath(const FString& InPath)
 	{

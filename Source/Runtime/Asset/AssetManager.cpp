@@ -162,6 +162,7 @@ void UAssetManager::Init(const FAssetLoadProgress& OnProgress)
 	Get().CreateDefaultMeshes();
 	Get().CreateBillboardMaterial();
 	Get().CreateParticleMaterial();
+	Get().LoadDeferredAssets();
 	Get().CreateEditorArrowMaterial();
 	Get().CreateBoneWeightHeatmapMaterial();
 }
@@ -193,13 +194,12 @@ void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgre
 		// 키와 경로는 UTF-8이다. generic_string()은 ANSI 코드페이지로 바꾸므로 한글·이모지 이름에서 깨지거나 예외가 난다.
 		FString Key = FbxPath::ToString(fs::relative(Files[i], AssetRoot));
 		FString Path = FbxPath::ToString(Files[i]);
+		const FString Extension = GetAssetExtension(Path);
 		AssetPathMap.Add(Key, Path);
 		if (Extension != ".material")
 		{
 			LoadAsset(Key, Path);
 		}
-
-		const FString Extension = GetAssetExtension(Path);
 		if (Extension == ".fbx") FbxFiles.Add(Path);
 		else if (Extension == ".fbxbin")
 		{
@@ -439,6 +439,97 @@ void UAssetManager::CreateBoneWeightHeatmapMaterial()
 	HeatmapMaterial->BaseColor = FVector4{ 1.0f, 1.0f, 1.0f, 1.0f };
 	HeatmapMaterial->EmissiveColor = FVector{ 0.0f, 0.0f, 0.0f };
 	RegisterAsset("BoneWeightHeatmapMaterial", HeatmapMaterial);
+}
+
+UMaterialInterface* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
+{
+	if (UMaterialInterface* Cached = GetAssetByPath<UMaterialInterface>(AssetPath)) return Cached;
+
+	const FString Key = AssetPath.rfind("Assets/", 0) == 0 ? AssetPath.substr(7) : AssetPath;
+	if (FbxPath::FromString(Key).extension() != ".material") return nullptr;
+
+	static std::set<FString> LoadingMaterials;
+	if (!LoadingMaterials.insert(Key).second) return nullptr;
+
+	const fs::path File = ContentPaths::AssetRoot / FbxPath::FromString(Key);
+	std::ifstream Input(File);
+	if (!Input)
+	{
+		LoadingMaterials.erase(Key);
+		return nullptr;
+	}
+
+	const json Root = json::parse(Input, nullptr, false);
+	if (!Root.is_object() || !Root.contains("Class") || !Root["Class"].is_string() || !Root.contains("Object") || !Root["Object"].is_object())
+	{
+		HTR_LOG(Warning, "Invalid Material asset structure: {}", Key);
+		LoadingMaterials.erase(Key);
+		return nullptr;
+	}
+
+	const FString ClassName = Root["Class"].get<FString>();
+	UMaterialInterface* Material = nullptr;
+	if (ClassName == UMaterialInstanceConstant::StaticClass()->Name || ClassName == "UMaterialInstance") Material = NewObject<UMaterialInstanceConstant>();
+	else if (ClassName == UMaterial::StaticClass()->Name) Material = NewObject<UMaterial>();
+
+	const FString LegacyClassName = ClassName == "UMaterialInstance" ? "UMaterialInstance" : "";
+	if (!Material || !FJsonArchive::LoadObject(Material, FbxPath::ToString(File), LegacyClassName))
+	{
+		if (Material) delete Material;
+		LoadingMaterials.erase(Key);
+		return nullptr;
+	}
+
+	if (UMaterial* BaseMaterial = Cast<UMaterial>(Material))
+	{
+		UMaterial* Template = (BaseMaterial->PSOType == EPSOType::Particle_AlphaBlend || BaseMaterial->PSOType == EPSOType::Particle_Additive)
+			? GetAssetByPath<UMaterial>("SubUVMaterial")
+			: GetAssetByPath<UMaterial>("DefaultMaterial");
+		if (!Template)
+		{
+			delete BaseMaterial;
+			LoadingMaterials.erase(Key);
+			return nullptr;
+		}
+		BaseMaterial->InitializeRenderResources(*Template);
+		if (BaseMaterial->PSOType == EPSOType::StaticMesh_Opaque || BaseMaterial->PSOType == EPSOType::StaticMesh_Translucent) BaseMaterial->SetBlendState(BaseMaterial->BlendState);
+	}
+
+	Get().RegisterAsset(Key, Material);
+	LoadingMaterials.erase(Key);
+	return Material;
+}
+
+bool UAssetManager::SaveMaterialAsset(const FString& AssetPath, UMaterialInterface& Material)
+{
+	const FString Key = AssetPath.rfind("Assets/", 0) == 0 ? AssetPath.substr(7) : AssetPath;
+	if (FbxPath::FromString(Key).extension() != ".material") return false;
+	if (UMaterialInstance* Instance = Cast<UMaterialInstance>(&Material))
+	{
+		if (Instance->IsDynamicInstance() || !Instance->GetParent() || Instance->GetParent()->GetPath().empty()) return false;
+	}
+
+	const fs::path File = ContentPaths::AssetRoot / FbxPath::FromString(Key);
+	fs::path Temp = File;
+	Temp += L".editing";
+	std::error_code Ec;
+	fs::create_directories(File.parent_path(), Ec);
+	if (Ec || !FJsonArchive::SaveObject(&Material, FbxPath::ToString(Temp))) return false;
+	if (!MoveFileExW(Temp.c_str(), File.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+	{
+		fs::remove(Temp, Ec);
+		return false;
+	}
+	Get().RegisterAsset(Key, &Material);
+	return true;
+}
+
+void UAssetManager::LoadDeferredAssets()
+{
+	for (const auto& [Key, Path] : AssetPathMap)
+	{
+		if (GetAssetExtension(Path) == ".material") LoadMaterialAsset(Key);
+	}
 }
 
 void UAssetManager::Shutdown()
