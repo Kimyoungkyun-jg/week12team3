@@ -1,8 +1,9 @@
 #include "EnginePCH.h"
 
 #include "RenderCommand.h"
-
 #include "Material.h"
+#include "Render/MaterialRenderProxy.h"
+#include "Render/MaterialInstance.h"
 
 #include "Asset/AssetManager.h"
 #include "UObject/UObjectGlobals.h"
@@ -33,6 +34,31 @@ void UMaterial::ApplyImportedProperties(const FImportedMaterialProperties& Prope
 	bOverrideShadingModel = Properties.bOverrideShadingModel;
 }
 
+void UMaterial::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
+{
+	OutProxy = FMaterialRenderProxy{};
+
+	OutProxy.BaseMaterial = this;
+	OutProxy.Textures = Textures;
+	OutProxy.BaseColor = BaseColor;
+	OutProxy.SpecularColor = SpecularColor;
+	OutProxy.Shininess = Shininess;
+	OutProxy.UVScrollSpeed = UVScrollSpeed;
+	OutProxy.bFlipNormalY = bFlipNormalY;
+	OutProxy.SpecularFactor = SpecularFactor;
+	OutProxy.EmissiveColor = EmissiveColor;
+	OutProxy.EmissiveFactor = EmissiveFactor;
+	OutProxy.UVTiling = UVTiling;
+	OutProxy.WorldUVTileSize = WorldUVTileSize;
+	OutProxy.bWorldUVLocalSpace = bWorldUVLocalSpace;
+	OutProxy.ShadingModel = ShadingModel;
+	OutProxy.bOverrideShadingModel = bOverrideShadingModel;
+	OutProxy.PSOType = PSOType;
+	OutProxy.BlendState = BlendState;
+	OutProxy.DepthStencilState = DepthStencilState;
+	OutProxy.SamplerState = SamplerState;
+}
+
 void UMaterial::SetBlendState(EBlendState InBlendState)
 {
 	BlendState = InBlendState;
@@ -41,6 +67,24 @@ void UMaterial::SetBlendState(EBlendState InBlendState)
 		PSOType = BlendState == EBlendState::Opaque ? EPSOType::StaticMesh_Opaque : EPSOType::StaticMesh_Translucent;
 		DepthStencilState = BlendState == EBlendState::Opaque ? EDepthStencilState::Default : EDepthStencilState::ReadOnly;
 	}
+}
+
+UMaterialInstanceDynamic* UMaterial::CreateDynamicInstance(UMaterialInterface* Parent)
+{
+	if (!Parent)
+	{
+		return nullptr;
+	}
+
+	UMaterialInstanceDynamic* Instance = NewObject<UMaterialInstanceDynamic>();
+
+	if (!Instance)
+	{
+		return nullptr;
+	}
+
+	Instance->SetParent(Parent);
+	return Instance;
 }
 
 UMaterial* UMaterial::CreateInstance(const UMaterial* Source)
@@ -284,6 +328,92 @@ void UMaterial::SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMate
 
 	if (Material)
 		Material->Serialize(Record.EnterRecord("Instance"));   // 그다음 값을 채운다
+}
+
+void UMaterial::CopySettingsFrom(const UMaterial& Source)
+{
+	ParamLayout = Source.ParamLayout;
+	Shader = Source.Shader;
+	Textures = Source.Textures;
+	BlendState = Source.BlendState;
+	DepthStencilState = Source.DepthStencilState;
+	SamplerState = Source.SamplerState;
+	BaseColor = Source.BaseColor;
+	SpecularColor = Source.SpecularColor;
+	Shininess = Source.Shininess;
+	UVScrollSpeed = Source.UVScrollSpeed;
+	bFlipNormalY = Source.bFlipNormalY;
+	SpecularFactor = Source.SpecularFactor;
+	EmissiveColor = Source.EmissiveColor;
+	EmissiveFactor = Source.EmissiveFactor;
+	UVTiling = Source.UVTiling;
+	WorldUVTileSize = Source.WorldUVTileSize;
+	bWorldUVLocalSpace = Source.bWorldUVLocalSpace;
+	ShadingModel = Source.ShadingModel;
+	bOverrideShadingModel = Source.bOverrideShadingModel;
+	PSOType = Source.PSOType;
+
+	ParamBuffer.reset();
+	if (Source.ParamBuffer)
+	{
+		ParamBuffer = RenderCommand::CreateConstantBuffer(Source.ParamBuffer->GetBufferSize());
+	}
+}
+
+void UMaterial::InitializeRenderResources(const UMaterial& Template)
+{
+	Shader = Template.Shader;
+	ParamLayout = Template.ParamLayout;
+	DepthStencilState = Template.DepthStencilState;
+
+	ParamBuffer.reset();
+	if (Template.ParamBuffer)
+	{
+		ParamBuffer = RenderCommand::CreateConstantBuffer(Template.ParamBuffer->GetBufferSize());
+	}
+}
+
+void UMaterial::SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterialInterface*& Material)
+{
+	FArchive& Ar = Slot.GetUnderlyingArchive();
+	FStructuredArchive::FRecord Record = Slot.EnterRecord();
+
+	const bool bIsAsset = Ar.IsSaving() && Material && !Material->GetPath().empty();
+	if (auto AssetSlot = Record.TryEnterField("Asset", bIsAsset))
+	{
+		FString Path = Ar.IsSaving() ? Material->GetPath() : FString();
+		AssetSlot.GetValue() << Path;
+
+		if (Ar.IsLoading())
+		{
+			Material = UAssetManager::LoadMaterialAsset(Path);
+		}
+
+		return;
+	}
+
+	const bool bIsInstance = Ar.IsSaving() && Cast<UMaterialInstance>(Material) != nullptr;
+	auto InstanceSlot = Record.TryEnterField("Instance", bIsInstance);
+
+	if (!InstanceSlot.IsSet())
+	{
+		if (Ar.IsLoading())
+		{
+			Material = nullptr;
+		}
+
+		return;
+	}
+
+	if (Ar.IsLoading())
+	{
+		Material = NewObject<UMaterialInstanceDynamic>();
+	}
+
+	if (UMaterialInstance* Instance = Cast<UMaterialInstance>(Material))
+	{
+		Instance->Serialize(InstanceSlot.GetValue().EnterRecord());
+	}
 }
 
 void UMaterial::Serialize(FStructuredArchive::FRecord Record)

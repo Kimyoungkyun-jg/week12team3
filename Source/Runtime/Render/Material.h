@@ -9,6 +9,7 @@
 #include "Material.generated.h"
 
 class FShader;
+class UMaterialInstanceDynamic;
 
 enum class EMaterialParamLayout
 {
@@ -64,6 +65,20 @@ public:
 	ELightingModel ShadingModel = ELightingModel::Phong;
 	bool bOverrideShadingModel = false;
 	void SetBlendState(EBlendState InBlendState);
+
+	UMaterial* GetBaseMaterial() const override { return const_cast<UMaterial*>(this); }
+	void GetRenderProxy(FMaterialRenderProxy& OutProxy) const override;
+
+	EPSOType GetPSOType() const override { return PSOType; }
+	EBlendState GetBlendState() const override { return BlendState; }
+	ESamplerState GetSamplerState() const override { return SamplerState; }
+	uint16 GetSortID() const override { return SortID; }
+
+	static UMaterialInstanceDynamic* CreateDynamicInstance(UMaterialInterface* Parent);
+
+	void CopySettingsFrom(const UMaterial& Source);
+	void InitializeRenderResources(const UMaterial& Template);
+
 	void ApplyImportedProperties(const FImportedMaterialProperties& Properties);
 
 	bool bIsInstance = false;
