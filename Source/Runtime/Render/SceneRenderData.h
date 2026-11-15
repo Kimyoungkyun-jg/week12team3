@@ -56,7 +56,7 @@ struct FParticleInstanceData
 struct FParticleInstancedBatch
 {
 	UStaticMesh* Mesh = nullptr;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	uint32 StartInstance = 0;
 	uint32 InstanceCount = 0;
 	uint32 StartIndex = 0;
@@ -119,7 +119,7 @@ struct FGpuParticleBatch
 {
 	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
 	UStaticMesh* Mesh = nullptr;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	uint32 MaxParticles = 0;
 	uint32 ParticleStride = 112;
 	bool bResetRequested = false;

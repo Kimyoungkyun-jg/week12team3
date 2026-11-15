@@ -9,6 +9,8 @@
 #include "Render/RenderCommand.h"
 
 #include "Render/RenderResourceManager.h"
+#include "Render/MaterialInstance.h"
+#include "Serialization/JsonArchive.h"
 
 #include "Asset/ObjImporter/ObjImporter.h"
 #include "Asset/FbxImporter/FbxAssetImporter.h"
@@ -192,7 +194,10 @@ void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgre
 		FString Key = FbxPath::ToString(fs::relative(Files[i], AssetRoot));
 		FString Path = FbxPath::ToString(Files[i]);
 		AssetPathMap.Add(Key, Path);
-		LoadAsset(Key, Path);
+		if (Extension != ".material")
+		{
+			LoadAsset(Key, Path);
+		}
 
 		const FString Extension = GetAssetExtension(Path);
 		if (Extension == ".fbx") FbxFiles.Add(Path);
@@ -264,6 +269,10 @@ void UAssetManager::LoadAsset(const FString& Key, const FString& Path) {
 	}
 	if (Extension == ".obj") {
 		LoadObjStaticMesh(Path);
+	}
+	if (Extension == ".material")
+	{
+		LoadMaterialAsset(Key);
 	}
 	if (Extension == ".blendspace") {
 		LoadBlendSpace(Key);

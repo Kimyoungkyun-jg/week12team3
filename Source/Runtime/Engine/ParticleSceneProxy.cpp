@@ -115,7 +115,7 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 	OutInstances.Reserve(StartInstance + static_cast<uint32>(Count));
 
 	UStaticMesh* BatchMesh = nullptr;
-	UMaterial* BatchMaterial = nullptr;
+	UMaterialInterface* BatchMaterial = nullptr;
 	uint32 BatchStart = StartInstance;
 	uint32 BatchCount = 0;
 
@@ -128,7 +128,7 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 		Batch.StartInstance = BatchStart;
 		Batch.InstanceCount = BatchCount;
 		Batch.bIsMesh = false;
-		Batch.BlendState = BatchMaterial->BlendState;
+		Batch.BlendState = BatchMaterial->GetBlendState();
 		OutBatches.Add(Batch);
 		BatchStart = static_cast<uint32>(OutInstances.Num());
 		BatchCount = 0;
@@ -163,9 +163,7 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 					if (bHasSections && SecIndexCount == 0) continue;
 
 					const uint32 SlotIndex = bHasSections ? MeshData.Sections[SecIdx].MaterialSlotIndex : 0;
-					UMaterial* EntryMat = FirstSprite.Material
-						? FirstSprite.Material
-						: EntryMesh->GetMaterial(SlotIndex);
+					UMaterialInterface* EntryMat = FirstSprite.Material ? FirstSprite.Material : EntryMesh->GetMaterial(SlotIndex);
 					if (!EntryMat) continue;
 
 					const uint32 SecBatchStart = static_cast<uint32>(OutInstances.Num());

@@ -24,6 +24,8 @@ class USkeleton;
 class UBlendSpace1D;
 class UBlendSpace2D;
 class USoundWave;
+class UMaterialInterface;
+class UMaterialInstanceConstant;
 
 namespace fs = std::filesystem;
 

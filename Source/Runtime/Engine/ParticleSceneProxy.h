@@ -16,7 +16,7 @@ struct FParticleSpriteRenderData
 	float Width = 1.0f;
 	float Height = 1.0f;
 	float Rotation = 0.0f;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	FSubUVConstants Constants{};
 	UStaticMesh* Mesh = nullptr;
 	FVector MeshScale = FVector::OneVector;
@@ -27,7 +27,7 @@ struct FParticleSpriteRenderData
 struct FParticleDynamicGpuEmitterData
 {
 	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	mutable FGpuParticleSimParams SimParams{};
 	mutable TArray<uint8> PendingSpawnBytes;
 	TArray<FVector4> CurveLUT;
@@ -73,6 +73,6 @@ private:
 	void SyncPrimitiveState();
 
 	UStaticMesh* QuadMesh = nullptr;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	FParticleDynamicData DynamicData;
 };

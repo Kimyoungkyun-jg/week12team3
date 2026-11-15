@@ -105,6 +105,8 @@ public:
 	// 에셋이면 경로만, 인스턴스면 기준 에셋 + 값을 그 자리에 쓰고, 불러올 때 인스턴스를 새로 만든다.
 	// null이면 빈 Record({})로 기록되고, 불러오면 nullptr이 된다.
 	static void SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterial*& Material);
+	static void SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterialInterface*& Material);
+
 private:
 	inline static uint16 NextSortID = 0;
 };

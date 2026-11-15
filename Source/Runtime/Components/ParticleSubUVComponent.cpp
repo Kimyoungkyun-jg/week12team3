@@ -44,10 +44,9 @@ bool UParticleSubUVComponent::SetParticleTexture(const FString& Path)
 
 	if (Material != TextureMaterialInstance)
 	{
-		UMaterial* Instance = UMaterial::CreateInstance(Material);
 		delete TextureMaterialInstance;
-		TextureMaterialInstance = Instance;
-		SetMaterial(0, Instance);
+		TextureMaterialInstance = UMaterial::CreateDynamicInstance(Material);
+		SetMaterial(0, TextureMaterialInstance);
 	}
 	if (Material->Textures.IsEmpty()) Material->Textures.Add(Texture);
 	else Material->Textures[0] = Texture;
@@ -311,7 +310,7 @@ void UParticleSubUVComponent::SubmitParticleToRenderQueue(
 // 실제 재질의 블렌드 상태로 프레임 공통 정렬과 View별 정렬을 구분한다.
 bool UParticleSubUVComponent::UsesOpaqueMaterial() const
 {
-    return Material && Material->BlendState == EBlendState::Opaque;
+	return Material && Material->GetBlendState() == EBlendState::Opaque;
 }
 
 void UParticleSubUVComponent::PushRenderStateToProxy()

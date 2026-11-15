@@ -28,13 +28,13 @@ public:
 	FStaticMeshData MeshData;
 
 	// Renderer가 실제로 Bind할 런타임 재질 객체
-	TArray<UMaterial*> Materials;
+	TArray<UMaterialInterface*> Materials;
 
 	TUniquePtr<FVertexBuffer> VertexBuffer;
 	TUniquePtr<FIndexBuffer> IndexBuffer;
 
 	const FStaticMeshData& GetMeshData() const { return MeshData; }
-	UMaterial* GetMaterial(uint32 SlotIndex) const;
+	UMaterialInterface* GetMaterial(uint32 SlotIndex) const;
 
 public:
     TArray<FStaticMeshLODResource> AdditionalLODs;
@@ -64,7 +64,7 @@ public:
     void RebuildRenderData();
     const FLODSphere& GetLocalLODSphere() const { return LocalLODSphere; }
     const FBox& GetRenderBounds() const { return RenderBounds; }
-    TSharedPtr<const FMeshRenderState> GetRenderState(const std::vector<UMaterial*>& Materials);
+	TSharedPtr<const FMeshRenderState> GetRenderState(const std::vector<UMaterialInterface*>& Materials);
     void RegisterProxy(FPrimitiveSceneProxy* Proxy);
     void UnregisterProxy(FPrimitiveSceneProxy* Proxy);
 
@@ -73,10 +73,10 @@ private:
     static inline uint16 NextSortID = 0;
     struct FMaterialSlotsHash
     {
-        size_t operator()(const std::vector<UMaterial*>& Slots) const;
+		size_t operator()(const std::vector<UMaterialInterface*>& Slots) const;
     };
     FLODSphere LocalLODSphere;
     FBox RenderBounds;
-    std::unordered_map<std::vector<UMaterial*>, TWeakPtr<const FMeshRenderState>, FMaterialSlotsHash> RenderStates;
+	std::unordered_map<std::vector<UMaterialInterface*>, TWeakPtr<const FMeshRenderState>, FMaterialSlotsHash> RenderStates;
     TArray<FPrimitiveSceneProxy*> RenderProxies;
 };

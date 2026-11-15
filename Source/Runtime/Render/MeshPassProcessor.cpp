@@ -4,6 +4,7 @@
 #include "Render/SceneView.h"
 #include "Render/RenderResourceManager.h"
 #include "Render/Mesh.h"
+#include "Render/MaterialRenderProxy.h"
 #include "Render/NormalMapUtils.h"
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -25,7 +26,7 @@ namespace
 		return Packet.Model ? *Packet.Model : FMatrix::Identity;
 	}
 
-	FForwardMaterialConstants MakeForwardMaterial(const UMaterial& Material)
+	FForwardMaterialConstants MakeForwardMaterial(const FMaterialRenderProxy& Material)
 	{
 		FForwardMaterialConstants Params{};
 		Params.BaseColor = Material.BaseColor;
@@ -48,7 +49,7 @@ namespace
 		return Params;
 	}
 
-	FStaticMeshMaterialParams MakeStaticMaterial(const UMaterial& Material)
+	FStaticMeshMaterialParams MakeStaticMaterial(const FMaterialRenderProxy& Material)
 	{
 		const auto Forward = MakeForwardMaterial(Material);
 		FStaticMeshMaterialParams Params{};
@@ -81,10 +82,22 @@ namespace
 	}
 
 	bool BuildBatch(FMeshDrawBatch& Batch, UStaticMesh* Mesh, uint8 LOD,
-		UMaterial* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options,
+		UMaterialInterface* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options,
 		const void* OverrideParams = nullptr, uint32 OverrideSize = 0)
 	{
-		if (!Mesh || !Material) return false;
+		if (!Mesh || !Material)
+		{
+			return false;
+		}
+
+		FMaterialRenderProxy MaterialProxy{};
+		Material->GetRenderProxy(MaterialProxy);
+
+		const UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
+		if (!BaseMaterial)
+		{
+			return false;
+		}
 		Batch.VertexBuffer = Mesh->GetVertexBuffer(LOD);
 		Batch.IndexBuffer = Mesh->GetIndexBuffer(LOD);
 		if (!Batch.VertexBuffer || !Batch.IndexBuffer) return false;
@@ -95,7 +108,7 @@ namespace
 			FPipelineState* Base = FRenderResourceManager::GetPSO(bWorldNormal
 				? EPSOType::StaticMesh_WorldNormal : EPSOType::StaticMesh_Forward);
 			FShaderProgram* Shader = bWorldNormal ? (Base ? Base->Shader : nullptr)
-				: GetMaterialForwardShader(*Material, Options);
+												  : GetMaterialForwardShader(*BaseMaterial, Options);
 			if (!Base || !Shader || !Shader->VertexShader || !Shader->PixelShader) return false;
 			Batch.Pipeline = *Base;
 			Batch.Pipeline.Shader = Shader;

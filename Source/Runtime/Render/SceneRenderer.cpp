@@ -1367,8 +1367,10 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 			RenderCommand::BindConstantBuffer(1, RenderData.ParticleBatchCB.get(), EShaderBindFlagBits::Vertex);
 			RenderCommand::BindMesh(Batch.Mesh, 0);
 
-			UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
-			RenderCommand::BindShaderResource(0, AtlasTex, EShaderBindFlagBits::Pixel);
+			FMaterialRenderProxy MaterialProxy{};
+			Batch.Material->GetRenderProxy(MaterialProxy);
+			UTexture2D* AtlasTex = !MaterialProxy.Textures.IsEmpty() ? MaterialProxy.Textures[0] : nullptr;
+			RenderCommand::BindSamplerState(0, MaterialProxy.SamplerState, EShaderBindFlagBits::Pixel);
 			RenderCommand::BindSamplerState(0, Batch.Material->SamplerState, EShaderBindFlagBits::Pixel);
 			const uint32 DrawIndexCount = Batch.IndexCount > 0 ? Batch.IndexCount : IndexBuffer->GetIndexCount();
 			RenderCommand::DrawIndexedInstanced(DrawIndexCount, Batch.InstanceCount, Batch.StartIndex, 0, 0);
@@ -1416,8 +1418,10 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 				RenderCommand::BindShaderResource(1, Res->ParticleBuffer.get(), EShaderBindFlagBits::Vertex);
 				RenderCommand::BindMesh(Batch.Mesh, 0);
 
-				UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
-				RenderCommand::BindShaderResource(0, AtlasTex, EShaderBindFlagBits::Pixel);
+				FMaterialRenderProxy MaterialProxy{};
+				Batch.Material->GetRenderProxy(MaterialProxy);
+				UTexture2D* AtlasTex = !MaterialProxy.Textures.IsEmpty() ? MaterialProxy.Textures[0] : nullptr;
+				RenderCommand::BindSamplerState(0, MaterialProxy.SamplerState, EShaderBindFlagBits::Pixel);
 				RenderCommand::BindSamplerState(0, Batch.Material->SamplerState, EShaderBindFlagBits::Pixel);
 				RenderCommand::DrawIndexedInstanced(IndexBuffer->GetIndexCount(), Batch.MaxParticles, 0, 0, 0);
 			}
@@ -1530,7 +1534,7 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 			{
 				FGatherChunk& Out = GatherChunks[ChunkIndex];      // 이 조각 전용. 다른 스레드는 절대 안 건드림
 				// (머티리얼, 메시, LOD) 묶음 찾기. 조합이 몇 개뿐이라 선형 탐색이면 충분하고, 바로 전 묶음을 먼저 본다.
-				const auto FindGroup = [&Out](UMaterial* Material, UStaticMesh* Mesh, uint8 LOD) -> FStaticDrawGroup&
+				const auto FindGroup = [&Out](UMaterialInterface* Material, UStaticMesh* Mesh, uint8 LOD) -> FStaticDrawGroup&
 					{
 						if (Out.LastGroup < Out.Groups.size())
 						{
@@ -1594,7 +1598,7 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 						const FCachedMeshSection& Section = Proxy->GetSection(CachedLOD.FirstSection + i);
 						Out.LODTriangles[LOD] += Section.IndexCount / 3;
 
-						if (bStaticGroups && Section.Material && Section.Material->PSOType == EPSOType::StaticMesh_Opaque)
+						if (bStaticGroups && Section.Material && Section.Material->GetPSOType() == EPSOType::StaticMesh_Opaque)
 						{
 							FStaticDrawGroup& Group = FindGroup(Section.Material, Mesh, static_cast<uint8>(LOD));
 							Group.Items.push_back({ Proxy, Slot, Section.StartIndex, Section.IndexCount, bOccludedByGpu ? 1u : 0u });
