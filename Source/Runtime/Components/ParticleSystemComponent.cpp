@@ -911,7 +911,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 		const float AtlasRowSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesVertical)) : 1.0f;
 		const float AtlasColSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesHorizontal)) : 1.0f;
 		const uint32 SubUVOffset = SubUVModule ? Emitter.GetModuleDataOffset(SubUVModule) : 0;
-		UMaterial* EmitterMaterial = LOD->RequiredModule->Material;
+		UMaterialInterface* EmitterMaterial = LOD->RequiredModule->Material;
 		const float MeshBaseRadius = MeshAsset
 			? ((MeshAsset->GetRenderBounds().Max - MeshAsset->GetRenderBounds().Min) * 0.5f).Length()
 			: 0.0f;

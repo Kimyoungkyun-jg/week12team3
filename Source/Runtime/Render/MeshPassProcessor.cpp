@@ -68,7 +68,7 @@ namespace
 
 	uint64 GroupKey(const FStaticDrawGroup& Group)
 	{
-		return (static_cast<uint64>(Group.Material->SortID) << 47)
+		return (static_cast<uint64>(Group.Material->GetSortID()) << 47)
 			| (static_cast<uint64>(Group.Mesh->SortID) << 31)
 			| (static_cast<uint64>(Group.LODIndex & 0x3) << 29);
 	}
@@ -121,13 +121,13 @@ namespace
 			Batch.SamplerStages = Batch.MaterialStages;
 			Batch.bForceWireframe = !bWorldNormal && View.bIsWireframe;
 
-			FForwardMaterialConstants Params = MakeForwardMaterial(*Material);
+			FForwardMaterialConstants Params = MakeForwardMaterial(MaterialProxy);
 			std::memcpy(Batch.MaterialData.data(), &Params, sizeof(Params));
 			Batch.MaterialDataSize = sizeof(Params);
 		}
 		else
 		{
-			EPSOType Type = Material->PSOType;
+			EPSOType Type = MaterialProxy.PSOType;
 			if (Pass == EMeshPassType::GBuffer && Type == EPSOType::StaticMesh_Opaque)
 				Type = EPSOType::StaticMesh_GBuffer;
 			else if (View.bIsWireframe && Type == EPSOType::StaticMesh_Opaque)
@@ -137,11 +137,11 @@ namespace
 			Batch.Pipeline = *Pipeline;
 			Batch.bForceWireframe = Pass == EMeshPassType::GBuffer && View.bIsWireframe;
             Batch.ObjectStages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
-			if (Material->PSOType == EPSOType::StaticMesh_Opaque ||
-				Material->PSOType == EPSOType::StaticMesh_Translucent ||
-				Material->PSOType == EPSOType::StaticMesh_Wireframe)
+			if (MaterialProxy.PSOType == EPSOType::StaticMesh_Opaque ||
+				MaterialProxy.PSOType == EPSOType::StaticMesh_Translucent ||
+				MaterialProxy.PSOType == EPSOType::StaticMesh_Wireframe)
 			{
-				FStaticMeshMaterialParams Params = MakeStaticMaterial(*Material);
+				FStaticMeshMaterialParams Params = MakeStaticMaterial(MaterialProxy);
 				std::memcpy(Batch.MaterialData.data(), &Params, sizeof(Params));
 				Batch.MaterialDataSize = sizeof(Params);
 			}
@@ -151,13 +151,13 @@ namespace
 				Batch.MaterialDataSize = OverrideSize;
 			}
 		}
-		Batch.Sampler = Material->SamplerState;
-		Batch.Textures.Reserve(Material->Textures.Num());
-		for (int32 Index = 0; Index < Material->Textures.Num(); ++Index)
+		Batch.Sampler = MaterialProxy.SamplerState;
+		Batch.Textures.Reserve(MaterialProxy.Textures.Num());
+		for (int32 Index = 0; Index < MaterialProxy.Textures.Num(); ++Index)
 		{
 			// Forward 조명은 t8 이상을 전역 리소스에 사용한다.
 			if (bUsesUberShader && Index >= 8) break;
-			UTexture2D* Texture = Material->Textures[Index];
+			UTexture2D* Texture = MaterialProxy.Textures[Index];
 			EShaderBindFlagBits Stages = EShaderBindFlagBits::Pixel;
 			if (bUsesUberShader && Index == 1)
 				Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
@@ -172,10 +172,21 @@ namespace
 	}
 
 	bool BuildBatch(FMeshDrawBatch& Batch, USkeletalMesh* Mesh,
-		UMaterial* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options, bool bGPUSkinning, uint8 LOD,
+		UMaterialInterface* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options, bool bGPUSkinning, uint8 LOD,
 		const void* OverrideParams = nullptr, uint32 OverrideSize = 0)
 	{
-		if (!Mesh || !Material) return false;
+		if (!Mesh || !Material)
+		{
+			return false;
+		}
+
+		FMaterialRenderProxy MaterialProxy{};
+		Material->GetRenderProxy(MaterialProxy);
+		const UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
+		if (!BaseMaterial)
+		{
+			return false;
+		}
 		Batch.VertexBuffer = Mesh->GetVertexBuffer(LOD);
 		Batch.IndexBuffer = Mesh->GetIndexBuffer(LOD);
 		if (!Batch.VertexBuffer || !Batch.IndexBuffer) return false;
@@ -187,7 +198,7 @@ namespace
 			FPipelineState* Base = FRenderResourceManager::GetPSO(bWorldNormal
 				? EPSOType::StaticMesh_WorldNormal : EPSOType::StaticMesh_Forward);
 			FShaderProgram* Shader = bWorldNormal ? FRenderResourceManager::GetWorldNormalShaderProgram(bGPUSkinning)
-				: GetMaterialForwardShader(*Material, Options, bGPUSkinning);
+				: GetMaterialForwardShader(*BaseMaterial, Options, bGPUSkinning);
 			if (!Base || !Shader || !Shader->VertexShader || !Shader->PixelShader) return false;
 			Batch.Pipeline = *Base;
 			Batch.Pipeline.Shader = Shader;
@@ -200,13 +211,13 @@ namespace
 			Batch.SamplerStages = Batch.MaterialStages;
 			Batch.bForceWireframe = !bWorldNormal && View.bIsWireframe;
 
-			FForwardMaterialConstants Params = MakeForwardMaterial(*Material);
+			FForwardMaterialConstants Params = MakeForwardMaterial(MaterialProxy);
 			std::memcpy(Batch.MaterialData.data(), &Params, sizeof(Params));
 			Batch.MaterialDataSize = sizeof(Params);
 		}
 		else
 		{
-			EPSOType Type = Material->PSOType;
+			EPSOType Type = MaterialProxy.PSOType;
 			if (Pass == EMeshPassType::GBuffer && Type == EPSOType::StaticMesh_Opaque)
 				Type = EPSOType::StaticMesh_GBuffer;
 			else if (View.bIsWireframe && Type == EPSOType::StaticMesh_Opaque)
@@ -221,11 +232,11 @@ namespace
 			}
 			Batch.bForceWireframe = Pass == EMeshPassType::GBuffer && View.bIsWireframe;
             Batch.ObjectStages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
-			if (Material->PSOType == EPSOType::StaticMesh_Opaque ||
-				Material->PSOType == EPSOType::StaticMesh_Translucent ||
-				Material->PSOType == EPSOType::StaticMesh_Wireframe)
+			if (MaterialProxy.PSOType == EPSOType::StaticMesh_Opaque ||
+				MaterialProxy.PSOType == EPSOType::StaticMesh_Translucent ||
+				MaterialProxy.PSOType == EPSOType::StaticMesh_Wireframe)
 			{
-				FStaticMeshMaterialParams Params = MakeStaticMaterial(*Material);
+				FStaticMeshMaterialParams Params = MakeStaticMaterial(MaterialProxy);
 				std::memcpy(Batch.MaterialData.data(), &Params, sizeof(Params));
 				Batch.MaterialDataSize = sizeof(Params);
 			}
@@ -235,13 +246,13 @@ namespace
 				Batch.MaterialDataSize = OverrideSize;
 			}
 		}
-		Batch.Sampler = Material->SamplerState;
-		Batch.Textures.Reserve(Material->Textures.Num());
-		for (int32 Index = 0; Index < Material->Textures.Num(); ++Index)
+		Batch.Sampler = MaterialProxy.SamplerState;
+		Batch.Textures.Reserve(MaterialProxy.Textures.Num());
+		for (int32 Index = 0; Index < MaterialProxy.Textures.Num(); ++Index)
 		{
 			// Forward 조명은 t8 이상을 전역 리소스에 사용한다.
 			if (bUsesUberShader && Index >= 8) break;
-			UTexture2D* Texture = Material->Textures[Index];
+			UTexture2D* Texture = MaterialProxy.Textures[Index];
 			EShaderBindFlagBits Stages = EShaderBindFlagBits::Pixel;
 			if (bUsesUberShader && Index == 1)
 				Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
@@ -352,7 +363,7 @@ bool FMeshPassProcessor::Build(const FSceneView& View, const FRenderQueue& Queue
 	{
 		const FRenderPacket& Packet = Queue[Index];
 		if (Pass == EMeshPassType::WorldNormal &&
-			(!Packet.Material || Packet.Material->PSOType != EPSOType::StaticMesh_Opaque)) continue;
+			(!Packet.Material || Packet.Material->GetPSOType() != EPSOType::StaticMesh_Opaque)) continue;
 		FMeshDrawBatch Batch;
 		bool bBatchBuilt = false;
 		if (Packet.Mesh)

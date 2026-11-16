@@ -13,6 +13,7 @@ class FScene;
 class UStaticMesh;
 class USkeletalMesh;
 class UMaterial;
+class UMaterialInterface;
 class FVertexBuffer;
 class FIndexBuffer;
 class FStructuredBuffer;
@@ -87,7 +88,7 @@ struct FBillboardProxyData
 {
 	FPrimitiveRenderStateData BaseState;
 	UStaticMesh* QuadMesh = nullptr;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	FBillboardSubUVConstants IconParams{};
 	float IconSize = 1.0f;
 	bool bEditorIcon = false;
@@ -237,7 +238,7 @@ public:
 
 private:
 	UStaticMesh* QuadMesh = nullptr;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	FBillboardSubUVConstants IconParams{};
 	float IconSize = 1.0f;
 	bool bEditorIcon = false;

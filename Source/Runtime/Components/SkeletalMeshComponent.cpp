@@ -626,7 +626,7 @@ FSkeletalMeshProxyData USkeletalMeshComponent::BuildProxyData() const
 			Range.FirstSection = State->Sections.Num();
 			for (const FSkeletalMeshSection& Section : SkeletalMesh->GetMeshData(LOD).Sections)
 			{
-				UMaterial* Material = GetMaterial(Section.MaterialSlotIndex);
+				UMaterialInterface* Material = GetMaterial(Section.MaterialSlotIndex);
 				if (Material)
 					State->Sections.Add({ Material, Section.StartIndex, Section.IndexCount });
 			}
@@ -707,7 +707,7 @@ void USkeletalMeshComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, cons
 
 	for (const FSkeletalMeshSection& Section : MeshData.Sections)
 	{
-		UMaterial* SectionMaterial = HeatmapMaterial ? HeatmapMaterial : GetMaterial(static_cast<int32>(Section.MaterialSlotIndex));
+		UMaterialInterface* SectionMaterial = HeatmapMaterial ? HeatmapMaterial : GetMaterial(static_cast<int32>(Section.MaterialSlotIndex));
 		if (!SectionMaterial) continue;
 
 		FRenderPacket Packet;

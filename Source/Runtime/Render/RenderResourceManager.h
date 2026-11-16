@@ -38,6 +38,7 @@ enum class EPSOType : uint8
 	Particle_MeshOpaque,
 	Particle_MeshTranslucent,
 	Particle_MeshAdditive,
+	Particle_Sprite,
 	Count
 };
 

@@ -58,8 +58,8 @@ public:
 	virtual UStaticMesh* GetRenderMesh() const { return nullptr; }
 
 	virtual int32 GetNumMaterials() const { return 0; }
-	virtual UMaterial* GetMaterial(int32 SlotIndex) const { return nullptr; }
-	virtual void SetMaterial(int32 SlotIndex, UMaterial* InMaterial) {}
+	virtual UMaterialInterface* GetMaterial(int32 SlotIndex) const { return nullptr; }
+	virtual void SetMaterial(int32 SlotIndex, UMaterialInterface* InMaterial) {}
 	//
 	// FShader* GetShader() const { return Shader.get(); };
 

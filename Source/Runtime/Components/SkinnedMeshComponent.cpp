@@ -29,7 +29,7 @@ FString USkinnedMeshComponent::GetMaterialSlotName(int32 SlotIndex) const
 	return FString();
 }
 
-UMaterial* USkinnedMeshComponent::GetDefaultMaterial(int32 SlotIndex) const
+UMaterialInterface* USkinnedMeshComponent::GetDefaultMaterial(int32 SlotIndex) const
 {
 	return SkeletalMesh ? SkeletalMesh->GetMaterial(SlotIndex) : nullptr;
 }

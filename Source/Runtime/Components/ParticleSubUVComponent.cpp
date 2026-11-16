@@ -2,6 +2,7 @@
 #include "Components/ParticleSubUVComponent.h"
 #include "Asset/AssetManager.h"
 #include "Render/RenderCommand.h"
+#include "Render/MaterialInstance.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -44,12 +45,17 @@ bool UParticleSubUVComponent::SetParticleTexture(const FString& Path)
 
 	if (Material != TextureMaterialInstance)
 	{
+		UMaterialInstanceDynamic* Instance = UMaterial::CreateDynamicInstance(Material);
+		if (!Instance)
+		{
+			return false;
+		}
+
 		delete TextureMaterialInstance;
-		TextureMaterialInstance = UMaterial::CreateDynamicInstance(Material);
-		SetMaterial(0, TextureMaterialInstance);
+		TextureMaterialInstance = Instance;
+		SetMaterial(0, Instance);
 	}
-	if (Material->Textures.IsEmpty()) Material->Textures.Add(Texture);
-	else Material->Textures[0] = Texture;
+	TextureMaterialInstance->SetTexture0Override(Texture);
 	return true;
 }
 

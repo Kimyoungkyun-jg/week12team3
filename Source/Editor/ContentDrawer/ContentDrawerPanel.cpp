@@ -185,6 +185,12 @@ void FContentDrawerPanel::OnRender()
 				bNewBlendSpace2D = true;
 				bOpenCreateBlendSpace = true;
 			}
+			if (ImGui::MenuItem("Create Material"))
+			{
+				strcpy_s(NewAssetName, "NewMaterial");
+				bNewMaterialParticleSprite = false;
+				bOpenCreateMaterial = true;
+			}
 			if (ImGui::MenuItem("Create AnimMontage") && OnOpenAsset)
 			{
 				strcpy_s(NewAssetName, "NewMontage");
@@ -205,6 +211,8 @@ void FContentDrawerPanel::OnRender()
 		if (bOpenCreateWidget) { ImGui::OpenPopup("Create Widget"); bOpenCreateWidget = false; }
 		if (bOpenCreateAnimGraph) { ImGui::OpenPopup("Create AnimGraph"); bOpenCreateAnimGraph = false; }
 		if (bOpenCreateBlendSpace) { ImGui::OpenPopup("Create BlendSpace"); bOpenCreateBlendSpace = false; }
+		if (bOpenCreateMaterial) { ImGui::OpenPopup("Create Material"); bOpenCreateMaterial = false; }
+		if (bOpenCreateMaterialInstance) { ImGui::OpenPopup("Create Material Instance"); bOpenCreateMaterialInstance = false; }
 		if (bOpenCreateAnimationAsset) { ImGui::OpenPopup("Create Animation Asset"); bOpenCreateAnimationAsset = false; }
 		if (bOpenCreateParticleSystem) { ImGui::OpenPopup("Create Particle System"); bOpenCreateParticleSystem = false; }
 		if (ImGui::BeginPopupModal("Create Particle System", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
@@ -277,6 +285,52 @@ void FContentDrawerPanel::OnRender()
 			{
 				ImGui::CloseCurrentPopup();
 			}
+			ImGui::EndPopup();
+		}
+		if (ImGui::BeginPopupModal("Create Material", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::InputText("Name", NewAssetName, sizeof(NewAssetName));
+			int MaterialType = bNewMaterialParticleSprite ? 1 : 0;
+			if (ImGui::Combo("Material Type", &MaterialType, "Surface\0Particle Sprite\0"))
+			{
+				bNewMaterialParticleSprite = MaterialType == 1;
+			}
+			const FString Name = NewAssetName;
+			const fs::path Target = CurrentPath / (Name + ".material");
+			const bool bExists = fs::exists(Target);
+			const bool bInvalid = Name.empty() || Name == "." || Name == ".." || Name.find_first_of("\\/:*?\"<>|") != FString::npos;
+			if (bExists) ImGui::TextUnformatted("An asset with this name already exists.");
+			if (bInvalid) ImGui::TextUnformatted("Enter a valid asset name.");
+			ImGui::BeginDisabled(bExists || bInvalid || !OnCreateMaterial);
+			if (ImGui::Button("Create"))
+			{
+				OnCreateMaterial(FbxPath::ToString(Target), bNewMaterialParticleSprite);
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+			ImGui::EndPopup();
+		}
+		if (ImGui::BeginPopupModal("Create Material Instance", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::TextWrapped("Parent Material: %s", PendingMaterialInstanceParent.c_str());
+			ImGui::InputText("Name", NewAssetName, sizeof(NewAssetName));
+			const FString Name = NewAssetName;
+			const fs::path Target = CurrentPath / (Name + ".material");
+			const bool bExists = fs::exists(Target);
+			const bool bInvalid = Name.empty() || Name == "." || Name == ".." || Name.find_first_of("\\/:*?\"<>|") != FString::npos;
+			if (bExists) ImGui::TextUnformatted("An asset with this name already exists.");
+			if (bInvalid) ImGui::TextUnformatted("Enter a valid asset name.");
+			ImGui::BeginDisabled(bExists || bInvalid || !OnCreateMaterialInstance);
+			if (ImGui::Button("Create"))
+			{
+				OnCreateMaterialInstance(FbxPath::ToString(Target), PendingMaterialInstanceParent);
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
 			ImGui::EndPopup();
 		}
 		if (ImGui::BeginPopupModal("Create AnimGraph", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
@@ -429,7 +483,7 @@ void FContentDrawerPanel::OnRender()
 							ThumbnailSRV = FbxThumb->GetSRV();
 						}
 					}
-					else if (UMaterial* MatAsset = Cast<UMaterial>(Asset))
+					else if (UMaterialInterface* MatAsset = Cast<UMaterialInterface>(Asset))
 					{
 						if (FTexture2D* MatThumb = GetOrCreateMaterialThumbnail(MatAsset))
 						{
@@ -493,6 +547,12 @@ void FContentDrawerPanel::OnRender()
 					if (Extension == ".fbxbin")
 					{
 						DrawFbxBinaryMenu(PathString);
+					}
+					if (Extension == ".material" && UAssetManager::GetAssetByPath<UMaterialInterface>(PathString) && ImGui::MenuItem("Create Material Instance"))
+					{
+						PendingMaterialInstanceParent = PathString;
+						strcpy_s(NewAssetName, "NewMaterialInstance");
+						bOpenCreateMaterialInstance = true;
 					}
 					if (Extension == ".fbxbin" && Path.filename().string().starts_with("SKEL_") &&
 						ImGui::MenuItem("Create AnimGraph"))
@@ -946,7 +1006,7 @@ FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString&
 FTexture2D* FContentDrawerPanel::RenderStaticMeshThumbnail(
 	const FString& CacheKey,
 	UStaticMesh* Mesh,
-	UMaterial* OverrideMaterial)
+	UMaterialInterface* OverrideMaterial)
 {
 	if (!Mesh)
 	{
@@ -1029,7 +1089,7 @@ FTexture2D* FContentDrawerPanel::RenderStaticMeshThumbnail(
 	return nullptr;
 }
 
-FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterial* Material)
+FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterialInterface* Material)
 {
 	if (!Material)
 	{
@@ -1075,7 +1135,7 @@ ID3D11ShaderResourceView* FContentDrawerPanel::GetStaticMeshThumbnailSRV(UStatic
 	return Tex ? Tex->GetSRV() : nullptr;
 }
 
-ID3D11ShaderResourceView* FContentDrawerPanel::GetMaterialThumbnailSRV(UMaterial* Material)
+ID3D11ShaderResourceView* FContentDrawerPanel::GetMaterialThumbnailSRV(UMaterialInterface* Material)
 {
 	if (!ActiveInstance || !Material)
 	{
@@ -1088,13 +1148,13 @@ ID3D11ShaderResourceView* FContentDrawerPanel::GetMaterialThumbnailSRV(UMaterial
 
 bool FContentDrawerPanel::DrawMaterialPicker(
 	const char* Label,
-	UMaterial*& InOutMaterial,
+	UMaterialInterface*& InOutMaterial,
 	const char* NullLabel,
 	const UMaterial* HighlightBase)
 {
 	bool bChanged = false;
 	const float InlineThumbSize = EditorUIScale::Px(64.0f);
-	const UMaterial* DisplayBase = HighlightBase ? HighlightBase : (InOutMaterial ? InOutMaterial->GetBaseAsset() : nullptr);
+	const UMaterial* DisplayBase = HighlightBase ? HighlightBase : (InOutMaterial ? InOutMaterial->GetBaseMaterial() : nullptr);
 	const FString PreviewText =
 		(InOutMaterial && !InOutMaterial->GetPath().empty()) ? InOutMaterial->GetPath() :
 		DisplayBase ? DisplayBase->GetPath() :
@@ -1145,12 +1205,12 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 			if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 				ImGui::CloseCurrentPopup();
 
-			const TArray<UMaterial*> Candidates = EditorSort::CollectSorted<UMaterial>(
-				TObjectIterator<UMaterial>(),
-				[](const UMaterial* M) { return M->GetPath(); },
-				[](const UMaterial* M) { return !M->IsRetired() && !M->GetPath().empty(); });
+			const TArray<UMaterialInterface*> Candidates = EditorSort::CollectSorted<UMaterialInterface>(
+				TObjectIterator<UMaterialInterface>(),
+				[](const UMaterialInterface* M) { return M->GetPath(); },
+				[](const UMaterialInterface* M) { return !M->IsRetired() && !M->GetPath().empty(); });
 
-			for (UMaterial* Candidate : Candidates)
+			for (UMaterialInterface* Candidate : Candidates)
 			{
 				const bool bSelected = (Candidate == InOutMaterial) || (HighlightBase && Candidate == HighlightBase);
 				ImGui::PushID(Candidate);

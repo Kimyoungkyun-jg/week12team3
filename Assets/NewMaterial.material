@@ -1,0 +1,49 @@
+{
+    "Class": "UMaterial",
+    "Object": {
+        "BaseColor": {
+            "W": 1.0,
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+        },
+        "BlendState": "Opaque",
+        "EmissiveColor": {
+            "X": 0.0,
+            "Y": 0.0,
+            "Z": 0.0
+        },
+        "EmissiveFactor": 1.0,
+        "FlipNormalY": false,
+        "OverrideShadingModel": false,
+        "PSOType": 0,
+        "Properties": {},
+        "SamplerState": "LinearClamp",
+        "ShadingModel": 2,
+        "Shininess": 32.0,
+        "SpecularColor": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+        },
+        "SpecularFactor": 1.0,
+        "Textures": [
+            "Assets/Textures/Decals/hitori.png",
+            "FlatNormalTexture"
+        ],
+        "UVScrollSpeed": [
+            0.0,
+            0.0
+        ],
+        "UVTiling": [
+            1.0,
+            1.0
+        ],
+        "WorldUVLocalSpace": false,
+        "WorldUVTileSize": [
+            0.0,
+            0.0
+        ]
+    },
+    "Version": 1
+}

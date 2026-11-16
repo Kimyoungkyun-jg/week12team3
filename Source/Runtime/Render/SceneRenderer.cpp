@@ -1367,11 +1367,8 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 			RenderCommand::BindConstantBuffer(1, RenderData.ParticleBatchCB.get(), EShaderBindFlagBits::Vertex);
 			RenderCommand::BindMesh(Batch.Mesh, 0);
 
-			FMaterialRenderProxy MaterialProxy{};
-			Batch.Material->GetRenderProxy(MaterialProxy);
-			UTexture2D* AtlasTex = !MaterialProxy.Textures.IsEmpty() ? MaterialProxy.Textures[0] : nullptr;
-			RenderCommand::BindSamplerState(0, MaterialProxy.SamplerState, EShaderBindFlagBits::Pixel);
-			RenderCommand::BindSamplerState(0, Batch.Material->SamplerState, EShaderBindFlagBits::Pixel);
+			RenderCommand::BindSamplerState(0, Batch.Material->GetSamplerState(), EShaderBindFlagBits::Pixel);
+
 			const uint32 DrawIndexCount = Batch.IndexCount > 0 ? Batch.IndexCount : IndexBuffer->GetIndexCount();
 			RenderCommand::DrawIndexedInstanced(DrawIndexCount, Batch.InstanceCount, Batch.StartIndex, 0, 0);
 		}
@@ -1418,11 +1415,8 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 				RenderCommand::BindShaderResource(1, Res->ParticleBuffer.get(), EShaderBindFlagBits::Vertex);
 				RenderCommand::BindMesh(Batch.Mesh, 0);
 
-				FMaterialRenderProxy MaterialProxy{};
-				Batch.Material->GetRenderProxy(MaterialProxy);
-				UTexture2D* AtlasTex = !MaterialProxy.Textures.IsEmpty() ? MaterialProxy.Textures[0] : nullptr;
-				RenderCommand::BindSamplerState(0, MaterialProxy.SamplerState, EShaderBindFlagBits::Pixel);
-				RenderCommand::BindSamplerState(0, Batch.Material->SamplerState, EShaderBindFlagBits::Pixel);
+				RenderCommand::BindSamplerState(0, Batch.Material->GetSamplerState(), EShaderBindFlagBits::Pixel);
+	
 				RenderCommand::DrawIndexedInstanced(IndexBuffer->GetIndexCount(), Batch.MaxParticles, 0, 0, 0);
 			}
 

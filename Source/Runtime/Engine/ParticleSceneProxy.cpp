@@ -2,6 +2,7 @@
 #include "Engine/ParticleSceneProxy.h"
 #include "Asset/AssetManager.h"
 #include "Render/RenderPacket.h"
+#include "Render/MaterialRenderProxy.h"
 #include <algorithm>
 #include <cmath>
 
@@ -167,8 +168,10 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 					if (!EntryMat) continue;
 
 					const uint32 SecBatchStart = static_cast<uint32>(OutInstances.Num());
-					const FVector4& BaseCol = EntryMat->BaseColor;
-					const bool bHasTex = !EntryMat->Textures.IsEmpty() && EntryMat->Textures[0] != nullptr;
+					FMaterialRenderProxy MaterialProxy{};
+					EntryMat->GetRenderProxy(MaterialProxy);
+					const FVector4& BaseCol = MaterialProxy.BaseColor;
+					const bool bHasTex = !MaterialProxy.Textures.IsEmpty() && MaterialProxy.Textures[0] != nullptr;
 
 					for (int32 RunIdx = SortedIdx; RunIdx < RunEnd; ++RunIdx)
 					{
@@ -206,7 +209,7 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 					Batch.StartIndex = SecStartIndex;
 					Batch.IndexCount = SecIndexCount;
 					Batch.bIsMesh = true;
-					Batch.BlendState = EntryMat->BlendState;
+					Batch.BlendState = EntryMat->GetBlendState();
 					OutBatches.Add(Batch);
 				}
 			}
@@ -217,7 +220,7 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 		}
 
 		UStaticMesh* EntryMesh = QuadMesh;
-		UMaterial* EntryMat = FirstSprite.Material ? FirstSprite.Material : Material;
+		UMaterialInterface* EntryMat = FirstSprite.Material ? FirstSprite.Material : Material;
 		if (!EntryMesh || !EntryMat)
 		{
 			++SortedIdx;

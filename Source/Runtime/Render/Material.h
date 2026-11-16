@@ -1,10 +1,10 @@
 #pragma once
 
 #include "MaterialInterface.h"
+#include "Render/Buffer.h"
 #include "Render/ImportedMaterialProperties.h"
 #include "RenderResourceManager.h"
 #include "Render/RenderStates.h"
-#include "Render/Buffer.h"
 #include "Render/Texture2D.h"
 #include "Material.generated.h"
 
@@ -15,7 +15,8 @@ enum class EMaterialParamLayout
 {
 	None,
 	StaticMesh,
-	ParticleSubUV
+	ParticleSubUV,
+	ParticleSprite
 };
 
 struct FStaticMeshMaterialParams
@@ -65,7 +66,6 @@ public:
 	ELightingModel ShadingModel = ELightingModel::Phong;
 	bool bOverrideShadingModel = false;
 	void SetBlendState(EBlendState InBlendState);
-
 	UMaterial* GetBaseMaterial() const override { return const_cast<UMaterial*>(this); }
 	void GetRenderProxy(FMaterialRenderProxy& OutProxy) const override;
 
@@ -73,39 +73,21 @@ public:
 	EBlendState GetBlendState() const override { return BlendState; }
 	ESamplerState GetSamplerState() const override { return SamplerState; }
 	uint16 GetSortID() const override { return SortID; }
+	void ApplyImportedProperties(const FImportedMaterialProperties& Properties);
 
 	static UMaterialInstanceDynamic* CreateDynamicInstance(UMaterialInterface* Parent);
 
-	void CopySettingsFrom(const UMaterial& Source);
-	void InitializeRenderResources(const UMaterial& Template);
-
-	void ApplyImportedProperties(const FImportedMaterialProperties& Properties);
-
-	bool bIsInstance = false;
-
-	// 인스턴스가 복제된 원본. 인스턴스는 경로가 없어서, 저장할 때 원본을 따라가 기준 에셋을 찾는다
-	const UMaterial* Parent = nullptr;
-
-	// Source의 내용을 복사한 편집용 복제본을 만든다
-	static UMaterial* CreateInstance(const UMaterial* Source);
-
-	// 경로가 있는(=에셋으로 등록된) 가장 가까운 원본. 자신이 에셋이면 자신
-	const UMaterial* GetBaseAsset() const;
-
-	static json SaveMaterial(const UMaterial* Material);
-	static UMaterial* LoadMaterial(const json& In);
+	static json SaveMaterial(const UMaterialInterface* Material);
+	static UMaterialInterface* LoadMaterial(const json& In);
 
 	const uint16 SortID;
 
 	using Super::Serialize;
-	// 인스턴스의 값(색, 텍스처, 상태). 객체는 이미 만들어져 있어야 한다.
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
-
-	// 머티리얼 참조 하나를 Slot에 읽고 쓴다.
-	// 에셋이면 경로만, 인스턴스면 기준 에셋 + 값을 그 자리에 쓰고, 불러올 때 인스턴스를 새로 만든다.
-	// null이면 빈 Record({})로 기록되고, 불러오면 nullptr이 된다.
-	static void SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterial*& Material);
 	static void SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterialInterface*& Material);
+
+	void CopySettingsFrom(const UMaterial& Source);
+	void InitializeRenderResources(const UMaterial& Template);
 
 private:
 	inline static uint16 NextSortID = 0;
