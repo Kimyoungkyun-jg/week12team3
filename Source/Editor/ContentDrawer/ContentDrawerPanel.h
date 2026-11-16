@@ -111,6 +111,8 @@ private:
 	const FString FileIconPath = EditorResourcePaths::FileIcon;
 	
 	std::unordered_map<FString, TUniquePtr<FTexture2D>> ThumbnailCache;
+	std::set<FString> PendingMaterialThumbnailPaths;
+	std::set<FString> PendingStaticMeshThumbnailPaths;
 	std::unordered_map<FString, FString> AnimSequenceDisplayNames;
 	UWorld* ThumbnailWorld = nullptr;
 	ASkeletalMeshActor* ThumbnailActor = nullptr;

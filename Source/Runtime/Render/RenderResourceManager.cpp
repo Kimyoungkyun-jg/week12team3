@@ -687,12 +687,6 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 
 	const FString UniqueDefine = "MATERIAL_GRAPH_HASH_" + Hash;
 
-	if (!SaveGeneratedMaterialShaderVariant(ShaderPath, IncludePath, Hash, GeneratedShaderPath))
-	{
-		OutError = "Failed to generate Material Graph shader variant.";
-		return nullptr;
-	}
-
 	D3D_SHADER_MACRO Defines[5]{};
 	int32 DefineCount = 0;
 

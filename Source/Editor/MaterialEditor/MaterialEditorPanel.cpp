@@ -610,7 +610,7 @@ void FMaterialEditorPanel::AddMaterialExpression(UMaterial& Material, EMaterialE
 	Material.ExpressionNodes.Add(Node);
 
 	SelectedNodeId = NewId;
-	bDirty = true;
+	MarkMaterialChanged();
 }
 
 void FMaterialEditorPanel::DrawMaterialGraphPalette(UMaterial& Material)
@@ -687,11 +687,26 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 	const ImVec2 Size = ImGui::GetContentRegionAvail();
 	const ImVec2 Origin = ImGui::GetCursorScreenPos();
 
-	ImGui::InvisibleButton("##MaterialGraphCanvas", Size, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+	ImGui::InvisibleButton("##MaterialGraphCanvas", Size, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_AllowOverlap);
 
 	const bool bHovered = ImGui::IsItemHovered();
 	const ImVec2 Mouse = ImGui::GetMousePos();
 	const float Scale = EditorUIScale::Px(1.0f) * GraphZoom;
+
+	if (ImGui::BeginDragDropTarget())
+	{
+		if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("MATERIAL_EXPRESSION"))
+		{
+			const auto Type = *static_cast<const EMaterialExpressionType*>(Payload->Data);
+
+			const float X = (Mouse.x - Origin.x - GraphPanX) / Scale;
+			const float Y = (Mouse.y - Origin.y - GraphPanY) / Scale;
+
+			AddMaterialExpression(Material, Type, X, Y);
+		}
+
+		ImGui::EndDragDropTarget();
+	}
 
 	ImDrawList* Draw = ImGui::GetWindowDrawList();
 	Draw->PushClipRect(Origin, { Origin.x + Size.x, Origin.y + Size.y }, true);
@@ -810,7 +825,7 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 					SelectedConnectionInputPin = Pin;
 					SelectedNodeId = 0;
 
-					bDirty = true;
+					MarkMaterialChanged();
 					Status = "Connected.";
 				}
 				else
@@ -983,7 +998,7 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 			SelectedConnectionInputNodeId = 0;
 			SelectedConnectionInputPin = 0;
 
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		else if (SelectedNodeId != 0 && SelectedNodeId != Material.OutputNodeId)
 		{
@@ -1006,23 +1021,8 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 			}
 
 			SelectedNodeId = 0;
-			bDirty = true;
+			MarkMaterialChanged();
 		}
-	}
-
-	if (ImGui::BeginDragDropTarget())
-	{
-		if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("MATERIAL_EXPRESSION"))
-		{
-			const auto Type = *static_cast<const EMaterialExpressionType*>(Payload->Data);
-
-			const float X = (Mouse.x - Origin.x - GraphPanX) / Scale;
-			const float Y = (Mouse.y - Origin.y - GraphPanY) / Scale;
-
-			AddMaterialExpression(Material, Type, X, Y);
-		}
-
-		ImGui::EndDragDropTarget();
 	}
 
 	Draw->PopClipRect();
@@ -1049,27 +1049,27 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 
 		if (EditMaterialColor("Base Color", &Material.BaseColor.X, true))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		if (EditMaterialColor("Specular", &Material.SpecularColor.X))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		if (ImGui::DragFloat("Specular Factor", &Material.SpecularFactor, 0.02f, 0.0f, 100.0f))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		if (EditMaterialColor("Emissive", &Material.EmissiveColor.X))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		if (ImGui::DragFloat("Emissive Factor", &Material.EmissiveFactor, 0.02f, 0.0f, 100.0f))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		if (ImGui::DragFloat("Shininess", &Material.Shininess, 0.5f, 1.0f, 512.0f))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 
 		int Blend = Material.BlendState == EBlendState::AlphaBlend ? 1 : 0;
@@ -1077,7 +1077,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 		if (ImGui::Combo("Blend", &Blend, "Opaque\0Alpha Blend\0"))
 		{
 			Material.SetBlendState(Blend ? EBlendState::AlphaBlend : EBlendState::Opaque);
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 
 		return;
@@ -1091,28 +1091,28 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 	case EMaterialExpressionType::Constant:
 		if (ImGui::DragFloat("Value", &Selected->ScalarValue, 0.01f))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		break;
 
 	case EMaterialExpressionType::Constant2Vector:
 		if (ImGui::DragFloat2("Value", &Selected->VectorValue.X, 0.01f))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		break;
 
 	case EMaterialExpressionType::Constant3Vector:
 		if (EditMaterialColor("Value", &Selected->VectorValue.X))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		break;
 
 	case EMaterialExpressionType::Constant4Vector:
 		if (EditMaterialColor("Value", &Selected->VectorValue.X, true))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		break;
 
@@ -1125,7 +1125,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 		if (ImGui::InputText("Parameter Name", Name, sizeof(Name)))
 		{
 			Selected->ParameterName = Name;
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 
 		char Group[128]{};
@@ -1134,19 +1134,19 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 		if (ImGui::InputText("Group", Group, sizeof(Group)))
 		{
 			Selected->ParameterGroup = Group;
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 
 		if (Selected->Type == EMaterialExpressionType::ScalarParameter)
 		{
 			if (ImGui::DragFloat("Default Value", &Selected->ScalarValue, 0.01f))
 			{
-				bDirty = true;
+				MarkMaterialChanged();
 			}
 		}
 		else if (EditMaterialColor("Default Value", &Selected->VectorValue.X, true))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 
 		break;
@@ -1162,7 +1162,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 			if (ImGui::Selectable("None", Current == nullptr))
 			{
 				Selected->TexturePath.clear();
-				bDirty = true;
+				MarkMaterialChanged();
 			}
 
 			for (TObjectIterator<UTexture2D> It; It; ++It)
@@ -1177,7 +1177,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 				if (ImGui::Selectable(Texture->GetPath().c_str(), Current == Texture))
 				{
 					Selected->TexturePath = Texture->GetPath();
-					bDirty = true;
+					MarkMaterialChanged();
 				}
 			}
 
@@ -1189,7 +1189,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 	case EMaterialExpressionType::TextureCoordinate:
 		if (ImGui::DragInt("Coordinate Index", &Selected->CoordinateIndex, 1.0f, 0, 7))
 		{
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 		break;
 

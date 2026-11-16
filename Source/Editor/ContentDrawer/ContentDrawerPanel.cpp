@@ -90,6 +90,40 @@ void FContentDrawerPanel::Tick(float DeltaTime)
 		FbxCachePath.clear();
 		bRefreshThumbnails = false;
 	}
+
+	if (!PendingMaterialThumbnailPaths.empty())
+	{
+		UStaticMesh* SphereMesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
+
+		if (SphereMesh)
+		{
+			for (const FString& Path : PendingMaterialThumbnailPaths)
+			{
+				const FString CacheKey = "MAT:" + Path;
+				ThumbnailCache.erase(CacheKey);
+
+				if (UMaterialInterface* Material = UAssetManager::LoadMaterialAsset(Path))
+				{
+					RenderStaticMeshThumbnail(CacheKey, SphereMesh, Material);
+				}
+			}
+
+			PendingMaterialThumbnailPaths.clear();
+		}
+	}
+
+	for (const FString& Path : PendingStaticMeshThumbnailPaths)
+	{
+		const FString CacheKey = "MESH:" + Path;
+		ThumbnailCache.erase(CacheKey);
+
+		if (UStaticMesh* Mesh = UAssetManager::GetAssetByPath<UStaticMesh>(Path))
+		{
+			RenderStaticMeshThumbnail(CacheKey, Mesh, nullptr);
+		}
+	}
+
+	PendingStaticMeshThumbnailPaths.clear();
 }
 
 void FContentDrawerPanel::OnRender()
@@ -1033,6 +1067,11 @@ FTexture2D* FContentDrawerPanel::RenderStaticMeshThumbnail(
 	}
 
 	UStaticMeshComponent* MeshComp = MaterialThumbnailActor->GetStaticMeshComponent();
+
+	if (!MeshComp)
+	{
+		return nullptr;
+	}
 	MeshComp->SetVisibility(true);
 	MeshComp->ClearOverrideMaterials();
 	MeshComp->SetStaticMesh(Mesh);
@@ -1099,16 +1138,29 @@ FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterialInterface
 	const FString MatKey = !Material->GetPath().empty()
 		? Material->GetPath()
 		: std::to_string(reinterpret_cast<uintptr_t>(Material));
-	const FString CacheKey = "MAT:" + MatKey;
+	const FString MaterialPath = Material->GetPath();
+
+	if (MaterialPath.empty())
+	{
+		return nullptr;
+	}
+
+	const FString CacheKey = "MAT:" + MaterialPath;
 
 	auto It = ThumbnailCache.find(CacheKey);
-	if (It != ThumbnailCache.end())
+
+	if (It != ThumbnailCache.end() && It->second)
 	{
 		return It->second.get();
 	}
 
-	UStaticMesh* SphereMesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
-	return RenderStaticMeshThumbnail(CacheKey, SphereMesh, Material);
+	if (It != ThumbnailCache.end())
+	{
+		ThumbnailCache.erase(It);
+	}
+
+	PendingMaterialThumbnailPaths.insert(MaterialPath);
+	return nullptr;
 }
 
 FTexture2D* FContentDrawerPanel::GetOrCreateStaticMeshThumbnail(UStaticMesh* Mesh)
@@ -1381,5 +1433,5 @@ void FContentDrawerPanel::InvalidateMaterialThumbnail(const FString& Path)
 		return;
 	}
 
-	ActiveInstance->ThumbnailCache.erase("MAT:" + Path);
+	ActiveInstance->PendingMaterialThumbnailPaths.insert(Path);
 }
