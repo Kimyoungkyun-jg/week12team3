@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <charconv>
 #include <sstream>
+#include <Windows.h>
 #include "Editor/EditorUI/EditorUIScale.h"
 
 static int TextEditCallbackStub(ImGuiInputTextCallbackData* data)
@@ -122,6 +123,9 @@ bool FOutputLogPanel::Init()
 	Commands.Add("HELP");
 	Commands.Add("HISTORY");
 	Commands.Add("CLEAR");
+#if !defined(ENGINE_SHIPPING)
+	Commands.Add("CauseCrash");
+#endif
 	Commands.Add("STAT");
 	Commands.Add("CSM");
 	Commands.Add("r.shadow.CacheWholeSceneShadows");
@@ -372,6 +376,15 @@ void FOutputLogPanel::ExecCommand(const FString& CommandLine)
 		return;
 	const FString& Command = Tokens[0];
 
+	#if !defined(ENGINE_SHIPPING)
+	if (EqualsIgnoreCase(Command, "CauseCrash"))
+	{
+		constexpr DWORD TestCrashCode = 0xE0420001;
+		RaiseException(TestCrashCode, EXCEPTION_NONCONTINUABLE, 0, nullptr);
+		return;
+	}
+#endif
+
 	if (EqualsIgnoreCase(Command, "CLEAR"))
 	{
 		ClearLog();
@@ -382,6 +395,9 @@ void FOutputLogPanel::ExecCommand(const FString& CommandLine)
 	{
 		FLog::Log(ELogVerbosity::Info, "Commands:");
 		FLog::Log(ELogVerbosity::Info, "- HELP | HISTORY | CLEAR");
+#if !defined(ENGINE_SHIPPING)
+		FLog::Log(ELogVerbosity::Info, "- CauseCrash  (trigger a test crash)");
+#endif
 		FLog::Log(ELogVerbosity::Info, "- STAT <fps|memory|profile|light|decal|skinning|all|none> [on|off]");
 		FLog::Log(ELogVerbosity::Info, "- r.SkinningMode [cpu|gpu|cs|toggle]   (GPU selects VS skinning and needs Forward)");
 		FLog::Log(ELogVerbosity::Info, "- r.Skinning.ForceUpdate [0|1]   (re-skin every frame for CPU/GPU comparison)");

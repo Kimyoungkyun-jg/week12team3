@@ -3,6 +3,7 @@
 #include "EnginePCH.h"
 #include <Windows.h>
 #include "LaunchEngineLoop.h"
+#include "Core/Windows/WindowsCrashHandler.h"
 
 // 실행 파일이 어떤 엔진 모드(UEngine 서브클래스)로 돌지 정한다. UE의 ini GameEngine= 설정 역할.
 extern UClass* GetEngineClass();
@@ -35,6 +36,8 @@ inline void SetContentRootToExecutableDir()
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
 	SetContentRootToExecutableDir();
+	WindowsCrashHandler::Install(GetExecutablePath());
+
 	{
 		FEngineLoop EngineLoop;
 		if (!EngineLoop.PreInit(hInstance, GetEngineClass())) return -1;
