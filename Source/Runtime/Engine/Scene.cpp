@@ -327,7 +327,7 @@ void FScene::ClearProxyStaticCache(uint32 PrimitiveIndex)
 				ProxyCachedCommands[Moved.PrimitiveIndex][Moved.OwnerEntryIndex].CommandIndex = Ref.CommandIndex;
 			}
 		}
-		List.RemoveAt(List.Num() - 1);
+		List.RemoveLast();
 	}
 	Refs.Reset();
 }

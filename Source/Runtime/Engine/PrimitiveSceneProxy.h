@@ -210,9 +210,7 @@ public:
 
 	virtual void OnMeshRenderDataChanged() override;
 	virtual void OnMeshDestroyed() override;
-	virtual bool HasStaticRelevance() const override { return true; }
-	virtual bool HasDynamicRelevance() const override { return false; }
-	virtual void DrawStaticElements(FStaticPrimitiveDrawInterface* PDI) const override;
+	virtual void GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const override;
 
 	virtual USkeletalMesh* GetSkeletalMesh() const override { return SkeletalMesh; }
 	virtual const FMeshRenderState* GetRenderState() const override { return RenderState.get(); }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <span>
+#include <unordered_map>
 #include "PrimitiveSceneProxy.h"
 #include "LightSceneProxy.h"
 #include "Components/BillboardComponent.h"
@@ -15,8 +17,6 @@
 #include "Render/SkyLightEnvironment.h"
 #include "Render/LightRenderData.h"
 #include "Render/LightSceneInfo.h"
-#include <span>
-#include <unordered_map>
 
 class UParticleSystemComponent;
 

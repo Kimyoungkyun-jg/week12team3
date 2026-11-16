@@ -7,6 +7,7 @@
 #include "Render/RenderResourceManager.h"
 #include "Render/SceneView.h"
 #include "Render/Decal/DecalStats.h"
+#include <algorithm>
 
 namespace
 {
