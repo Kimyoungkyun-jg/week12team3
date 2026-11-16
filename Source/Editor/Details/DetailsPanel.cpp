@@ -837,6 +837,19 @@ namespace
 
 			if (bOpen)
 			{
+				UMaterialInterface* DefaultMaterial = MeshComponent->GetDefaultMaterial(Slot);
+				UMaterialInterface* SelectedMaterial = Override ? Override : Effective;
+				const UMaterial* DefaultBase = DefaultMaterial ? DefaultMaterial->GetBaseMaterial() : nullptr;
+
+				if (FContentDrawerPanel::DrawMaterialPicker("Material", SelectedMaterial, "(Mesh Default)", DefaultBase))
+				{
+					MeshComponent->SetMaterial(Slot, SelectedMaterial);
+					Override = MeshComponent->GetOverrideMaterial(Slot);
+					Effective = MeshComponent->GetMaterial(Slot);
+				}
+
+				ImGui::Separator();
+
 				if (ImGui::BeginTable("MaterialProperties", 2))
 				{
 					ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Override Shading").x);

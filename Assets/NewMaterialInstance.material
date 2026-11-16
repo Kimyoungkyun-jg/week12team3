@@ -1,8 +1,0 @@
-{
-    "Class": "UMaterialInstanceConstant",
-    "Object": {
-        "ParentAsset": "NewMaterial.material",
-        "Properties": {}
-    },
-    "Version": 1
-}
