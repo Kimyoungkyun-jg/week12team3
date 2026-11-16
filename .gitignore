@@ -471,3 +471,5 @@ Tools/SnowMountain/build_snow_mountain.py
 # FBX SDK 2020.3.11 DLL 판 (debug/release 폴더 무시 규칙의 예외). TEAM1에서 가져왔다.
 !Source/ThirdParty/FBX/lib/x64/debug/
 !Source/ThirdParty/FBX/lib/x64/release/
+
+/Resources/Shader/GeneratedMaterial/

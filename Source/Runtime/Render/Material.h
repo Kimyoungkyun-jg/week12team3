@@ -67,6 +67,9 @@ struct FMaterialExpressionConnection
 	int32 InputPin = 0;
 };
 
+inline constexpr int32 MaxMaterialGraphParameters = 16;
+inline constexpr int32 MaxMaterialGraphTextures = 6;
+
 struct FStaticMeshMaterialParams
 {
 	FVector4 BaseColor;

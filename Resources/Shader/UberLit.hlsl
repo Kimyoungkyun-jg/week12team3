@@ -77,6 +77,10 @@ Texture2D NormalTexture : register(t1);
 SamplerState ColorSampler : register(s0);
 SamplerState SkySampler : register(s1);
 
+#ifdef MATERIAL_GRAPH
+#include MATERIAL_GRAPH_INCLUDE
+#endif
+
 struct VS_IN
 {
 	float3 Position : POSITION;
@@ -171,13 +175,12 @@ float3 CalculateSkyLight(float3 N)
 }
 
 void AddLight(inout FLightResult Result, float3 N, float3 V, float3 L,
-    float3 Radiance, bool bIncludeSpecular)
+    float3 Radiance, bool bIncludeSpecular, float4 ActiveSpecular)
 {
-    AccumulateLight(Result, N, V, L, Radiance, SpecularColorShininess.rgb,
-        SpecularColorShininess.w, bIncludeSpecular);
+    AccumulateLight(Result, N, V, L, Radiance, ActiveSpecular.rgb, ActiveSpecular.w, bIncludeSpecular);
 }
 
-void CalculateDirectionalLight(inout FLightResult Result, FLightRenderParameters Info, float3 N, float3 V, bool bIncludeSpecular)
+void CalculateDirectionalLight(inout FLightResult Result, FLightRenderParameters Info, float3 N, float3 V, bool bIncludeSpecular, float4 ActiveSpecular)
 {
     if (Info.Intensity <= 0.0f)
     {
@@ -453,13 +456,41 @@ FUberOutput Uber_PS(VS_OUT Input)
     FUberOutput Output;
     float3 ProjectedT, ProjectedB;
     Input.UV = ResolveMaterialUV(Input.UV, Input.MaterialWorldPos, Input.WorldNormal,
-        Input.MaterialLocalPos, Input.MaterialLocalNormal, World,
-        UVTransform.zw, UVTransform.xy, WorldUVParams.xy, WorldUVParams.z > 0.5f, ProjectedT, ProjectedB);
+    Input.MaterialLocalPos, Input.MaterialLocalNormal, World,
+    UVTransform.zw, UVTransform.xy, WorldUVParams.xy, WorldUVParams.z > 0.5f, ProjectedT, ProjectedB);
     float3 ShadingNormal = GetShadingNormal(Input, ProjectedT, ProjectedB);
+
+#ifdef MATERIAL_GRAPH
+    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(Input.UV);
+    float4 ActiveSpecular = SpecularColorShininess;
+
+#ifdef MATERIAL_GRAPH_HAS_SPECULAR_COLOR
+    ActiveSpecular.rgb = GraphOutput.SpecularColor;
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_SHININESS
+    ActiveSpecular.a = GraphOutput.Shininess;
+#endif
+
+    float3 ActiveEmissive = Emissive.rgb;
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_COLOR
+    ActiveEmissive = GraphOutput.EmissiveColor;
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR
+    ActiveEmissive *= GraphOutput.EmissiveFactor;
+#endif
+#endif
 #if VIEW_MODE_WORLD_NORMAL
     Output.LitColor = float4(ShadingNormal * 0.5f + 0.5f, 1.0f);
 #else
     float4 SurfaceColor;
+
+#ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
+    SurfaceColor = GraphOutput.BaseColor;
+    float3 Albedo = SurfaceColor.rgb;
+#else
     if (SurfaceParams.z > 0.5f)
     {
         float4 TextureColor = ColorTexture.Sample(ColorSampler, Input.UV);
@@ -470,6 +501,7 @@ FUberOutput Uber_PS(VS_OUT Input)
         SurfaceColor = Input.Color;
     }
     float3 Albedo = SurfaceColor.rgb * BaseColor.rgb;
+#endif
     
     int3 PixelCoord = int3(int2(Input.Position.xy), 0);
     
@@ -509,14 +541,18 @@ FUberOutput Uber_PS(VS_OUT Input)
     Diffuse = Input.VertexDiffuse;
     Specular = Input.VertexSpecular;
 #elif SHADING_MODEL_PHONG
-    FLightResult Lit = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, !REFLECTION_MODEL_LAMBERT);
+    FLightResult Lit = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, !REFLECTION_MODEL_LAMBERT, ActiveSpecular);
     Diffuse = Lit.Diffuse;
     Specular = Lit.Specular;
 #elif VIEW_MODE_UNLIT
     // 조명·그림자를 계산하지 않고 표면 색을 그대로 낸다.
     Diffuse = 1.0f;
 #endif
+#ifdef MATERIAL_GRAPH
+    float3 FinalColor = Albedo * Diffuse + Specular + ActiveEmissive;
+#else
     float3 FinalColor = Albedo * Diffuse + Specular + Emissive.rgb;
+#endif
     float4 UnlitDecal = DBufferUnlit.Load(PixelCoord);
 
     if (bReceiveDecal)

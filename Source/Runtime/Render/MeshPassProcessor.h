@@ -55,6 +55,9 @@ struct FMeshDrawBatch
 	std::array<uint8, sizeof(FForwardMaterialConstants)> MaterialData{};
 	uint32 MaterialDataSize = 0;
 	uint32 MaterialSlot = 1;
+
+	std::array<uint8, sizeof(FVector4) * MaxMaterialGraphParameters> GraphParameterData{};
+	uint32 GraphParameterDataSize = 0;
 	EShaderBindFlagBits MaterialStages = EShaderBindFlagBits::Pixel;
 	uint32 ObjectBindingSlot = 2;
 	EShaderBindFlagBits ObjectStages = EShaderBindFlagBits::Vertex;

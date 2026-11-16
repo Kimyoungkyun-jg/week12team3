@@ -8,6 +8,7 @@ struct FMaterialRenderProxy
 	const UMaterial* BaseMaterial = nullptr;
 
 	TArray<UTexture2D*> Textures;
+	TArray<UTexture2D*> GraphTextures;
 	TArray<FMaterialParameterOverride> ParameterOverrides;
 
 	FVector4 BaseColor = FVector4(1, 1, 1, 1);

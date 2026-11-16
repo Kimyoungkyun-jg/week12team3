@@ -29,7 +29,12 @@ bool FRenderer::Init()
 	ObjectCB = RenderCommand::CreateConstantBuffer(sizeof(FForwardObjectConstants));
 	ViewCB = RenderCommand::CreateConstantBuffer(sizeof(FMatrix));
 	MaterialCB = RenderCommand::CreateConstantBuffer(sizeof(FForwardMaterialConstants));
-	if (!ObjectCB || !ViewCB || !MaterialCB) return false;
+	GraphMaterialCB = RenderCommand::CreateConstantBuffer(sizeof(FVector4) * MaxMaterialGraphParameters);
+
+	if (!ObjectCB || !ViewCB || !MaterialCB || !GraphMaterialCB)
+	{
+		return false;
+	}
 	GPUOcclusion.Init();
 	return true;
 }
@@ -61,6 +66,16 @@ void FRenderer::BindBatch(const FMeshDrawBatch& Batch)
 	{
 		RenderCommand::UpdateBufferData(MaterialCB.get(), Batch.MaterialData.data(), Batch.MaterialDataSize);
 		RenderCommand::BindConstantBuffer(Batch.MaterialSlot, MaterialCB.get(), Batch.MaterialStages);
+	}
+
+	if (Batch.GraphParameterDataSize)
+	{
+		RenderCommand::UpdateBufferData(GraphMaterialCB.get(), Batch.GraphParameterData.data(), Batch.GraphParameterDataSize);
+		RenderCommand::BindConstantBuffer(3, GraphMaterialCB.get(), EShaderBindFlagBits::Pixel);
+	}
+	else
+	{
+		RenderCommand::BindConstantBuffer(3, nullptr, EShaderBindFlagBits::Pixel);
 	}
 }
 

@@ -296,8 +296,10 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 {
 	std::unordered_map<int32, const FMaterialExpressionNode*> Nodes;
 	std::set<FString> ParameterNames;
+	std::set<FString> TexturePaths;
 
 	int32 OutputCount = 0;
+	int32 ParameterCount = 0;
 
 	for (const FMaterialExpressionNode& Node : ExpressionNodes)
 	{
@@ -320,16 +322,35 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 
 		if (Node.Type == EMaterialExpressionType::ScalarParameter || Node.Type == EMaterialExpressionType::VectorParameter)
 		{
+			++ParameterCount;
+
 			if (Node.ParameterName.empty() || !ParameterNames.insert(Node.ParameterName).second)
 			{
 				OutError = "Parameter names must be unique and non-empty.";
 				return false;
 			}
+
+			if (ParameterCount > MaxMaterialGraphParameters)
+			{
+				OutError = "Material Graph supports up to 16 parameters.";
+				return false;
+			}
 		}
 
-		if (Node.Type == EMaterialExpressionType::TextureCoordinate && (Node.CoordinateIndex < 0 || Node.CoordinateIndex > 7))
+		if (Node.Type == EMaterialExpressionType::TextureSample && !Node.TexturePath.empty())
 		{
-			OutError = "Texture Coordinate index must be between 0 and 7.";
+			TexturePaths.insert(Node.TexturePath);
+
+			if (TexturePaths.size() > MaxMaterialGraphTextures)
+			{
+				OutError = "Material Graph supports up to 6 unique textures.";
+				return false;
+			}
+		}
+
+		if (Node.Type == EMaterialExpressionType::TextureCoordinate && Node.CoordinateIndex != 0)
+		{
+			OutError = "Only Texture Coordinate index 0 is supported.";
 			return false;
 		}
 	}
@@ -577,6 +598,17 @@ void UMaterial::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
 	OutProxy = FMaterialRenderProxy{};
 	OutProxy.BaseMaterial = this;
 	OutProxy.Textures = Textures;
+	OutProxy.GraphTextures.Reset();
+
+	std::set<FString> GraphTexturePaths;
+
+	for (const FMaterialExpressionNode& Node : ExpressionNodes)
+	{
+		if (Node.Type == EMaterialExpressionType::TextureSample && !Node.TexturePath.empty() && GraphTexturePaths.insert(Node.TexturePath).second)
+		{
+			OutProxy.GraphTextures.Add(FindOrLoadTexture(Node.TexturePath));
+		}
+	}
 	OutProxy.BaseColor = BaseColor;
 	OutProxy.SpecularColor = SpecularColor;
 	OutProxy.Shininess = Shininess;

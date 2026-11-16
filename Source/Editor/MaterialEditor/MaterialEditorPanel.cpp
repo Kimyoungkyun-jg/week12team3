@@ -13,6 +13,7 @@
 #include "Render/Material.h"
 #include "Render/MaterialInstance.h"
 #include "Render/MaterialRenderProxy.h"
+#include "Render/RenderResourceManager.h"
 #include "Render/Mesh.h"
 #include "Render/Texture2D.h"
 #include "Render/SkyboxRenderer.h"
@@ -1126,13 +1127,29 @@ void FMaterialEditorPanel::OnRender()
 
 	ImGui::SameLine();
 
-	if (ImGui::Button("Validate"))
+	if (ImGui::Button("Compile"))
 	{
 		if (UMaterial* Material = Cast<UMaterial>(Asset))
 		{
-			if (Material->ValidateExpressionGraph(Status))
+			FString CompileError;
+
+			if (!Material->ValidateExpressionGraph(CompileError))
 			{
-				Status = "Material Graph is valid.";
+				Status = CompileError;
+			}
+			else
+			{
+				FShaderProgram* DeferredShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*Material, true, EReflectionModel::Lambert, false, false, CompileError);
+
+				if (!DeferredShader)
+				{
+					Status = CompileError;
+				}
+				else
+				{
+					FShaderProgram* ForwardShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*Material, false, EReflectionModel::Lambert, false, false, CompileError);
+					Status = ForwardShader ? "Material Graph compiled successfully." : CompileError;
+				}
 			}
 		}
 	}

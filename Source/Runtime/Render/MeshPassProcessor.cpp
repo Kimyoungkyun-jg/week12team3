@@ -107,8 +107,23 @@ namespace
 			const bool bWorldNormal = Pass == EMeshPassType::WorldNormal;
 			FPipelineState* Base = FRenderResourceManager::GetPSO(bWorldNormal
 				? EPSOType::StaticMesh_WorldNormal : EPSOType::StaticMesh_Forward);
-			FShaderProgram* Shader = bWorldNormal ? (Base ? Base->Shader : nullptr)
-												  : GetMaterialForwardShader(*BaseMaterial, Options);
+			FShaderProgram* Shader = bWorldNormal ? (Base ? Base->Shader : nullptr) : GetMaterialForwardShader(*BaseMaterial, Options);
+			const bool bHasGraph = HasMaterialGraphOutput(*BaseMaterial);
+
+			if (!bWorldNormal && bHasGraph)
+			{
+				FString GraphError;
+				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, false, Options.ReflectionModel, Options.bUnlit, false, GraphError);
+
+				if (GraphShader)
+				{
+					Shader = GraphShader;
+				}
+				else
+				{
+					HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
+				}
+			}
 			if (!Base || !Shader || !Shader->VertexShader || !Shader->PixelShader) return false;
 			Batch.Pipeline = *Base;
 			Batch.Pipeline.Shader = Shader;
@@ -133,8 +148,26 @@ namespace
 			else if (View.bIsWireframe && Type == EPSOType::StaticMesh_Opaque)
 				Type = EPSOType::StaticMesh_Wireframe;
 			FPipelineState* Pipeline = FRenderResourceManager::GetPSO(Type);
-			if (!Pipeline) return false;
+			if (!Pipeline)
+			{
+				return false;
+			}
 			Batch.Pipeline = *Pipeline;
+
+			if (Pass == EMeshPassType::GBuffer && bHasGraph)
+			{
+				FString GraphError;
+				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, true, EReflectionModel::Lambert, false, false, GraphError);
+
+				if (GraphShader)
+				{
+					Batch.Pipeline.Shader = GraphShader;
+				}
+				else
+				{
+					HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
+				}
+			}
 			Batch.bForceWireframe = Pass == EMeshPassType::GBuffer && View.bIsWireframe;
             Batch.ObjectStages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
 			if (MaterialProxy.PSOType == EPSOType::StaticMesh_Opaque ||
@@ -152,21 +185,57 @@ namespace
 			}
 		}
 		Batch.Sampler = MaterialProxy.SamplerState;
-		Batch.Textures.Reserve(MaterialProxy.Textures.Num());
-		for (int32 Index = 0; Index < MaterialProxy.Textures.Num(); ++Index)
+		if (bHasGraph && Batch.Pipeline.Shader != nullptr)
 		{
-			// Forward 조명은 t8 이상을 전역 리소스에 사용한다.
-			if (bUsesUberShader && Index >= 8) break;
-			UTexture2D* Texture = MaterialProxy.Textures[Index];
-			EShaderBindFlagBits Stages = EShaderBindFlagBits::Pixel;
-			if (bUsesUberShader && Index == 1)
-				Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
-			if (bUsesUberShader && Index == 0 &&
-				(!Texture || !Texture->GetResource() || !Texture->GetResource()->GetSRV()))
-				Texture = nullptr;
-			if (bUsesUberShader && Index == 1 && GetNormalEncoding(Texture) <= 0.5f)
-				Texture = nullptr;
-			Batch.Textures.Add({ Texture, Stages });
+			for (int32 Index = 0; Index < 2; ++Index)
+			{
+				UTexture2D* Texture = MaterialProxy.Textures.IsValidIndex(Index) ? MaterialProxy.Textures[Index] : nullptr;
+				EShaderBindFlagBits Stages = Index == 1 && bUsesUberShader
+					? EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel
+					: EShaderBindFlagBits::Pixel;
+
+				Batch.Textures.Add({ Texture, Stages });
+			}
+
+			for (UTexture2D* Texture : MaterialProxy.GraphTextures)
+			{
+				Batch.Textures.Add({ Texture, EShaderBindFlagBits::Pixel });
+			}
+
+			BuildMaterialGraphParameterData(Batch, *BaseMaterial, MaterialProxy);
+		}
+		else
+		{
+			Batch.Textures.Reserve(MaterialProxy.Textures.Num());
+
+			for (int32 Index = 0; Index < MaterialProxy.Textures.Num(); ++Index)
+			{
+				if (bUsesUberShader && Index >= 8)
+				{
+					break;
+				}
+
+				UTexture2D* Texture = MaterialProxy.Textures[Index];
+				EShaderBindFlagBits Stages = EShaderBindFlagBits::Pixel;
+
+				if (bUsesUberShader && Index == 1)
+				{
+					Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
+				}
+
+				if (bUsesUberShader && Index == 0 &&
+					(!Texture || !Texture->GetResource() || !Texture->GetResource()->GetSRV()))
+				{
+					Texture = nullptr;
+				}
+
+				if (bUsesUberShader && Index == 1 && GetNormalEncoding(Texture) <= 0.5f)
+				{
+					Texture = nullptr;
+				}
+
+				Batch.Textures.Add({ Texture, Stages });
+			}
 		}
 		return true;
 	}
@@ -325,6 +394,61 @@ namespace
 		return Item;
 	}
 
+	bool HasMaterialGraphOutput(const UMaterial& Material)
+	{
+		for (const FMaterialExpressionConnection& Connection : Material.ExpressionConnections)
+		{
+			if (Connection.InputNodeId == Material.OutputNodeId)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	void BuildMaterialGraphParameterData(FMeshDrawBatch& Batch, const UMaterial& Material, const FMaterialRenderProxy& Proxy)
+	{
+		int32 ParameterIndex = 0;
+
+		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
+		{
+			if (Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter)
+			{
+				continue;
+			}
+
+			FVector4 Value = Node.Type == EMaterialExpressionType::ScalarParameter
+				? FVector4(Node.ScalarValue, 0.0f, 0.0f, 0.0f)
+				: Node.VectorValue;
+
+			const FName Name(Node.ParameterName);
+
+			for (const FMaterialParameterOverride& Override : Proxy.ParameterOverrides)
+			{
+				if (Override.ParameterName != Name)
+				{
+					continue;
+				}
+
+				if (Node.Type == EMaterialExpressionType::ScalarParameter && Override.Type == EMaterialParameterType::Scalar)
+				{
+					Value.X = Override.ScalarValue;
+				}
+				else if (Node.Type == EMaterialExpressionType::VectorParameter && Override.Type == EMaterialParameterType::Vector)
+				{
+					Value = Override.VectorValue;
+				}
+
+				break;
+			}
+
+			std::memcpy(Batch.GraphParameterData.data() + ParameterIndex * sizeof(FVector4), &Value, sizeof(FVector4));
+			++ParameterIndex;
+		}
+
+		Batch.GraphParameterDataSize = sizeof(Batch.GraphParameterData);
+	}
 }
 
 bool FMeshPassProcessor::Build(const FSceneView& View, const FRenderQueue& Queue,

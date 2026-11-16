@@ -66,6 +66,7 @@ private:
 	TUniquePtr<FConstantBuffer> ObjectCB;
 	TUniquePtr<FConstantBuffer> ViewCB;
 	TUniquePtr<FConstantBuffer> MaterialCB;
+	TUniquePtr<FConstantBuffer> GraphMaterialCB;
 	TUniquePtr<FConstantBuffer> PerObjectSlotCB;
 	TUniquePtr<FConstantBuffer> ToneMapConstants;
 	uint32 PerObjectSlotCapacity = 0;

@@ -41,6 +41,7 @@ enum class EPSOType : uint8
 	Particle_Sprite,
 	Count
 };
+class UMaterial;
 
 class FRenderResourceManager
 {
@@ -63,6 +64,7 @@ public:
 
 	static FPipelineState* GetPSO(const EPSOType& InType);
 	static FShaderProgram* GetForwardShaderProgram(EReflectionModel Reflection, EShadingModel Shading, bool bGPUSkinning = false, bool bUnlit = false);
+	static FShaderProgram* GetMaterialGraphShaderProgram(const UMaterial& Material, bool bDeferred, EReflectionModel Reflection, bool bUnlit, bool bGPUSkinning, FString& OutError);
 	static FShaderProgram* GetWorldNormalShaderProgram(bool bGPUSkinning);
 	static FShaderProgram* GetTranslucentShaderProgram(bool bGPUSkinning);
 	static FShaderProgram* GetShadowDepthShaderProgram();
@@ -77,6 +79,7 @@ private:
 	TMap<FString, TUniquePtr<FVertexShader>> VertexShaderMap;
 	TMap<FString, TUniquePtr<FPixelShader>>  PixelShaderMap;
 	TMap<FString, TUniquePtr<FShaderProgram>> ShaderProgramMap;
+	TMap<FString, FString> MaterialGraphErrorMap;
 
 	TMap<EPSOType, TUniquePtr<FPipelineState>> PipelineStateMap;
 };
