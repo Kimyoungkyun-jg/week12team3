@@ -103,9 +103,24 @@ namespace
 			return false;
 		}
 
-		if (!BaseMaterial->HasUsage(EMaterialUsage::StaticMesh))
+		const EPSOType MaterialPSO = MaterialProxy.PSOType;
+
+		const bool bParticleSpritePSO = MaterialPSO == EPSOType::Particle_AlphaBlend ||
+			MaterialPSO == EPSOType::Particle_Additive ||
+			MaterialPSO == EPSOType::Particle_Sprite ||
+			MaterialPSO == EPSOType::Particle_Instanced ||
+			MaterialPSO == EPSOType::Particle_GpuInstanced;
+
+		const bool bParticleMeshPSO = MaterialPSO == EPSOType::Particle_MeshOpaque ||
+			MaterialPSO == EPSOType::Particle_MeshTranslucent ||
+			MaterialPSO == EPSOType::Particle_MeshAdditive;
+
+		const EMaterialUsage RequiredUsage = bParticleMeshPSO ? EMaterialUsage::ParticleMesh : bParticleSpritePSO ? EMaterialUsage::ParticleSprite
+																												  : EMaterialUsage::StaticMesh;
+
+		if (!BaseMaterial->HasUsage(RequiredUsage))
 		{
-			HTR_LOG(Warning, "[Material] {} is missing Static Mesh usage.", BaseMaterial->GetPath());
+			HTR_LOG(Warning, "[Material] {} is missing required usage.", BaseMaterial->GetPath());
 			return false;
 		}
 		Batch.VertexBuffer = Mesh->GetVertexBuffer(LOD);
@@ -177,6 +192,26 @@ namespace
 				else
 				{
 					HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
+					return false;
+				}
+			}
+			else if (Pass == EMeshPassType::Translucent && BaseMaterial->HasGraphOutput() &&
+				(Type == EPSOType::StaticMesh_Translucent ||
+					Type == EPSOType::Particle_AlphaBlend ||
+					Type == EPSOType::Particle_Additive ||
+					Type == EPSOType::Particle_Sprite))
+			{
+				FString GraphError;
+				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, Type, EReflectionModel::Lambert, false, false, GraphError);
+
+				if (GraphShader)
+				{
+					Batch.Pipeline.Shader = GraphShader;
+				}
+				else
+				{
+					HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
+					return false;
 				}
 			}
 			Batch.bForceWireframe = Pass == EMeshPassType::GBuffer && View.bIsWireframe;
@@ -350,6 +385,22 @@ namespace
 				Batch.Pipeline.Shader = FRenderResourceManager::GetTranslucentShaderProgram(true);
 				if (!Batch.Pipeline.Shader)
 				{
+					return false;
+				}
+			}
+
+			if (Pass == EMeshPassType::Translucent && Type == EPSOType::StaticMesh_Translucent && BaseMaterial->HasGraphOutput())
+			{
+				FString GraphError;
+				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, EPSOType::StaticMesh_Translucent, EReflectionModel::Lambert, false, bGPUSkinning, GraphError);
+
+				if (GraphShader)
+				{
+					Batch.Pipeline.Shader = GraphShader;
+				}
+				else
+				{
+					HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
 					return false;
 				}
 			}
@@ -646,21 +697,6 @@ bool FMeshPassProcessor::Build(const TArray<FPrimitiveSceneProxy*>& ShadowMeshes
 
 		FMeshDrawBatch Batch{};
 		Batch.Pipeline = *Pipeline;
-		if (Pass == EMeshPassType::Translucent && Type == EPSOType::StaticMesh_Translucent && BaseMaterial->HasGraphOutput())
-		{
-			FString GraphError;
-			FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, EPSOType::StaticMesh_Translucent, EReflectionModel::Lambert, false, false, GraphError);
-
-			if (GraphShader)
-			{
-				Batch.Pipeline.Shader = GraphShader;
-			}
-			else
-			{
-				HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
-				return false;
-			}
-		}
 		Batch.VertexBuffer = Proxy->GetVertexBuffer(LOD);
 		Batch.IndexBuffer = Proxy->GetIndexBuffer(LOD);
 		if (USkeletalMesh* SkelMesh = Proxy->GetSkeletalMesh())

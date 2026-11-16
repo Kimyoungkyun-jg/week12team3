@@ -1350,6 +1350,7 @@ void FMaterialEditorPanel::OnRender()
 				{
 					CompileVariant(EPSOType::StaticMesh_Forward);
 					CompileVariant(EPSOType::StaticMesh_GBuffer);
+					CompileVariant(EPSOType::StaticMesh_Translucent);
 				}
 
 				if (Material->HasUsage(EMaterialUsage::SkeletalMesh))
@@ -1358,6 +1359,8 @@ void FMaterialEditorPanel::OnRender()
 					CompileVariant(EPSOType::StaticMesh_Forward, true);
 					CompileVariant(EPSOType::SkeletalMesh_GBuffer);
 					CompileVariant(EPSOType::SkeletalMesh_GBuffer, true);
+					CompileVariant(EPSOType::StaticMesh_Translucent);
+					CompileVariant(EPSOType::StaticMesh_Translucent, true);
 				}
 
 				if (Material->HasUsage(EMaterialUsage::ParticleSprite))

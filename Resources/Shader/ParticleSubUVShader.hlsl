@@ -25,7 +25,7 @@ cbuffer subuv : register(b1)
 };
 
 Texture2D AtlasTexture : register(t0);
-SamplerState AtlasSampler : register(s0);
+SamplerState ColorSampler : register(s0);
 
 #ifdef MATERIAL_GRAPH
 #include MATERIAL_GRAPH_INCLUDE

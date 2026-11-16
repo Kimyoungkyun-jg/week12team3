@@ -1436,6 +1436,9 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 			RenderCommand::BindShaderResource(1, static_cast<const FStructuredBuffer*>(nullptr), EShaderBindFlagBits::Vertex);
 			RenderCommand::BindConstantBuffer(1, nullptr, EShaderBindFlagBits::Vertex);
 		}
+
+		RenderCommand::UnbindShaderResources(2, MaxMaterialGraphTextures, EShaderBindFlagBits::Pixel);
+		Renderer->BindGraphMaterialParameters(nullptr, 0);
 	};
 
 	DrawParticleBatches(true);
@@ -1525,9 +1528,12 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 
 			RenderCommand::BindShaderResource(1, static_cast<const FStructuredBuffer*>(nullptr), EShaderBindFlagBits::Vertex);
 			RenderCommand::BindConstantBuffer(1, nullptr, EShaderBindFlagBits::Vertex);
+			RenderCommand::UnbindShaderResources(2, MaxMaterialGraphTextures, EShaderBindFlagBits::Pixel);
+			Renderer->BindGraphMaterialParameters(nullptr, 0);
 		}
 	}
 	RenderCommand::BindConstantBuffer(3, nullptr, EShaderBindFlagBits::Pixel);
+	RenderCommand::BindConstantBuffer(4, nullptr, EShaderBindFlagBits::Pixel);
 }
 
 void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,

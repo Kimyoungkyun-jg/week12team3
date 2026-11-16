@@ -25,7 +25,7 @@ cbuffer SpriteParams : register(b1)
 };
 
 Texture2D SpriteTexture : register(t0);
-SamplerState SpriteSampler : register(s0);
+SamplerState ColorSampler : register(s0);
 
 #ifdef MATERIAL_GRAPH
 #include MATERIAL_GRAPH_INCLUDE
