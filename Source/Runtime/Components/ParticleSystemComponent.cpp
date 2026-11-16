@@ -637,7 +637,7 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 			continue;
 		if (LOD->TypeDataModule->GetEmitterType() == EParticleEmitterType::GpuSprite)
 		{
-			FVector OffsetMin, OffsetMax, VelReach;
+			FVector OffsetMin, OffsetMax, VelReach;v 
 			float HalfDiagSize = 1.0f;
 			float MaxLifetime = 1.0f;
 			ComputeGpuEmitterReach(LOD, OffsetMin, OffsetMax, VelReach, HalfDiagSize, MaxLifetime);
@@ -920,18 +920,18 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 		for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index)
 		{
 			DECLARE_PARTICLE_CONST(Particle, Emitter.ParticleData + static_cast<size_t>(Emitter.ParticleIndices[Index]) * static_cast<size_t>(Emitter.ParticleStride));
-			FParticleSpriteRenderData& Sprite = Data.Sprites.AddDefaulted_GetRef();
-			Sprite.bIsMesh = bIsMeshEmitter;
-			Sprite.bUseLocalSpace = bLocal;
-			Sprite.Mesh = MeshAsset;
-			Sprite.MeshScale = Particle.Size;
-			Sprite.Location = bIsMeshEmitter
+			FParticleRenderData& ParticleData = Data.Particles.AddDefaulted_GetRef();
+			ParticleData.bIsMesh = bIsMeshEmitter;
+			ParticleData.bUseLocalSpace = bLocal;
+			ParticleData.Mesh = MeshAsset;
+			ParticleData.MeshScale = Particle.Size;
+			ParticleData.Location = bIsMeshEmitter
 				? Particle.Location
 				: (bLocal ? Data.LocalToWorld.TransformPosition(Particle.Location) : Particle.Location);
-			Sprite.Width = std::abs(Particle.Size.X * (bLocal ? Data.WorldScale.Y : 1.0f));
-			Sprite.Height = std::abs(Particle.Size.Y * (bLocal ? Data.WorldScale.Z : 1.0f));
-			Sprite.Rotation = Particle.Rotation;
-			Sprite.Material = EmitterMaterial;
+			ParticleData.Width = std::abs(Particle.Size.X * (bLocal ? Data.WorldScale.Y : 1.0f));
+			ParticleData.Height = std::abs(Particle.Size.Y * (bLocal ? Data.WorldScale.Z : 1.0f));
+			ParticleData.Rotation = Particle.Rotation;
+			ParticleData.Material = EmitterMaterial;
 			float CurrentFrame = 0.0f;
 			if (SubUVModule && SubUVOffset > 0)
 			{
@@ -939,17 +939,17 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 					reinterpret_cast<const uint8*>(&Particle) + SubUVOffset);
 				CurrentFrame = SubUVPayload.ImageIndex;
 			}
-			Sprite.Constants.CurrentFrame = CurrentFrame;
-			Sprite.Constants.AtlasRowSize = AtlasRowSize;
-			Sprite.Constants.AtlasColSize = AtlasColSize;
-			Sprite.Constants.Alpha = Particle.Color.A / 255.0f;
-			Sprite.Constants.Tint = FVector4(Particle.Color.R / 255.0f, Particle.Color.G / 255.0f,
+			ParticleData.Constants.CurrentFrame = CurrentFrame;
+			ParticleData.Constants.AtlasRowSize = AtlasRowSize;
+			ParticleData.Constants.AtlasColSize = AtlasColSize;
+			ParticleData.Constants.Alpha = Particle.Color.A / 255.0f;
+			ParticleData.Constants.Tint = FVector4(Particle.Color.R / 255.0f, Particle.Color.G / 255.0f,
 				Particle.Color.B / 255.0f, 1.0f);
-			Sprite.Constants.DecodeSRGB = 0.0f;
+			ParticleData.Constants.DecodeSRGB = 0.0f;
 			if (!Data.bFixedBounds)
 			{
-				float Radius = 0.5f * std::sqrt(Sprite.Width * Sprite.Width + Sprite.Height * Sprite.Height);
-				FVector BoundsCenter = Sprite.Location;
+				float Radius = 0.5f * std::sqrt(ParticleData.Width * ParticleData.Width + ParticleData.Height * ParticleData.Height);
+				FVector BoundsCenter = ParticleData.Location;
 				if (bIsMeshEmitter)
 				{
 					const FVector Scale3D = bLocal ? (Particle.Size * Data.WorldScale) : Particle.Size;

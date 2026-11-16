@@ -63,11 +63,11 @@ void FParticleSceneProxy::SyncPrimitiveState()
 void FParticleSceneProxy::SubmitToRenderQueue(FRenderQueue& Queue, const FViewContext& View, uint32 LODIndex) const
 {
 	if (!HasParticles()) return;
-	for (const FParticleSpriteRenderData& Sprite : DynamicData.Sprites)
+	for (const FParticleRenderData& ParticleData : DynamicData.Particles)
 	{
-		FMatrix World = View.BuildBillboardMatrix(Sprite.Location, Sprite.Width, Sprite.Height);
-		const float C = std::cos(Sprite.Rotation);
-		const float S = std::sin(Sprite.Rotation);
+		FMatrix World = View.BuildBillboardMatrix(ParticleData.Location, ParticleData.Width, ParticleData.Height);
+		const float C = std::cos(ParticleData.Rotation);
+		const float S = std::sin(ParticleData.Rotation);
 		for (int Axis = 0; Axis < 3; ++Axis)
 		{
 			const float Right = World.M[1][Axis];
@@ -77,11 +77,11 @@ void FParticleSceneProxy::SubmitToRenderQueue(FRenderQueue& Queue, const FViewCo
 		}
 		FRenderPacket Packet;
 		Packet.Mesh = QuadMesh;
-		Packet.Material = Sprite.Material ? Sprite.Material : Material;
+		Packet.Material = ParticleData.Material ? ParticleData.Material : Material;
 		Packet.Model = Queue.StoreWorldMatrix(World);
-		const FVector Delta = Sprite.Location - View.CameraPosition;
+		const FVector Delta = ParticleData.Location - View.CameraPosition;
 		Packet.CameraToParticleDistance = Delta.Dot(Delta);
-		Packet.MaterialParamData = &Sprite.Constants;
+		Packet.MaterialParamData = &ParticleData.Constants;
 		Packet.MaterialParamDataSize = sizeof(FSubUVConstants);
 		Queue.Add(Packet);
 	}
@@ -90,23 +90,23 @@ void FParticleSceneProxy::SubmitToRenderQueue(FRenderQueue& Queue, const FViewCo
 void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>& OutInstances,
 	TArray<FParticleInstancedBatch>& OutBatches, const FViewContext& View) const
 {
-	if (!HasParticles() || DynamicData.Sprites.IsEmpty()) return;
+	if (!HasParticles() || DynamicData.Particles.IsEmpty()) return;
 
-	struct FSortedSprite
+	struct FSortedParticle
 	{
 		int32 Index = 0;
 		float DistanceSq = 0.0f;
 	};
 
-	const int32 Count = static_cast<int32>(DynamicData.Sprites.Num());
-	TArray<FSortedSprite> Sorted;
+	const int32 Count = static_cast<int32>(DynamicData.Particles.Num());
+	TArray<FSortedParticle> Sorted;
 	Sorted.Reserve(Count);
 	for (int32 Index = 0; Index < Count; ++Index)
 	{
-		const FVector Delta = DynamicData.Sprites[Index].Location - View.CameraPosition;
+		const FVector Delta = DynamicData.Particles[Index].Location - View.CameraPosition;
 		Sorted.Add({ Index, Delta.Dot(Delta) });
 	}
-	std::sort(Sorted.begin(), Sorted.end(), [](const FSortedSprite& A, const FSortedSprite& B)
+	std::sort(Sorted.begin(), Sorted.end(), [](const FSortedParticle& A, const FSortedParticle& B)
 	{
 		return A.DistanceSq > B.DistanceSq;
 	});
@@ -136,20 +136,20 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 
 	for (int32 SortedIdx = 0; SortedIdx < Count;)
 	{
-		const FParticleSpriteRenderData& FirstSprite = DynamicData.Sprites[Sorted[SortedIdx].Index];
-		if (FirstSprite.bIsMesh)
+		const FParticleRenderData& FirstParticle = DynamicData.Particles[Sorted[SortedIdx].Index];
+		if (FirstParticle.bIsMesh)
 		{
 			FlushSpriteBatch();
 			int32 RunEnd = SortedIdx + 1;
 			while (RunEnd < Count)
 			{
-				const FParticleSpriteRenderData& NextSprite = DynamicData.Sprites[Sorted[RunEnd].Index];
-				if (!NextSprite.bIsMesh || NextSprite.Mesh != FirstSprite.Mesh || NextSprite.Material != FirstSprite.Material)
+				const FParticleRenderData& NextParticle = DynamicData.Particles[Sorted[RunEnd].Index];
+				if (!NextParticle.bIsMesh || NextParticle.Mesh != FirstParticle.Mesh || NextParticle.Material != FirstParticle.Material)
 					break;
 				++RunEnd;
 			}
 
-			UStaticMesh* EntryMesh = FirstSprite.Mesh;
+			UStaticMesh* EntryMesh = FirstParticle.Mesh;
 			if (EntryMesh)
 			{
 				const FStaticMeshData& MeshData = EntryMesh->GetMeshData(0);
@@ -163,8 +163,8 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 					if (bHasSections && SecIndexCount == 0) continue;
 
 					const uint32 SlotIndex = bHasSections ? MeshData.Sections[SecIdx].MaterialSlotIndex : 0;
-					UMaterial* EntryMat = FirstSprite.Material
-						? FirstSprite.Material
+					UMaterial* EntryMat = FirstParticle.Material
+						? FirstParticle.Material
 						: EntryMesh->GetMaterial(SlotIndex);
 					if (!EntryMat) continue;
 
@@ -174,28 +174,28 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 
 					for (int32 RunIdx = SortedIdx; RunIdx < RunEnd; ++RunIdx)
 					{
-						const FParticleSpriteRenderData& Sprite = DynamicData.Sprites[Sorted[RunIdx].Index];
-						const float C = std::cos(Sprite.Rotation);
-						const float S = std::sin(Sprite.Rotation);
+						const FParticleRenderData& ParticleData = DynamicData.Particles[Sorted[RunIdx].Index];
+						const float C = std::cos(ParticleData.Rotation);
+						const float S = std::sin(ParticleData.Rotation);
 						FMatrix World = FMatrix::Identity;
-						World.M[0][0] = C * Sprite.MeshScale.X;
-						World.M[0][1] = S * Sprite.MeshScale.X;
-						World.M[1][0] = -S * Sprite.MeshScale.Y;
-						World.M[1][1] = C * Sprite.MeshScale.Y;
-						World.M[2][2] = Sprite.MeshScale.Z;
-						World.M[3][0] = Sprite.Location.X;
-						World.M[3][1] = Sprite.Location.Y;
-						World.M[3][2] = Sprite.Location.Z;
-						if (Sprite.bUseLocalSpace)
+						World.M[0][0] = C * ParticleData.MeshScale.X;
+						World.M[0][1] = S * ParticleData.MeshScale.X;
+						World.M[1][0] = -S * ParticleData.MeshScale.Y;
+						World.M[1][1] = C * ParticleData.MeshScale.Y;
+						World.M[2][2] = ParticleData.MeshScale.Z;
+						World.M[3][0] = ParticleData.Location.X;
+						World.M[3][1] = ParticleData.Location.Y;
+						World.M[3][2] = ParticleData.Location.Z;
+						if (ParticleData.bUseLocalSpace)
 							World = World * DynamicData.LocalToWorld;
 
 						FParticleInstanceData Instance{};
 						Instance.World = World;
 						Instance.TintAndAlpha = FVector4(
-							Sprite.Constants.Tint.X * BaseCol.X,
-							Sprite.Constants.Tint.Y * BaseCol.Y,
-							Sprite.Constants.Tint.Z * BaseCol.Z,
-							Sprite.Constants.Alpha * BaseCol.W);
+							ParticleData.Constants.Tint.X * BaseCol.X,
+							ParticleData.Constants.Tint.Y * BaseCol.Y,
+							ParticleData.Constants.Tint.Z * BaseCol.Z,
+							ParticleData.Constants.Alpha * BaseCol.W);
 						Instance.SubUVParams = FVector4(bHasTex ? 1.0f : 0.0f, 1.0f, 1.0f, 0.0f);
 						OutInstances.Add(Instance);
 					}
@@ -219,7 +219,7 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 		}
 
 		UStaticMesh* EntryMesh = QuadMesh;
-		UMaterial* EntryMat = FirstSprite.Material ? FirstSprite.Material : Material;
+		UMaterial* EntryMat = FirstParticle.Material ? FirstParticle.Material : Material;
 		if (!EntryMesh || !EntryMat)
 		{
 			++SortedIdx;
@@ -232,9 +232,9 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 		BatchMesh = EntryMesh;
 		BatchMaterial = EntryMat;
 
-		FMatrix World = View.BuildBillboardMatrix(FirstSprite.Location, FirstSprite.Width, FirstSprite.Height);
-		const float C = std::cos(FirstSprite.Rotation);
-		const float S = std::sin(FirstSprite.Rotation);
+		FMatrix World = View.BuildBillboardMatrix(FirstParticle.Location, FirstParticle.Width, FirstParticle.Height);
+		const float C = std::cos(FirstParticle.Rotation);
+		const float S = std::sin(FirstParticle.Rotation);
 		for (int Axis = 0; Axis < 3; ++Axis)
 		{
 			const float Right = World.M[1][Axis];
@@ -246,15 +246,15 @@ void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>
 		FParticleInstanceData Instance{};
 		Instance.World = World;
 		Instance.TintAndAlpha = FVector4(
-			FirstSprite.Constants.Tint.X,
-			FirstSprite.Constants.Tint.Y,
-			FirstSprite.Constants.Tint.Z,
-			FirstSprite.Constants.Alpha);
+			FirstParticle.Constants.Tint.X,
+			FirstParticle.Constants.Tint.Y,
+			FirstParticle.Constants.Tint.Z,
+			FirstParticle.Constants.Alpha);
 		Instance.SubUVParams = FVector4(
-			FirstSprite.Constants.CurrentFrame,
-			FirstSprite.Constants.AtlasRowSize,
-			FirstSprite.Constants.AtlasColSize,
-			FirstSprite.Constants.DecodeSRGB);
+			FirstParticle.Constants.CurrentFrame,
+			FirstParticle.Constants.AtlasRowSize,
+			FirstParticle.Constants.AtlasColSize,
+			FirstParticle.Constants.DecodeSRGB);
 		OutInstances.Add(Instance);
 		++BatchCount;
 		++SortedIdx;

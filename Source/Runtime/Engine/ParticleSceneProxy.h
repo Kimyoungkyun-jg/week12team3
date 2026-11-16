@@ -10,7 +10,7 @@ class UMaterial;
 class FRenderQueue;
 struct FViewContext;
 
-struct FParticleSpriteRenderData
+struct FParticleRenderData
 {
 	FVector Location;
 	float Width = 1.0f;
@@ -47,7 +47,7 @@ struct FParticleDynamicData
 	FPrimitiveRenderStateData BaseState{};
 	bool bFixedBounds = false;
 	bool bLocalBoundsOnly = false;
-	TArray<FParticleSpriteRenderData> Sprites;
+	TArray<FParticleRenderData> Particles;
 	TArray<FParticleDynamicGpuEmitterData> GpuEmitters;
 };
 
@@ -66,7 +66,7 @@ public:
 	virtual const FParticleSceneProxy* AsParticleSceneProxy() const override { return this; }
 	bool HasParticles() const
 	{
-		return (!DynamicData.Sprites.IsEmpty() || !DynamicData.GpuEmitters.IsEmpty()) && Material;
+		return (!DynamicData.Particles.IsEmpty() || !DynamicData.GpuEmitters.IsEmpty()) && Material;
 	}
 
 private:
