@@ -129,12 +129,51 @@ namespace
 		}
 	}
 
+	EMaterialUsage ResolveMaterialGraphUsage(EPSOType PSO, bool bSkeletalMesh)
+	{
+		switch (PSO)
+		{
+		case EPSOType::Particle_AlphaBlend:
+		case EPSOType::Particle_Additive:
+		case EPSOType::Particle_Sprite:
+		case EPSOType::Particle_Instanced:
+		case EPSOType::Particle_GpuInstanced:
+			return EMaterialUsage::ParticleSprite;
+
+		case EPSOType::Particle_MeshOpaque:
+		case EPSOType::Particle_MeshTranslucent:
+		case EPSOType::Particle_MeshAdditive:
+			return EMaterialUsage::ParticleMesh;
+
+		case EPSOType::SkeletalMesh_GBuffer:
+			return EMaterialUsage::SkeletalMesh;
+
+		case EPSOType::StaticMesh_GBuffer:
+			return EMaterialUsage::StaticMesh;
+
+		case EPSOType::StaticMesh_Forward:
+		case EPSOType::StaticMesh_Translucent:
+			return bSkeletalMesh ? EMaterialUsage::SkeletalMesh : EMaterialUsage::StaticMesh;
+
+		default:
+			return EMaterialUsage::None;
+		}
+	}
+
 	FShaderProgram* FindGraphShader(const FMaterialRenderProxy& Material, EPSOType PSO,
-		EReflectionModel Reflection = EReflectionModel::Lambert, bool bUnlit = false, bool bGPUSkinning = false)
+		EReflectionModel Reflection = EReflectionModel::Lambert, bool bUnlit = false, bool bGPUSkinning = false, bool bSkeletalMesh = false)
 	{
 		const UMaterial* Base = Material.BaseMaterial;
 		if (!Base || !Base->HasGraphOutput())
+		{
 			return nullptr;
+		}
+
+		const EMaterialUsage RequiredUsage = ResolveMaterialGraphUsage(PSO, bSkeletalMesh);
+		if (RequiredUsage == EMaterialUsage::None || !Base->HasUsage(RequiredUsage))
+		{
+			return nullptr;
+		}
 
 		FString Error;
 		return FRenderResourceManager::GetMaterialGraphShaderProgram(*Base, PSO, Reflection, bUnlit, bGPUSkinning, Error);
@@ -230,6 +269,7 @@ namespace
 
 		const bool bGPUSkinning = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) &&
 			(Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+		const bool bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
 
 		FPipelineState* Base = FRenderResourceManager::GetPSO(bWorldNormal
 			? EPSOType::StaticMesh_WorldNormal : EPSOType::StaticMesh_Forward);
@@ -237,7 +277,7 @@ namespace
 		Batch.Material->GetRenderProxy(Material);
 		const FSceneRenderOptions Effective = ResolveMaterialLighting(Material, Options);
 		FShaderProgram* GraphShader = bWorldNormal ? nullptr
-			: FindGraphShader(Material, EPSOType::StaticMesh_Forward, Effective.ReflectionModel, Effective.bUnlit, bGPUSkinning);
+												   : FindGraphShader(Material, EPSOType::StaticMesh_Forward, Effective.ReflectionModel, Effective.bUnlit, bGPUSkinning, bSkeletalMesh);
 		FShaderProgram* Shader = bWorldNormal
 			? FRenderResourceManager::GetWorldNormalShaderProgram(bGPUSkinning)
 			: FRenderResourceManager::GetForwardShaderProgram(Effective.ReflectionModel, Effective.ShadingModel, bGPUSkinning, Effective.bUnlit);
@@ -247,7 +287,7 @@ namespace
 			return;
 
 		FShaderProgram* UnlitGraphShader = GraphShader
-			? (Effective.bUnlit ? GraphShader : FindGraphShader(Material, EPSOType::StaticMesh_Forward, Effective.ReflectionModel, true, bGPUSkinning))
+			? (Effective.bUnlit ? GraphShader : FindGraphShader(Material, EPSOType::StaticMesh_Forward, Effective.ReflectionModel, true, bGPUSkinning, bSkeletalMesh))
 			: nullptr;
 
 		const FMeshDrawConstantBuffer MaterialCB = MakeForwardMaterialCB(Material);
@@ -282,7 +322,7 @@ namespace
 			Cmd.PrimitiveId = ResolveElementPrimitiveId(Element);
 			Cmd.Material = Batch.Material;
 			Cmd.bUsesGPUScene = (Element.InstanceCount == 0);
-			Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+			Cmd.bSkeletalMesh = bSkeletalMesh;
 			Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
 			Cmd.bIsParticle = Batch.bIsParticle;
 			Cmd.bReceiveDecal = Element.bReceiveDecal;
@@ -732,6 +772,7 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 
 	const bool bGPUSkinning = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) &&
 		(Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+	const bool bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
 	const bool bUsesGPUSceneShader = (PSOType == EPSOType::StaticMesh_Translucent ||
 		PSOType == EPSOType::StaticMesh_Opaque || PSOType == EPSOType::StaticMesh_Wireframe);
 
@@ -752,7 +793,7 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 	case EPSOType::Particle_AlphaBlend:
 	case EPSOType::Particle_Additive:
 	case EPSOType::Particle_Sprite:
-		GraphShader = FindGraphShader(Material, PSOType, Options.ReflectionModel, Options.bUnlit, bGPUSkinning);
+		GraphShader = FindGraphShader(Material, PSOType, Options.ReflectionModel, Options.bUnlit, bGPUSkinning, bSkeletalMesh);
 		if (GraphShader)
 			EffectivePipeline.Shader = GraphShader;
 		break;
@@ -820,7 +861,7 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 		}
 
 		Cmd.Material = Batch.Material;
-		Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+		Cmd.bSkeletalMesh = bSkeletalMesh;
 		Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
 		Cmd.bIsParticle = Batch.bIsParticle;
 		Cmd.bReceiveDecal = Element.bReceiveDecal;

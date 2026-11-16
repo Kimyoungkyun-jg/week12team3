@@ -1347,37 +1347,48 @@ void FMaterialEditorPanel::OnRender()
 					}
 				};
 
+				const bool bIsTranslucent = Material->GetBlendState() != EBlendState::Opaque;
+				const EPSOType MeshPSO = bIsTranslucent ? EPSOType::StaticMesh_Translucent : EPSOType::StaticMesh_Forward;
+
 				if (Material->HasUsage(EMaterialUsage::StaticMesh))
 				{
-					CompileVariant(EPSOType::StaticMesh_Forward);
-					CompileVariant(EPSOType::StaticMesh_GBuffer);
-					CompileVariant(EPSOType::StaticMesh_Translucent);
+					CompileVariant(MeshPSO);
 				}
 
 				if (Material->HasUsage(EMaterialUsage::SkeletalMesh))
 				{
-					CompileVariant(EPSOType::StaticMesh_Forward);
-					CompileVariant(EPSOType::StaticMesh_Forward, true);
-					CompileVariant(EPSOType::SkeletalMesh_GBuffer);
-					CompileVariant(EPSOType::SkeletalMesh_GBuffer, true);
-					CompileVariant(EPSOType::StaticMesh_Translucent);
-					CompileVariant(EPSOType::StaticMesh_Translucent, true);
+					CompileVariant(MeshPSO);
+					CompileVariant(MeshPSO, true);
 				}
 
 				if (Material->HasUsage(EMaterialUsage::ParticleSprite))
 				{
 					CompileVariant(EPSOType::Particle_Instanced);
 					CompileVariant(EPSOType::Particle_GpuInstanced);
-					CompileVariant(EPSOType::Particle_Sprite);
-					CompileVariant(EPSOType::Particle_AlphaBlend);
-					CompileVariant(EPSOType::Particle_Additive);
+
+					const EPSOType LegacyParticlePSO = Material->GetPSOType();
+					if (LegacyParticlePSO == EPSOType::Particle_Sprite ||
+						LegacyParticlePSO == EPSOType::Particle_AlphaBlend ||
+						LegacyParticlePSO == EPSOType::Particle_Additive)
+					{
+						CompileVariant(LegacyParticlePSO);
+					}
 				}
 
 				if (Material->HasUsage(EMaterialUsage::ParticleMesh))
 				{
-					CompileVariant(EPSOType::Particle_MeshOpaque);
-					CompileVariant(EPSOType::Particle_MeshTranslucent);
-					CompileVariant(EPSOType::Particle_MeshAdditive);
+					if (Material->GetBlendState() == EBlendState::Opaque)
+					{
+						CompileVariant(EPSOType::Particle_MeshOpaque);
+					}
+					else if (Material->GetBlendState() == EBlendState::Additive)
+					{
+						CompileVariant(EPSOType::Particle_MeshAdditive);
+					}
+					else
+					{
+						CompileVariant(EPSOType::Particle_MeshTranslucent);
+					}
 				}
 
 				Status = !bCompiledAny ? "Enable at least one Usage Flag." : bCompileSucceeded ? "Material Graph compiled successfully."
