@@ -200,6 +200,33 @@ namespace
 			const FString B = GetInputVariable(Node->Id, 1);
 			const FString C = GetInputVariable(Node->Id, 2);
 
+			const EMaterialValueType OutputType = Material.GetExpressionOutputType(Node->Id, 0);
+
+			const char* HlslType = nullptr;
+
+			switch (OutputType)
+			{
+			case EMaterialValueType::Scalar:
+				HlslType = "float";
+				break;
+
+			case EMaterialValueType::Vector2:
+				HlslType = "float2";
+				break;
+
+			case EMaterialValueType::Vector3:
+				HlslType = "float3";
+				break;
+
+			case EMaterialValueType::Vector4:
+				HlslType = "float4";
+				break;
+
+			default:
+				OutError = "Cannot resolve expression output type.";
+				return false;
+			}
+
 			switch (Node->Type)
 			{
 			case EMaterialExpressionType::Constant:
@@ -235,19 +262,19 @@ namespace
 				break;
 
 			case EMaterialExpressionType::Add:
-				OutSource += "    " + Variable + " = " + A + " + " + B + ";\n";
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + A + " + " + B + ";\n";
 				break;
 
 			case EMaterialExpressionType::Multiply:
-				OutSource += "    " + Variable + " = " + A + " * " + B + ";\n";
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + A + " * " + B + ";\n";
 				break;
 
 			case EMaterialExpressionType::Lerp:
-				OutSource += "    " + Variable + " = lerp(" + A + ", " + B + ", " + C + ");\n";
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = lerp(" + A + ", " + B + ", " + C + ");\n";
 				break;
 
 			case EMaterialExpressionType::OneMinus:
-				OutSource += "    " + Variable + " = 1.0f - " + A + ";\n";
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = 1.0f - " + A + ";\n";
 				break;
 
 			default:
@@ -348,6 +375,55 @@ bool SaveGeneratedMaterialGraph(const FString& Source, const FString& Hash, FStr
 	}
 
 	OutIncludePath = "GeneratedMaterial/Graph_" + Hash + ".hlsli";
+	return true;
+}
+
+bool SaveGeneratedMaterialShaderVariant(const FString& BaseShaderPath, const FString& IncludePath, const FString& Hash, FString& OutShaderPath)
+{
+	std::ifstream Input(BaseShaderPath, std::ios::binary);
+
+	if (!Input)
+	{
+		return false;
+	}
+
+	const FString BaseSource(std::istreambuf_iterator<char>{ Input }, std::istreambuf_iterator<char>{});
+	const FString IncludeMarker = "#include MATERIAL_GRAPH_INCLUDE";
+	const size_t IncludePosition = BaseSource.find(IncludeMarker);
+
+	if (IncludePosition == FString::npos)
+	{
+		return false;
+	}
+
+	FString GeneratedSource = BaseSource;
+	const FString LiteralInclude = "#include \"" + IncludePath + "\"";
+	GeneratedSource.replace(IncludePosition, IncludeMarker.size(), LiteralInclude);
+
+	const fs::path BasePath(BaseShaderPath);
+	const fs::path VariantPath = BasePath.parent_path() / (BasePath.stem().string() + "_Graph_" + Hash + ".hlsli");
+
+	std::ifstream Existing(VariantPath, std::ios::binary);
+	const FString ExistingSource(std::istreambuf_iterator<char>{ Existing }, std::istreambuf_iterator<char>{});
+
+	if (ExistingSource != GeneratedSource)
+	{
+		std::ofstream Output(VariantPath, std::ios::binary | std::ios::trunc);
+
+		if (!Output)
+		{
+			return false;
+		}
+
+		Output.write(GeneratedSource.data(), static_cast<std::streamsize>(GeneratedSource.size()));
+
+		if (!Output)
+		{
+			return false;
+		}
+	}
+
+	OutShaderPath = VariantPath.generic_string();
 	return true;
 }
 
@@ -580,10 +656,16 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 		return nullptr;
 	}
 
-	const FString IncludeMacroValue = "\"" + IncludePath + "\"";
 	const FString UniqueDefine = "MATERIAL_GRAPH_HASH_" + Hash;
+	FString GeneratedShaderPath;
 
-	D3D_SHADER_MACRO Defines[6]{};
+	if (!SaveGeneratedMaterialShaderVariant(ShaderPath, IncludePath, Hash, GeneratedShaderPath))
+	{
+		OutError = "Failed to generate Material Graph shader variant.";
+		return nullptr;
+	}
+
+	D3D_SHADER_MACRO Defines[5]{};
 	int32 DefineCount = 0;
 
 	if (!bDeferred)
@@ -600,12 +682,11 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 	}
 
 	Defines[DefineCount++] = { "MATERIAL_GRAPH", "1" };
-	Defines[DefineCount++] = { "MATERIAL_GRAPH_INCLUDE", IncludeMacroValue.c_str() };
 	Defines[DefineCount++] = { UniqueDefine.c_str(), "1" };
 	Defines[DefineCount] = { nullptr, nullptr };
 
 	FString CsoPath;
-	FShaderByteCode PixelCode = RenderUtil::GetOrCompile(ShaderPath, "mainPS", EShaderType::Pixel, CsoPath, Defines);
+	FShaderByteCode PixelCode = RenderUtil::GetOrCompile(GeneratedShaderPath, "mainPS", EShaderType::Pixel, CsoPath, Defines);
 
 	if (!PixelCode.IsValid())
 	{

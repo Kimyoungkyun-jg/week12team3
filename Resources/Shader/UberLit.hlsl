@@ -190,11 +190,11 @@ void CalculateDirectionalLight(inout FLightResult Result, FLightRenderParameters
     float3 L = normalize(-Info.Direction);
     float3 Radiance = Info.Color * Info.Intensity;
     
-    AddLight(Result, N, V, L, Radiance, bIncludeSpecular);
+    AddLight(Result, N, V, L, Radiance, bIncludeSpecular, ActiveSpecular);
 }
 
 void CalculatePointLight(inout FLightResult Result, FLightRenderParameters Info,
-    float3 P, float3 N, float3 V, bool bIncludeSpecular)
+    float3 P, float3 N, float3 V, bool bIncludeSpecular, float4 ActiveSpecular)
 {
     float3 ToLight = Info.Position - P;
     float DistanceSquared = dot(ToLight, ToLight);
@@ -207,10 +207,10 @@ void CalculatePointLight(inout FLightResult Result, FLightRenderParameters Info,
     if (Fade <= 0.0f) return;
     float3 L = ToLight / Distance;
     float3 Radiance = Info.Color * max(Info.Intensity, 0.0f) * Fade;
-    AddLight(Result, N, V, L, Radiance, bIncludeSpecular);
+    AddLight(Result, N, V, L, Radiance, bIncludeSpecular, ActiveSpecular);
 }
 
-void CalculateSpotLight(inout FLightResult Result, FLightRenderParameters Info, float3 P, float3 N, float3 V, bool bIncludeSpecular)
+void CalculateSpotLight(inout FLightResult Result, FLightRenderParameters Info, float3 P, float3 N, float3 V, bool bIncludeSpecular, float4 ActiveSpecular)
 {
     float3 ToLight = Info.Position - P;
     float DistanceSquared = dot(ToLight, ToLight);
@@ -223,11 +223,11 @@ void CalculateSpotLight(inout FLightResult Result, FLightRenderParameters Info, 
 
 	float3 Radiance = Info.Color * max(Info.Intensity, 0.0f) * ConeFade * RadiusFade;
 
-    AddLight(Result, N, V, L, Radiance, bIncludeSpecular);
+    AddLight(Result, N, V, L, Radiance, bIncludeSpecular, ActiveSpecular);
 }
 
 void CalculateRectLight(inout FLightResult Result, FLightRenderParameters Info,
-	float3 P, float3 N, float3 V, bool bIncludeSpecular)
+    float3 P, float3 N, float3 V, bool bIncludeSpecular, float4 ActiveSpecular)
 {
 	float3 Position = Info.Position;
 	float Radius = Info.Radius;
@@ -277,10 +277,10 @@ void CalculateRectLight(inout FLightResult Result, FLightRenderParameters Info,
 	}
 
 	float3 Radiance = Color * max(Intensity, 0.0f) * Attenuation * FrontFace * BarnDoorMask;
-	AddLight(Result, N, V, L, Radiance, bIncludeSpecular);
+    AddLight(Result, N, V, L, Radiance, bIncludeSpecular, ActiveSpecular);
 }
 
-FLightResult CalculateBaseLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 N, float3 V, bool bIncludeSpecular)
+FLightResult CalculateBaseLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 N, float3 V, bool bIncludeSpecular, float4 ActiveSpecular)
 {
     FLightResult Result;
     Result.Diffuse = CalculateAmbientLight(Ambient) + CalculateSkyLight(N);
@@ -294,7 +294,7 @@ FLightResult CalculateBaseLighting(float3 PixelPosition, float3 P, float ViewDep
         float Shadow = GetLightShadow(Light, PixelPosition);
             
         FLightResult DirectionalResult = (FLightResult) 0;
-        CalculateDirectionalLight(DirectionalResult, Light, N, V, bIncludeSpecular);
+        CalculateDirectionalLight(DirectionalResult, Light, N, V, bIncludeSpecular, ActiveSpecular);
         DirectionalResult.Diffuse *= Shadow;
         DirectionalResult.Specular *= Shadow;
          
@@ -306,7 +306,7 @@ FLightResult CalculateBaseLighting(float3 PixelPosition, float3 P, float ViewDep
 }
 
 void AddAllLocalLights(inout FLightResult Result, float3 PixelPosition, float3 P, float3 N,
-    float3 V, bool bIncludeSpecular)
+    float3 V, bool bIncludeSpecular, float4 ActiveSpecular)
 {
     [loop]
     for (uint PointIndex = 0; PointIndex < LightCounts.x; ++PointIndex)
@@ -316,7 +316,7 @@ void AddAllLocalLights(inout FLightResult Result, float3 PixelPosition, float3 P
         float Shadow = GetLightShadow(Light, PixelPosition);
 
         FLightResult PointResult = (FLightResult) 0;
-        CalculatePointLight(PointResult, SceneLights[LightOffsets.x + PointIndex], P, N, V, bIncludeSpecular);
+        CalculatePointLight(PointResult, SceneLights[LightOffsets.x + PointIndex], P, N, V, bIncludeSpecular, ActiveSpecular);
          
         Result.Diffuse += PointResult.Diffuse * Shadow;
         Result.Specular += PointResult.Specular * Shadow;
@@ -329,7 +329,7 @@ void AddAllLocalLights(inout FLightResult Result, float3 PixelPosition, float3 P
         float Shadow = GetLightShadow(Light, PixelPosition);
             
         FLightResult SpotResult = (FLightResult) 0;
-        CalculateSpotLight(SpotResult, Light, P, N, V, bIncludeSpecular);
+        CalculateSpotLight(SpotResult, Light, P, N, V, bIncludeSpecular, ActiveSpecular);
 
         Result.Diffuse += SpotResult.Diffuse * Shadow;
         Result.Specular += SpotResult.Specular * Shadow;
@@ -337,7 +337,7 @@ void AddAllLocalLights(inout FLightResult Result, float3 PixelPosition, float3 P
 	[loop]
 	for (uint RectIndex = 0; RectIndex < LightCounts.w; ++RectIndex)
     {
-		CalculateRectLight(Result, SceneLights[LightOffsets.w + RectIndex], P, N, V, bIncludeSpecular);
+        CalculateRectLight(Result, SceneLights[LightOffsets.w + RectIndex], P, N, V, bIncludeSpecular, ActiveSpecular);
     }
 }
 
@@ -346,23 +346,23 @@ FLightResult CalculateLighting(float3 PixelPosition, float3 P, float ViewDepth, 
     float3 N = normalize(Normal);
     float3 ToCamera = CameraPosition.xyz - P;
     float3 V = ToCamera * rsqrt(max(dot(ToCamera, ToCamera), 1.0e-8f));
-    FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular);
-    AddAllLocalLights(Result, PixelPosition, P, N, V, bIncludeSpecular);
+    FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular, SpecularColorShininess);
+    AddAllLocalLights(Result, PixelPosition, P, N, V, bIncludeSpecular, SpecularColorShininess);
     return Result;
 }
 
 // 타일 목록의 인덱스는 kim의 공유 SceneLights 안에서 종류별 시작 위치에 더한다.
-FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 Normal, bool bIncludeSpecular)
+FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 Normal, bool bIncludeSpecular, float4 ActiveSpecular)
 {
     float3 N = normalize(Normal);
     float3 ToCamera = CameraPosition.xyz - P;
     float3 V = ToCamera * rsqrt(max(dot(ToCamera, ToCamera), 1.0e-8f));
-    FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular);
+    FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular, ActiveSpecular);
 
     if (GridMode == LIGHT_GRID_MODE_OFF)
     {
         // Off는 업로드된 전체 로컬 광원을 평가한다.
-        AddAllLocalLights(Result, PixelPosition, P, N, V, bIncludeSpecular);
+        AddAllLocalLights(Result, PixelPosition, P, N, V, bIncludeSpecular, ActiveSpecular);
     }
     else
     {
@@ -385,8 +385,8 @@ FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDe
             float Shadow = GetLightShadow(Light, PixelPosition);
             
             FLightResult PointResult = (FLightResult) 0;
-            CalculatePointLight(PointResult, Light, P, N, V, bIncludeSpecular);
-         
+            CalculatePointLight(PointResult, Light, P, N, V, bIncludeSpecular, ActiveSpecular);
+            
             Result.Diffuse += PointResult.Diffuse * Shadow;
             Result.Specular += PointResult.Specular * Shadow;
         }
@@ -401,7 +401,7 @@ FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDe
             float Shadow = GetLightShadow(Light, PixelPosition);
             
             FLightResult SpotResult = (FLightResult) 0;
-            CalculateSpotLight(SpotResult, Light, P, N, V, bIncludeSpecular);
+            CalculateSpotLight(SpotResult, Light, P, N, V, bIncludeSpecular, ActiveSpecular);
             
             Result.Diffuse += SpotResult.Diffuse * Shadow;
             Result.Specular += SpotResult.Specular * Shadow;
@@ -410,8 +410,8 @@ FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDe
 		[loop]
 		for (uint RectIndex = 0; RectIndex < LightCounts.w; ++RectIndex)
 		{
-			CalculateRectLight(Result, SceneLights[LightOffsets.w + RectIndex], P, N, V, bIncludeSpecular);
-		}
+            CalculateRectLight(Result, SceneLights[LightOffsets.w + RectIndex], P, N, V, bIncludeSpecular, ActiveSpecular);
+        }
     }
     return Result;
 }
@@ -460,9 +460,10 @@ FUberOutput Uber_PS(VS_OUT Input)
     UVTransform.zw, UVTransform.xy, WorldUVParams.xy, WorldUVParams.z > 0.5f, ProjectedT, ProjectedB);
     float3 ShadingNormal = GetShadingNormal(Input, ProjectedT, ProjectedB);
 
+    float4 ActiveSpecular = SpecularColorShininess;
+
 #ifdef MATERIAL_GRAPH
     FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(Input.UV);
-    float4 ActiveSpecular = SpecularColorShininess;
 
 #ifdef MATERIAL_GRAPH_HAS_SPECULAR_COLOR
     ActiveSpecular.rgb = GraphOutput.SpecularColor;
@@ -534,7 +535,7 @@ FUberOutput Uber_PS(VS_OUT Input)
     }
 #endif
       
-        float3 Diffuse;
+    float3 Diffuse;
     float3 Specular = 0.0f;
 
 #if SHADING_MODEL_GOURAUD

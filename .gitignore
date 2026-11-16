@@ -473,3 +473,4 @@ Tools/SnowMountain/build_snow_mountain.py
 !Source/ThirdParty/FBX/lib/x64/release/
 
 /Resources/Shader/GeneratedMaterial/
+/Resources/Shader/*_Graph_*.hlsli
