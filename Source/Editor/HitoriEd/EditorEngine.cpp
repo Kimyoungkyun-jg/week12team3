@@ -1855,6 +1855,7 @@ void UEditorEngine::PreExit()
 	if (AimOffsetEditorPanel) AimOffsetEditorPanel->Release();
 	if (ContentDrawerPanel) ContentDrawerPanel->Release();
 	if (AssetEditorPanel) AssetEditorPanel->Release();
+	if (MaterialEditorPanel) MaterialEditorPanel->Release();
 	if (ParticleSystemEditorPanel) ParticleSystemEditorPanel->Release();
 	EditorWorld->ClearWorld();
 	// PIE 창이 열린 채 종료하면 Device가 살아 있을 때 Swapchain과 타깃을 먼저 정리한다.
