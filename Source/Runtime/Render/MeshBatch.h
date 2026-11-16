@@ -14,9 +14,9 @@
 #include <cstring>
 #include <memory>
 #include <utility>
-#include <vector>
 
 class FPrimitiveSceneProxy;
+inline constexpr uint32 InvalidPrimitiveId = ~0u;
 inline constexpr uint32 InvalidObjectSlot = ~0u;
 
 struct FParticleInstanceData
@@ -249,6 +249,7 @@ struct FMeshBatchElement
 	int32 BaseVertexLocation = 0;
 	uint32 InstanceCount = 0;
 	uint32 StartInstance = 0;
+	uint32 PrimitiveId = InvalidPrimitiveId;
 	uint32 ObjectSlot = InvalidObjectSlot;
 	bool bOccludedByGpu = false;
 	bool bReceiveShadow = true;
@@ -281,6 +282,21 @@ struct FMeshBatch
 	}
 };
 
+// 씬 등록 시 1회 생성되는 정적 메시 배치
+struct FStaticMeshBatch : public FMeshBatch
+{
+	const FPrimitiveSceneProxy* PrimitiveSceneProxy = nullptr;
+	uint32 PrimitiveIndex = InvalidPrimitiveId;
+};
+
+// 정적 프록시 수집 인터페이스
+class FStaticPrimitiveDrawInterface
+{
+public:
+	virtual ~FStaticPrimitiveDrawInterface() = default;
+	virtual void DrawMesh(const FStaticMeshBatch& Batch) = 0;
+};
+
 struct FViewContext
 {
 	int32 ViewIndex = 0;
@@ -295,6 +311,7 @@ struct FViewContext
 	bool bShowSkeletalMeshes = true;
 	float CameraDepth = 0.0f;
 	FMatrix ViewProjection = FMatrix::Identity;
+
 	void Prepare()
 	{
 		CameraDepth = CameraPosition.X * CameraForward.X
@@ -319,23 +336,6 @@ struct FViewContext
 		Matrix.M[3][0] = WorldPosition.X; Matrix.M[3][1] = WorldPosition.Y; Matrix.M[3][2] = WorldPosition.Z;
 		return Matrix;
 	}
-};
-
-struct FStaticDrawItem
-{
-	const FPrimitiveSceneProxy* Proxy;
-	uint32 Slot;
-	uint32 StartIndex;
-	uint32 IndexCount;
-	uint32 bOccludedByGpu;
-};
-
-struct FStaticDrawGroup
-{
-	UMaterial* Material = nullptr;
-	UStaticMesh* Mesh = nullptr;
-	uint8 LODIndex = 0;
-	std::vector<FStaticDrawItem> Items;
 };
 
 // 뷰별 동적 메시 배치 및 공용 GPU 리소스 수집기

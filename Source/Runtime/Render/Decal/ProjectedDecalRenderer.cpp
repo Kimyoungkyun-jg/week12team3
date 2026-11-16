@@ -230,7 +230,8 @@ bool FProjectedDecalRenderer::IsReady() const
 }
 
 bool FProjectedDecalRenderer::OnRenderMesh(
-	std::span<const FMeshDrawCommand> ReceiverCommands,
+	std::span<const FVisibleMeshDrawCommand> ReceiverCommands,
+	const FStructuredBuffer* GPUSceneBuffer,
 	std::span<const FProjectedDecalRenderData> Decals,
 	std::span<const FProjectedDecalMeshDrawList> DrawLists,
 	bool bUnlitPass,
@@ -263,6 +264,7 @@ bool FProjectedDecalRenderer::OnRenderMesh(
 		EShaderBindFlagBits::Pixel);
 
 	TArray<FMeshDrawCommand> DecalCommands;
+	TArray<FVisibleMeshDrawCommand> VisibleDecalCommands;
 	for (size_t DecalIndex = 0; DecalIndex < Decals.size(); ++DecalIndex)
 	{
 		const FProjectedDecalRenderData& Decal = Decals[DecalIndex];
@@ -288,36 +290,38 @@ bool FProjectedDecalRenderer::OnRenderMesh(
 
 		DecalCommands.Reset();
 		DecalCommands.Reserve(Selected.Num());
+		VisibleDecalCommands.Reset();
+		VisibleDecalCommands.Reserve(Selected.Num());
 		for (const FDecalReceiverItemRef& Ref : Selected)
 		{
-			const FMeshDrawCommand& Source = ReceiverCommands[Ref.CommandIndex];
-			FMeshDrawCommand Cmd = Source;
+			const FVisibleMeshDrawCommand& SourceVis = ReceiverCommands[Ref.CommandIndex];
+			if (!SourceVis.Command)
+				continue;
+			const FMeshDrawCommand& Source = *SourceVis.Command;
+			FMeshDrawCommand Cmd{};
 			Cmd.Pipeline = MeshPipelineState;
 			Cmd.Pipeline.RasterizerState = Source.Pipeline.RasterizerState;
-			Cmd.bOverrideStencilRef = false;
-			Cmd.bForceWireframe = false;
-			Cmd.bUseObjectSlots = false;
+			Cmd.VertexBuffer = Source.VertexBuffer;
+			Cmd.IndexBuffer = Source.IndexBuffer;
+			Cmd.FirstIndex = Source.FirstIndex;
+			Cmd.IndexCount = Source.IndexCount;
+			Cmd.BaseVertexLocation = Source.BaseVertexLocation;
 			Cmd.Sampler = Decal.Sampler;
 			Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
+			Cmd.PrimitiveId = SourceVis.PrimitiveId;
+			Cmd.bUsesGPUScene = Source.bUsesGPUScene;
+			Cmd.bSkeletalMesh = Source.bSkeletalMesh;
+			Cmd.bComputeSkinned = Source.bComputeSkinned;
+			Cmd.Proxy = Source.Proxy;
+			Cmd.ObjectKey = Source.ObjectKey;
 
-			TArray<FMeshDrawConstantBuffer> FilteredCBs;
-			for (FMeshDrawConstantBuffer CB : Source.ConstantBuffers)
-			{
-				if (CB.Slot == 0)
-				{
-					CB.Stages = EShaderBindFlagBits::Vertex;
-					FilteredCBs.Add(std::move(CB));
-				}
-			}
-			Cmd.ConstantBuffers = std::move(FilteredCBs);
-
-			TArray<FMeshDrawShaderResource> FilteredSRVs;
 			for (const FMeshDrawShaderResource& Res : Source.ShaderResources)
 			{
 				if (Res.StructuredBuffer)
-					FilteredSRVs.Add(Res);
+					Cmd.ShaderResources.Add(Res);
 			}
-			Cmd.ShaderResources = std::move(FilteredSRVs);
+			Cmd.StateBucketId = ComputeMeshCommandStateBucket(Cmd);
+			Cmd.SortKey = static_cast<uint64>(Cmd.StateBucketId);
 
 			if (Stats)
 			{
@@ -327,9 +331,21 @@ bool FProjectedDecalRenderer::OnRenderMesh(
 			DecalCommands.Add(std::move(Cmd));
 		}
 
-		Renderer->SubmitDrawCommands(DecalCommands);
+		for (const FMeshDrawCommand& Cmd : DecalCommands)
+		{
+			FVisibleMeshDrawCommand Vis{};
+			Vis.Command = &Cmd;
+			Vis.PrimitiveId = Cmd.PrimitiveId;
+			Vis.StateBucketId = Cmd.StateBucketId;
+			Vis.SortKey = Cmd.SortKey;
+			VisibleDecalCommands.Add(Vis);
+		}
+		std::stable_sort(VisibleDecalCommands.begin(), VisibleDecalCommands.end(),
+			[](const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B) { return A.SortKey < B.SortKey; });
 
-		if (Stats && !DecalCommands.IsEmpty())
+		Renderer->SubmitVisibleCommands(VisibleDecalCommands, GPUSceneBuffer);
+
+		if (Stats && !VisibleDecalCommands.IsEmpty())
 		{
 			if (bUnlitPass)
 				++Stats->SubmittedUnlit;

@@ -11,7 +11,7 @@
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 
 namespace
 {

@@ -1,18 +1,35 @@
 #include "EnginePCH.h"
 #include "Render/MeshPassProcessor.h"
 #include "Render/SceneRenderData.h"
-#include "Render/SceneView.h"
 #include "Render/RenderResourceManager.h"
 #include "Render/Mesh.h"
 #include "Render/NormalMapUtils.h"
 #include "Engine/PrimitiveSceneProxy.h"
-#include "Core/EngineTimer.h"
 #include <algorithm>
 #include <bit>
+#include <cstdint>
 #include <cstring>
 
 namespace
 {
+	inline void HashCombine(uint32& Seed, uint64 Value)
+	{
+		uint64 Mixed = Value * 0x9E3779B97F4A7C15ull;
+		Mixed ^= Mixed >> 30;
+		Seed ^= static_cast<uint32>(Mixed) + 0x9E3779B9u + (Seed << 6) + (Seed >> 2);
+		Seed ^= static_cast<uint32>(Mixed >> 32) + 0x9E3779B9u + (Seed << 6) + (Seed >> 2);
+	}
+
+	inline void HashBytes(uint32& Seed, const void* Data, uint32 Size)
+	{
+		const uint8* Bytes = static_cast<const uint8*>(Data);
+		for (uint32 i = 0; i < Size; ++i)
+		{
+			Seed ^= Bytes[i];
+			Seed *= 16777619u;
+		}
+	}
+
 	float GetNormalEncoding(UTexture2D* Texture)
 	{
 		return NormalMapUtils::GetEncoding(Texture ? Texture->GetResource() : nullptr);
@@ -23,6 +40,15 @@ namespace
 		if (Element.WorldMatrix)
 			return *Element.WorldMatrix;
 		return Element.Proxy ? Element.Proxy->GetLocalToWorld() : FMatrix::Identity;
+	}
+
+	uint32 ResolveElementPrimitiveId(const FMeshBatchElement& Element)
+	{
+		if (Element.PrimitiveId != InvalidPrimitiveId)
+			return Element.PrimitiveId;
+		if (Element.Proxy && Element.Proxy->PackedIndex >= 0)
+			return static_cast<uint32>(Element.Proxy->PackedIndex);
+		return InvalidPrimitiveId;
 	}
 
 	FForwardMaterialConstants MakeForwardMaterial(const UMaterial& Material)
@@ -37,12 +63,10 @@ namespace
 		UTexture2D* Normal = Material.Textures.Num() > 1 ? Material.Textures[1] : nullptr;
 		Params.SurfaceParams = FVector4(Material.bFlipNormalY ? 1.0f : 0.0f, 0.0f,
 			Color && Color->GetResource() && Color->GetResource()->GetSRV() ? 1.0f : 0.0f, GetNormalEncoding(Normal));
-		const double TotalTime = EngineTimer::GetTotalTime();
-		const FVector2 UV(static_cast<float>(std::fmod(Material.UVScrollSpeed.X * TotalTime, 1.0)),
-			static_cast<float>(std::fmod(Material.UVScrollSpeed.Y * TotalTime, 1.0)));
-		Params.UVTransform = FVector4(UV.X, UV.Y, Material.UVTiling.X, Material.UVTiling.Y);
+		Params.UVTransform = FVector4(0.0f, 0.0f, Material.UVTiling.X, Material.UVTiling.Y);
 		Params.WorldUVParams = FVector4(Material.WorldUVTileSize.X, Material.WorldUVTileSize.Y,
 			Material.bWorldUVLocalSpace ? 1.0f : 0.0f, Material.BlendState == EBlendState::Opaque ? 1.0f : 0.0f);
+		Params.UVScrollAndFlags = FVector4(Material.UVScrollSpeed.X, Material.UVScrollSpeed.Y, 0.0f, 0.0f);
 		return Params;
 	}
 
@@ -51,8 +75,8 @@ namespace
 		const auto Forward = MakeForwardMaterial(Material);
 		FStaticMeshMaterialParams Params{};
 		Params.BaseColor = Forward.BaseColor;
-		Params.UVOffset = FVector2(Forward.UVTransform.X, Forward.UVTransform.Y);
-		Params.TextureFlags = FVector2(Forward.SurfaceParams.W, Forward.SurfaceParams.X);
+		Params.UVOffset = FVector2(0.0f, 0.0f);
+		Params.TextureFlags = Material.UVScrollSpeed;
 		Params.UVTiling = Material.UVTiling;
 		Params.WorldUVTileSize = Material.WorldUVTileSize;
 		Params.Emissive = Forward.Emissive;
@@ -63,26 +87,6 @@ namespace
 		return Params;
 	}
 
-	uint64 GroupSortKey(const FStaticDrawGroup& Group)
-	{
-		return (static_cast<uint64>(Group.Material->SortID) << 47)
-			| (static_cast<uint64>(Group.Mesh->SortID) << 31)
-			| (static_cast<uint64>(Group.LODIndex & 0x3) << 29);
-	}
-
-	uint64 BatchOpaqueSortKey(const UMaterial& Material, uint16 MeshSortID, uint8 LODIndex)
-	{
-		return (static_cast<uint64>(Material.SortID) << 47)
-			| (static_cast<uint64>(MeshSortID) << 31)
-			| (static_cast<uint64>(LODIndex & 0x3) << 29);
-	}
-
-	uint64 MakeTranslucentSortKey(float CameraDistanceSq)
-	{
-		const uint64 DistanceBits = static_cast<uint64>(std::bit_cast<uint32>(CameraDistanceSq));
-		return (1ull << 63) | (~DistanceBits & 0xFFFFFFFFull);
-	}
-
 	FShaderProgram* GetMaterialForwardShader(const UMaterial& Material, const FSceneRenderOptions& Options, bool bGPUSkinning)
 	{
 		FSceneRenderOptions Effective = Options;
@@ -91,14 +95,18 @@ namespace
 		return FRenderResourceManager::GetForwardShaderProgram(Effective.ReflectionModel, Effective.ShadingModel, bGPUSkinning, Effective.bUnlit);
 	}
 
-	FVertexBuffer* ResolveBatchVertexBuffer(const FVertexFactory& VF, const FMeshElementCollector& Collector)
+	FVertexBuffer* ResolveBatchVertexBuffer(const FVertexFactory& VF, const FMeshElementCollector* Collector)
 	{
-		return VF.bUsesDynamicVertexBuffer ? Collector.GetDynamicVertexBuffer() : VF.VertexBuffer;
+		if (VF.bUsesDynamicVertexBuffer)
+			return Collector ? Collector->GetDynamicVertexBuffer() : nullptr;
+		return VF.VertexBuffer;
 	}
 
-	FIndexBuffer* ResolveElementIndexBuffer(const FMeshBatchElement& Element, const FVertexFactory& VF, const FMeshElementCollector& Collector)
+	FIndexBuffer* ResolveElementIndexBuffer(const FMeshBatchElement& Element, const FVertexFactory& VF, const FMeshElementCollector* Collector)
 	{
-		return VF.bUsesDynamicIndexBuffer ? Collector.GetDynamicIndexBuffer() : Element.IndexBuffer;
+		if (VF.bUsesDynamicIndexBuffer)
+			return Collector ? Collector->GetDynamicIndexBuffer() : nullptr;
+		return Element.IndexBuffer;
 	}
 
 	void AppendMaterialTextures(const UMaterial& Material, bool bUsesUberShader, TArray<FMeshDrawShaderResource>& OutResources)
@@ -106,7 +114,7 @@ namespace
 		OutResources.Reserve(OutResources.Num() + Material.Textures.Num());
 		for (int32 Index = 0; Index < Material.Textures.Num(); ++Index)
 		{
-			// Forward 조명은 t8 이상을 전역 리소스에 사용한다.
+			// Forward 조명은 tSlot 상위를 전역 리소스에 사용한다.
 			if (bUsesUberShader && Index >= 8)
 				break;
 			UTexture2D* Texture = Material.Textures[Index];
@@ -121,36 +129,27 @@ namespace
 		}
 	}
 
-	FMeshDrawConstantBuffer MakeForwardObjectCB(const FMatrix& World, const FSceneView& View, bool bReceiveShadow, bool bReceiveDecal)
-	{
-		FMeshDrawConstantBuffer CB{};
-		CB.Slot = 0;
-		CB.Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
-		FForwardObjectConstants Constants{};
-		Constants.World = World;
-		Constants.View = View.ViewMatrix;
-		Constants.Projection = View.ProjectionMatrix;
-		Constants.NormalMatrix = World.Inverse().GetTransposed();
-		Constants.ShadowFlags.X = static_cast<float>(bReceiveShadow);
-		Constants.ShadowFlags.Y = static_cast<float>(bReceiveDecal);
-		std::memcpy(CB.Data.data(), &Constants, sizeof(Constants));
-		CB.DataSize = sizeof(Constants);
-		return CB;
-	}
-
 	FMeshDrawConstantBuffer MakeForwardMaterialCB(const UMaterial& Material)
 	{
 		FMeshDrawConstantBuffer CB{};
 		CB.Slot = 2;
 		CB.Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
 		const FForwardMaterialConstants Params = MakeForwardMaterial(Material);
+		static_assert(sizeof(Params) <= sizeof(CB.Data));
 		std::memcpy(CB.Data.data(), &Params, sizeof(Params));
 		CB.DataSize = sizeof(Params);
 		return CB;
 	}
 
-	void BuildForwardUberCommands(const FMeshBatch& Batch, const FSceneView& View, const FSceneRenderOptions& Options,
-		const FMeshElementCollector& Collector, bool bWorldNormal, TArray<FMeshDrawCommand>& OutCommands)
+	void FinalizeCommandKeys(FMeshDrawCommand& Cmd, uint16 MaterialSortID, uint16 MeshSortID, uint8 LODIndex, uint64 OverrideSortKey = 0)
+	{
+		Cmd.StateBucketId = ComputeMeshCommandStateBucket(Cmd);
+		Cmd.SortKey = OverrideSortKey != 0 ? OverrideSortKey
+			: MakeOpaqueSortKey(Cmd.StateBucketId, MaterialSortID, MeshSortID, LODIndex);
+	}
+
+	void BuildForwardUberCommands(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+		const FMeshElementCollector* Collector, bool bWorldNormal, TArray<FMeshDrawCommand>& OutCommands)
 	{
 		if (!Batch.Material)
 			return;
@@ -165,7 +164,7 @@ namespace
 		FPipelineState* Base = FRenderResourceManager::GetPSO(bWorldNormal
 			? EPSOType::StaticMesh_WorldNormal : EPSOType::StaticMesh_Forward);
 		FShaderProgram* Shader = bWorldNormal
-			? (bGPUSkinning ? FRenderResourceManager::GetWorldNormalShaderProgram(true) : (Base ? Base->Shader : nullptr))
+			? FRenderResourceManager::GetWorldNormalShaderProgram(bGPUSkinning)
 			: GetMaterialForwardShader(*Batch.Material, Options, bGPUSkinning);
 		if (!Base || !Shader || !Shader->VertexShader || !Shader->PixelShader)
 			return;
@@ -174,11 +173,8 @@ namespace
 		TArray<FMeshDrawShaderResource> BaseResources;
 		AppendMaterialTextures(*Batch.Material, true, BaseResources);
 		if (bGPUSkinning)
-		{
 			BaseResources.Add({ 16, EShaderBindFlagBits::Vertex, nullptr, Batch.VertexFactory.SkinningMatricesBuffer });
-		}
 
-		const uint64 SortKey = BatchOpaqueSortKey(*Batch.Material, Batch.MeshSortID, Batch.LODIndex);
 		for (const FMeshBatchElement& Element : Batch.Elements)
 		{
 			FIndexBuffer* IB = ResolveElementIndexBuffer(Element, Batch.VertexFactory, Collector);
@@ -197,10 +193,10 @@ namespace
 			Cmd.Sampler = Batch.Material->SamplerState;
 			Cmd.SamplerStages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
 			Cmd.ShaderResources = BaseResources;
-			Cmd.ConstantBuffers.Add(MakeForwardObjectCB(ResolveElementWorld(Element), View, Element.bReceiveShadow, Element.bReceiveDecal));
 			Cmd.ConstantBuffers.Add(MaterialCB);
-			Cmd.bUseObjectSlots = false;
-			Cmd.bForceWireframe = !bWorldNormal && View.bIsWireframe;
+			Cmd.PrimitiveId = ResolveElementPrimitiveId(Element);
+			Cmd.Material = Batch.Material;
+			Cmd.bUsesGPUScene = (Element.InstanceCount == 0);
 			Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
 			Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
 			Cmd.bIsParticle = Batch.bIsParticle;
@@ -208,7 +204,7 @@ namespace
 			Cmd.bReceiveDecal = Element.bReceiveDecal;
 			Cmd.ObjectKey = Element.Proxy ? static_cast<const void*>(Element.Proxy) : static_cast<const void*>(&Element);
 			Cmd.Proxy = Element.Proxy;
-			Cmd.SortKey = SortKey;
+			FinalizeCommandKeys(Cmd, Batch.Material->SortID, Batch.MeshSortID, Batch.LODIndex);
 			OutCommands.Add(std::move(Cmd));
 		}
 	}
@@ -235,13 +231,13 @@ namespace
 		}
 	}
 
-	void BuildParticleInstancedCommands(const FMeshBatch& Batch, const FMeshElementCollector& Collector,
+	void BuildParticleInstancedCommands(const FMeshBatch& Batch, const FMeshElementCollector* Collector,
 		uint64 SortKey, TArray<FMeshDrawCommand>& OutCommands)
 	{
-		if (!Batch.Material)
+		if (!Batch.Material || !Collector)
 			return;
 
-		const FStructuredBuffer* InstanceBuffer = Collector.GetParticleInstanceBuffer();
+		const FStructuredBuffer* InstanceBuffer = Collector->GetParticleInstanceBuffer();
 		if (!InstanceBuffer)
 			return;
 
@@ -296,19 +292,20 @@ namespace
 			Cmd.ShaderResources.Add({ 1, EShaderBindFlagBits::Vertex, nullptr, InstanceBuffer });
 			Cmd.ConstantBuffers.Add(ViewCB);
 			Cmd.ConstantBuffers.Add(BatchCB);
-			Cmd.bUseObjectSlots = false;
+			Cmd.Material = Batch.Material;
+			Cmd.bUsesGPUScene = false;
 			Cmd.bIsParticle = true;
 			Cmd.bReceiveDecal = false;
 			Cmd.Proxy = Element.Proxy;
-			Cmd.SortKey = SortKey;
+			FinalizeCommandKeys(Cmd, Batch.Material->SortID, Batch.MeshSortID, Batch.LODIndex, SortKey);
 			OutCommands.Add(std::move(Cmd));
 		}
 	}
 
-	void BuildParticleGpuCommands(const FMeshBatch& Batch, const FMeshElementCollector& Collector,
+	void BuildParticleGpuCommands(const FMeshBatch& Batch, const FMeshElementCollector* Collector,
 		uint64 SortKey, TArray<FMeshDrawCommand>& OutCommands)
 	{
-		if (!Batch.Material)
+		if (!Batch.Material || !Collector)
 			return;
 
 		FGpuParticleEmitterResources* Res = Batch.VertexFactory.GpuResources;
@@ -359,81 +356,203 @@ namespace
 			Cmd.ShaderResources.Add({ 1, EShaderBindFlagBits::Vertex, nullptr, Res->ParticleBuffer.get() });
 			Cmd.ConstantBuffers.Add(ViewCB);
 			Cmd.ConstantBuffers.Add(DrawCB);
-			Cmd.bUseObjectSlots = false;
+			Cmd.Material = Batch.Material;
+			Cmd.bUsesGPUScene = false;
 			Cmd.bIsParticle = true;
 			Cmd.bReceiveDecal = false;
 			Cmd.Proxy = Element.Proxy;
-			Cmd.SortKey = SortKey;
+			FinalizeCommandKeys(Cmd, Batch.Material->SortID, Batch.MeshSortID, Batch.LODIndex, SortKey);
 			OutCommands.Add(std::move(Cmd));
 		}
 	}
+
+	bool AreShaderResourcesEqual(const TArray<FMeshDrawShaderResource>& A, const TArray<FMeshDrawShaderResource>& B)
+	{
+		if (A.Num() != B.Num())
+			return false;
+		for (int32 i = 0; i < A.Num(); ++i)
+		{
+			if (A[i].Slot != B[i].Slot || A[i].Stages != B[i].Stages ||
+				A[i].Texture != B[i].Texture || A[i].StructuredBuffer != B[i].StructuredBuffer)
+				return false;
+		}
+		return true;
+	}
+
+	bool AreConstantBuffersEqual(const TArray<FMeshDrawConstantBuffer>& A, const TArray<FMeshDrawConstantBuffer>& B)
+	{
+		if (A.Num() != B.Num())
+			return false;
+		for (int32 i = 0; i < A.Num(); ++i)
+		{
+			if (A[i].Slot != B[i].Slot || A[i].Stages != B[i].Stages ||
+				A[i].bBindViewMatrix != B[i].bBindViewMatrix || A[i].DataSize != B[i].DataSize)
+				return false;
+			if (A[i].DataSize > 0 && std::memcmp(A[i].Data.data(), B[i].Data.data(), A[i].DataSize) != 0)
+				return false;
+		}
+		return true;
+	}
 }
 
-bool FDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
-	const FSceneRenderOptions& Options, const FMeshElementCollector& Collector, TArray<FMeshDrawCommand>& OutCommands) const
+uint32 ComputeMeshCommandStateBucket(const FMeshDrawCommand& Command)
+{
+	uint32 Seed = 2166136261u;
+	HashCombine(Seed, reinterpret_cast<uintptr_t>(Command.Pipeline.Shader));
+	HashCombine(Seed, static_cast<uint64>(Command.Pipeline.Topology));
+	HashCombine(Seed, static_cast<uint64>(Command.Pipeline.RasterizerState));
+	HashCombine(Seed, static_cast<uint64>(Command.Pipeline.BlendState));
+	HashCombine(Seed, static_cast<uint64>(Command.Pipeline.DepthStencilState));
+	HashCombine(Seed, static_cast<uint64>(Command.Pipeline.StencilRef));
+	HashCombine(Seed, reinterpret_cast<uintptr_t>(Command.VertexBuffer));
+	HashCombine(Seed, reinterpret_cast<uintptr_t>(Command.IndexBuffer));
+	HashCombine(Seed, static_cast<uint64>(Command.FirstIndex));
+	HashCombine(Seed, static_cast<uint64>(Command.IndexCount));
+	HashCombine(Seed, static_cast<uint64>(Command.BaseVertexLocation));
+	HashCombine(Seed, static_cast<uint64>(Command.Sampler));
+	HashCombine(Seed, static_cast<uint64>(Command.SamplerStages));
+	HashCombine(Seed, static_cast<uint64>(Command.bUsesGPUScene ? 1 : 0));
+	HashCombine(Seed, static_cast<uint64>(Command.bSkeletalMesh ? 1 : 0));
+	HashCombine(Seed, static_cast<uint64>(Command.bComputeSkinned ? 1 : 0));
+	HashCombine(Seed, static_cast<uint64>(Command.bIsParticle ? 1 : 0));
+
+	for (const FMeshDrawShaderResource& Res : Command.ShaderResources)
+	{
+		HashCombine(Seed, Res.Slot);
+		HashCombine(Seed, static_cast<uint64>(Res.Stages));
+		HashCombine(Seed, reinterpret_cast<uintptr_t>(Res.Texture));
+		HashCombine(Seed, reinterpret_cast<uintptr_t>(Res.StructuredBuffer));
+	}
+	for (const FMeshDrawConstantBuffer& CB : Command.ConstantBuffers)
+	{
+		HashCombine(Seed, CB.Slot);
+		HashCombine(Seed, static_cast<uint64>(CB.Stages));
+		HashCombine(Seed, CB.DataSize);
+		HashCombine(Seed, static_cast<uint64>(CB.bBindViewMatrix ? 1 : 0));
+		if (CB.DataSize > 0)
+			HashBytes(Seed, CB.Data.data(), CB.DataSize);
+	}
+	return Seed;
+}
+
+uint64 MakeOpaqueSortKey(uint32 StateBucketId, uint16 MaterialSortID, uint16 MeshSortID, uint8 LODIndex)
+{
+	return (static_cast<uint64>(StateBucketId) << 32)
+		| (static_cast<uint64>(MaterialSortID & 0x3FFFu) << 18)
+		| (static_cast<uint64>(MeshSortID & 0xFFFFu) << 2)
+		| static_cast<uint64>(LODIndex & 0x3u);
+}
+
+uint64 MakeTranslucentSortKey(float CameraDistanceSq)
+{
+	const uint64 DistanceBits = static_cast<uint64>(std::bit_cast<uint32>(CameraDistanceSq));
+	return (1ull << 63) | (~DistanceBits & 0xFFFFFFFFull);
+}
+
+bool AreVisibleCommandsInstanceCompatible(const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B)
+{
+	if (!A.Command || !B.Command)
+		return false;
+	const FMeshDrawCommand& CmdA = *A.Command;
+	const FMeshDrawCommand& CmdB = *B.Command;
+	if (!CmdA.bUsesGPUScene || !CmdB.bUsesGPUScene)
+		return false;
+	if (CmdA.InstanceCount != 0 || CmdB.InstanceCount != 0)
+		return false;
+	if (A.StateBucketId != B.StateBucketId || A.ShaderOverride != B.ShaderOverride)
+		return false;
+	if (A.bForceWireframe != B.bForceWireframe || A.bOverrideStencilRef != B.bOverrideStencilRef)
+		return false;
+	if (A.bOverrideStencilRef && A.StencilRef != B.StencilRef)
+		return false;
+	if (A.bHasDepthStencilOverride != B.bHasDepthStencilOverride)
+		return false;
+	if (A.bHasDepthStencilOverride && A.DepthStencilOverride != B.DepthStencilOverride)
+		return false;
+
+	return CmdA.Pipeline.Shader == CmdB.Pipeline.Shader &&
+		CmdA.Pipeline.Topology == CmdB.Pipeline.Topology &&
+		CmdA.Pipeline.RasterizerState == CmdB.Pipeline.RasterizerState &&
+		CmdA.Pipeline.BlendState == CmdB.Pipeline.BlendState &&
+		CmdA.Pipeline.DepthStencilState == CmdB.Pipeline.DepthStencilState &&
+		CmdA.Pipeline.StencilRef == CmdB.Pipeline.StencilRef &&
+		CmdA.VertexBuffer == CmdB.VertexBuffer &&
+		CmdA.IndexBuffer == CmdB.IndexBuffer &&
+		CmdA.FirstIndex == CmdB.FirstIndex &&
+		CmdA.IndexCount == CmdB.IndexCount &&
+		CmdA.BaseVertexLocation == CmdB.BaseVertexLocation &&
+		CmdA.Sampler == CmdB.Sampler &&
+		CmdA.SamplerStages == CmdB.SamplerStages &&
+		AreShaderResourcesEqual(CmdA.ShaderResources, CmdB.ShaderResources) &&
+		AreConstantBuffersEqual(CmdA.ConstantBuffers, CmdB.ConstantBuffers);
+}
+
+FShaderProgram* ResolveUnlitShaderOverride(const FMeshDrawCommand& Command, const FSceneRenderOptions& Options)
+{
+	if (!Options.bUnlit || Command.bIsParticle)
+		return nullptr;
+	return FRenderResourceManager::GetForwardShaderProgram(Options.ReflectionModel, Options.ShadingModel, Command.bSkeletalMesh, true);
+}
+
+bool FDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+	const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const
 {
 	if (!Batch.IsOpaque() || Batch.bIsParticle)
 		return true;
 
+	FVertexBuffer* VB = ResolveBatchVertexBuffer(Batch.VertexFactory, Collector);
+	if (!VB)
+		return true;
+
+	const bool bGPUSkinning = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) &&
+		(Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
 	FPipelineState* DepthPipeline = FRenderResourceManager::GetPSO(EPSOType::StaticMesh_DepthOnly);
-	if (!DepthPipeline || !DepthPipeline->Shader || !DepthPipeline->Shader->PixelShader)
+	FShaderProgram* Shader = FRenderResourceManager::GetDepthPrepassShaderProgram(bGPUSkinning);
+	if (!DepthPipeline || !Shader || !Shader->VertexShader || !Shader->PixelShader)
 		return false;
 
-	TArray<FMeshDrawCommand> TempCommands;
-	BuildForwardUberCommands(Batch, View, Options, Collector, false, TempCommands);
-	for (FMeshDrawCommand& Cmd : TempCommands)
+	const uint16 MaterialSort = Batch.Material ? Batch.Material->SortID : 0;
+	for (const FMeshBatchElement& Element : Batch.Elements)
 	{
-		if (!Cmd.Pipeline.Shader || !Cmd.Pipeline.Shader->VertexShader)
-			return false;
-		OutCommands.Add(std::move(Cmd));
-	}
-	return true;
-}
-
-bool FDepthPassMeshProcessor::BuildDepthCommands(const TArray<FMeshDrawCommand>& BaseCommands,
-	FPipelineState* DepthPipeline, bool bWriteReceiverStencil,
-	TArray<FShaderProgram>& OutPrograms, TArray<FMeshDrawCommand>& OutCommands) const
-{
-	if (!DepthPipeline || !DepthPipeline->Shader || !DepthPipeline->Shader->PixelShader)
-		return false;
-
-	OutCommands.Reset();
-	OutPrograms.Reset();
-	OutPrograms.Reserve(BaseCommands.Num());
-
-	for (const FMeshDrawCommand& Source : BaseCommands)
-	{
-		if (Source.bIsParticle || Source.IndexCount == 0)
+		FIndexBuffer* IB = ResolveElementIndexBuffer(Element, Batch.VertexFactory, Collector);
+		if (!IB)
 			continue;
-		if (!Source.Pipeline.Shader || !Source.Pipeline.Shader->VertexShader)
-			return false;
 
-		OutPrograms.Add(FShaderProgram(Source.Pipeline.Shader->VertexShader, DepthPipeline->Shader->PixelShader));
-
-		FMeshDrawCommand Cmd = Source;
+		FMeshDrawCommand Cmd{};
 		Cmd.Pipeline = *DepthPipeline;
-		Cmd.Pipeline.Shader = &OutPrograms[OutPrograms.Num() - 1];
-		Cmd.Pipeline.RasterizerState = Source.Pipeline.RasterizerState;
-		Cmd.Pipeline.StencilRef = 0;
-		if (bWriteReceiverStencil)
-			Cmd.Pipeline.DepthStencilState = EDepthStencilState::DecalReceiverWrite;
-		Cmd.bOverrideStencilRef = bWriteReceiverStencil;
-		Cmd.StencilRef = Source.bReceiveDecal ? StencilBits::ReceiveDecal : 0;
-		Cmd.bForceWireframe = false;
+		Cmd.Pipeline.Shader = Shader;
+		Cmd.VertexBuffer = VB;
+		Cmd.IndexBuffer = IB;
+		Cmd.FirstIndex = Element.FirstIndex;
+		Cmd.IndexCount = Element.IndexCount ? Element.IndexCount : IB->GetIndexCount();
+		Cmd.BaseVertexLocation = Element.BaseVertexLocation;
+		Cmd.InstanceCount = Element.InstanceCount;
+		if (bGPUSkinning)
+			Cmd.ShaderResources.Add({ 16, EShaderBindFlagBits::Vertex, nullptr, Batch.VertexFactory.SkinningMatricesBuffer });
+		Cmd.PrimitiveId = ResolveElementPrimitiveId(Element);
+		Cmd.Material = Batch.Material;
+		Cmd.bUsesGPUScene = (Element.InstanceCount == 0);
+		Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+		Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
+		Cmd.bOccludedByGpu = Element.bOccludedByGpu;
+		Cmd.bReceiveDecal = Element.bReceiveDecal;
+		Cmd.ObjectKey = Element.Proxy ? static_cast<const void*>(Element.Proxy) : static_cast<const void*>(&Element);
+		Cmd.Proxy = Element.Proxy;
+		FinalizeCommandKeys(Cmd, MaterialSort, Batch.MeshSortID, Batch.LODIndex);
 		OutCommands.Add(std::move(Cmd));
 	}
 	return true;
 }
 
-bool FBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
-	const FSceneRenderOptions& Options, const FMeshElementCollector& Collector, TArray<FMeshDrawCommand>& OutCommands) const
+bool FBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+	const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const
 {
 	if (!Batch.IsOpaque() || !Batch.Material)
 		return true;
 
 	if (Batch.VertexFactory.Type == EVertexFactoryType::ParticleMesh)
 	{
-		// 파티클 메쉬는 일반 UberLit 뒤에 그려 조명 상수 충돌을 방지한다
+		// 파티클 메시는 일반 조명 이후에 그려 상수 충돌을 방지한다
 		BuildParticleInstancedCommands(Batch, Collector, (1ull << 63), OutCommands);
 		return true;
 	}
@@ -441,154 +560,25 @@ bool FBasePassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneV
 	if (Batch.VertexFactory.Type == EVertexFactoryType::Local ||
 		Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin)
 	{
-		BuildForwardUberCommands(Batch, View, Options, Collector, false, OutCommands);
+		BuildForwardUberCommands(Batch, Options, Collector, false, OutCommands);
 	}
 	return true;
 }
 
-bool FBasePassMeshProcessor::BuildBasePassCommands(const FSceneView& View, const FSceneRenderData& SceneData,
-	const FSceneRenderOptions& Options, TArray<FMeshDrawCommand>& OutCommands) const
-{
-	OutCommands.Reset();
-
-	TArray<const FStaticDrawGroup*> Groups;
-	for (const FSceneRenderData::FGatherChunk& Chunk : SceneData.GatherChunks)
-		for (const FStaticDrawGroup& Group : Chunk.Groups)
-			if (!Group.Items.empty())
-				Groups.Add(&Group);
-
-	std::sort(Groups.begin(), Groups.end(),
-		[](const FStaticDrawGroup* A, const FStaticDrawGroup* B) { return GroupSortKey(*A) < GroupSortKey(*B); });
-
-	for (const FStaticDrawGroup* Group : Groups)
-	{
-		if (!Group->Mesh || !Group->Material)
-			continue;
-		FVertexBuffer* VB = Group->Mesh->GetVertexBuffer(Group->LODIndex);
-		FIndexBuffer* IB = Group->Mesh->GetIndexBuffer(Group->LODIndex);
-		if (!VB || !IB)
-			return false;
-
-		FPipelineState* Base = FRenderResourceManager::GetPSO(EPSOType::StaticMesh_Forward);
-		FShaderProgram* Shader = GetMaterialForwardShader(*Group->Material, Options, false);
-		if (!Base || !Shader || !Shader->VertexShader || !Shader->PixelShader)
-			return false;
-
-		const FMeshDrawConstantBuffer MaterialCB = MakeForwardMaterialCB(*Group->Material);
-		TArray<FMeshDrawShaderResource> Resources;
-		AppendMaterialTextures(*Group->Material, true, Resources);
-		const uint64 SortKey = GroupSortKey(*Group);
-
-		for (const FStaticDrawItem& Item : Group->Items)
-		{
-			FMeshDrawCommand Cmd{};
-			Cmd.Pipeline = *Base;
-			Cmd.Pipeline.Shader = Shader;
-			Cmd.VertexBuffer = VB;
-			Cmd.IndexBuffer = IB;
-			Cmd.FirstIndex = Item.StartIndex;
-			Cmd.IndexCount = Item.IndexCount;
-			Cmd.Sampler = Group->Material->SamplerState;
-			Cmd.SamplerStages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
-			Cmd.ShaderResources = Resources;
-			Cmd.ConstantBuffers.Add(MakeForwardObjectCB(Item.Proxy->GetLocalToWorld(), View, Item.Proxy->bReceiveShadow, Item.Proxy->bReceiveDecal));
-			Cmd.ConstantBuffers.Add(MaterialCB);
-			Cmd.bUseObjectSlots = false;
-			Cmd.bForceWireframe = View.bIsWireframe;
-			Cmd.bOccludedByGpu = Item.bOccludedByGpu != 0;
-			Cmd.bReceiveDecal = Item.Proxy->bReceiveDecal;
-			Cmd.ObjectKey = Item.Proxy;
-			Cmd.Proxy = Item.Proxy;
-			Cmd.SortKey = SortKey;
-			OutCommands.Add(std::move(Cmd));
-		}
-	}
-
-	for (const FMeshBatch& Batch : SceneData.Collector.GetMeshBatches())
-	{
-		if (!AddMeshBatch(Batch, View, Options, SceneData.Collector, OutCommands))
-			return false;
-	}
-
-	std::stable_sort(OutCommands.begin(), OutCommands.end(),
-		[](const FMeshDrawCommand& A, const FMeshDrawCommand& B) { return A.SortKey < B.SortKey; });
-	return true;
-}
-
-bool FWorldNormalPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
-	const FSceneRenderOptions& Options, const FMeshElementCollector& Collector, TArray<FMeshDrawCommand>& OutCommands) const
+bool FWorldNormalPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+	const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const
 {
 	if (!Batch.IsOpaque() || Batch.bIsParticle || !Batch.Material)
 		return true;
 	if (Batch.Material->PSOType != EPSOType::StaticMesh_Opaque)
 		return true;
 
-	BuildForwardUberCommands(Batch, View, Options, Collector, true, OutCommands);
+	BuildForwardUberCommands(Batch, Options, Collector, true, OutCommands);
 	return true;
 }
 
-bool FWorldNormalPassMeshProcessor::BuildWorldNormalCommands(const FSceneView& View, const FSceneRenderData& SceneData,
-	const FSceneRenderOptions& Options, TArray<FMeshDrawCommand>& OutCommands) const
-{
-	OutCommands.Reset();
-
-	TArray<const FStaticDrawGroup*> Groups;
-	for (const FSceneRenderData::FGatherChunk& Chunk : SceneData.GatherChunks)
-		for (const FStaticDrawGroup& Group : Chunk.Groups)
-			if (!Group.Items.empty())
-				Groups.Add(&Group);
-
-	std::sort(Groups.begin(), Groups.end(),
-		[](const FStaticDrawGroup* A, const FStaticDrawGroup* B) { return GroupSortKey(*A) < GroupSortKey(*B); });
-
-	FPipelineState* Base = FRenderResourceManager::GetPSO(EPSOType::StaticMesh_WorldNormal);
-	if (!Base || !Base->Shader || !Base->Shader->VertexShader || !Base->Shader->PixelShader)
-		return false;
-
-	for (const FStaticDrawGroup* Group : Groups)
-	{
-		if (!Group->Mesh || !Group->Material)
-			continue;
-		FVertexBuffer* VB = Group->Mesh->GetVertexBuffer(Group->LODIndex);
-		FIndexBuffer* IB = Group->Mesh->GetIndexBuffer(Group->LODIndex);
-		if (!VB || !IB)
-			return false;
-
-		const FMeshDrawConstantBuffer MaterialCB = MakeForwardMaterialCB(*Group->Material);
-		TArray<FMeshDrawShaderResource> Resources;
-		AppendMaterialTextures(*Group->Material, true, Resources);
-
-		for (const FStaticDrawItem& Item : Group->Items)
-		{
-			FMeshDrawCommand Cmd{};
-			Cmd.Pipeline = *Base;
-			Cmd.VertexBuffer = VB;
-			Cmd.IndexBuffer = IB;
-			Cmd.FirstIndex = Item.StartIndex;
-			Cmd.IndexCount = Item.IndexCount;
-			Cmd.Sampler = Group->Material->SamplerState;
-			Cmd.SamplerStages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
-			Cmd.ShaderResources = Resources;
-			Cmd.ConstantBuffers.Add(MakeForwardObjectCB(Item.Proxy->GetLocalToWorld(), View, Item.Proxy->bReceiveShadow, Item.Proxy->bReceiveDecal));
-			Cmd.ConstantBuffers.Add(MaterialCB);
-			Cmd.bUseObjectSlots = false;
-			Cmd.bReceiveDecal = Item.Proxy->bReceiveDecal;
-			Cmd.ObjectKey = Item.Proxy;
-			Cmd.Proxy = Item.Proxy;
-			OutCommands.Add(std::move(Cmd));
-		}
-	}
-
-	for (const FMeshBatch& Batch : SceneData.Collector.GetMeshBatches())
-	{
-		if (!AddMeshBatch(Batch, View, Options, SceneData.Collector, OutCommands))
-			return false;
-	}
-	return true;
-}
-
-bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
-	const FSceneRenderOptions& Options, const FMeshElementCollector& Collector, TArray<FMeshDrawCommand>& OutCommands) const
+bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+	const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const
 {
 	if (Batch.IsOpaque() || !Batch.Material)
 		return true;
@@ -612,16 +602,16 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 	if (!VB)
 		return true;
 
-	EPSOType PSOType = Batch.OverridePSOType != EPSOType::Count ? Batch.OverridePSOType : Batch.Material->PSOType;
-	if (View.bIsWireframe && PSOType == EPSOType::StaticMesh_Opaque)
-		PSOType = EPSOType::StaticMesh_Wireframe;
-
+	const EPSOType PSOType = Batch.OverridePSOType != EPSOType::Count ? Batch.OverridePSOType : Batch.Material->PSOType;
 	FPipelineState* Pipeline = FRenderResourceManager::GetPSO(PSOType);
 	if (!Pipeline)
 		return false;
 
 	const bool bGPUSkinning = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) &&
 		(Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+	const bool bUsesGPUSceneShader = (PSOType == EPSOType::StaticMesh_Translucent ||
+		PSOType == EPSOType::StaticMesh_Opaque || PSOType == EPSOType::StaticMesh_Wireframe);
+
 	FPipelineState EffectivePipeline = *Pipeline;
 	if (bGPUSkinning && PSOType == EPSOType::StaticMesh_Translucent)
 	{
@@ -632,7 +622,7 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 
 	FMeshDrawConstantBuffer ViewCB{};
 	ViewCB.Slot = 0;
-	ViewCB.Stages = EShaderBindFlagBits::Vertex;
+	ViewCB.Stages = EShaderBindFlagBits::Vertex | (bUsesGPUSceneShader ? EShaderBindFlagBits::Pixel : EShaderBindFlagBits::None);
 	ViewCB.bBindViewMatrix = true;
 
 	FMeshDrawConstantBuffer MaterialCB{};
@@ -663,14 +653,6 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 		if (!IB)
 			continue;
 
-		FMeshDrawConstantBuffer ObjectCB{};
-		ObjectCB.Slot = 2;
-		ObjectCB.Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
-		ObjectCB.ObjectSlot = Element.ObjectSlot;
-		const FPerObjectConstants Constants = MakePerObjectConstants(ResolveElementWorld(Element), Element.bReceiveShadow, Element.bReceiveDecal);
-		std::memcpy(ObjectCB.Data.data(), &Constants, sizeof(Constants));
-		ObjectCB.DataSize = sizeof(Constants);
-
 		FMeshDrawCommand Cmd{};
 		Cmd.Pipeline = EffectivePipeline;
 		Cmd.VertexBuffer = VB;
@@ -685,8 +667,25 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 		Cmd.ConstantBuffers.Add(ViewCB);
 		if (MaterialCB.DataSize > 0)
 			Cmd.ConstantBuffers.Add(MaterialCB);
-		Cmd.ConstantBuffers.Add(ObjectCB);
-		Cmd.bUseObjectSlots = true;
+
+		if (bUsesGPUSceneShader)
+		{
+			Cmd.PrimitiveId = ResolveElementPrimitiveId(Element);
+			Cmd.bUsesGPUScene = (Element.InstanceCount == 0);
+		}
+		else
+		{
+			FMeshDrawConstantBuffer ObjectCB{};
+			ObjectCB.Slot = 2;
+			ObjectCB.Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
+			const FPerObjectConstants Constants = MakePerObjectConstants(ResolveElementWorld(Element), Element.bReceiveShadow, Element.bReceiveDecal);
+			std::memcpy(ObjectCB.Data.data(), &Constants, sizeof(Constants));
+			ObjectCB.DataSize = sizeof(Constants);
+			Cmd.ConstantBuffers.Add(ObjectCB);
+			Cmd.bUsesGPUScene = false;
+		}
+
+		Cmd.Material = Batch.Material;
 		Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
 		Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
 		Cmd.bIsParticle = Batch.bIsParticle;
@@ -694,105 +693,62 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 		Cmd.bReceiveDecal = Element.bReceiveDecal;
 		Cmd.ObjectKey = Element.Proxy ? static_cast<const void*>(Element.Proxy) : static_cast<const void*>(&Element);
 		Cmd.Proxy = Element.Proxy;
-		Cmd.SortKey = SortKey;
+		FinalizeCommandKeys(Cmd, Batch.Material->SortID, Batch.MeshSortID, Batch.LODIndex, SortKey);
 		OutCommands.Add(std::move(Cmd));
 	}
 	return true;
 }
 
-bool FTranslucencyPassMeshProcessor::BuildTranslucencyCommands(const FSceneView& View, const FSceneRenderData& SceneData,
-	const FSceneRenderOptions& Options, TArray<FMeshDrawCommand>& OutCommands) const
+bool FShadowDepthMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+	const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const
 {
-	OutCommands.Reset();
+	if (!Batch.bCastShadow || Batch.bIsParticle || Batch.LODIndex != 0)
+		return true;
 
-	for (const FMeshBatch& Batch : SceneData.Collector.GetMeshBatches())
-	{
-		if (!AddMeshBatch(Batch, View, Options, SceneData.Collector, OutCommands))
-			return false;
-	}
+	FVertexBuffer* VB = ResolveBatchVertexBuffer(Batch.VertexFactory, Collector);
+	if (!VB)
+		return true;
 
-	std::stable_sort(OutCommands.begin(), OutCommands.end(),
-		[](const FMeshDrawCommand& A, const FMeshDrawCommand& B) { return A.SortKey < B.SortKey; });
-	return true;
-}
-
-bool FShadowDepthMeshProcessor::BuildShadowDepthCommands(const TArray<FPrimitiveSceneProxy*>& ShadowMeshes, EPSOType PSOType,
-	TArray<FMeshDrawCommand>& OutCommands, const FVector& PreTranslation) const
-{
-	OutCommands.Reset();
-
-	const FPipelineState* Pipeline = FRenderResourceManager::GetPSO(PSOType);
+	FPipelineState* Pipeline = FRenderResourceManager::GetPSO(EPSOType::ShadowDepth);
 	if (!Pipeline || !Pipeline->Shader || !Pipeline->Shader->VertexShader)
 		return false;
 
-	for (FPrimitiveSceneProxy* Proxy : ShadowMeshes)
+	const bool bGPUSkinning = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) &&
+		(Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+	FPipelineState EffectivePipeline = *Pipeline;
+	if (bGPUSkinning)
 	{
-		if (!Proxy || !Proxy->GetRenderState() || Proxy->GetLODCount() == 0 || !Proxy->bCastsShadow)
+		EffectivePipeline.Shader = FRenderResourceManager::GetGPUSkinningShadowDepthShaderProgram();
+		if (!EffectivePipeline.Shader)
+			return false;
+	}
+
+	const uint16 MaterialSort = Batch.Material ? Batch.Material->SortID : 0;
+	for (const FMeshBatchElement& Element : Batch.Elements)
+	{
+		FIndexBuffer* IB = ResolveElementIndexBuffer(Element, Batch.VertexFactory, Collector);
+		if (!IB)
 			continue;
 
-		constexpr uint8 LOD = 0;
-		const FCachedMeshLOD& CachedLOD = Proxy->GetLOD(LOD);
-
-		FPipelineState EffectivePipeline = *Pipeline;
-		FVertexBuffer* VB = Proxy->GetVertexBuffer(LOD);
-		FIndexBuffer* IB = Proxy->GetIndexBuffer(LOD);
-		FStructuredBuffer* SkinningBuffer = nullptr;
-		bool bSkeletal = false;
-		bool bComputeSkinned = false;
-
-		if (USkeletalMesh* SkelMesh = Proxy->GetSkeletalMesh())
-		{
-			bSkeletal = true;
-			bComputeSkinned = Proxy->IsComputeSkinned();
-			SkinningBuffer = Proxy->GetSkinningMatricesBuffer();
-			if (SkinningBuffer)
-			{
-				VB = SkelMesh->GetVertexBuffer(LOD);
-				EffectivePipeline.Shader = FRenderResourceManager::GetGPUSkinningShadowDepthShaderProgram();
-			}
-		}
-
-		if (!VB || !IB || !EffectivePipeline.Shader)
-			continue;
-
-		FMeshDrawConstantBuffer ViewCB{};
-		ViewCB.Slot = 0;
-		ViewCB.Stages = EShaderBindFlagBits::Vertex;
-		ViewCB.bBindViewMatrix = true;
-
-		FMeshDrawConstantBuffer ObjectCB{};
-		ObjectCB.Slot = 2;
-		ObjectCB.Stages = EShaderBindFlagBits::Vertex;
-		FPerObjectConstants Constants = MakePerObjectConstants(Proxy->GetLocalToWorld());
-		Constants.World.M[3][0] += PreTranslation.X;
-		Constants.World.M[3][1] += PreTranslation.Y;
-		Constants.World.M[3][2] += PreTranslation.Z;
-		std::memcpy(ObjectCB.Data.data(), &Constants, sizeof(Constants));
-		ObjectCB.DataSize = sizeof(Constants);
-
-		for (uint32 Index = 0; Index < CachedLOD.NumSections; ++Index)
-		{
-			const FCachedMeshSection& Section = Proxy->GetSection(CachedLOD.FirstSection + Index);
-			if (Section.IndexCount == 0)
-				continue;
-
-			FMeshDrawCommand Cmd{};
-			Cmd.Pipeline = EffectivePipeline;
-			Cmd.VertexBuffer = VB;
-			Cmd.IndexBuffer = IB;
-			Cmd.FirstIndex = Section.StartIndex;
-			Cmd.IndexCount = Section.IndexCount;
-			if (SkinningBuffer)
-				Cmd.ShaderResources.Add({ 16, EShaderBindFlagBits::Vertex, nullptr, SkinningBuffer });
-			Cmd.ConstantBuffers.Add(ViewCB);
-			Cmd.ConstantBuffers.Add(ObjectCB);
-			Cmd.bUseObjectSlots = false;
-			Cmd.bSkeletalMesh = bSkeletal;
-			Cmd.bComputeSkinned = bComputeSkinned;
-			Cmd.ObjectKey = Proxy;
-			Cmd.Proxy = Proxy;
-			OutCommands.Add(std::move(Cmd));
-		}
+		FMeshDrawCommand Cmd{};
+		Cmd.Pipeline = EffectivePipeline;
+		Cmd.VertexBuffer = VB;
+		Cmd.IndexBuffer = IB;
+		Cmd.FirstIndex = Element.FirstIndex;
+		Cmd.IndexCount = Element.IndexCount ? Element.IndexCount : IB->GetIndexCount();
+		Cmd.BaseVertexLocation = Element.BaseVertexLocation;
+		Cmd.InstanceCount = Element.InstanceCount;
+		if (bGPUSkinning)
+			Cmd.ShaderResources.Add({ 16, EShaderBindFlagBits::Vertex, nullptr, Batch.VertexFactory.SkinningMatricesBuffer });
+		Cmd.PrimitiveId = ResolveElementPrimitiveId(Element);
+		Cmd.Material = Batch.Material;
+		Cmd.bUsesGPUScene = (Element.InstanceCount == 0);
+		Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+		Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
+		Cmd.ObjectKey = Element.Proxy ? static_cast<const void*>(Element.Proxy) : static_cast<const void*>(&Element);
+		Cmd.Proxy = Element.Proxy;
+		FinalizeCommandKeys(Cmd, MaterialSort, Batch.MeshSortID, Batch.LODIndex);
+		OutCommands.Add(std::move(Cmd));
 	}
 	return true;
 }

@@ -40,7 +40,9 @@ public:
 
 	static TUniquePtr<FConstantBuffer> CreateConstantBuffer(uint32 BufferSize);
 	static TUniquePtr<FStructuredBuffer> CreateDynamicStructuredBuffer(uint32 Capacity, uint32 Stride);
+	static TUniquePtr<FStructuredBuffer> CreateDefaultStructuredBuffer(uint32 Capacity, uint32 Stride);
 	static TUniquePtr<FStructuredBuffer> CreateRWStructuredBuffer(uint32 Stride, uint32 Count);
+	static void UpdateStructuredBufferRange(FStructuredBuffer* Buffer, uint32 StartElement, uint32 ElementCount, uint32 ElementStride, const void* Data);
 
 	static TUniquePtr<FTexture2D> CreateTexture2D(const FTextureDesc& Desc, const void* InitialData = nullptr);
 	// 포맷은 Desc.Format 대신 Image의 포맷을 쓴다.

@@ -2,7 +2,7 @@
 
 #include "Core/Types.h"
 #include "Render/SceneView.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Render/MeshPassProcessor.h"
 #include "Render/SceneRenderData.h"
 #include "Render/SceneRenderOptions.h"
@@ -57,13 +57,12 @@ public:
 	FSceneRenderer(const FSceneRenderer&) = delete;
 	FSceneRenderer& operator=(const FSceneRenderer&) = delete;
 
-	// 가시성 검사 및 렌더 큐 수집
+	// 가시성 검사 및 동적 요소 수집
 	void InitViews(FRenderer* Renderer, const FSceneRenderOptions& Options);
 
-	// 뷰 결과를 하나 유지하는 벤치마크에서도 사용한다.
-	static void GatherRenderPackets(FScene& Scene, FSceneRenderData& Data, const FViewContext& View,
+	static void GatherViewVisibilityAndDynamicElements(FScene& Scene, FSceneRenderData& Data,
+		const FViewContext& View, const FSceneRenderOptions& Options,
 		const FFrustumPlanes* Frustum = nullptr, FRenderer* Renderer = nullptr);
-	static void PrepareDrawData(FRenderer* Renderer, const FSceneRenderData& Data);
 	const FRenderStats& GetRenderStats() const { return RenderData.RenderStats; }
 
 	// 한 뷰의 모든 패스를 정해진 순서로 등록한다.
@@ -137,15 +136,18 @@ private:
 	// SourceBatches에서 수신 물체를 고르고 데칼을 모아 DBuffer를 만든다.
 	// bAlwaysCreate면 그릴 데칼이 없어도 빈 DBuffer를 만든다 (Forward 셰이더는 항상 읽는다).
 	bool PrepareDecalPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FSceneViewTargets& Targets,
-		const FSceneRenderOptions& Options, const TArray<FMeshDrawCommand>& SourceCommands,
+		const FSceneRenderOptions& Options, const TArray<FVisibleMeshDrawCommand>& SourceCommands,
 		uint32 Width, uint32 Height, bool bAlwaysCreate, FDecalPassSetup& Out);
-	// DBufferLit/DBufferUnlit 두 패스를 등록한다. 장면 깊이가 이미 채워져 있어야 한다.
+	// DBufferLit 과 DBufferUnlit 두 패스를 등록한다.
 	bool AddDBufferPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef Depth,
 		const FSceneRenderOptions& Options, const FDecalPassSetup& Setup, uint32 Width, uint32 Height);
-	void DrawBasePassMeshes(FRenderer* Renderer, const TArray<FMeshDrawCommand>& Commands);
-	// 각 명령의 원래 VS로 깊이만 그린다. bWriteReceiverStencil이면 데칼 수신 비트도 기록한다.
+	void DrawBasePassMeshes(FRenderer* Renderer, const TArray<FVisibleMeshDrawCommand>& Commands);
+	// 깊이만 먼저 그리며 필요 시 데칼 수신 스텐실 비트를 기록한다.
 	bool AddDepthPrepass(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef Depth,
-		const TArray<FMeshDrawCommand>* Commands, bool bWriteReceiverStencil);
+		const FSceneRenderOptions& Options, bool bWriteReceiverStencil);
+
+	void BuildVisiblePassCommands(const FScene& Scene, EMeshPass Pass, const FSceneRenderOptions& Options,
+		bool bWireframe, TArray<FVisibleMeshDrawCommand>& OutCommands) const;
 
 	// 이번 프레임에 그림자를 Projection할 광원. Deferred는 이 순서대로 광원마다 마스크를 만들어 더한다.
 	struct FShadowedLight
@@ -169,8 +171,7 @@ private:
 	FSceneRenderData& RenderData;
 	bool bLightUploadSucceeded = false;
 	bool bTilesBuilt = false;
-	TArray<FMeshDrawCommand> ForwardCommands;
-	TArray<FMeshDrawCommand> DecalReceiverCommands;
+	TArray<FVisibleMeshDrawCommand> DecalReceiverCommands;
 	FViewContext CachedViewContext;
 	bool bCorePassSucceeded = true;
 	bool bFXAAPassSucceeded = true;

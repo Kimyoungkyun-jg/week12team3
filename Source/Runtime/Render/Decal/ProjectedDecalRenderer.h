@@ -9,7 +9,8 @@
 #include <span>
 
 class FRenderer;
-struct FMeshDrawCommand;
+class FStructuredBuffer;
+struct FVisibleMeshDrawCommand;
 struct FSceneView;
 struct FDecalFrameStats;
 class FProjectedDecalRenderer
@@ -20,7 +21,8 @@ public:
 	bool IsReady() const;
 
 	bool OnRenderMesh(
-		std::span<const FMeshDrawCommand> ReceiverCommands,
+		std::span<const FVisibleMeshDrawCommand> ReceiverCommands,
+		const FStructuredBuffer* GPUSceneBuffer,
 		std::span<const FProjectedDecalRenderData> Decals,
 		std::span<const FProjectedDecalMeshDrawList> DrawLists,
 		bool bUnlitPass,

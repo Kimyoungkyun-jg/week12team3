@@ -12,6 +12,7 @@
 #include "Tasks/Tasks.h"
 #include "Core/Stats/LightweightStats.h"
 #include "Core/StatOverlay.h"
+#include "Core/EngineTimer.h"
 #include "Components/StaticMeshComponent.h"
 #include "Asset/LOD/StaticMeshLODSelector.h"
 #include "Render/SkyLightEnvironment.h"
@@ -144,9 +145,12 @@ void FSceneRenderer::InitViews(FRenderer* Renderer, const FSceneRenderOptions& O
 	View.bShowSkeletalMeshes = Options.bDrawSkeletalMeshes;
 	CachedViewContext.bShowSkeletalMeshes = Options.bDrawSkeletalMeshes;
 
-	// 월드 프리미티브 수집 및 절두체 컬링
-	GatherRenderPackets(World->GetScene(), RenderData, CachedViewContext, &View.Frustum, Renderer);
-	RenderData.AmbientLight = World->GetScene().GetSkyAmbientLight(View.bGameView);
+	FScene& Scene = World->GetScene();
+	Scene.FlushStaticCaches(Options);
+
+	// 월드 프리미티브 가시성 검사 및 동적 요소 수집
+	GatherViewVisibilityAndDynamicElements(Scene, RenderData, CachedViewContext, Options, &View.Frustum, Renderer);
+	RenderData.AmbientLight = Scene.GetSkyAmbientLight(View.bGameView);
 
 	// 모든 프록시가 같은 FLightRenderParameters를 채우고, 종류는 Type으로만 구분한다.
 	auto AddVisibleLight = [this](const FLightSceneProxy* Light)
@@ -158,7 +162,6 @@ void FSceneRenderer::InitViews(FRenderer* Renderer, const FSceneRenderOptions& O
 			if (Light->GetComponentKey() == reinterpret_cast<uintptr_t>(RenderData.PreviewLight)) RenderData.PreviewLightIndex = Index;
 		};
 
-	const FScene& Scene = World->GetScene();
 	for (const FDirectionalLightSceneProxy* Light : Scene.GetDirectionalLights())
 	{
 		if (!Light->IsEnabled() || !Light->IsShown(View.bGameView)) continue;
@@ -242,21 +245,79 @@ void FSceneRenderer::UnbindForwardDecal(FRenderer* Renderer)
 	RenderCommand::UnbindShaderResources(14, 3, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 }
 
-void FSceneRenderer::DrawBasePassMeshes(FRenderer* Renderer, const TArray<FMeshDrawCommand>& Commands)
+void FSceneRenderer::BuildVisiblePassCommands(const FScene& Scene, EMeshPass Pass, const FSceneRenderOptions& Options,
+	bool bWireframe, TArray<FVisibleMeshDrawCommand>& OutCommands) const
+{
+	OutCommands.Reset();
+	const auto& CachedList = Scene.GetCachedDrawList(Pass);
+	const auto& DynamicList = RenderData.DynamicPassCommands[static_cast<size_t>(Pass)];
+	OutCommands.Reserve(CachedList.Num() + DynamicList.Num());
+
+	const uint32 NumPrimitives = static_cast<uint32>(RenderData.PrimitiveVisibilityMap.Num());
+	const bool bApplyWireframe = bWireframe && (Pass == EMeshPass::BasePass);
+	const bool bApplyUnlit = Options.bUnlit && (Pass == EMeshPass::BasePass);
+
+	for (const FCachedMeshDrawEntry& Entry : CachedList)
+	{
+		const uint32 PrimIdx = Entry.PrimitiveIndex;
+		if (PrimIdx >= NumPrimitives || !RenderData.PrimitiveVisibilityMap[PrimIdx])
+			continue;
+		if (Pass != EMeshPass::ShadowDepth && RenderData.PrimitiveSelectedLODs[PrimIdx] != Entry.LODIndex)
+			continue;
+
+		FVisibleMeshDrawCommand Vis{};
+		Vis.Command = &Entry.Command;
+		Vis.PrimitiveId = Entry.Command.PrimitiveId;
+		Vis.StateBucketId = Entry.Command.StateBucketId;
+		Vis.SortKey = Entry.Command.SortKey;
+		Vis.bForceWireframe = bApplyWireframe;
+		Vis.bOccludedByGpu = (PrimIdx < static_cast<uint32>(RenderData.PrimitiveOccludedMap.Num()))
+			&& (RenderData.PrimitiveOccludedMap[PrimIdx] != 0);
+
+		if (bApplyUnlit)
+			Vis.ShaderOverride = ResolveUnlitShaderOverride(Entry.Command, Options);
+		if (Pass == EMeshPass::Translucency && Entry.Command.Proxy)
+		{
+			const FAABB& Bounds = Entry.Command.Proxy->GetBounds();
+			const FVector Delta = Bounds.Center - View.ViewLocation;
+			Vis.SortKey = MakeTranslucentSortKey(Delta.Dot(Delta));
+		}
+		OutCommands.Add(Vis);
+	}
+
+	for (const FMeshDrawCommand& DynCmd : DynamicList)
+	{
+		FVisibleMeshDrawCommand Vis{};
+		Vis.Command = &DynCmd;
+		Vis.PrimitiveId = DynCmd.PrimitiveId;
+		Vis.StateBucketId = DynCmd.StateBucketId;
+		Vis.SortKey = DynCmd.SortKey;
+		Vis.bForceWireframe = bApplyWireframe && !DynCmd.bIsParticle;
+		Vis.bOccludedByGpu = DynCmd.bOccludedByGpu;
+		if (bApplyUnlit)
+			Vis.ShaderOverride = ResolveUnlitShaderOverride(DynCmd, Options);
+		OutCommands.Add(Vis);
+	}
+
+	std::stable_sort(OutCommands.begin(), OutCommands.end(),
+		[](const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B) { return A.SortKey < B.SortKey; });
+}
+
+void FSceneRenderer::DrawBasePassMeshes(FRenderer* Renderer, const TArray<FVisibleMeshDrawCommand>& Commands)
 {
 	if (!FSkinningStats::IsCollecting())
 	{
-		Renderer->SubmitDrawCommands(Commands);
+		Renderer->SubmitVisibleCommands(Commands, RenderData.GPUSceneBuffer, &RenderData.RenderStats.DrawCalls);
 		return;
 	}
 
 	auto& Timing = RenderData.BaseSkeletalDrawGpu;
 	if (!Timing) Timing = std::make_shared<FGpuTimingHistory>();
-	Renderer->SubmitDrawCommands(Commands, Timing, RenderData.SkeletalDrawGpuMode);
+	Renderer->SubmitVisibleCommands(Commands, RenderData.GPUSceneBuffer, &RenderData.RenderStats.DrawCalls, Timing, RenderData.SkeletalDrawGpuMode);
 }
 
 bool FSceneRenderer::PrepareDecalPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FSceneViewTargets& Targets,
-	const FSceneRenderOptions& Options, const TArray<FMeshDrawCommand>& SourceCommands,
+	const FSceneRenderOptions& Options, const TArray<FVisibleMeshDrawCommand>& SourceCommands,
 	uint32 Width, uint32 Height, bool bAlwaysCreate, FDecalPassSetup& Out)
 {
 	Out = {};
@@ -264,10 +325,10 @@ bool FSceneRenderer::PrepareDecalPasses(FRenderGraphBuilder& Graph, FRenderer* R
 	DecalReceiverCommands.Reset();
 	DecalReceiverCommands.Reserve(SourceCommands.Num());
 
-	for (const FMeshDrawCommand& SourceCmd : SourceCommands)
+	for (const FVisibleMeshDrawCommand& SourceVis : SourceCommands)
 	{
-		if (SourceCmd.bReceiveDecal && !SourceCmd.bIsParticle)
-			DecalReceiverCommands.Add(SourceCmd);
+		if (SourceVis.Command && SourceVis.Command->bReceiveDecal && !SourceVis.Command->bIsParticle)
+			DecalReceiverCommands.Add(SourceVis);
 	}
 
 	FDecalStats& DecalStats = RenderData.DecalStats;
@@ -336,7 +397,7 @@ bool FSceneRenderer::PrepareDecalPasses(FRenderGraphBuilder& Graph, FRenderer* R
 }
 
 bool FSceneRenderer::AddDepthPrepass(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef Depth,
-	const TArray<FMeshDrawCommand>* Commands, bool bWriteReceiverStencil)
+	const FSceneRenderOptions& Options, bool bWriteReceiverStencil)
 {
 	FPipelineState* DepthPipeline = FRenderResourceManager::GetPSO(EPSOType::StaticMesh_DepthOnly);
 	if (!DepthPipeline || !DepthPipeline->Shader || !DepthPipeline->Shader->PixelShader) return false;
@@ -344,20 +405,29 @@ bool FSceneRenderer::AddDepthPrepass(FRenderGraphBuilder& Graph, FRenderer* Rend
 	FRenderGraphRasterPassDesc Prepass{};
 	Prepass.Name = "DepthPrepass";
 	Prepass.DepthAttachment = { Depth, ERenderGraphLoadAction::Clear, 1.0f, 0 };
-	return Graph.AddRasterPass(std::move(Prepass), [this, Renderer, Commands, DepthPipeline, bWriteReceiverStencil]
+	return Graph.AddRasterPass(std::move(Prepass), [this, Renderer, Options, bWriteReceiverStencil]
 		{
-			if (!bCorePassSucceeded || !Commands || Commands->IsEmpty()) return;
-			Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
+			if (!bCorePassSucceeded || !World) return;
+			BuildVisiblePassCommands(World->GetScene(), EMeshPass::DepthPass, Options, false, RenderData.VisibleDepthPassCommands);
+			if (RenderData.VisibleDepthPassCommands.IsEmpty()) return;
 
-			TArray<FShaderProgram> DepthPrograms;
-			TArray<FMeshDrawCommand> DepthCommands;
-			FDepthPassMeshProcessor DepthProcessor;
-			if (!DepthProcessor.BuildDepthCommands(*Commands, DepthPipeline, bWriteReceiverStencil, DepthPrograms, DepthCommands))
+			if (bWriteReceiverStencil)
 			{
-				bCorePassSucceeded = false;
-				return;
+				for (FVisibleMeshDrawCommand& Vis : RenderData.VisibleDepthPassCommands)
+				{
+					Vis.bHasDepthStencilOverride = true;
+					Vis.DepthStencilOverride = EDepthStencilState::DecalReceiverWrite;
+					Vis.bOverrideStencilRef = true;
+					Vis.StencilRef = (Vis.Command && Vis.Command->bReceiveDecal) ? StencilBits::ReceiveDecal : 0;
+					Vis.SortKey = (static_cast<uint64>(Vis.StateBucketId) << 32) | static_cast<uint64>(Vis.StencilRef);
+				}
+				std::stable_sort(RenderData.VisibleDepthPassCommands.begin(), RenderData.VisibleDepthPassCommands.end(),
+					[](const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B) { return A.SortKey < B.SortKey; });
 			}
-			Renderer->SubmitDrawCommands(DepthCommands);
+
+			Renderer->UploadViewConstants(View.ViewProjectionMatrix, View.ViewMatrix, View.ProjectionMatrix,
+				static_cast<float>(EngineTimer::GetTotalTime()));
+			Renderer->SubmitVisibleCommands(RenderData.VisibleDepthPassCommands, RenderData.GPUSceneBuffer);
 		});
 }
 
@@ -486,6 +556,7 @@ bool FSceneRenderer::AddDBufferPasses(FRenderGraphBuilder& Graph, FRenderer* Ren
 						bCorePassSucceeded =
 							DecalRenderer->OnRenderMesh(
 								DecalReceiverCommands,
+								RenderData.GPUSceneBuffer,
 								VisibleDecals,
 								MeshDecalDrawLists,
 								bUnlitPass,
@@ -510,12 +581,24 @@ bool FSceneRenderer::AddWorldNormalPass(FRenderGraphBuilder& Graph, FRenderer* R
 	Pass.DepthAttachment = { Depth, ERenderGraphLoadAction::Clear, 1.0f, 0 };
 	return Graph.AddRasterPass(std::move(Pass), [this, Renderer, bDrawPrimitives = Options.bDrawPrimitives, Options]
 		{
-			if (!bDrawPrimitives) return;
+			if (!bDrawPrimitives || !World) return;
+			auto& DynList = RenderData.DynamicPassCommands[static_cast<size_t>(EMeshPass::WorldNormal)];
+			DynList.Reset();
 			FWorldNormalPassMeshProcessor Processor;
-			TArray<FMeshDrawCommand> Commands;
-			bCorePassSucceeded = Processor.BuildWorldNormalCommands(View, RenderData, Options, Commands);
-			if (bCorePassSucceeded)
-				Renderer->SubmitDrawCommands(Commands);
+			for (const FMeshBatch& Batch : RenderData.Collector.GetMeshBatches())
+			{
+				if (!Processor.AddMeshBatch(Batch, Options, &RenderData.Collector, DynList))
+				{
+					bCorePassSucceeded = false;
+					return;
+				}
+			}
+
+			TArray<FVisibleMeshDrawCommand> Commands;
+			BuildVisiblePassCommands(World->GetScene(), EMeshPass::WorldNormal, Options, false, Commands);
+			Renderer->UploadViewConstants(View.ViewProjectionMatrix, View.ViewMatrix, View.ProjectionMatrix,
+				static_cast<float>(EngineTimer::GetTotalTime()));
+			Renderer->SubmitVisibleCommands(Commands, RenderData.GPUSceneBuffer);
 		});
 }
 
@@ -552,7 +635,8 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 	if (!LightingHDR)
 		return false;
 
-	PrepareDrawData(Renderer, RenderData);
+	if (!RenderData.DynamicPrimitiveData.IsEmpty())
+		RenderData.GPUSceneBuffer = World->GetScene().SyncGPUScene(RenderData.DynamicPrimitiveData);
 
 	// HDR 파노라마를 물체보다 먼저 그려 두고, 최종 ToneMap에서 함께 인코딩한다.
 	FRenderGraphRasterPassDesc Sky{};
@@ -586,16 +670,14 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 			})) return false;
 	}
 
-	ForwardCommands.Reset();
+	RenderData.VisibleBasePassCommands.Reset();
 	if (Options.bDrawPrimitives)
 	{
-		FBasePassMeshProcessor Processor;
-		if (!Processor.BuildBasePassCommands(View, RenderData, Options, ForwardCommands))
-			return false;
+		BuildVisiblePassCommands(World->GetScene(), EMeshPass::BasePass, Options, View.bIsWireframe, RenderData.VisibleBasePassCommands);
 	}
 
 	FDecalPassSetup Decal{};
-	if (!PrepareDecalPasses(Graph, Renderer, Targets, Options, ForwardCommands, Width, Height, true, Decal))
+	if (!PrepareDecalPasses(Graph, Renderer, Targets, Options, RenderData.VisibleBasePassCommands, Width, Height, true, Decal))
 		return false;
 	const bool bNeedsDBuffer = Decal.bNeedsDBuffer;
 	const bool bUseDecalReceiverStencil = Decal.bUseReceiverStencil;
@@ -618,7 +700,7 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 	if (bNeedsLightCulling || bForwardShadows || bNeedsDBuffer)
 	{
 		bUseDepthPrepass = true;
-		if (!AddDepthPrepass(Graph, Renderer, Depth, &ForwardCommands, bUseDecalReceiverStencil)) return false;
+		if (!AddDepthPrepass(Graph, Renderer, Depth, Options, bUseDecalReceiverStencil)) return false;
 	}
 
 	FRenderGraphTextureRef ForwardShadowMask{};
@@ -676,16 +758,20 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 			if (!LightingOptions.bDrawPrimitives) return;
 			bCorePassSucceeded = BindForwardLighting(Renderer, LightingOptions, ForwardShadowMask ? Graph.Resolve(ForwardShadowMask) : nullptr);
 			if (!bCorePassSucceeded) return;
-			Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
+			Renderer->UploadViewConstants(View.ViewProjectionMatrix, View.ViewMatrix, View.ProjectionMatrix,
+				static_cast<float>(EngineTimer::GetTotalTime()));
 			if (bUseDepthPrepass)
 			{
-				for (FMeshDrawCommand& Cmd : ForwardCommands)
+				for (FVisibleMeshDrawCommand& Vis : RenderData.VisibleBasePassCommands)
 				{
-					if (!Cmd.bIsParticle)
-						Cmd.Pipeline.DepthStencilState = EDepthStencilState::PrepassReadOnly;
+					if (Vis.Command && !Vis.Command->bIsParticle)
+					{
+						Vis.bHasDepthStencilOverride = true;
+						Vis.DepthStencilOverride = EDepthStencilState::PrepassReadOnly;
+					}
 				}
 			}
-			DrawBasePassMeshes(Renderer, ForwardCommands);
+			DrawBasePassMeshes(Renderer, RenderData.VisibleBasePassCommands);
 
 			UnbindForwardDecal(Renderer);
 			UnbindForwardLighting(Renderer);
@@ -1033,25 +1119,27 @@ bool FSceneRenderer::Render(FRenderer* Renderer, FSceneViewTargets& Targets, con
 // 반투명 렌더링
 void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* FogConstants)
 {
-	if (!Renderer)
+	if (!Renderer || !World)
 		return;
 
 	RenderCommand::BindConstantBuffer(3, FogConstants, EShaderBindFlagBits::Pixel);
-	PrepareDrawData(Renderer, RenderData);
+	if (!RenderData.DynamicPrimitiveData.IsEmpty())
+		RenderData.GPUSceneBuffer = World->GetScene().SyncGPUScene(RenderData.DynamicPrimitiveData);
 
-	TArray<FMeshDrawCommand> Commands;
-	FTranslucencyPassMeshProcessor Processor;
-	if (Processor.BuildTranslucencyCommands(View, RenderData, FSceneRenderOptions{}, Commands) && !Commands.IsEmpty())
+	BuildVisiblePassCommands(World->GetScene(), EMeshPass::Translucency, FSceneRenderOptions{}, false, RenderData.VisibleTranslucencyCommands);
+	if (!RenderData.VisibleTranslucencyCommands.IsEmpty())
 	{
-		Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
-		Renderer->SubmitDrawCommands(Commands);
+		Renderer->UploadViewConstants(View.ViewProjectionMatrix, View.ViewMatrix, View.ProjectionMatrix,
+			static_cast<float>(EngineTimer::GetTotalTime()));
+		Renderer->SubmitVisibleCommands(RenderData.VisibleTranslucencyCommands, RenderData.GPUSceneBuffer, &RenderData.RenderStats.DrawCalls);
 	}
 
 	RenderCommand::BindConstantBuffer(3, nullptr, EShaderBindFlagBits::Pixel);
 }
 
-void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
-	const FViewContext& View, const FFrustumPlanes* Frustum, FRenderer* Renderer)
+void FSceneRenderer::GatherViewVisibilityAndDynamicElements(FScene& Scene, FSceneRenderData& Data,
+	const FViewContext& View, const FSceneRenderOptions& Options,
+	const FFrustumPlanes* Frustum, FRenderer* Renderer)
 {
 	Data.ResetFrame();
 	FMeshElementCollector& Collector = Data.Collector;
@@ -1059,8 +1147,11 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 	auto& VisibleProxies = Data.VisibleProxies;
 	auto& LODInputs = Data.LODInputs;
 	auto& SelectedLODs = Data.SelectedLODs;
-	auto& GatherChunks = Data.GatherChunks;
-	using FGatherChunk = FSceneRenderData::FGatherChunk;
+
+	const uint32 NumPrimitives = Scene.GetNumPrimitives();
+	Data.PrimitiveVisibilityMap.Init(uint8(0), NumPrimitives);
+	Data.PrimitiveOccludedMap.Init(uint8(0), NumPrimitives);
+	Data.PrimitiveSelectedLODs.Init(uint8(0), NumPrimitives);
 
 	{
 		SCOPE_CYCLE_COUNTER(STAT_FrustumCull);
@@ -1091,7 +1182,7 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 			Proxy->MarkRendered();
 	}
 
-	RenderStats.TotalPrimitives = Scene.PrimitiveSceneProxies.Num();
+	RenderStats.TotalPrimitives = NumPrimitives;
 
 	const uint8* OccludedMask = nullptr;
 	if (Renderer && Renderer->GetGPUOcclusion().GetSettings().bEnabled)
@@ -1117,21 +1208,6 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 
 	RenderStats.VisiblePrimitives = VisibleProxies.Num();
 
-	constexpr uint32 ExtraSlots = 4096;
-	const uint32 VisibleCount = VisibleProxies.Num();
-	const uint32 MaxSlots = VisibleCount + ExtraSlots;
-	if (Renderer) Data.ObjectConstants.SetNum(MaxSlots);
-	const bool bPrepareObjectSlots = Renderer != nullptr;
-	uint32 NextExtraSlot = VisibleCount;
-
-	const uint32 NumThreads = Tasks::FTaskScheduler::Get().GetNumWorkers() + 1;
-	const uint32 ChunkCount = FMath::Clamp(VisibleCount, 1u, NumThreads * 4);
-
-	if (GatherChunks.Num() < ChunkCount)
-		GatherChunks.SetNum(ChunkCount);
-
-	const bool bStaticGroups = Renderer != nullptr;
-
 	{
 		SCOPE_CYCLE_COUNTER(STAT_GatherElements);
 
@@ -1140,174 +1216,95 @@ void FSceneRenderer::GatherRenderPackets(FScene& Scene, FSceneRenderData& Data,
 		for (const FPrimitiveSceneProxy* Proxy : VisibleProxies)
 			LODInputs.Add({ Proxy->GetLODSphere(), Proxy->GetRenderState() });
 		SelectLODs(LODInputs, View, SelectedLODs);
-		Tasks::ParallelForChunks(VisibleCount, ChunkCount, [&](uint32 Begin, uint32 End, uint32 ChunkIndex)
+
+		for (uint32 VisibleIndex = 0; VisibleIndex < VisibleProxies.Num(); ++VisibleIndex)
+		{
+			FPrimitiveSceneProxy* Proxy = VisibleProxies[VisibleIndex];
+			if (!Proxy || !Proxy->IsVisible())
+				continue;
+
+			const uint8 LOD = SelectedLODs[VisibleIndex];
+			if (Proxy->PackedIndex >= 0 && static_cast<uint32>(Proxy->PackedIndex) < NumPrimitives)
 			{
-				FGatherChunk& Out = GatherChunks[ChunkIndex];
-				const auto FindGroup = [&Out](UMaterial* Material, UStaticMesh* Mesh, uint8 LOD) -> FStaticDrawGroup&
-					{
-						if (Out.LastGroup < Out.Groups.size())
-						{
-							FStaticDrawGroup& Last = Out.Groups[Out.LastGroup];
-							if (Last.Material == Material && Last.Mesh == Mesh && Last.LODIndex == LOD)
-								return Last;
-						}
-						for (uint32 g = 0; g < Out.Groups.size(); ++g)
-						{
-							FStaticDrawGroup& Group = Out.Groups[g];
-							if (Group.Material == Material && Group.Mesh == Mesh && Group.LODIndex == LOD)
-							{
-								Out.LastGroup = g;
-								return Group;
-							}
-						}
-						Out.LastGroup = static_cast<uint32>(Out.Groups.size());
-						FStaticDrawGroup& Group = Out.Groups.emplace_back();
-						Group.Material = Material;
-						Group.Mesh = Mesh;
-						Group.LODIndex = LOD;
-						return Group;
-					};
+				const uint32 PrimIdx = static_cast<uint32>(Proxy->PackedIndex);
+				Data.PrimitiveVisibilityMap[PrimIdx] = 1;
+				Data.PrimitiveSelectedLODs[PrimIdx] = LOD;
+				if (OccludedMask && OccludedMask[VisibleIndex])
+					Data.PrimitiveOccludedMap[PrimIdx] = 1;
+			}
 
-				for (uint32 VisibleIndex = Begin; VisibleIndex < End; ++VisibleIndex)
+			if (Proxy->GetRenderState() && Proxy->GetLODCount() > 0)
+			{
+				const uint32 ClampedLOD = std::min(static_cast<uint32>(LOD), Proxy->GetLODCount() - 1u);
+				if (ClampedLOD < 4)
 				{
-					FPrimitiveSceneProxy* Proxy = VisibleProxies[VisibleIndex];
-					if (!Proxy->IsVisible()) continue;
-
-					UStaticMesh* Mesh = Proxy->GetMesh();
-					if (!Mesh)
-					{
-						Out.SlowPathIndices.Add(VisibleIndex);
-						continue;
-					}
-
-					const uint32 LOD = SelectedLODs[VisibleIndex];
-					const FCachedMeshLOD& CachedLOD = Proxy->GetLOD(LOD);
-					++Out.LODCounts[LOD];
-
-					uint32 Slot = InvalidObjectSlot;
-					if (bPrepareObjectSlots)
-					{
-						Data.ObjectConstants[VisibleIndex] =
-							MakePerObjectConstants(Proxy->GetLocalToWorld(),
-								Proxy->bReceiveShadow, Proxy->bReceiveDecal);
-						Slot = VisibleIndex;
-					}
-
-					const bool bOccludedByGpu = OccludedMask && OccludedMask[VisibleIndex];
-					FVertexBuffer* VB = Mesh->GetVertexBuffer(LOD);
-					FIndexBuffer* IB = Mesh->GetIndexBuffer(LOD);
-					const FVector Delta = Proxy->GetBounds().Center - View.CameraPosition;
-					const float DistanceSq = Delta.Dot(Delta);
-
-					for (uint32 i = 0; i < CachedLOD.NumSections; ++i)
-					{
-						const FCachedMeshSection& Section = Proxy->GetSection(CachedLOD.FirstSection + i);
-						Out.LODTriangles[LOD] += Section.IndexCount / 3;
-
-						if (bStaticGroups && Section.Material && Section.Material->PSOType == EPSOType::StaticMesh_Opaque)
-						{
-							FStaticDrawGroup& Group = FindGroup(Section.Material, Mesh, static_cast<uint8>(LOD));
-							Group.Items.push_back({ Proxy, Slot, Section.StartIndex, Section.IndexCount, bOccludedByGpu ? 1u : 0u });
-							++Out.StaticDrawCount;
-							continue;
-						}
-
-						if (!VB || !IB) continue;
-						FMeshBatch& Batch = Out.Batches.AddDefaulted_GetRef();
-						Batch.VertexFactory.Type = EVertexFactoryType::Local;
-						Batch.VertexFactory.VertexBuffer = VB;
-						Batch.Material = Section.Material;
-						Batch.MeshSortID = Mesh->SortID;
-						Batch.LODIndex = static_cast<uint8>(LOD);
-						Batch.bCastShadow = Proxy->bCastsShadow;
-						Batch.CameraDistanceSq = DistanceSq;
-
-						FMeshBatchElement& Element = Batch.Elements.AddDefaulted_GetRef();
-						Element.Proxy = Proxy;
-						Element.IndexBuffer = IB;
-						Element.FirstIndex = Section.StartIndex;
-						Element.IndexCount = Section.IndexCount;
-						Element.ObjectSlot = Slot;
-						Element.bOccludedByGpu = bOccludedByGpu;
-						Element.bReceiveShadow = Proxy->bReceiveShadow;
-						Element.bReceiveDecal = Proxy->bReceiveDecal;
-					}
+					++RenderStats.LODCounts[ClampedLOD];
+					const FCachedMeshLOD& CachedLOD = Proxy->GetLOD(ClampedLOD);
+					for (uint32 s = 0; s < CachedLOD.NumSections; ++s)
+						RenderStats.LODTriangles[ClampedLOD] += Proxy->GetSection(CachedLOD.FirstSection + s).IndexCount / 3;
 				}
-			});
-
-		uint32 StaticDraws = 0;
-		if (Renderer)
-		{
-			for (uint32 c = 0; c < ChunkCount; ++c)
-				StaticDraws += GatherChunks[c].StaticDrawCount;
-		}
-
-		for (uint32 c = 0; c < ChunkCount; ++c)
-		{
-			for (FMeshBatch& Batch : GatherChunks[c].Batches)
-				Collector.AddMesh(std::move(Batch));
+			}
 		}
 
 		Scene.UpdateParticleLODs(View.CameraPosition);
 
-		for (uint32 c = 0; c < ChunkCount; ++c)
+		for (uint32 VisibleIndex = 0; VisibleIndex < VisibleProxies.Num(); ++VisibleIndex)
 		{
-			for (uint32 VisibleIndex : GatherChunks[c].SlowPathIndices)
+			FPrimitiveSceneProxy* Proxy = VisibleProxies[VisibleIndex];
+			if (!Proxy || !Proxy->IsVisible() || !Proxy->HasDynamicRelevance())
+				continue;
+
+			const uint32 LOD = SelectedLODs[VisibleIndex];
+			Proxy->GetDynamicMeshElements(View, Collector, LOD);
+		}
+
+		TArray<FMeshBatch>& DynamicBatches = Collector.GetMeshBatchesMutable();
+		for (FMeshBatch& Batch : DynamicBatches)
+		{
+			if (Batch.bIsParticle)
+				continue;
+			const bool bUsesGPUSceneMaterial = !Batch.Material ||
+				Batch.Material->PSOType == EPSOType::StaticMesh_Opaque ||
+				Batch.Material->PSOType == EPSOType::StaticMesh_Translucent ||
+				Batch.Material->PSOType == EPSOType::StaticMesh_Wireframe;
+			if (!bUsesGPUSceneMaterial)
+				continue;
+
+			for (FMeshBatchElement& Element : Batch.Elements)
 			{
-				FPrimitiveSceneProxy* Proxy = VisibleProxies[VisibleIndex];
-				if (!Proxy || !Proxy->IsVisible())
-					continue;
-
-				const uint32 FirstNew = Collector.GetMeshBatches().Num();
-				const uint32 LOD = SelectedLODs[VisibleIndex];
-				Proxy->GetDynamicMeshElements(View, Collector, LOD);
-
-				TArray<FMeshBatch>& Batches = Collector.GetMeshBatchesMutable();
-				for (uint32 p = FirstNew; p < Batches.Num(); ++p)
+				if (Element.WorldMatrix == nullptr && Element.Proxy && Element.Proxy->PackedIndex >= 0)
 				{
-					FMeshBatch& Batch = Batches[p];
-					if (Batch.bIsParticle)
-						continue;
-					for (FMeshBatchElement& Element : Batch.Elements)
-					{
-						if (!bPrepareObjectSlots || NextExtraSlot >= MaxSlots) break;
-						const FMatrix& Model = Element.WorldMatrix ? *Element.WorldMatrix
-							: (Element.Proxy ? Element.Proxy->GetLocalToWorld() : FMatrix::Identity);
-						Data.ObjectConstants[NextExtraSlot] = MakePerObjectConstants(
-							Model,
-							!Element.Proxy || Element.Proxy->bReceiveShadow,
-							!Element.Proxy || Element.Proxy->bReceiveDecal);
-						Element.ObjectSlot = NextExtraSlot++;
-					}
+					Element.PrimitiveId = static_cast<uint32>(Element.Proxy->PackedIndex);
+				}
+				else
+				{
+					const FMatrix& Model = Element.WorldMatrix ? *Element.WorldMatrix
+						: (Element.Proxy ? Element.Proxy->GetLocalToWorld() : FMatrix::Identity);
+					const uint32 DynIdx = NumPrimitives + static_cast<uint32>(Data.DynamicPrimitiveData.Num());
+					Data.DynamicPrimitiveData.Add(MakePrimitiveSceneData(Model, Element.bReceiveShadow, Element.bReceiveDecal));
+					Element.PrimitiveId = DynIdx;
 				}
 			}
 		}
 
 		Collector.CommitGpuResources();
+		Data.GPUSceneBuffer = Scene.SyncGPUScene(Data.DynamicPrimitiveData);
 
-		for (uint32 c = 0; c < ChunkCount; ++c)
-			for (uint32 L = 0; L < 4; ++L)
-			{
-				RenderStats.LODCounts[L] += GatherChunks[c].LODCounts[L];
-				RenderStats.LODTriangles[L] += GatherChunks[c].LODTriangles[L];
-			}
+		const FBasePassMeshProcessor BaseProcessor;
+		const FDepthPassMeshProcessor DepthProcessor;
+		const FTranslucencyPassMeshProcessor TranslucencyProcessor;
+		const FShadowDepthMeshProcessor ShadowProcessor;
 
-		if (bPrepareObjectSlots) Data.ObjectConstants.SetNum(NextExtraSlot);
-		RenderStats.DrawCalls = Collector.GetMeshBatches().Num() + StaticDraws;
-		for (uint64 T : RenderStats.LODTriangles) RenderStats.Triangles += T;
-	}
-}
+		for (const FMeshBatch& Batch : Collector.GetMeshBatches())
+		{
+			BaseProcessor.AddMeshBatch(Batch, Options, &Collector, Data.DynamicPassCommands[static_cast<size_t>(EMeshPass::BasePass)]);
+			DepthProcessor.AddMeshBatch(Batch, Options, &Collector, Data.DynamicPassCommands[static_cast<size_t>(EMeshPass::DepthPass)]);
+			TranslucencyProcessor.AddMeshBatch(Batch, Options, &Collector, Data.DynamicPassCommands[static_cast<size_t>(EMeshPass::Translucency)]);
+			ShadowProcessor.AddMeshBatch(Batch, Options, &Collector, Data.DynamicPassCommands[static_cast<size_t>(EMeshPass::ShadowDepth)]);
+		}
 
-
-void FSceneRenderer::PrepareDrawData(FRenderer* Renderer, const FSceneRenderData& Data)
-{
-	if (!Renderer) return;
-	if (uint8* Destination = Renderer->BeginObjectConstants(static_cast<uint32>(Data.ObjectConstants.Num())))
-	{
-		for (int32 Index = 0; Index < Data.ObjectConstants.Num(); ++Index)
-			std::memcpy(Destination + static_cast<size_t>(Index) * ObjectSlotBytes,
-				&Data.ObjectConstants[Index], sizeof(FPerObjectConstants));
-		Renderer->EndObjectConstants();
+		for (uint64 T : RenderStats.LODTriangles)
+			RenderStats.Triangles += T;
 	}
 }
 
@@ -1460,16 +1457,16 @@ void FSceneRenderer::BuildProjectedDecalMeshDrawLists()
 	// 뷰당 한 번: Proxy -> 현재 뷰의 수신 Command 목록
 	for (uint32 CmdIndex = 0; CmdIndex < DecalReceiverCommands.Num(); ++CmdIndex)
 	{
-		const FMeshDrawCommand& Cmd = DecalReceiverCommands[CmdIndex];
+		const FVisibleMeshDrawCommand& Vis = DecalReceiverCommands[CmdIndex];
 
-		if (!Cmd.bReceiveDecal)
+		if (!Vis.Command || !Vis.Command->bReceiveDecal)
 			continue;
 
 		const FDecalReceiverItemRef Ref{ CmdIndex };
 
-		if (IsIndexedProxy(Cmd.Proxy))
+		if (IsIndexedProxy(Vis.Command->Proxy))
 		{
-			ReceiverLookup[Cmd.Proxy].Add(Ref);
+			ReceiverLookup[Vis.Command->Proxy].Add(Ref);
 		}
 		else
 		{

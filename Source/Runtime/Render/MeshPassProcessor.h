@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Render/PipelineState.h"
 #include "Render/ObjectConstants.h"
 #include "Render/SceneRenderOptions.h"
@@ -16,6 +16,16 @@ struct FSceneView;
 struct FSceneRenderData;
 class FScene;
 
+enum class EMeshPass : uint8
+{
+	BasePass = 0,
+	DepthPass,
+	WorldNormal,
+	Translucency,
+	ShadowDepth,
+	Num
+};
+
 struct FMeshDrawShaderResource
 {
 	uint32 Slot = 0;
@@ -28,9 +38,8 @@ struct FMeshDrawConstantBuffer
 {
 	uint32 Slot = 0;
 	EShaderBindFlagBits Stages = EShaderBindFlagBits::Vertex;
-	std::array<uint8, sizeof(FForwardObjectConstants)> Data{};
+	std::array<uint8, 256> Data{};
 	uint32 DataSize = 0;
-	uint32 ObjectSlot = InvalidObjectSlot;
 	bool bBindViewMatrix = false;
 };
 
@@ -52,7 +61,12 @@ struct FMeshDrawCommand
 	TArray<FMeshDrawShaderResource> ShaderResources;
 	TArray<FMeshDrawConstantBuffer> ConstantBuffers;
 
-	bool bUseObjectSlots = true;
+	uint32 PrimitiveId = InvalidPrimitiveId;
+	uint32 StateBucketId = 0;
+	uint64 SortKey = 0;
+	const UMaterial* Material = nullptr;
+
+	bool bUsesGPUScene = false;
 	bool bForceWireframe = false;
 	bool bSkeletalMesh = false;
 	bool bComputeSkinned = false;
@@ -63,8 +77,29 @@ struct FMeshDrawCommand
 	uint32 StencilRef = 0;
 	const void* ObjectKey = nullptr;
 	const FPrimitiveSceneProxy* Proxy = nullptr;
-	uint64 SortKey = 0;
 };
+
+// 가시성 판정을 통과해 패스에 제출할 경량 드로우 참조
+struct FVisibleMeshDrawCommand
+{
+	const FMeshDrawCommand* Command = nullptr;
+	FShaderProgram* ShaderOverride = nullptr;
+	uint64 SortKey = 0;
+	uint32 PrimitiveId = InvalidPrimitiveId;
+	uint32 StateBucketId = 0;
+	uint32 StencilRef = 0;
+	EDepthStencilState DepthStencilOverride = EDepthStencilState::Default;
+	bool bForceWireframe = false;
+	bool bOccludedByGpu = false;
+	bool bHasDepthStencilOverride = false;
+	bool bOverrideStencilRef = false;
+};
+
+uint32 ComputeMeshCommandStateBucket(const FMeshDrawCommand& Command);
+uint64 MakeOpaqueSortKey(uint32 StateBucketId, uint16 MaterialSortID, uint16 MeshSortID, uint8 LODIndex);
+uint64 MakeTranslucentSortKey(float CameraDistanceSq);
+bool AreVisibleCommandsInstanceCompatible(const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B);
+FShaderProgram* ResolveUnlitShaderOverride(const FMeshDrawCommand& Command, const FSceneRenderOptions& Options);
 
 struct FOcclusionMeasureResult
 {
@@ -80,65 +115,47 @@ struct FOcclusionMeasureResult
 	uint32 FalseCulls = 0;
 };
 
-// 언리얼식 패스별 메쉬 프로세서 기반 인터페이스
+// 패스별 메시 프로세서 기반 인터페이스
 class FMeshPassProcessor
 {
 public:
 	virtual ~FMeshPassProcessor() = default;
 
-	virtual bool AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
-		const FSceneRenderOptions& Options, const FMeshElementCollector& Collector,
-		TArray<FMeshDrawCommand>& OutCommands) const = 0;
+	virtual bool AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+		const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const = 0;
 };
 
 class FDepthPassMeshProcessor : public FMeshPassProcessor
 {
 public:
-	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
-		const FSceneRenderOptions& Options, const FMeshElementCollector& Collector,
-		TArray<FMeshDrawCommand>& OutCommands) const override;
-
-	bool BuildDepthCommands(const TArray<FMeshDrawCommand>& BaseCommands,
-		FPipelineState* DepthPipeline, bool bWriteReceiverStencil,
-		TArray<FShaderProgram>& OutPrograms, TArray<FMeshDrawCommand>& OutCommands) const;
+	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+		const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const override;
 };
 
 class FBasePassMeshProcessor : public FMeshPassProcessor
 {
 public:
-	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
-		const FSceneRenderOptions& Options, const FMeshElementCollector& Collector,
-		TArray<FMeshDrawCommand>& OutCommands) const override;
-
-	bool BuildBasePassCommands(const FSceneView& View, const FSceneRenderData& SceneData,
-		const FSceneRenderOptions& Options, TArray<FMeshDrawCommand>& OutCommands) const;
+	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+		const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const override;
 };
 
 class FWorldNormalPassMeshProcessor : public FMeshPassProcessor
 {
 public:
-	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
-		const FSceneRenderOptions& Options, const FMeshElementCollector& Collector,
-		TArray<FMeshDrawCommand>& OutCommands) const override;
-
-	bool BuildWorldNormalCommands(const FSceneView& View, const FSceneRenderData& SceneData,
-		const FSceneRenderOptions& Options, TArray<FMeshDrawCommand>& OutCommands) const;
+	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+		const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const override;
 };
 
 class FTranslucencyPassMeshProcessor : public FMeshPassProcessor
 {
 public:
-	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
-		const FSceneRenderOptions& Options, const FMeshElementCollector& Collector,
-		TArray<FMeshDrawCommand>& OutCommands) const override;
-
-	bool BuildTranslucencyCommands(const FSceneView& View, const FSceneRenderData& SceneData,
-		const FSceneRenderOptions& Options, TArray<FMeshDrawCommand>& OutCommands) const;
+	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+		const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const override;
 };
 
-class FShadowDepthMeshProcessor
+class FShadowDepthMeshProcessor : public FMeshPassProcessor
 {
 public:
-	bool BuildShadowDepthCommands(const TArray<FPrimitiveSceneProxy*>& ShadowMeshes, EPSOType PSOType,
-		TArray<FMeshDrawCommand>& OutCommands, const FVector& PreTranslation = FVector::ZeroVector) const;
+	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
+		const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const override;
 };

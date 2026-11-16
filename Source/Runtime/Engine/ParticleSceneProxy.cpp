@@ -1,7 +1,7 @@
 #include "EnginePCH.h"
 #include "Engine/ParticleSceneProxy.h"
 #include "Asset/AssetManager.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>

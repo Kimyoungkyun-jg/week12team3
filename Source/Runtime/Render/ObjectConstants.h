@@ -30,18 +30,42 @@ inline FPerObjectConstants MakePerObjectConstants(
 static_assert(sizeof(FPerObjectConstants) == sizeof(FMatrix) * 2 + sizeof(FVector4));
 static_assert(sizeof(FPerObjectConstants) <= ObjectSlotBytes);
 
-// UberLit.hlsl의 PerObject(b0)와 MaterialParams(b2)에 대응한다.
-struct FForwardObjectConstants
+struct FViewConstants
 {
-	FMatrix World;
+	FMatrix VP;
 	FMatrix View;
 	FMatrix Projection;
-	FMatrix NormalMatrix;
-
-	// x: bReceiveShadow
-	// y: bReceiveDecal
-	FVector4 ShadowFlags;
+	FVector4 ViewTimeParams;
 };
+static_assert(sizeof(FViewConstants) == 208);
+
+struct FPrimitiveSceneData
+{
+	FMatrix LocalToWorld;
+	FMatrix NormalMatrix;
+	FVector4 Flags;
+};
+static_assert(sizeof(FPrimitiveSceneData) == 144);
+
+inline FPrimitiveSceneData MakePrimitiveSceneData(
+	const FMatrix& World,
+	bool bReceiveShadow = true,
+	bool bReceiveDecal = true)
+{
+	FPrimitiveSceneData Result{};
+	Result.LocalToWorld = World;
+	Result.NormalMatrix = World.Inverse().GetTransposed();
+	Result.Flags.X = bReceiveShadow ? 1.0f : 0.0f;
+	Result.Flags.Y = bReceiveDecal ? 1.0f : 0.0f;
+	return Result;
+}
+
+struct FDrawBatchConstants
+{
+	uint32 StartInstance = 0;
+	uint32 Pad[3]{};
+};
+static_assert(sizeof(FDrawBatchConstants) == 16);
 
 struct FForwardMaterialConstants
 {
@@ -50,10 +74,10 @@ struct FForwardMaterialConstants
 	FVector4 SurfaceParams;
 	FVector4 UVTransform;
 	FVector4 SpecularColorShininess;
-	FVector4 WorldUVParams; // xy: tile size, z: local axes, w: opaque
+	FVector4 WorldUVParams;
+	FVector4 UVScrollAndFlags;
 };
 
-static_assert(sizeof(FForwardObjectConstants) == 272);
-static_assert(sizeof(FForwardMaterialConstants) == 96);
+static_assert(sizeof(FForwardMaterialConstants) == 112);
 static_assert(offsetof(FForwardMaterialConstants, SpecularColorShininess) == 64);
 

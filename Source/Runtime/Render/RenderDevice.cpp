@@ -154,6 +154,18 @@ TUniquePtr<FStructuredBuffer> FRenderDevice::CreateDynamicStructuredBuffer(uint3
 	return MakeUnique<FStructuredBuffer>(Device.Get(), Desc, Count);
 }
 
+TUniquePtr<FStructuredBuffer> FRenderDevice::CreateDefaultStructuredBuffer(uint32 Stride, uint32 Count)
+{
+	D3D11_BUFFER_DESC Desc = {};
+	Desc.Usage = D3D11_USAGE_DEFAULT;
+	Desc.ByteWidth = Stride * Count;
+	Desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	Desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+	Desc.StructureByteStride = Stride;
+
+	return MakeUnique<FStructuredBuffer>(Device.Get(), Desc, Count);
+}
+
 TUniquePtr<FStructuredBuffer> FRenderDevice::CreateRWStructuredBuffer(uint32 Stride, uint32 Count)
 {
 	D3D11_BUFFER_DESC Desc = {};

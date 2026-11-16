@@ -3,7 +3,7 @@
 #include "Components/BillboardComponent.h"
 #include "Math/Box.h"
 #include "Engine/PrimitiveSceneProxy.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Render/SceneRenderData.h"
 
 class UStaticMesh;

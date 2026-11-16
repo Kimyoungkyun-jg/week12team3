@@ -4,7 +4,7 @@
 #include "Render/Mesh.h"
 #include "Render/SkeletalMesh.h"
 #include "Render/Material.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include <algorithm>
@@ -125,67 +125,71 @@ void FStaticMeshSceneProxy::OnMeshDestroyed()
 	bVisible = false;
 }
 
-void FStaticMeshSceneProxy::GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const
+void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PDI) const
 {
-	if (!bVisible || !StaticMesh)
+	if (!PDI || !bVisible || !StaticMesh || PackedIndex < 0)
 		return;
 
-	const FVector Delta = Bounds.Center - ViewContext.CameraPosition;
-	const float DistanceSq = Delta.Dot(Delta);
-
-	auto EmitSectionBatch = [&](uint8 ClampedLOD, FVertexBuffer* VB, FIndexBuffer* IB,
+	const uint32 PrimIdx = static_cast<uint32>(PackedIndex);
+	auto EmitStaticSection = [&](uint8 ClampedLOD, FVertexBuffer* VB, FIndexBuffer* IB,
 		UMaterial* SectionMat, uint32 StartIndex, uint32 IndexCount)
 	{
 		if (!VB || !IB || !SectionMat)
 			return;
-		FMeshBatch Batch{};
+		FStaticMeshBatch Batch{};
+		Batch.PrimitiveSceneProxy = this;
+		Batch.PrimitiveIndex = PrimIdx;
 		Batch.VertexFactory.Type = EVertexFactoryType::Local;
 		Batch.VertexFactory.VertexBuffer = VB;
 		Batch.Material = SectionMat;
 		Batch.MeshSortID = StaticMesh->SortID;
 		Batch.LODIndex = ClampedLOD;
 		Batch.bCastShadow = bCastsShadow;
-		Batch.CameraDistanceSq = DistanceSq;
 
 		FMeshBatchElement Element{};
 		Element.Proxy = this;
 		Element.IndexBuffer = IB;
 		Element.FirstIndex = StartIndex;
 		Element.IndexCount = IndexCount;
+		Element.PrimitiveId = PrimIdx;
 		Element.bReceiveShadow = bReceiveShadow;
 		Element.bReceiveDecal = bReceiveDecal;
 		Batch.Elements.Add(Element);
-		Collector.AddMesh(std::move(Batch));
+		PDI->DrawMesh(Batch);
 	};
 
 	if (RenderState && RenderState->LODCount > 0)
 	{
-		const uint8 ClampedLOD = static_cast<uint8>(std::min(LODIndex, static_cast<uint32>(RenderState->LODCount) - 1u));
-		FVertexBuffer* VB = StaticMesh->GetVertexBuffer(ClampedLOD);
-		FIndexBuffer* IB = StaticMesh->GetIndexBuffer(ClampedLOD);
-		const FCachedMeshLOD& CachedLOD = RenderState->LODs[ClampedLOD];
-		for (uint32 i = 0; i < CachedLOD.NumSections; ++i)
+		for (uint32 LOD = 0; LOD < RenderState->LODCount; ++LOD)
 		{
-			const FCachedMeshSection& Section = RenderState->Sections[CachedLOD.FirstSection + i];
-			EmitSectionBatch(ClampedLOD, VB, IB, Section.Material, Section.StartIndex, Section.IndexCount);
+			FVertexBuffer* VB = StaticMesh->GetVertexBuffer(LOD);
+			FIndexBuffer* IB = StaticMesh->GetIndexBuffer(LOD);
+			const FCachedMeshLOD& CachedLOD = RenderState->LODs[LOD];
+			for (uint32 i = 0; i < CachedLOD.NumSections; ++i)
+			{
+				const FCachedMeshSection& Section = RenderState->Sections[CachedLOD.FirstSection + i];
+				EmitStaticSection(static_cast<uint8>(LOD), VB, IB, Section.Material, Section.StartIndex, Section.IndexCount);
+			}
 		}
 		return;
 	}
 
-	const uint8 ClampedLOD = static_cast<uint8>(std::min(LODIndex, StaticMesh->GetLODCount() - 1u));
-	FVertexBuffer* VB = StaticMesh->GetVertexBuffer(ClampedLOD);
-	FIndexBuffer* IB = StaticMesh->GetIndexBuffer(ClampedLOD);
-	const FStaticMeshData& MeshData = StaticMesh->GetMeshData(ClampedLOD);
-	if (MeshData.Sections.IsEmpty())
+	const uint32 NumMeshLODs = StaticMesh->GetLODCount();
+	for (uint32 LOD = 0; LOD < NumMeshLODs; ++LOD)
 	{
-		EmitSectionBatch(ClampedLOD, VB, IB, StaticMesh->GetMaterial(0), 0, 0);
-		return;
-	}
-
-	for (const FStaticMeshSection& Section : MeshData.Sections)
-	{
-		EmitSectionBatch(ClampedLOD, VB, IB, StaticMesh->GetMaterial(Section.MaterialSlotIndex),
-			Section.StartIndex, Section.IndexCount);
+		FVertexBuffer* VB = StaticMesh->GetVertexBuffer(LOD);
+		FIndexBuffer* IB = StaticMesh->GetIndexBuffer(LOD);
+		const FStaticMeshData& MeshData = StaticMesh->GetMeshData(LOD);
+		if (MeshData.Sections.IsEmpty())
+		{
+			EmitStaticSection(static_cast<uint8>(LOD), VB, IB, StaticMesh->GetMaterial(0), 0, 0);
+			continue;
+		}
+		for (const FStaticMeshSection& Section : MeshData.Sections)
+		{
+			EmitStaticSection(static_cast<uint8>(LOD), VB, IB, StaticMesh->GetMaterial(Section.MaterialSlotIndex),
+				Section.StartIndex, Section.IndexCount);
+		}
 	}
 }
 
@@ -310,6 +314,7 @@ void FSkeletalMeshSceneProxy::GetDynamicMeshElements(const FViewContext& ViewCon
 		Element.IndexBuffer = IB;
 		Element.FirstIndex = StartIndex;
 		Element.IndexCount = IndexCount;
+		Element.PrimitiveId = PackedIndex >= 0 ? static_cast<uint32>(PackedIndex) : InvalidPrimitiveId;
 		Element.bReceiveShadow = bReceiveShadow;
 		Element.bReceiveDecal = bReceiveDecal;
 		Batch.Elements.Add(Element);

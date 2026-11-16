@@ -2,7 +2,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Render/RenderCommand.h"
 #include "Render/RenderResourceManager.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Collision/Ray.h"
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Engine/World.h"

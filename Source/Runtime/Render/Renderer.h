@@ -1,6 +1,6 @@
 #pragma once
 
-#include "RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Render/ObjectConstants.h"
 #include "Texture2D.h"
 #include "Text/Font.h"
@@ -31,19 +31,20 @@ public:
 
 	bool Init();
 
-	// 패스의 의미를 해석하지 않고 준비된 GPU 드로우 명령만 제출한다.
-	void UploadViewMatrix(const FMatrix& ViewProjection);
+	void UploadViewConstants(const FMatrix& ViewProjection, const FMatrix& ViewMatrix,
+		const FMatrix& ProjectionMatrix, float TotalTime = 0.0f);
 	FConstantBuffer* GetViewConstantBuffer() const { return ViewCB.get(); }
-	void SubmitDrawCommands(std::span<const FMeshDrawCommand> Commands,
+
+	void SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> Commands,
+		const FStructuredBuffer* GPUSceneBuffer = nullptr,
+		uint32* OutDrawCalls = nullptr,
 		const std::shared_ptr<FGpuTimingHistory>& SkeletalTiming = {},
 		ESkinningMode MeasuredMode = ESkinningMode::CPU);
 
 	FGPUOcclusion& GetGPUOcclusion() { return GPUOcclusion; }
 
-	FOcclusionMeasureResult MeasureDrawVisibility(std::span<const FMeshDrawCommand> Commands);
-
-	uint8* BeginObjectConstants(uint32 MaxSlots);
-	void EndObjectConstants();
+	FOcclusionMeasureResult MeasureDrawVisibility(std::span<const FVisibleMeshDrawCommand> Commands,
+		const FStructuredBuffer* GPUSceneBuffer = nullptr);
 
 	void InitScenePasses(const FString& SkyPanoramaPath);
 
@@ -57,18 +58,29 @@ public:
 	FConstantBuffer* GetToneMapConstants() const { return ToneMapConstants.get(); }
 
 private:
-	void EnsurePerObjectSlotCapacity(uint32 SlotCount);
-	void BindCommand(const FMeshDrawCommand& Command, TArray<FMeshDrawShaderResource>& InOutBoundResources);
+	struct FDrawRun
+	{
+		const FVisibleMeshDrawCommand* Visible = nullptr;
+		uint32 StartInstance = 0;
+		uint32 InstanceCount = 0;
+		bool bGPUSceneInstanced = false;
+	};
+
+	void EnsureInstanceIdCapacity(uint32 Count);
 	void UnbindUnusedResources(const TArray<FMeshDrawShaderResource>& NextResources,
 		TArray<FMeshDrawShaderResource>& InOutBoundResources);
 
 	static constexpr uint32 MaxCommandSlotCBs = 4;
 	std::array<TUniquePtr<FConstantBuffer>, MaxCommandSlotCBs> CommandSlotCBs;
 	TUniquePtr<FConstantBuffer> ViewCB;
-	TUniquePtr<FConstantBuffer> PerObjectSlotCB;
+	TUniquePtr<FConstantBuffer> DrawBatchCB;
 	TUniquePtr<FConstantBuffer> ToneMapConstants;
-	uint32 PerObjectSlotCapacity = 0;
-	bool bUsePerObjectSlots = false;
+	TUniquePtr<FStructuredBuffer> InstanceIdBuffer;
+	uint32 InstanceIdCapacity = 0;
+
+	TArray<uint32> ScratchInstanceIds;
+	TArray<FDrawRun> ScratchDrawRuns;
+
 	TArray<ComPtr<ID3D11Query>> OcclusionQueries;
 	ComPtr<ID3D11DepthStencilState> DepthLessEqualReadOnly;
 	FGPUOcclusion GPUOcclusion;

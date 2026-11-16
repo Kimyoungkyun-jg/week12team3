@@ -45,6 +45,7 @@ public:
 	TUniquePtr<FConstantBuffer> CreateConstantBuffer(uint32 BufferSize);
 
 	TUniquePtr<FStructuredBuffer> CreateDynamicStructuredBuffer(uint32 Stride, uint32 Count);
+	TUniquePtr<FStructuredBuffer> CreateDefaultStructuredBuffer(uint32 Stride, uint32 Count);
 	TUniquePtr<FStructuredBuffer> CreateRWStructuredBuffer(uint32 Stride, uint32 Count);   
 
 	TUniquePtr<FTexture2D> CreateTexture2D(const D3D11_TEXTURE2D_DESC& Desc, const void* InitialData);

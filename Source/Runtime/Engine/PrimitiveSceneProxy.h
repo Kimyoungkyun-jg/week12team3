@@ -17,6 +17,7 @@ class FVertexBuffer;
 class FIndexBuffer;
 class FStructuredBuffer;
 class FMeshElementCollector;
+class FStaticPrimitiveDrawInterface;
 struct FViewContext;
 enum class ESkinningMode : uint8;
 
@@ -110,6 +111,9 @@ public:
 
 	virtual void OnMeshRenderDataChanged() {}
 	virtual void OnMeshDestroyed() {}
+	virtual bool HasStaticRelevance() const { return false; }
+	virtual bool HasDynamicRelevance() const { return true; }
+	virtual void DrawStaticElements(FStaticPrimitiveDrawInterface* PDI) const {}
 	virtual void GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const {}
 
 	FScene* GetScene() const { return Scene; }
@@ -147,6 +151,7 @@ public:
 	int32 PackedIndex = -1;
 	bool bQueuedForUpdate = false;
 	bool bRenderStateQueued = false;
+	bool bStaticCacheQueued = false;
 	bool bCastsShadow = true;
 	bool bReceiveShadow = true;
 	bool bReceiveDecal = true;
@@ -178,7 +183,9 @@ public:
 
 	virtual void OnMeshRenderDataChanged() override;
 	virtual void OnMeshDestroyed() override;
-	virtual void GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const override;
+	virtual bool HasStaticRelevance() const override { return true; }
+	virtual bool HasDynamicRelevance() const override { return false; }
+	virtual void DrawStaticElements(FStaticPrimitiveDrawInterface* PDI) const override;
 
 	virtual UStaticMesh* GetMesh() const override { return StaticMesh; }
 	virtual const FMeshRenderState* GetRenderState() const override { return RenderState.get(); }
@@ -203,7 +210,9 @@ public:
 
 	virtual void OnMeshRenderDataChanged() override;
 	virtual void OnMeshDestroyed() override;
-	virtual void GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const override;
+	virtual bool HasStaticRelevance() const override { return true; }
+	virtual bool HasDynamicRelevance() const override { return false; }
+	virtual void DrawStaticElements(FStaticPrimitiveDrawInterface* PDI) const override;
 
 	virtual USkeletalMesh* GetSkeletalMesh() const override { return SkeletalMesh; }
 	virtual const FMeshRenderState* GetRenderState() const override { return RenderState.get(); }

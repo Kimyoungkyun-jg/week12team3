@@ -190,6 +190,20 @@ void FRenderResourceManager::InitPipelineStates()
 			}
 		}
 	}
+
+	if (DepthProgram && DepthProgram->PixelShader)
+	{
+		if (FShaderProgram* StaticVSProg = GetForwardShaderProgram(EReflectionModel::Lambert, EShadingModel::Phong, false, true);
+			StaticVSProg && StaticVSProg->VertexShader)
+		{
+			ShaderProgramMap["DepthPrepass#Uber"] = MakeUnique<FShaderProgram>(StaticVSProg->VertexShader, DepthProgram->PixelShader);
+		}
+		if (FShaderProgram* SkinVSProg = GetForwardShaderProgram(EReflectionModel::Lambert, EShadingModel::Phong, true, true);
+			SkinVSProg && SkinVSProg->VertexShader)
+		{
+			ShaderProgramMap["DepthPrepass#Uber#GPU"] = MakeUnique<FShaderProgram>(SkinVSProg->VertexShader, DepthProgram->PixelShader);
+		}
+	}
 }
 
 FShaderProgram* FRenderResourceManager::GetShadowDepthShaderProgram()
@@ -218,6 +232,13 @@ FShaderProgram* FRenderResourceManager::GetForwardShaderProgram(EReflectionModel
 FShaderProgram* FRenderResourceManager::GetWorldNormalShaderProgram(bool bGPUSkinning)
 {
 	const FString Key = FString("Resources/Shader/UberLit.hlsl#VIEW_MODE_WORLD_NORMAL") + (bGPUSkinning ? "#GPU" : "");
+	if (auto* Found = Get().ShaderProgramMap.Find(Key)) return Found->get();
+	return nullptr;
+}
+
+FShaderProgram* FRenderResourceManager::GetDepthPrepassShaderProgram(bool bGPUSkinning)
+{
+	const FString Key = bGPUSkinning ? FString("DepthPrepass#Uber#GPU") : FString("DepthPrepass#Uber");
 	if (auto* Found = Get().ShaderProgramMap.Find(Key)) return Found->get();
 	return nullptr;
 }
