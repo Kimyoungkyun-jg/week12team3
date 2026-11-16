@@ -50,12 +50,12 @@
                                                             "Max": {
                                                                 "X": 0.0,
                                                                 "Y": 0.0,
-                                                                "Z": 1.0
+                                                                "Z": 10.0
                                                             },
                                                             "Min": {
                                                                 "X": 0.0,
                                                                 "Y": 0.0,
-                                                                "Z": 1.0
+                                                                "Z": 10.0
                                                             },
                                                             "ParameterName": "",
                                                             "bEnabled": true
@@ -90,6 +90,20 @@
                                                             "bUseLinearOverLife": true
                                                         }
                                                     }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleCollision",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "CollisionRadius": 1.0,
+                                                            "FrictionMax": 0.5,
+                                                            "FrictionMin": 0.20000000298023224,
+                                                            "MaxCollisions": 10,
+                                                            "RestitutionMax": 0.5,
+                                                            "RestitutionMin": 0.0,
+                                                            "bEnabled": true
+                                                        }
+                                                    }
                                                 }
                                             ],
                                             "RequiredModule": {
@@ -98,7 +112,7 @@
                                                     "Properties": {
                                                         "EmitterDuration": 1.0,
                                                         "Material": null,
-                                                        "MaxParticles": 1024,
+                                                        "MaxParticles": 2,
                                                         "bEnabled": true,
                                                         "bLooping": true,
                                                         "bUseLocalSpace": false
@@ -110,7 +124,7 @@
                                                 "Value": {
                                                     "Properties": {
                                                         "Bursts": [],
-                                                        "Rate": 10.0,
+                                                        "Rate": 2.0,
                                                         "bEnabled": true
                                                     }
                                                 }
@@ -134,12 +148,23 @@
                     }
                 }
             ],
+            "FixedBoundsMax": {
+                "X": 100.0,
+                "Y": 100.0,
+                "Z": 100.0
+            },
+            "FixedBoundsMin": {
+                "X": -100.0,
+                "Y": -100.0,
+                "Z": -100.0
+            },
             "LODDistances": [],
             "PlayRate": 1.0,
             "SecondsBeforeInactive": 1.0,
             "UpdateTimeFPS": 240.0,
             "WarmupTickRate": 1.0,
-            "WarmupTime": 20.100000381469727
+            "WarmupTime": 20.100000381469727,
+            "bUseFixedRelativeBoundingBox": false
         }
     },
     "Version": 1

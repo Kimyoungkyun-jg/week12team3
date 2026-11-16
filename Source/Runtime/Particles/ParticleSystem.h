@@ -36,7 +36,7 @@ struct FSubUVPayload
 
 struct FParticleCollisionPayload
 {
-	uint16 CollisionCount = 0;
+	int32 CollisionCount = 0;
 	float Restitution = 0.0f;
 	float Friction = 0.0f;
 	bool bInitialized = false;
