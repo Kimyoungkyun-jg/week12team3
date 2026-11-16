@@ -840,8 +840,11 @@ namespace
 				UMaterialInterface* DefaultMaterial = MeshComponent->GetDefaultMaterial(Slot);
 				UMaterialInterface* SelectedMaterial = Override ? Override : Effective;
 				const UMaterial* DefaultBase = DefaultMaterial ? DefaultMaterial->GetBaseMaterial() : nullptr;
+				const uint32 RequiredUsageFlag = MeshComponent->IsA(USkeletalMeshComponent::StaticClass())
+					? static_cast<uint32>(EMaterialUsage::SkeletalMesh)
+					: static_cast<uint32>(EMaterialUsage::StaticMesh);
 
-				if (FContentDrawerPanel::DrawMaterialPicker("Material", SelectedMaterial, "(Mesh Default)", DefaultBase))
+				if (FContentDrawerPanel::DrawMaterialPicker("Material", SelectedMaterial, "(Mesh Default)", DefaultBase, RequiredUsageFlag))
 				{
 					MeshComponent->SetMaterial(Slot, SelectedMaterial);
 					Override = MeshComponent->GetOverrideMaterial(Slot);

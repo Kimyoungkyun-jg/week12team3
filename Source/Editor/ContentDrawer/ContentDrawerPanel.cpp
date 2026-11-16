@@ -1327,7 +1327,8 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 	const char* Label,
 	UMaterialInterface*& InOutMaterial,
 	const char* NullLabel,
-	const UMaterial* HighlightBase)
+	const UMaterial* HighlightBase,
+	uint32 RequiredUsageFlag)
 {
 	bool bChanged = false;
 	const float InlineThumbSize = EditorUIScale::Px(64.0f);
@@ -1389,6 +1390,13 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 
 			for (UMaterialInterface* Candidate : Candidates)
 			{
+				const UMaterial* CandidateBase = Candidate->GetBaseMaterial();
+
+				if (RequiredUsageFlag != 0 && Candidate != InOutMaterial &&
+					(!CandidateBase || (CandidateBase->UsageFlags & RequiredUsageFlag) == 0))
+				{
+					continue;
+				}
 				const bool bSelected = (Candidate == InOutMaterial) || (HighlightBase && Candidate == HighlightBase);
 				ImGui::PushID(Candidate);
 				if (ImGui::Selectable(Candidate->GetPath().c_str(), bSelected, ImGuiSelectableFlags_NoAutoClosePopups))

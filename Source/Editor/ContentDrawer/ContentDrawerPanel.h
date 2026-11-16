@@ -30,11 +30,7 @@ public:
 	void Release();
 	void RequestThumbnailRefresh() { bRefreshThumbnails = true; AnimSequenceDisplayNames.clear(); }
 	static ID3D11ShaderResourceView* GetMaterialThumbnailSRV(UMaterialInterface* Material);
-	static bool DrawMaterialPicker(
-		const char* Label,
-		UMaterialInterface*& InOutMaterial,
-		const char* NullLabel = "(Default)",
-		const UMaterial* HighlightBase = nullptr);
+	static bool DrawMaterialPicker(const char* Label, UMaterialInterface*& InOutMaterial, const char* NullLabel = "(Default)", const UMaterial* HighlightBase = nullptr, uint32 RequiredUsageFlag = 0);
 	static ID3D11ShaderResourceView* GetStaticMeshThumbnailSRV(UStaticMesh* Mesh);
 	static bool DrawStaticMeshPicker(
 		const char* Label,

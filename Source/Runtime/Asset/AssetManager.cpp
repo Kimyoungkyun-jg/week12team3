@@ -417,6 +417,7 @@ void UAssetManager::CreateParticleMaterial()
 	ParticleMat->BlendState = EBlendState::AlphaBlend;
 	ParticleMat->DepthStencilState = EDepthStencilState::ReadOnly;
 	ParticleMat->ParamBuffer = RenderCommand::CreateConstantBuffer(256);
+	ParticleMat->UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleSprite);
 	RegisterAsset("SubUVMaterial", ParticleMat);
 }
 
@@ -430,6 +431,7 @@ void UAssetManager::CreateParticleSpriteMaterial()
 	ParticleSpriteMat->DepthStencilState = EDepthStencilState::ReadOnly;
 	ParticleSpriteMat->SamplerState = ESamplerState::LinearClamp;
 	ParticleSpriteMat->ParamBuffer = RenderCommand::CreateConstantBuffer(256);
+	ParticleSpriteMat->UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleSprite);
 	RegisterAsset("ParticleSpriteMaterial", ParticleSpriteMat);
 }
 

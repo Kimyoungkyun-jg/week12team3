@@ -283,7 +283,18 @@ public:
 			for (const auto& MaterialKey : Asset.MaterialKeys)
 			{
 				auto* Material = Cast<UMaterial>(Resolve(MaterialKey));
-				if (!Material) { if (Error.empty()) Error = "Invalid FBX material reference: " + MaterialKey; return nullptr; }
+				if (!Material)
+				{
+					if (Error.empty())
+					{
+						Error = "Invalid FBX material reference: " + MaterialKey;
+					}
+					return nullptr;
+				}
+
+				const EMaterialUsage Usage = Asset.Type == EFbxAssetType::SkeletalMesh ? EMaterialUsage::SkeletalMesh : EMaterialUsage::StaticMesh;
+				Material->SetUsage(Usage, true);
+
 				Materials.Add(Material);
 			}
 			if (Asset.Type == EFbxAssetType::StaticMesh)
