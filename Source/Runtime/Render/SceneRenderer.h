@@ -78,9 +78,9 @@ public:
 	// 반투명 렌더링
 	void RenderTranslucent(FRenderer* Renderer, FConstantBuffer* FogConstants = nullptr);
 
-	// 전체 렌더 큐 조회
-	FRenderQueue& GetRenderQueue() { return RenderData.RenderQueue; }
-	const FRenderQueue& GetRenderQueue() const { return RenderData.RenderQueue; }
+	// 수집기 조회
+	FMeshElementCollector& GetCollector() { return RenderData.Collector; }
+	const FMeshElementCollector& GetCollector() const { return RenderData.Collector; }
 
 	// 뷰 정보 조회
 	const FSceneView& GetView() const { return View; }
@@ -91,8 +91,6 @@ private:
 		const FSceneRenderOptions& Options, FSkyboxRenderer* Skybox);
 	bool AddWorldNormalPass(FRenderGraphBuilder& Graph, FRenderer* Renderer, FSceneViewTargets& Targets,
 		const FSceneRenderOptions& Options);
-	// SingleLightIndex < 0: 그림자 없는 광원 전부 + Ambient/Sky. 0 이상: VisibleLights[SingleLightIndex] 하나만 ScreenShadowMask를 곱해 더한다.
-	bool BindDeferredLighting(FRenderer* Renderer, uint32 Width, uint32 Height, int32 SingleLightIndex, const FSceneRenderOptions& Options);
 	bool BindForwardLighting(FRenderer* Renderer, const FSceneRenderOptions& Options, FTexture2D* ShadowMask);
 	void UnbindForwardLighting(FRenderer* Renderer);
 	void UnbindForwardDecal(FRenderer* Renderer);
@@ -139,15 +137,15 @@ private:
 	// SourceBatches에서 수신 물체를 고르고 데칼을 모아 DBuffer를 만든다.
 	// bAlwaysCreate면 그릴 데칼이 없어도 빈 DBuffer를 만든다 (Forward 셰이더는 항상 읽는다).
 	bool PrepareDecalPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FSceneViewTargets& Targets,
-		const FSceneRenderOptions& Options, const TArray<FMeshDrawBatch>& SourceBatches,
+		const FSceneRenderOptions& Options, const TArray<FMeshDrawCommand>& SourceCommands,
 		uint32 Width, uint32 Height, bool bAlwaysCreate, FDecalPassSetup& Out);
 	// DBufferLit/DBufferUnlit 두 패스를 등록한다. 장면 깊이가 이미 채워져 있어야 한다.
 	bool AddDBufferPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef Depth,
 		const FSceneRenderOptions& Options, const FDecalPassSetup& Setup, uint32 Width, uint32 Height);
-	void DrawBasePassMeshes(FRenderer* Renderer, const TArray<FMeshDrawBatch>& Batches);
-	// 각 배치의 원래 VS로 깊이만 그린다. bWriteReceiverStencil이면 데칼 수신 비트도 기록한다.
+	void DrawBasePassMeshes(FRenderer* Renderer, const TArray<FMeshDrawCommand>& Commands);
+	// 각 명령의 원래 VS로 깊이만 그린다. bWriteReceiverStencil이면 데칼 수신 비트도 기록한다.
 	bool AddDepthPrepass(FRenderGraphBuilder& Graph, FRenderer* Renderer, FRenderGraphTextureRef Depth,
-		const TArray<FMeshDrawBatch>* Batches, bool bWriteReceiverStencil);
+		const TArray<FMeshDrawCommand>* Commands, bool bWriteReceiverStencil);
 
 	// 이번 프레임에 그림자를 Projection할 광원. Deferred는 이 순서대로 광원마다 마스크를 만들어 더한다.
 	struct FShadowedLight
@@ -171,9 +169,8 @@ private:
 	FSceneRenderData& RenderData;
 	bool bLightUploadSucceeded = false;
 	bool bTilesBuilt = false;
-	TArray<FMeshDrawBatch> ForwardBatches;
-	TArray<FMeshDrawBatch> GBufferBatches;   // Deferred: 프리패스와 GBuffer 패스가 같은 배치를 쓴다
-	TArray<FMeshDrawBatch> DecalReceiverBatches;
+	TArray<FMeshDrawCommand> ForwardCommands;
+	TArray<FMeshDrawCommand> DecalReceiverCommands;
 	FViewContext CachedViewContext;
 	bool bCorePassSucceeded = true;
 	bool bFXAAPassSucceeded = true;

@@ -343,10 +343,9 @@ void FSceneRenderer::RenderShadowDepthMaps(FRenderer* Renderer, FTexture2DArray*
 		const FProjectedShadowInfo& Shadow = *ShadowPtr;
 		if (!Shadow.bAllocated || Shadow.DynamicSubjectPrimitives.IsEmpty()) continue;
 
-		TArray<FMeshDrawBatch> Batches;
-		FMeshPassProcessor Processor;
-		// World 이동에 PreShadowTranslation을 미리 더해 그림자 원점 기준 좌표로 그린다 (원점에서 먼 곳의 float 정밀도).
-		if (!Processor.Build(Shadow.DynamicSubjectPrimitives, EPSOType::ShadowDepth, Batches, Shadow.PreShadowTranslation)) continue;
+		TArray<FMeshDrawCommand> Commands;
+		FShadowDepthMeshProcessor Processor;
+		if (!Processor.BuildShadowDepthCommands(Shadow.DynamicSubjectPrimitives, EPSOType::ShadowDepth, Commands, Shadow.PreShadowTranslation)) continue;
 
 		// 테두리(BorderSize)는 Clear 값 1을 유지하도록 그리는 영역만 뷰포트로 잡는다.
 		RenderCommand::SetRenderTargets(0, nullptr, Atlas, Shadow.AtlasIndex);
@@ -369,11 +368,11 @@ void FSceneRenderer::RenderShadowDepthMaps(FRenderer* Renderer, FTexture2DArray*
 		{
 			auto& Timing = RenderData.ShadowSkeletalDrawGpu;
 			if (!Timing) Timing = std::make_shared<FGpuTimingHistory>();
-			Renderer->DrawMeshes(Batches, Timing, RenderData.SkeletalDrawGpuMode);
+			Renderer->SubmitDrawCommands(Commands, Timing, RenderData.SkeletalDrawGpuMode);
 		}
 		else
 		{
-			Renderer->DrawMeshes(Batches);
+			Renderer->SubmitDrawCommands(Commands);
 		}
 		++RenderData.RenderStats.ShadowDepthDraws;   // 단계 9 stat에 추가할 필드
 	}
@@ -551,9 +550,8 @@ void FSceneRenderer::FinalizeShadowLights(const FSceneRenderOptions& Options)
 	RenderData.VisibleLightShadowViews.SetNum(LightCount);
 	for (int32 i = 0; i < LightCount; ++i) RenderData.VisibleLightShadowViews[i] = FSceneRenderData::InvalidShadowView;
 
-	const bool bForward = Options.RenderingPath != ERenderingPath::Deferred;
 	// Gouraud는 정점에서 조명을 끝내므로 화면 마스크를 광원별로 곱할 수 없다.
-	const bool bAllowChannels = !(bForward && Options.ShadingModel == EShadingModel::Gouraud);
+	const bool bAllowChannels = Options.ShadingModel != EShadingModel::Gouraud;
 
 	// Forward 채널 배정 (언리얼 AssignAvailableShadowMapChannelForLight): 영향 범위가 겹치는 광원끼리만 다른 채널을 받는다.
 	struct FAssignedChannel { FSphere Bounds; bool bDirectional; uint32 Channel; };
@@ -603,11 +601,7 @@ void FSceneRenderer::FinalizeShadowLights(const FSceneRenderOptions& Options)
 		bCascadesFilled |= bFillCascades;
 
 		uint32 Channel = FLightRenderParameters::InvalidShadowMapChannel;
-		if (bAllowChannels && !bForward)
-		{
-			Channel = 0;   // Deferred: 광원마다 마스크를 새로 만드므로 항상 R
-		}
-		else if (bAllowChannels)
+		if (bAllowChannels)
 		{
 			const FSphere Bounds = Info->GetBoundingSphere();
 			uint32 UsedMask = 0;

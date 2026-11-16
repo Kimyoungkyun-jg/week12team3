@@ -49,15 +49,6 @@ bool FViewportsPanel::Init() {
 	return true;
 }
 
-void FViewportsPanel::SetRenderingPath(ERenderingPath Path)
-{
-	RenderingPath = Path;
-	if (Path == ERenderingPath::Deferred)
-		for (auto& Client : ViewportClients)
-			if (Client && Client->GetShadingModel() == EShadingModel::Gouraud)
-				Client->SetShadingModel(EShadingModel::Phong);
-}
-
 // 패널의 프레임 갱신 인터페이스이며 별도 계산은 하지 않는다.
 void FViewportsPanel::Tick(float DeltaTime) { (void)DeltaTime; }
 
@@ -439,11 +430,8 @@ void FViewportsPanel::OnRender() {
 				ImGui::PushID("Shading");
 				for (int Index = 0; Index < IM_ARRAYSIZE(ShadingNames); ++Index)
 				{
-					const bool bRequiresForward = Index == static_cast<int>(EShadingModel::Gouraud) && RenderingPath == ERenderingPath::Deferred;
-					if (ImGui::MenuItem(ShadingNames[Index], ShadingHints[Index], Index == Shading, !bRequiresForward))
+					if (ImGui::MenuItem(ShadingNames[Index], ShadingHints[Index], Index == Shading))
 						Client->SetShadingModel(static_cast<EShadingModel>(Index));
-					if (bRequiresForward && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-						ImGui::SetTooltip("Gouraud requires Forward rendering. Set Rendering Path to Forward in Settings.");
 				}
 				ImGui::PopID();
 				ImGui::EndMenu();

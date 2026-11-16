@@ -46,90 +46,6 @@ struct FRenderStats
 	void Reset() { *this = FRenderStats(); }
 };
 
-struct FParticleInstanceData
-{
-	FMatrix World;
-	FVector4 TintAndAlpha;
-	FVector4 SubUVParams;
-};
-
-struct FParticleInstancedBatch
-{
-	UStaticMesh* Mesh = nullptr;
-	UMaterial* Material = nullptr;
-	uint32 StartInstance = 0;
-	uint32 InstanceCount = 0;
-	uint32 StartIndex = 0;
-	uint32 IndexCount = 0;
-	bool bIsMesh = false;
-	EBlendState BlendState = EBlendState::AlphaBlend;
-};
-
-struct FGpuParticleEmitterResources
-{
-	TUniquePtr<FStructuredBuffer> ParticleBuffer;
-	TUniquePtr<FStructuredBuffer> SpawnUploadBuffer;
-	TUniquePtr<FStructuredBuffer> CurveLUTBuffer;
-	TUniquePtr<FConstantBuffer> SimCB;
-	TUniquePtr<FConstantBuffer> DrawCB;
-	uint32 MaxParticles = 0;
-	uint32 SpawnCapacity = 0;
-};
-
-struct FGpuParticleSimParams
-{
-	float DeltaTime = 0.0f;
-	uint32 MaxParticles = 0;
-	uint32 SpawnCount = 0;
-	uint32 WriteCursor = 0;
-
-	FVector4 ColorStart = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
-	FVector4 ColorEnd = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
-
-	FVector SizeStart = FVector::OneVector;
-	float SubUVCols = 1.0f;
-
-	FVector SizeEnd = FVector::OneVector;
-	float SubUVRows = 1.0f;
-
-	uint32 UseColorModule = 0;
-	uint32 UseSizeModule = 0;
-	uint32 UseColorOverLife = 0;
-	uint32 UseSizeByLife = 0;
-
-	uint32 UseSubUV = 0;
-	uint32 SubUVLinear = 1;
-	float SubUVPlayRate = 1.0f;
-	uint32 HasColorOverride = 0;
-
-	FVector4 ColorOverride = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
-};
-
-struct FGpuParticleDrawParams
-{
-	FMatrix LocalToWorld = FMatrix::Identity;
-	FVector4 CameraFacing = FVector4(1.0f, 0.0f, 0.0f, 0.0f);
-	FVector4 CameraRight = FVector4(0.0f, 1.0f, 0.0f, 0.0f);
-	FVector4 CameraUp = FVector4(0.0f, 0.0f, 1.0f, 0.0f);
-	FVector4 WorldScaleAndLocal = FVector4(1.0f, 1.0f, 0.0f, 0.0f);
-	FVector4 AtlasParams = FVector4(1.0f, 1.0f, 0.0f, 0.0f);
-};
-
-struct FGpuParticleBatch
-{
-	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
-	UStaticMesh* Mesh = nullptr;
-	UMaterial* Material = nullptr;
-	uint32 MaxParticles = 0;
-	uint32 ParticleStride = 112;
-	bool bResetRequested = false;
-	TArray<uint8> PendingSpawnBytes;
-	uint32 SpawnCount = 0;
-	TArray<FVector4> CurveLUT;
-	FGpuParticleSimParams SimParams{};
-	FGpuParticleDrawParams DrawParams{};
-};
-
 // 뷰 하나의 데이터를 프레임 사이에도 보관한다. SceneRenderer는 현재 프레임 동안 이를 빌려 쓴다.
 struct FSceneRenderData
 {
@@ -146,34 +62,27 @@ struct FSceneRenderData
 
 	struct alignas(64) FGatherChunk
 	{
-		TArray<FRenderPacket> Packets;              // 스태틱 묶음에 못 들어가는 것 (반투명 섹션, Renderer 없는 호출)
+		TArray<FMeshBatch> Batches;
 		TArray<uint32> SlowPathIndices;
-		std::vector<FStaticDrawGroup> Groups;       // 불투명 스태틱 메시: (머티리얼, 메시, LOD)별 묶음. 항목만 매 프레임 비운다
-		uint32 LastGroup = 0;                       // 바로 전 물체가 들어간 묶음 (연속한 물체는 대개 같은 묶음)
+		std::vector<FStaticDrawGroup> Groups;
+		uint32 LastGroup = 0;
 		uint32 StaticDrawCount = 0;
 		uint32 LODCounts[4] = {};
 		uint64 LODTriangles[4] = {};
 	};
 
-	FRenderQueue RenderQueue;
+	FMeshElementCollector Collector;
 	FRenderStats RenderStats;
 	FDecalStats DecalStats;
 	std::shared_ptr<FGpuTimingHistory> BaseSkeletalDrawGpu;
 	std::shared_ptr<FGpuTimingHistory> ShadowSkeletalDrawGpu;
 	ESkinningMode SkeletalDrawGpuMode = ESkinningMode::CPU;
-	ERenderingPath SkeletalDrawGpuPath = ERenderingPath::Forward;
 	TArray<FPrimitiveSceneProxy*> VisibleProxies;
 	TArray<FLODSelectionInput> LODInputs;
 	TArray<uint8> SelectedLODs;
 	TArray<FGatherChunk> GatherChunks;
 
 	TArray<FPerObjectConstants> ObjectConstants;
-	TArray<FParticleInstanceData> ParticleInstances;
-	TArray<FParticleInstancedBatch> ParticleBatches;
-	mutable TUniquePtr<FStructuredBuffer> ParticleInstanceBuffer;
-	mutable uint32 ParticleInstanceCapacity = 0;
-	mutable TUniquePtr<FConstantBuffer> ParticleBatchCB;
-	TArray<FGpuParticleBatch> GpuParticleBatches;
 	FSceneLightResources ViewLightResources;
 
 	FAmbientLightRenderData AmbientLight{};
@@ -252,15 +161,12 @@ struct FSceneRenderData
 
 	void ResetFrame()
 	{
-		RenderQueue.Reset();
+		Collector.Reset();
 		RenderStats.Reset();
 		VisibleProxies.Reset();
 		LODInputs.Reset();
 		SelectedLODs.Reset();
 		ObjectConstants.Reset();
-		ParticleInstances.Reset();
-		ParticleBatches.Reset();
-		GpuParticleBatches.Reset();
 		AmbientLight = {};
 		SkyLight = {};
 		bHasSkyLight = false;
@@ -280,7 +186,7 @@ struct FSceneRenderData
 
 		for (FGatherChunk& Chunk : GatherChunks)
 		{
-			Chunk.Packets.Reset();
+			Chunk.Batches.Reset();
 			Chunk.SlowPathIndices.Reset();
 			Chunk.StaticDrawCount = 0;
 			std::fill(std::begin(Chunk.LODCounts), std::end(Chunk.LODCounts), 0u);
@@ -293,7 +199,6 @@ struct FSceneRenderData
 	// 그림자 채널(ShadowMapChannel)은 InitDynamicShadows 뒤에 FSceneRenderer::FinalizeShadowLights가 채우고 다시 올린다.
 	void Commit(bool& bLightUploadSucceeded)
 	{
-		RenderQueue.Sort();
 
 		if (VisibleLights.Num())
 		{

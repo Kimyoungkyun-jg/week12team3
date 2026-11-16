@@ -884,9 +884,7 @@ void UEditorEngine::UpdateViewportState(const float DeltaTime)
 void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 {
 	const FEditorSettings& RenderSettings = SettingsPanel->GetSettings();
-	const bool bVSSkinningUnavailable = RenderSettings.SkinningMode == ESkinningMode::GPU
-		&& RenderSettings.RenderingPath != ERenderingPath::Forward;
-	USkeletalMeshComponent::SetSkinningMode(bVSSkinningUnavailable ? ESkinningMode::CPU : RenderSettings.SkinningMode);
+	USkeletalMeshComponent::SetSkinningMode(RenderSettings.SkinningMode);
 
 	// 게임 입력 처리
 	if (PlayWorld)
@@ -1408,7 +1406,6 @@ void UEditorEngine::BuildSceneRenderOptions(FGameViewportClient* ViewClient, FSc
 	const FEditorViewportClient* Source = ViewportsPanel ? ViewportsPanel->GetViewportClient(PIEStartEditorViewIndex) : nullptr;
 	Options.bCacheShadows = SettingsPanel->GetSettings().bCacheShadows;
 	Options.PcfMode = SettingsPanel->GetSettings().PcfMode;
-	Options.RenderingPath = SettingsPanel->GetSettings().RenderingPath;
 	Options.ReflectionModel = SettingsPanel->GetSettings().ReflectionModel;
 	Options.ShadingModel = SettingsPanel->GetSettings().ShadingModel;
 	Options.LightCullingMode = SettingsPanel->GetSettings().LightCullingMode;
@@ -1434,7 +1431,6 @@ void UEditorEngine::BuildSceneRenderOptions(FEditorViewportClient* ViewClient, b
 	const FViewShowFlags& ShowFlags = ViewClient->GetShowFlags();
 	Options.bCacheShadows = SettingsPanel->GetSettings().bCacheShadows;
 	Options.PcfMode = SettingsPanel->GetSettings().PcfMode;
-	Options.RenderingPath = SettingsPanel->GetSettings().RenderingPath;
 	Options.LightCullingMode = SettingsPanel->GetSettings().LightCullingMode;
 	Options.DirectionalShadowMapSize = SettingsPanel->GetSettings().GetDirectionalShadowMapSize();
 	Options.PointShadowMapSize = SettingsPanel->GetSettings().GetPointShadowMapSize();

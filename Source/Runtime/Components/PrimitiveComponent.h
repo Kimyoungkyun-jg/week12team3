@@ -46,10 +46,6 @@ public:
 
 	virtual void BeginPlay() override;
 
-	// Todo: subuv
-	//void SubmitToRenderQueue(TQueue<FRenderPacket>& RenderQueue);
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext);
-
 	virtual const FStaticMeshData* GetMeshData() const { return nullptr; }
 
 	// Outline처럼 컴포넌트를 통째로 한 번 더 그릴 때 쓰는 GPU 메시.

@@ -16,7 +16,7 @@ class UMaterial;
 class FVertexBuffer;
 class FIndexBuffer;
 class FStructuredBuffer;
-class FRenderQueue;
+class FMeshElementCollector;
 struct FViewContext;
 enum class ESkinningMode : uint8;
 
@@ -110,7 +110,7 @@ public:
 
 	virtual void OnMeshRenderDataChanged() {}
 	virtual void OnMeshDestroyed() {}
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext, uint32 LODIndex) const {}
+	virtual void GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const {}
 
 	FScene* GetScene() const { return Scene; }
 
@@ -178,7 +178,7 @@ public:
 
 	virtual void OnMeshRenderDataChanged() override;
 	virtual void OnMeshDestroyed() override;
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext, uint32 LODIndex) const override;
+	virtual void GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const override;
 
 	virtual UStaticMesh* GetMesh() const override { return StaticMesh; }
 	virtual const FMeshRenderState* GetRenderState() const override { return RenderState.get(); }
@@ -203,7 +203,7 @@ public:
 
 	virtual void OnMeshRenderDataChanged() override;
 	virtual void OnMeshDestroyed() override;
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext, uint32 LODIndex) const override;
+	virtual void GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const override;
 
 	virtual USkeletalMesh* GetSkeletalMesh() const override { return SkeletalMesh; }
 	virtual const FMeshRenderState* GetRenderState() const override { return RenderState.get(); }
@@ -230,7 +230,7 @@ public:
 
 	void SetBillboardData(const FBillboardProxyData& Data);
 
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext, uint32 LODIndex) const override;
+	virtual void GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const override;
 
 	virtual FVertexBuffer* GetVertexBuffer(uint8 LOD = 0) const override;
 	virtual FIndexBuffer* GetIndexBuffer(uint8 LOD = 0) const override;

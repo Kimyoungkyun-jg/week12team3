@@ -16,9 +16,9 @@ enum class EPSOType : uint8
 	Grid,                    
 	Outline_Mask,            
 	Outline_Draw,
-	StaticMesh_GBuffer,
-	DeferredLighting,
-	DeferredPointLighting,      // 이전 재질 파일의 PSOType 숫자와 호환을 위해 ID 유지
+	Reserved_9,
+	Reserved_10,
+	Reserved_11,
 	ToneMap,
 	Reserved_13,                // 삭제된 FireBall 자리. 씬 파일의 PSOType 숫자(Billboard=14 등)가 밀리지 않게 남긴다
 	Billboard,

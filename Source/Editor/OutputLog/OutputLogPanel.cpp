@@ -469,10 +469,7 @@ void FOutputLogPanel::ExecCommand(const FString& CommandLine)
 			}
 		}
 
-		const bool bGPU = EditorSettings->SkinningMode == ESkinningMode::GPU;
 		FLog::Log(ELogVerbosity::Info, "r.SkinningMode = {}", GetSkinningModeName(EditorSettings->SkinningMode));
-		if (bGPU && EditorSettings->RenderingPath != ERenderingPath::Forward)
-			FLog::Log(ELogVerbosity::Warning, "GPU skinning needs the Forward rendering path. CPU skinning stays active until Rendering Path is Forward.");
 		return;
 	}
 

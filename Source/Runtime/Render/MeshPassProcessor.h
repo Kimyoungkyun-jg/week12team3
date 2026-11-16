@@ -9,59 +9,61 @@
 #include "Containers/Array.h"
 #include "Math/Rect.h"
 #include "Render/LightRenderData.h"
+#include "Engine/PrimitiveSceneProxy.h"
 #include <array>
-#include <Engine\PrimitiveSceneProxy.h>
 
 struct FSceneView;
 struct FSceneRenderData;
 class FScene;
-struct FLightRenderParameters;
 
-// 한 패스에서 함께 바인딩할 GPU 상태. UObject 메시/재질 포인터는 보관하지 않는다.
-struct FMeshDrawBatch
+struct FMeshDrawShaderResource
 {
-	struct FTextureBinding
-	{
-		UTexture2D* Texture = nullptr;
-		EShaderBindFlagBits Stages = EShaderBindFlagBits::Pixel;
-	};
+	uint32 Slot = 0;
+	EShaderBindFlagBits Stages = EShaderBindFlagBits::Pixel;
+	UTexture2D* Texture = nullptr;
+	const FStructuredBuffer* StructuredBuffer = nullptr;
+};
 
-	struct FItem
-	{
-		std::array<uint8, sizeof(FForwardObjectConstants)> ObjectData{};
-		uint32 ObjectDataSize = 0;
-		uint32 ObjectSlot = InvalidObjectSlot;
-		uint32 StartIndex = 0;
-		uint32 IndexCount = 0;
-		const void* ObjectKey = nullptr;
-		bool bOccludedByGpu = false;
-		bool bReceiveDecal = true;
-		bool bOverrideStencilRef = false;
-		uint32 StencilRef = 0;
-		const FPrimitiveSceneProxy* Proxy = nullptr;
-	};
+struct FMeshDrawConstantBuffer
+{
+	uint32 Slot = 0;
+	EShaderBindFlagBits Stages = EShaderBindFlagBits::Vertex;
+	std::array<uint8, sizeof(FForwardObjectConstants)> Data{};
+	uint32 DataSize = 0;
+	uint32 ObjectSlot = InvalidObjectSlot;
+	bool bBindViewMatrix = false;
+};
 
+// 패스 프로세서가 생성하는 단일 GPU 드로우 명령
+struct FMeshDrawCommand
+{
 	FPipelineState Pipeline;
-
 	FVertexBuffer* VertexBuffer = nullptr;
 	FIndexBuffer* IndexBuffer = nullptr;
-	FStructuredBuffer* SkinningMatricesBuffer = nullptr;
-	bool bSkeletalMesh = false;
-	bool bComputeSkinned = false;
 
-	TArray<FTextureBinding> Textures;
+	uint32 FirstIndex = 0;
+	uint32 IndexCount = 0;
+	int32 BaseVertexLocation = 0;
+	uint32 InstanceCount = 0;
+	uint32 StartInstanceLocation = 0;
+
 	ESamplerState Sampler = ESamplerState::LinearClamp;
 	EShaderBindFlagBits SamplerStages = EShaderBindFlagBits::Pixel;
-	std::array<uint8, sizeof(FForwardMaterialConstants)> MaterialData{};
-	uint32 MaterialDataSize = 0;
-	uint32 MaterialSlot = 1;
-	EShaderBindFlagBits MaterialStages = EShaderBindFlagBits::Pixel;
-	uint32 ObjectBindingSlot = 2;
-	EShaderBindFlagBits ObjectStages = EShaderBindFlagBits::Vertex;
+	TArray<FMeshDrawShaderResource> ShaderResources;
+	TArray<FMeshDrawConstantBuffer> ConstantBuffers;
+
 	bool bUseObjectSlots = true;
-	bool bBindViewConstants = true;
 	bool bForceWireframe = false;
-	TArray<FItem> Items;
+	bool bSkeletalMesh = false;
+	bool bComputeSkinned = false;
+	bool bIsParticle = false;
+	bool bOccludedByGpu = false;
+	bool bReceiveDecal = true;
+	bool bOverrideStencilRef = false;
+	uint32 StencilRef = 0;
+	const void* ObjectKey = nullptr;
+	const FPrimitiveSceneProxy* Proxy = nullptr;
+	uint64 SortKey = 0;
 };
 
 struct FOcclusionMeasureResult
@@ -78,25 +80,65 @@ struct FOcclusionMeasureResult
 	uint32 FalseCulls = 0;
 };
 
-enum class EMeshPassType : uint8
-{
-	Opaque,
-	GBuffer,
-	Forward,
-	Translucent,
-	WorldNormal,
-	ShadowDepth,
-};
-
-// CPU에서 프록시/패킷을 패스별 GPU 배치로 변환한다. GPU 명령은 호출하지 않는다.
+// 언리얼식 패스별 메쉬 프로세서 기반 인터페이스
 class FMeshPassProcessor
 {
 public:
-	bool Build(const FSceneView& View, const FRenderQueue& Queue,
-		const FSceneRenderData* SceneData, EMeshPassType Pass,
-		TArray<FMeshDrawBatch>& Out, const FSceneRenderOptions& Options = FSceneRenderOptions{}) const;
+	virtual ~FMeshPassProcessor() = default;
 
-	// PreTranslation: 그림자 원점 기준으로 옮길 때 World 이동에 더하는 값 (언리얼 PreShadowTranslation). 큰 좌표끼리의 뺄셈을 GPU가 아니라 CPU에서 한다.
-	bool Build(const TArray<FPrimitiveSceneProxy*>& ShadowMeshes, EPSOType PSOType, TArray<FMeshDrawBatch>& OutBatches,
-		const FVector& PreTranslation = FVector::ZeroVector);
+	virtual bool AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
+		const FSceneRenderOptions& Options, const FMeshElementCollector& Collector,
+		TArray<FMeshDrawCommand>& OutCommands) const = 0;
+};
+
+class FDepthPassMeshProcessor : public FMeshPassProcessor
+{
+public:
+	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
+		const FSceneRenderOptions& Options, const FMeshElementCollector& Collector,
+		TArray<FMeshDrawCommand>& OutCommands) const override;
+
+	bool BuildDepthCommands(const TArray<FMeshDrawCommand>& BaseCommands,
+		FPipelineState* DepthPipeline, bool bWriteReceiverStencil,
+		TArray<FShaderProgram>& OutPrograms, TArray<FMeshDrawCommand>& OutCommands) const;
+};
+
+class FBasePassMeshProcessor : public FMeshPassProcessor
+{
+public:
+	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
+		const FSceneRenderOptions& Options, const FMeshElementCollector& Collector,
+		TArray<FMeshDrawCommand>& OutCommands) const override;
+
+	bool BuildBasePassCommands(const FSceneView& View, const FSceneRenderData& SceneData,
+		const FSceneRenderOptions& Options, TArray<FMeshDrawCommand>& OutCommands) const;
+};
+
+class FWorldNormalPassMeshProcessor : public FMeshPassProcessor
+{
+public:
+	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
+		const FSceneRenderOptions& Options, const FMeshElementCollector& Collector,
+		TArray<FMeshDrawCommand>& OutCommands) const override;
+
+	bool BuildWorldNormalCommands(const FSceneView& View, const FSceneRenderData& SceneData,
+		const FSceneRenderOptions& Options, TArray<FMeshDrawCommand>& OutCommands) const;
+};
+
+class FTranslucencyPassMeshProcessor : public FMeshPassProcessor
+{
+public:
+	bool AddMeshBatch(const FMeshBatch& Batch, const FSceneView& View,
+		const FSceneRenderOptions& Options, const FMeshElementCollector& Collector,
+		TArray<FMeshDrawCommand>& OutCommands) const override;
+
+	bool BuildTranslucencyCommands(const FSceneView& View, const FSceneRenderData& SceneData,
+		const FSceneRenderOptions& Options, TArray<FMeshDrawCommand>& OutCommands) const;
+};
+
+class FShadowDepthMeshProcessor
+{
+public:
+	bool BuildShadowDepthCommands(const TArray<FPrimitiveSceneProxy*>& ShadowMeshes, EPSOType PSOType,
+		TArray<FMeshDrawCommand>& OutCommands, const FVector& PreTranslation = FVector::ZeroVector) const;
 };

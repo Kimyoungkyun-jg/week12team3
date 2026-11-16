@@ -4,6 +4,308 @@
 #include "Render/RenderPacket.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+
+namespace
+{
+	struct FSortedParticleIndex
+	{
+		int32 Index = 0;
+		float DistanceSq = 0.0f;
+	};
+
+	FMatrix BuildRotatedBillboardMatrix(const FParticleRenderData& ParticleData, const FViewContext& View)
+	{
+		FMatrix World = View.BuildBillboardMatrix(ParticleData.Location, ParticleData.Width, ParticleData.Height);
+		const float C = std::cos(ParticleData.Rotation);
+		const float S = std::sin(ParticleData.Rotation);
+		for (int Axis = 0; Axis < 3; ++Axis)
+		{
+			const float Right = World.M[1][Axis];
+			const float Up = World.M[2][Axis];
+			World.M[1][Axis] = C * Right + S * Up;
+			World.M[2][Axis] = C * Up - S * Right;
+		}
+		return World;
+	}
+
+	EPSOType ResolveMeshParticlePSO(const UMaterial& EntryMat)
+	{
+		if (EntryMat.BlendState == EBlendState::Opaque)
+			return EPSOType::Particle_MeshOpaque;
+		if (EntryMat.BlendState == EBlendState::Additive)
+			return EPSOType::Particle_MeshAdditive;
+		return EPSOType::Particle_MeshTranslucent;
+	}
+}
+
+void FDynamicSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
+	UMaterial* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
+{
+	if (Sprites.IsEmpty() || !QuadMesh)
+		return;
+
+	FVertexBuffer* QuadVB = QuadMesh->GetVertexBuffer(0);
+	FIndexBuffer* QuadIB = QuadMesh->GetIndexBuffer(0);
+	if (!QuadVB || !QuadIB)
+		return;
+
+	const int32 Count = static_cast<int32>(Sprites.Num());
+	TArray<FSortedParticleIndex> Sorted;
+	Sorted.Reserve(Count);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const FVector Delta = Sprites[Index].Location - View.CameraPosition;
+		Sorted.Add({ Index, Delta.Dot(Delta) });
+	}
+	std::sort(Sorted.begin(), Sorted.end(), [](const FSortedParticleIndex& A, const FSortedParticleIndex& B)
+	{
+		return A.DistanceSq > B.DistanceSq;
+	});
+
+	for (int32 RunStart = 0; RunStart < Count;)
+	{
+		const FParticleRenderData& First = Sprites[Sorted[RunStart].Index];
+		UMaterial* EntryMat = First.Material ? First.Material : DefaultMaterial;
+		if (!EntryMat)
+		{
+			++RunStart;
+			continue;
+		}
+
+		int32 RunEnd = RunStart + 1;
+		while (RunEnd < Count)
+		{
+			const FParticleRenderData& Next = Sprites[Sorted[RunEnd].Index];
+			UMaterial* NextMat = Next.Material ? Next.Material : DefaultMaterial;
+			if (NextMat != EntryMat)
+				break;
+			++RunEnd;
+		}
+
+		const uint32 RunCount = static_cast<uint32>(RunEnd - RunStart);
+		FParticleInstanceData* Dest = nullptr;
+		const uint32 StartInstance = Collector.AllocateParticleInstances(RunCount, Dest);
+		if (!Dest)
+			break;
+
+		for (uint32 LocalIdx = 0; LocalIdx < RunCount; ++LocalIdx)
+		{
+			const FParticleRenderData& Sprite = Sprites[Sorted[RunStart + static_cast<int32>(LocalIdx)].Index];
+			FParticleInstanceData& Instance = Dest[LocalIdx];
+			Instance.World = BuildRotatedBillboardMatrix(Sprite, View);
+			Instance.TintAndAlpha = FVector4(
+				Sprite.Constants.Tint.X,
+				Sprite.Constants.Tint.Y,
+				Sprite.Constants.Tint.Z,
+				Sprite.Constants.Alpha);
+			Instance.SubUVParams = FVector4(
+				Sprite.Constants.CurrentFrame,
+				Sprite.Constants.AtlasRowSize,
+				Sprite.Constants.AtlasColSize,
+				Sprite.Constants.DecodeSRGB);
+		}
+
+		FMeshBatch Batch{};
+		Batch.VertexFactory.Type = EVertexFactoryType::ParticleSprite;
+		Batch.VertexFactory.VertexBuffer = QuadVB;
+		Batch.Material = EntryMat;
+		Batch.OverridePSOType = EPSOType::Particle_Instanced;
+		Batch.MeshSortID = QuadMesh->SortID;
+		Batch.CameraDistanceSq = Sorted[RunStart].DistanceSq;
+		Batch.bIsParticle = true;
+		Batch.bCastShadow = false;
+
+		FMeshBatchElement Element{};
+		Element.Proxy = Proxy;
+		Element.IndexBuffer = QuadIB;
+		Element.IndexCount = QuadIB->GetIndexCount();
+		Element.InstanceCount = RunCount;
+		Element.StartInstance = StartInstance;
+		Element.bReceiveShadow = false;
+		Element.bReceiveDecal = false;
+		Batch.Elements.Add(Element);
+		Collector.AddMesh(std::move(Batch));
+
+		RunStart = RunEnd;
+	}
+}
+
+void FDynamicMeshEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
+	UMaterial* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
+{
+	if (!Mesh || Particles.IsEmpty())
+		return;
+
+	FVertexBuffer* MeshVB = Mesh->GetVertexBuffer(0);
+	FIndexBuffer* MeshIB = Mesh->GetIndexBuffer(0);
+	if (!MeshVB || !MeshIB)
+		return;
+
+	const int32 Count = static_cast<int32>(Particles.Num());
+	TArray<FSortedParticleIndex> Sorted;
+	Sorted.Reserve(Count);
+	for (int32 Index = 0; Index < Count; ++Index)
+	{
+		const FVector WorldPos = bUseLocalSpace
+			? LocalToWorld.TransformPosition(Particles[Index].Location)
+			: Particles[Index].Location;
+		const FVector Delta = WorldPos - View.CameraPosition;
+		Sorted.Add({ Index, Delta.Dot(Delta) });
+	}
+	std::sort(Sorted.begin(), Sorted.end(), [](const FSortedParticleIndex& A, const FSortedParticleIndex& B)
+	{
+		return A.DistanceSq > B.DistanceSq;
+	});
+
+	const FStaticMeshData& MeshData = Mesh->GetMeshData(0);
+	const bool bHasSections = !MeshData.Sections.IsEmpty();
+	const int32 SectionCount = bHasSections ? static_cast<int32>(MeshData.Sections.Num()) : 1;
+
+	for (int32 SecIdx = 0; SecIdx < SectionCount; ++SecIdx)
+	{
+		const uint32 SecStartIndex = bHasSections ? MeshData.Sections[SecIdx].StartIndex : 0;
+		const uint32 SecIndexCount = bHasSections ? MeshData.Sections[SecIdx].IndexCount : MeshIB->GetIndexCount();
+		if (SecIndexCount == 0)
+			continue;
+
+		const uint32 SlotIndex = bHasSections ? MeshData.Sections[SecIdx].MaterialSlotIndex : 0;
+		UMaterial* EntryMat = MaterialOverride ? MaterialOverride : Mesh->GetMaterial(SlotIndex);
+		if (!EntryMat)
+			continue;
+
+		const uint32 InstanceCount = static_cast<uint32>(Count);
+		FParticleInstanceData* Dest = nullptr;
+		const uint32 StartInstance = Collector.AllocateParticleInstances(InstanceCount, Dest);
+		if (!Dest)
+			continue;
+
+		const FVector4& BaseCol = EntryMat->BaseColor;
+		const bool bHasTex = !EntryMat->Textures.IsEmpty() && EntryMat->Textures[0] != nullptr;
+
+		for (int32 SortedIdx = 0; SortedIdx < Count; ++SortedIdx)
+		{
+			const FParticleRenderData& ParticleData = Particles[Sorted[SortedIdx].Index];
+			const float C = std::cos(ParticleData.Rotation);
+			const float S = std::sin(ParticleData.Rotation);
+			FMatrix World = FMatrix::Identity;
+			World.M[0][0] = C * ParticleData.MeshScale.X;
+			World.M[0][1] = S * ParticleData.MeshScale.X;
+			World.M[1][0] = -S * ParticleData.MeshScale.Y;
+			World.M[1][1] = C * ParticleData.MeshScale.Y;
+			World.M[2][2] = ParticleData.MeshScale.Z;
+			World.M[3][0] = ParticleData.Location.X;
+			World.M[3][1] = ParticleData.Location.Y;
+			World.M[3][2] = ParticleData.Location.Z;
+			if (ParticleData.bUseLocalSpace)
+				World = World * LocalToWorld;
+
+			FParticleInstanceData& Instance = Dest[SortedIdx];
+			Instance.World = World;
+			Instance.TintAndAlpha = FVector4(
+				ParticleData.Constants.Tint.X * BaseCol.X,
+				ParticleData.Constants.Tint.Y * BaseCol.Y,
+				ParticleData.Constants.Tint.Z * BaseCol.Z,
+				ParticleData.Constants.Alpha * BaseCol.W);
+			Instance.SubUVParams = FVector4(bHasTex ? 1.0f : 0.0f, 1.0f, 1.0f, 0.0f);
+		}
+
+		FMeshBatch Batch{};
+		Batch.VertexFactory.Type = EVertexFactoryType::ParticleMesh;
+		Batch.VertexFactory.VertexBuffer = MeshVB;
+		Batch.Material = EntryMat;
+		Batch.OverridePSOType = ResolveMeshParticlePSO(*EntryMat);
+		Batch.MeshSortID = Mesh->SortID;
+		Batch.CameraDistanceSq = Sorted[0].DistanceSq;
+		Batch.bIsParticle = true;
+		Batch.bCastShadow = false;
+
+		FMeshBatchElement Element{};
+		Element.Proxy = Proxy;
+		Element.IndexBuffer = MeshIB;
+		Element.FirstIndex = SecStartIndex;
+		Element.IndexCount = SecIndexCount;
+		Element.InstanceCount = InstanceCount;
+		Element.StartInstance = StartInstance;
+		Element.bReceiveShadow = false;
+		Element.bReceiveDecal = false;
+		Batch.Elements.Add(Element);
+		Collector.AddMesh(std::move(Batch));
+	}
+}
+
+void FDynamicGpuSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
+	UMaterial* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
+{
+	if (!QuadMesh || !GpuResources || MaxParticles == 0)
+		return;
+
+	UMaterial* EntryMat = Material ? Material : DefaultMaterial;
+	FVertexBuffer* QuadVB = QuadMesh->GetVertexBuffer(0);
+	FIndexBuffer* QuadIB = QuadMesh->GetIndexBuffer(0);
+	if (!EntryMat || !QuadVB || !QuadIB)
+		return;
+
+	FVector Forward = View.CameraForward.Normalized();
+	if (Forward.Length() <= 1e-6f)
+		Forward = (WorldLocation - View.CameraPosition).Normalized();
+	FVector Right = FVector::Cross(FVector(0.0f, 0.0f, 1.0f), Forward).Normalized();
+	if (Right.Length() <= 1e-6f)
+		Right = FVector(0.0f, 1.0f, 0.0f);
+	const FVector Up = FVector::Cross(Forward, Right).Normalized();
+	const FVector Facing = Forward * -1.0f;
+
+	FGpuParticleDrawParams DrawParams{};
+	DrawParams.LocalToWorld = LocalToWorld;
+	DrawParams.CameraFacing = FVector4(Facing.X, Facing.Y, Facing.Z, 0.0f);
+	DrawParams.CameraRight = FVector4(Right.X, Right.Y, Right.Z, 0.0f);
+	DrawParams.CameraUp = FVector4(Up.X, Up.Y, Up.Z, 0.0f);
+	DrawParams.WorldScaleAndLocal = FVector4(WorldScale.Y, WorldScale.Z, bUseLocalSpace ? 1.0f : 0.0f, 0.0f);
+	DrawParams.AtlasParams = AtlasParams;
+
+	FGpuParticleBatch GpuBatch{};
+	GpuBatch.GpuResources = GpuResources;
+	GpuBatch.Mesh = QuadMesh;
+	GpuBatch.Material = EntryMat;
+	GpuBatch.MaxParticles = MaxParticles;
+	GpuBatch.ParticleStride = ParticleStride;
+	GpuBatch.bResetRequested = bResetRequested;
+	GpuBatch.SpawnCount = SimParams.SpawnCount;
+	GpuBatch.PendingSpawnBytes = std::move(PendingSpawnBytes);
+	GpuBatch.SimParams = SimParams;
+	GpuBatch.CurveLUT = CurveLUT;
+	GpuBatch.DrawParams = DrawParams;
+	Collector.AddGpuParticleBatch(std::move(GpuBatch));
+
+	// 동일 프레임의 다른 뷰에서 스폰과 델타타임이 중복 실행되지 않도록 소진 처리
+	bResetRequested = false;
+	SimParams.DeltaTime = 0.0f;
+	SimParams.SpawnCount = 0;
+
+	const FVector Delta = WorldLocation - View.CameraPosition;
+	FMeshBatch Batch{};
+	Batch.VertexFactory.Type = EVertexFactoryType::ParticleGpuSprite;
+	Batch.VertexFactory.VertexBuffer = QuadVB;
+	Batch.VertexFactory.GpuResources = GpuResources.get();
+	Batch.VertexFactory.DrawParamsSize = sizeof(FGpuParticleDrawParams);
+	std::memcpy(Batch.VertexFactory.DrawParamsData.data(), &DrawParams, sizeof(FGpuParticleDrawParams));
+	Batch.Material = EntryMat;
+	Batch.OverridePSOType = EPSOType::Particle_GpuInstanced;
+	Batch.MeshSortID = QuadMesh->SortID;
+	Batch.CameraDistanceSq = Delta.Dot(Delta);
+	Batch.bIsParticle = true;
+	Batch.bCastShadow = false;
+
+	FMeshBatchElement Element{};
+	Element.Proxy = Proxy;
+	Element.IndexBuffer = QuadIB;
+	Element.IndexCount = QuadIB->GetIndexCount();
+	Element.InstanceCount = MaxParticles;
+	Element.bReceiveShadow = false;
+	Element.bReceiveDecal = false;
+	Batch.Elements.Add(Element);
+	Collector.AddMesh(std::move(Batch));
+}
 
 FParticleSceneProxy::FParticleSceneProxy(FParticleDynamicData&& InitialData)
 	: DynamicData(std::move(InitialData))
@@ -60,247 +362,26 @@ void FParticleSceneProxy::SyncPrimitiveState()
 	ApplyTransformData(TransformData);
 }
 
-void FParticleSceneProxy::SubmitToRenderQueue(FRenderQueue& Queue, const FViewContext& View, uint32 LODIndex) const
+bool FParticleSceneProxy::HasParticles() const
 {
-	if (!HasParticles()) return;
-	for (const FParticleRenderData& ParticleData : DynamicData.Particles)
+	if (!Material)
+		return false;
+	for (const TUniquePtr<FDynamicEmitterDataBase>& Emitter : DynamicData.DynamicEmitters)
 	{
-		FMatrix World = View.BuildBillboardMatrix(ParticleData.Location, ParticleData.Width, ParticleData.Height);
-		const float C = std::cos(ParticleData.Rotation);
-		const float S = std::sin(ParticleData.Rotation);
-		for (int Axis = 0; Axis < 3; ++Axis)
-		{
-			const float Right = World.M[1][Axis];
-			const float Up = World.M[2][Axis];
-			World.M[1][Axis] = C * Right + S * Up;
-			World.M[2][Axis] = C * Up - S * Right;
-		}
-		FRenderPacket Packet;
-		Packet.Mesh = QuadMesh;
-		Packet.Material = ParticleData.Material ? ParticleData.Material : Material;
-		Packet.Model = Queue.StoreWorldMatrix(World);
-		const FVector Delta = ParticleData.Location - View.CameraPosition;
-		Packet.CameraToParticleDistance = Delta.Dot(Delta);
-		Packet.MaterialParamData = &ParticleData.Constants;
-		Packet.MaterialParamDataSize = sizeof(FSubUVConstants);
-		Queue.Add(Packet);
+		if (Emitter && Emitter->HasParticles())
+			return true;
 	}
+	return false;
 }
 
-void FParticleSceneProxy::SubmitInstancedParticles(TArray<FParticleInstanceData>& OutInstances,
-	TArray<FParticleInstancedBatch>& OutBatches, const FViewContext& View) const
+void FParticleSceneProxy::GetDynamicMeshElements(const FViewContext& View, FMeshElementCollector& Collector, uint32 LODIndex) const
 {
-	if (!HasParticles() || DynamicData.Particles.IsEmpty()) return;
+	if (!bVisible || !HasParticles())
+		return;
 
-	struct FSortedParticle
+	for (const TUniquePtr<FDynamicEmitterDataBase>& Emitter : DynamicData.DynamicEmitters)
 	{
-		int32 Index = 0;
-		float DistanceSq = 0.0f;
-	};
-
-	const int32 Count = static_cast<int32>(DynamicData.Particles.Num());
-	TArray<FSortedParticle> Sorted;
-	Sorted.Reserve(Count);
-	for (int32 Index = 0; Index < Count; ++Index)
-	{
-		const FVector Delta = DynamicData.Particles[Index].Location - View.CameraPosition;
-		Sorted.Add({ Index, Delta.Dot(Delta) });
-	}
-	std::sort(Sorted.begin(), Sorted.end(), [](const FSortedParticle& A, const FSortedParticle& B)
-	{
-		return A.DistanceSq > B.DistanceSq;
-	});
-
-	const uint32 StartInstance = static_cast<uint32>(OutInstances.Num());
-	OutInstances.Reserve(StartInstance + static_cast<uint32>(Count));
-
-	UStaticMesh* BatchMesh = nullptr;
-	UMaterial* BatchMaterial = nullptr;
-	uint32 BatchStart = StartInstance;
-	uint32 BatchCount = 0;
-
-	auto FlushSpriteBatch = [&]()
-	{
-		if (BatchCount == 0) return;
-		FParticleInstancedBatch Batch{};
-		Batch.Mesh = BatchMesh;
-		Batch.Material = BatchMaterial;
-		Batch.StartInstance = BatchStart;
-		Batch.InstanceCount = BatchCount;
-		Batch.bIsMesh = false;
-		Batch.BlendState = BatchMaterial->BlendState;
-		OutBatches.Add(Batch);
-		BatchStart = static_cast<uint32>(OutInstances.Num());
-		BatchCount = 0;
-	};
-
-	for (int32 SortedIdx = 0; SortedIdx < Count;)
-	{
-		const FParticleRenderData& FirstParticle = DynamicData.Particles[Sorted[SortedIdx].Index];
-		if (FirstParticle.bIsMesh)
-		{
-			FlushSpriteBatch();
-			int32 RunEnd = SortedIdx + 1;
-			while (RunEnd < Count)
-			{
-				const FParticleRenderData& NextParticle = DynamicData.Particles[Sorted[RunEnd].Index];
-				if (!NextParticle.bIsMesh || NextParticle.Mesh != FirstParticle.Mesh || NextParticle.Material != FirstParticle.Material)
-					break;
-				++RunEnd;
-			}
-
-			UStaticMesh* EntryMesh = FirstParticle.Mesh;
-			if (EntryMesh)
-			{
-				const FStaticMeshData& MeshData = EntryMesh->GetMeshData(0);
-				const bool bHasSections = !MeshData.Sections.IsEmpty();
-				const int32 SectionCount = bHasSections ? static_cast<int32>(MeshData.Sections.Num()) : 1;
-
-				for (int32 SecIdx = 0; SecIdx < SectionCount; ++SecIdx)
-				{
-					const uint32 SecStartIndex = bHasSections ? MeshData.Sections[SecIdx].StartIndex : 0;
-					const uint32 SecIndexCount = bHasSections ? MeshData.Sections[SecIdx].IndexCount : 0;
-					if (bHasSections && SecIndexCount == 0) continue;
-
-					const uint32 SlotIndex = bHasSections ? MeshData.Sections[SecIdx].MaterialSlotIndex : 0;
-					UMaterial* EntryMat = FirstParticle.Material
-						? FirstParticle.Material
-						: EntryMesh->GetMaterial(SlotIndex);
-					if (!EntryMat) continue;
-
-					const uint32 SecBatchStart = static_cast<uint32>(OutInstances.Num());
-					const FVector4& BaseCol = EntryMat->BaseColor;
-					const bool bHasTex = !EntryMat->Textures.IsEmpty() && EntryMat->Textures[0] != nullptr;
-
-					for (int32 RunIdx = SortedIdx; RunIdx < RunEnd; ++RunIdx)
-					{
-						const FParticleRenderData& ParticleData = DynamicData.Particles[Sorted[RunIdx].Index];
-						const float C = std::cos(ParticleData.Rotation);
-						const float S = std::sin(ParticleData.Rotation);
-						FMatrix World = FMatrix::Identity;
-						World.M[0][0] = C * ParticleData.MeshScale.X;
-						World.M[0][1] = S * ParticleData.MeshScale.X;
-						World.M[1][0] = -S * ParticleData.MeshScale.Y;
-						World.M[1][1] = C * ParticleData.MeshScale.Y;
-						World.M[2][2] = ParticleData.MeshScale.Z;
-						World.M[3][0] = ParticleData.Location.X;
-						World.M[3][1] = ParticleData.Location.Y;
-						World.M[3][2] = ParticleData.Location.Z;
-						if (ParticleData.bUseLocalSpace)
-							World = World * DynamicData.LocalToWorld;
-
-						FParticleInstanceData Instance{};
-						Instance.World = World;
-						Instance.TintAndAlpha = FVector4(
-							ParticleData.Constants.Tint.X * BaseCol.X,
-							ParticleData.Constants.Tint.Y * BaseCol.Y,
-							ParticleData.Constants.Tint.Z * BaseCol.Z,
-							ParticleData.Constants.Alpha * BaseCol.W);
-						Instance.SubUVParams = FVector4(bHasTex ? 1.0f : 0.0f, 1.0f, 1.0f, 0.0f);
-						OutInstances.Add(Instance);
-					}
-
-					FParticleInstancedBatch Batch{};
-					Batch.Mesh = EntryMesh;
-					Batch.Material = EntryMat;
-					Batch.StartInstance = SecBatchStart;
-					Batch.InstanceCount = static_cast<uint32>(RunEnd - SortedIdx);
-					Batch.StartIndex = SecStartIndex;
-					Batch.IndexCount = SecIndexCount;
-					Batch.bIsMesh = true;
-					Batch.BlendState = EntryMat->BlendState;
-					OutBatches.Add(Batch);
-				}
-			}
-
-			BatchStart = static_cast<uint32>(OutInstances.Num());
-			SortedIdx = RunEnd;
-			continue;
-		}
-
-		UStaticMesh* EntryMesh = QuadMesh;
-		UMaterial* EntryMat = FirstParticle.Material ? FirstParticle.Material : Material;
-		if (!EntryMesh || !EntryMat)
-		{
-			++SortedIdx;
-			continue;
-		}
-
-		if (BatchCount > 0 && (EntryMesh != BatchMesh || EntryMat != BatchMaterial))
-			FlushSpriteBatch();
-
-		BatchMesh = EntryMesh;
-		BatchMaterial = EntryMat;
-
-		FMatrix World = View.BuildBillboardMatrix(FirstParticle.Location, FirstParticle.Width, FirstParticle.Height);
-		const float C = std::cos(FirstParticle.Rotation);
-		const float S = std::sin(FirstParticle.Rotation);
-		for (int Axis = 0; Axis < 3; ++Axis)
-		{
-			const float Right = World.M[1][Axis];
-			const float Up = World.M[2][Axis];
-			World.M[1][Axis] = C * Right + S * Up;
-			World.M[2][Axis] = C * Up - S * Right;
-		}
-
-		FParticleInstanceData Instance{};
-		Instance.World = World;
-		Instance.TintAndAlpha = FVector4(
-			FirstParticle.Constants.Tint.X,
-			FirstParticle.Constants.Tint.Y,
-			FirstParticle.Constants.Tint.Z,
-			FirstParticle.Constants.Alpha);
-		Instance.SubUVParams = FVector4(
-			FirstParticle.Constants.CurrentFrame,
-			FirstParticle.Constants.AtlasRowSize,
-			FirstParticle.Constants.AtlasColSize,
-			FirstParticle.Constants.DecodeSRGB);
-		OutInstances.Add(Instance);
-		++BatchCount;
-		++SortedIdx;
-	}
-
-	FlushSpriteBatch();
-}
-
-void FParticleSceneProxy::SubmitGpuEmitters(TArray<FGpuParticleBatch>& OutBatches, const FViewContext& View) const
-{
-	if (DynamicData.GpuEmitters.IsEmpty() || !QuadMesh || !Material) return;
-
-	FVector Forward = View.CameraForward.Normalized();
-	if (Forward.Length() <= 1e-6f)
-		Forward = (DynamicData.WorldLocation - View.CameraPosition).Normalized();
-	FVector Right = FVector::Cross(FVector(0.0f, 0.0f, 1.0f), Forward).Normalized();
-	if (Right.Length() <= 1e-6f)
-		Right = FVector(0.0f, 1.0f, 0.0f);
-	const FVector Up = FVector::Cross(Forward, Right).Normalized();
-	const FVector Facing = Forward * -1.0f;
-
-	for (const FParticleDynamicGpuEmitterData& Emitter : DynamicData.GpuEmitters)
-	{
-		FGpuParticleBatch& Batch = OutBatches.AddDefaulted_GetRef();
-		Batch.GpuResources = Emitter.GpuResources;
-		Batch.Mesh = QuadMesh;
-		Batch.Material = Emitter.Material ? Emitter.Material : Material;
-		Batch.MaxParticles = Emitter.MaxParticles;
-		Batch.ParticleStride = Emitter.ParticleStride;
-		Batch.bResetRequested = Emitter.bResetRequested;
-		Batch.SpawnCount = Emitter.SimParams.SpawnCount;
-		Batch.PendingSpawnBytes = std::move(Emitter.PendingSpawnBytes);
-		Batch.SimParams = Emitter.SimParams;
-		Batch.CurveLUT = Emitter.CurveLUT;
-
-		// 동일 프레임의 다른 뷰에서 스폰과 델타타임이 중복 실행되지 않도록 소진 처리
-		Emitter.bResetRequested = false;
-		Emitter.SimParams.DeltaTime = 0.0f;
-		Emitter.SimParams.SpawnCount = 0;
-
-		Batch.DrawParams.LocalToWorld = DynamicData.LocalToWorld;
-		Batch.DrawParams.CameraFacing = FVector4(Facing.X, Facing.Y, Facing.Z, 0.0f);
-		Batch.DrawParams.CameraRight = FVector4(Right.X, Right.Y, Right.Z, 0.0f);
-		Batch.DrawParams.CameraUp = FVector4(Up.X, Up.Y, Up.Z, 0.0f);
-		Batch.DrawParams.WorldScaleAndLocal = FVector4(
-			DynamicData.WorldScale.Y, DynamicData.WorldScale.Z, Emitter.bUseLocalSpace ? 1.0f : 0.0f, 0.0f);
-		Batch.DrawParams.AtlasParams = Emitter.AtlasParams;
+		if (Emitter && Emitter->HasParticles())
+			Emitter->GetDynamicMeshElementsForView(this, QuadMesh, Material, View, Collector);
 	}
 }

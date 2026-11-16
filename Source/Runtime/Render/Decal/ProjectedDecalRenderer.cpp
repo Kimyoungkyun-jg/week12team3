@@ -230,7 +230,7 @@ bool FProjectedDecalRenderer::IsReady() const
 }
 
 bool FProjectedDecalRenderer::OnRenderMesh(
-	std::span<const FMeshDrawBatch> ReceiverBatches,
+	std::span<const FMeshDrawCommand> ReceiverCommands,
 	std::span<const FProjectedDecalRenderData> Decals,
 	std::span<const FProjectedDecalMeshDrawList> DrawLists,
 	bool bUnlitPass,
@@ -238,9 +238,7 @@ bool FProjectedDecalRenderer::OnRenderMesh(
 {
 	assert(DrawLists.size() == Decals.size());
 
-	// 그릴 것이 없는 것은 정상적인 성공으로 취급한다.
-	if (Decals.empty() ||
-		ReceiverBatches.empty())
+	if (Decals.empty() || ReceiverCommands.empty())
 	{
 		return true;
 	}
@@ -250,18 +248,12 @@ bool FProjectedDecalRenderer::OnRenderMesh(
 		return false;
 	}
 
-	// 바인딩 전에 인덱스 유효성 확인.
 	for (const FProjectedDecalMeshDrawList& List : DrawLists)
 	{
 		for (const FDecalReceiverItemRef& Ref : List.Items)
 		{
-			if (Ref.BatchIndex >= ReceiverBatches.size())
+			if (Ref.CommandIndex >= ReceiverCommands.size())
 				return false;
-
-			if (Ref.ItemIndex >= ReceiverBatches[Ref.BatchIndex].Items.Num())
-			{
-				return false;
-			}
 		}
 	}
 
@@ -270,6 +262,7 @@ bool FProjectedDecalRenderer::OnRenderMesh(
 		ConstantBuffer.get(),
 		EShaderBindFlagBits::Pixel);
 
+	TArray<FMeshDrawCommand> DecalCommands;
 	for (size_t DecalIndex = 0; DecalIndex < Decals.size(); ++DecalIndex)
 	{
 		const FProjectedDecalRenderData& Decal = Decals[DecalIndex];
@@ -285,86 +278,58 @@ bool FProjectedDecalRenderer::OnRenderMesh(
 		}
 
 		const auto& Selected = DrawLists[DecalIndex].Items;
-
-		// 수신 상대가 없는 데칼은 상수 갱신도 생략.
 		if (Selected.IsEmpty())
 			continue;
 
-		const FProjectedDecalConstants Constants =
-			MakeProjectedDecalConstants(Decal);
+		const FProjectedDecalConstants Constants = MakeProjectedDecalConstants(Decal);
+		RenderCommand::UpdateBufferData(ConstantBuffer.get(), &Constants, sizeof(Constants));
+		RenderCommand::BindShaderResource(0, Decal.ColorTexture, EShaderBindFlagBits::Pixel);
+		RenderCommand::BindShaderResource(2, Decal.NormalTexture, EShaderBindFlagBits::Pixel);
 
-		RenderCommand::UpdateBufferData(
-			ConstantBuffer.get(),
-			&Constants,
-			sizeof(Constants));
-
-		RenderCommand::BindShaderResource(
-			0,
-			Decal.ColorTexture,
-			EShaderBindFlagBits::Pixel);
-
-		RenderCommand::BindShaderResource(
-			2,
-			Decal.NormalTexture,
-			EShaderBindFlagBits::Pixel);
-
-		bool bSubmitted = false;
-		size_t Cursor = 0;
-
-		while (Cursor < Selected.size())
+		DecalCommands.Reset();
+		DecalCommands.Reserve(Selected.Num());
+		for (const FDecalReceiverItemRef& Ref : Selected)
 		{
-			const uint32 BatchIndex = Selected[Cursor].BatchIndex;
+			const FMeshDrawCommand& Source = ReceiverCommands[Ref.CommandIndex];
+			FMeshDrawCommand Cmd = Source;
+			Cmd.Pipeline = MeshPipelineState;
+			Cmd.Pipeline.RasterizerState = Source.Pipeline.RasterizerState;
+			Cmd.bOverrideStencilRef = false;
+			Cmd.bForceWireframe = false;
+			Cmd.bUseObjectSlots = false;
+			Cmd.Sampler = Decal.Sampler;
+			Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
 
-			const FMeshDrawBatch& SourceBatch = ReceiverBatches[BatchIndex];
-
-			FMeshDrawBatch Batch = SourceBatch;
-			Batch.Items.Reset();
-
-			while (Cursor < Selected.size() &&
-				Selected[Cursor].BatchIndex == BatchIndex)
+			TArray<FMeshDrawConstantBuffer> FilteredCBs;
+			for (FMeshDrawConstantBuffer CB : Source.ConstantBuffers)
 			{
-				FMeshDrawBatch::FItem Item =
-					SourceBatch.Items[Selected[Cursor].ItemIndex];
-
-				// Prepass용 스텐실 참조값 override는 사용하지 않음.
-				Item.bOverrideStencilRef = false;
-
-				Batch.Items.Add(Item);
-				++Cursor;
+				if (CB.Slot == 0)
+				{
+					CB.Stages = EShaderBindFlagBits::Vertex;
+					FilteredCBs.Add(std::move(CB));
+				}
 			}
+			Cmd.ConstantBuffers = std::move(FilteredCBs);
 
-			Batch.Pipeline = MeshPipelineState;
-
-			Batch.Pipeline.RasterizerState = SourceBatch.Pipeline.RasterizerState;
-
-			Batch.bForceWireframe = false;
-			Batch.bBindViewConstants = false;
-			Batch.bUseObjectSlots = false;
-
-			Batch.ObjectBindingSlot = 0;
-			Batch.ObjectStages = EShaderBindFlagBits::Vertex;
-
-			Batch.MaterialDataSize = 0;
-			Batch.Textures.Reset();
-
-			Batch.Sampler = Decal.Sampler;
-			Batch.SamplerStages = EShaderBindFlagBits::Pixel;
-
-			Renderer->DrawMeshes(std::span<const FMeshDrawBatch>(&Batch, 1));
-
-			bSubmitted = true;
+			TArray<FMeshDrawShaderResource> FilteredSRVs;
+			for (const FMeshDrawShaderResource& Res : Source.ShaderResources)
+			{
+				if (Res.StructuredBuffer)
+					FilteredSRVs.Add(Res);
+			}
+			Cmd.ShaderResources = std::move(FilteredSRVs);
 
 			if (Stats)
 			{
-				for (const FMeshDrawBatch::FItem& Item : Batch.Items)
-				{
-					++Stats->DrawCalls;
-					Stats->SubmittedTriangles += Item.IndexCount / 3;
-				}
+				++Stats->DrawCalls;
+				Stats->SubmittedTriangles += Cmd.IndexCount / 3;
 			}
+			DecalCommands.Add(std::move(Cmd));
 		}
 
-		if (Stats && bSubmitted)
+		Renderer->SubmitDrawCommands(DecalCommands);
+
+		if (Stats && !DecalCommands.IsEmpty())
 		{
 			if (bUnlitPass)
 				++Stats->SubmittedUnlit;
