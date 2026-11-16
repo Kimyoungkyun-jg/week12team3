@@ -29,7 +29,7 @@ public:
 	bool IsRootPanel() const override { return true; }
 
 	void OpenAsset(const FString& InPath);
-	void NewMaterial(const FString& InPath, bool bParticleSprite);
+	void NewMaterial(const FString& InPath);
 	void NewMaterialInstance(const FString& InPath, const FString& ParentPath);
 
 	void RenderPreview(UEditorEngine* Engine);

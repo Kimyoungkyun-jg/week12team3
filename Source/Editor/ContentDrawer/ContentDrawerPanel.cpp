@@ -362,11 +362,6 @@ void FContentDrawerPanel::OnRender()
 		if (ImGui::BeginPopupModal("Create Material", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			ImGui::InputText("Name", NewAssetName, sizeof(NewAssetName));
-			int MaterialType = bNewMaterialParticleSprite ? 1 : 0;
-			if (ImGui::Combo("Material Type", &MaterialType, "Surface\0Particle Sprite\0"))
-			{
-				bNewMaterialParticleSprite = MaterialType == 1;
-			}
 			const FString Name = NewAssetName;
 			const fs::path Target = CurrentPath / (Name + ".material");
 			const bool bExists = fs::exists(Target);
@@ -376,7 +371,7 @@ void FContentDrawerPanel::OnRender()
 			ImGui::BeginDisabled(bExists || bInvalid || !OnCreateMaterial);
 			if (ImGui::Button("Create"))
 			{
-				OnCreateMaterial(FbxPath::ToString(Target), bNewMaterialParticleSprite);
+				OnCreateMaterial(FbxPath::ToString(Target));
 				ImGui::CloseCurrentPopup();
 			}
 			ImGui::EndDisabled();

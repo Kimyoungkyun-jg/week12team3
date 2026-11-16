@@ -11,12 +11,13 @@
 class FShader;
 class UMaterialInstanceDynamic;
 
-enum class EMaterialParamLayout
+enum class EMaterialUsage : uint32
 {
-	None,
-	StaticMesh,
-	ParticleSubUV,
-	ParticleSprite
+	None = 0,
+	StaticMesh = 1u << 0,
+	SkeletalMesh = 1u << 1,
+	ParticleSprite = 1u << 2,
+	ParticleMesh = 1u << 3
 };
 
 enum class EMaterialExpressionType : uint8
@@ -92,7 +93,25 @@ public:
 	UMaterial() :SortID(NextSortID++) {};
 	virtual ~UMaterial() override = default;
 
-	EMaterialParamLayout ParamLayout = EMaterialParamLayout::None;
+	uint32 UsageFlags = static_cast<uint32>(EMaterialUsage::StaticMesh);
+
+	bool HasUsage(EMaterialUsage Usage) const
+	{
+		return (UsageFlags & static_cast<uint32>(Usage)) != 0;
+	}
+
+	void SetUsage(EMaterialUsage Usage, bool bEnabled)
+	{
+		const uint32 Flag = static_cast<uint32>(Usage);
+		if (bEnabled)
+		{
+			UsageFlags |= Flag;
+		}
+		else
+		{
+			UsageFlags &= ~Flag;
+		}
+	}
 	FShaderProgram* Shader = nullptr;
 	TArray<UTexture2D*> Textures;
 	TArray<FMaterialExpressionNode> ExpressionNodes;

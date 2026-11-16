@@ -184,7 +184,7 @@ bool UEditorEngine::Init()
 	EditorUI->SetFbxImportBlockedQuery([this]() { return IsPlaying(); });
 	AssetEditorPanel = EditorUI->AddEditorPanel<FAssetEditorPanel>();
 	MaterialEditorPanel = EditorUI->AddEditorPanel<FMaterialEditorPanel>();
-	ContentDrawerPanel->SetCreateMaterialCallback([this](const FString& Path, bool bParticleSprite) { MaterialEditorPanel->NewMaterial(Path, bParticleSprite); });
+	ContentDrawerPanel->SetCreateMaterialCallback([this](const FString& Path) { MaterialEditorPanel->NewMaterial(Path); });
 	ContentDrawerPanel->SetCreateMaterialInstanceCallback([this](const FString& Path, const FString& ParentPath) { MaterialEditorPanel->NewMaterialInstance(Path, ParentPath); });
 	ParticleSystemEditorPanel = EditorUI->AddEditorPanel<FParticleSystemEditorPanel>();
 	// 다시 가져오기의 옵션은 바이너리 헤더에서 읽는다. Target Skeleton은 헤더에 없으므로,

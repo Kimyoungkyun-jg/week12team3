@@ -320,7 +320,7 @@ void FMaterialEditorPanel::NewMaterial(const FString& InPath, bool bParticleSpri
 	Path = InPath;
 	Status.clear();
 
-	UMaterial* Template = UAssetManager::GetAssetByPath<UMaterial>(bParticleSprite ? "ParticleSpriteMaterial" : "DefaultMaterial");
+	UMaterial* Template = UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
 
 	if (!Template)
 	{
@@ -1031,6 +1031,26 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 {
 	ImGui::TextUnformatted("Details");
+	ImGui::Separator();
+
+	if (ImGui::CollapsingHeader("Usage Flags", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		auto DrawUsageFlag = [&](const char* Label, EMaterialUsage Usage)
+		{
+			bool bEnabled = Material.HasUsage(Usage);
+			if (ImGui::Checkbox(Label, &bEnabled))
+			{
+				Material.SetUsage(Usage, bEnabled);
+				MarkMaterialChanged();
+			}
+		};
+
+		DrawUsageFlag("Used with Static Mesh", EMaterialUsage::StaticMesh);
+		DrawUsageFlag("Used with Skeletal Mesh", EMaterialUsage::SkeletalMesh);
+		DrawUsageFlag("Used with Particle Sprites", EMaterialUsage::ParticleSprite);
+		DrawUsageFlag("Used with Mesh Particles", EMaterialUsage::ParticleMesh);
+	}
+
 	ImGui::Separator();
 
 	FMaterialExpressionNode* Selected = nullptr;

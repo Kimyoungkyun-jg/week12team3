@@ -393,7 +393,6 @@ void UAssetManager::CreateDefaultMaterial() {
 	DefaultMat->Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/UberLit.hlsl");
 	DefaultMat->Textures.Add(GetAssetByPath<UTexture2D>("WhiteTexture"));
 	DefaultMat->Textures.Add(GetAssetByPath<UTexture2D>("FlatNormalTexture"));
-	DefaultMat->ParamLayout = EMaterialParamLayout::StaticMesh;
 	DefaultMat->ParamBuffer = RenderCommand::CreateConstantBuffer(sizeof(FStaticMeshMaterialParams));
 	RegisterAsset("DefaultMaterial", DefaultMat);
 }
@@ -406,7 +405,6 @@ void UAssetManager::CreateBillboardMaterial()
 	BillboardMat->BlendState = EBlendState::AlphaBlend;
 	BillboardMat->DepthStencilState = EDepthStencilState::ReadOnly;
 	BillboardMat->SamplerState = ESamplerState::LinearClamp;
-	BillboardMat->ParamLayout = EMaterialParamLayout::ParticleSubUV;
 	RegisterAsset("BillboardMaterial", BillboardMat);
 }
 
@@ -418,7 +416,6 @@ void UAssetManager::CreateParticleMaterial()
 	ParticleMat->Textures.Add(LoadTexture(ResourcePaths::DefaultParticleTexture));
 	ParticleMat->BlendState = EBlendState::AlphaBlend;
 	ParticleMat->DepthStencilState = EDepthStencilState::ReadOnly;
-	ParticleMat->ParamLayout = EMaterialParamLayout::ParticleSubUV;
 	ParticleMat->ParamBuffer = RenderCommand::CreateConstantBuffer(256);
 	RegisterAsset("SubUVMaterial", ParticleMat);
 }
@@ -432,7 +429,6 @@ void UAssetManager::CreateParticleSpriteMaterial()
 	ParticleSpriteMat->BlendState = EBlendState::AlphaBlend;
 	ParticleSpriteMat->DepthStencilState = EDepthStencilState::ReadOnly;
 	ParticleSpriteMat->SamplerState = ESamplerState::LinearClamp;
-	ParticleSpriteMat->ParamLayout = EMaterialParamLayout::ParticleSprite;
 	ParticleSpriteMat->ParamBuffer = RenderCommand::CreateConstantBuffer(256);
 	RegisterAsset("ParticleSpriteMaterial", ParticleSpriteMat);
 }

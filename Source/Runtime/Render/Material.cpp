@@ -818,7 +818,7 @@ void UMaterial::SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMate
 
 void UMaterial::CopySettingsFrom(const UMaterial& Source)
 {
-	ParamLayout = Source.ParamLayout;
+	UsageFlags = Source.UsageFlags;
 	Shader = Source.Shader;
 	Textures = Source.Textures;
 	BlendState = Source.BlendState;
@@ -853,7 +853,6 @@ void UMaterial::CopySettingsFrom(const UMaterial& Source)
 void UMaterial::InitializeRenderResources(const UMaterial& Template)
 {
 	Shader = Template.Shader;
-	ParamLayout = Template.ParamLayout;
 	DepthStencilState = Template.DepthStencilState;
 	ParamBuffer.reset();
 	if (Template.ParamBuffer)
@@ -897,6 +896,24 @@ void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 	Record << SA_VALUE("PSOType", PSOVal);
 	if (Ar.IsLoading()) PSOType = static_cast<EPSOType>(PSOVal);
 	if (Ar.IsLoading()) SetBlendState(BlendState);
+
+	if (auto UsageSlot = Record.TryEnterField("UsageFlags", Ar.IsSaving()))
+	{
+		UsageSlot.GetValue() << UsageFlags;
+	}
+	else if (Ar.IsLoading())
+	{
+		UsageFlags = static_cast<uint32>(EMaterialUsage::StaticMesh);
+
+		if (PSOType == EPSOType::Particle_Sprite || PSOType == EPSOType::Particle_AlphaBlend || PSOType == EPSOType::Particle_Additive)
+		{
+			UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleSprite);
+		}
+		else if (PSOType == EPSOType::Particle_MeshOpaque || PSOType == EPSOType::Particle_MeshTranslucent || PSOType == EPSOType::Particle_MeshAdditive)
+		{
+			UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleMesh);
+		}
+	}
 
 	int32 Num = Textures.Num();
 	FStructuredArchive::FArray TextureArray = Record.EnterArray("Textures", Num);
