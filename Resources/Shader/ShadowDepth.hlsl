@@ -4,33 +4,46 @@
 
 cbuffer ViewConstants : register(b0)
 {
-    matrix VP;
-};                       // Renderer->UploadViewMatrix(ShadowViewProjection)
-cbuffer WorldConstants : register(b2)
-{
-    matrix World;
-    matrix NormalMatrix;
-}; // 그림자 Build가 b2(Vertex)에 오브젝트 상수를 묶음
+	matrix VP;
+};
 
 cbuffer ShadowDepthPass : register(b3)
 {
-    float4 ShadowParams;
-    float3 LightDirection;
-    float ShadowNear;
-    uint bPerspective;
-    float3 ShadowPadding;
+	float4 ShadowParams;
+	float3 LightDirection;
+	float ShadowNear;
+	uint bPerspective;
+	float3 ShadowPadding;
+	float3 PreShadowTranslation;
+	float PreShadowPadding;
 };
 
-// FVertex의 앞 두 필드. 입력 레이아웃은 리플렉션(APPEND_ALIGNED)으로 만들어지므로 순서만 맞으면 됨.
+cbuffer DrawBatchConstants : register(b5)
+{
+	uint StartInstance;
+	uint3 DrawBatchPad;
+};
+
+struct FPrimitiveSceneData
+{
+	matrix LocalToWorld;
+	matrix NormalMatrix;
+	float4 Flags;
+};
+
+StructuredBuffer<FPrimitiveSceneData> PrimitiveSceneData : register(t17);
+StructuredBuffer<uint> InstancePrimitiveIds : register(t18);
+
 struct VS_INPUT
 {
-    float3 Position : POSITION;
-    float3 Normal : NORMAL;
+	float3 Position : POSITION;
+	float3 Normal : NORMAL;
 #if GPU_SKINNING
-    float4 Tangent : TANGENT;
-    int4 BoneIndices : BLENDINDICES;
-    float4 BoneWeights : BLENDWEIGHT;
+	float4 Tangent : TANGENT;
+	int4 BoneIndices : BLENDINDICES;
+	float4 BoneWeights : BLENDWEIGHT;
 #endif
+	uint InstanceId : SV_InstanceID;
 };
 struct VS_OUTPUT
 {
@@ -51,12 +64,15 @@ float ComputeDepthBias(float3 WorldNormal)
 VS_OUTPUT mainVS(VS_INPUT Input)
 {
 #if GPU_SKINNING
-    SkinVertex(Input.Position, Input.Normal, Input.Tangent, Input.BoneIndices, Input.BoneWeights);
+	SkinVertex(Input.Position, Input.Normal, Input.Tangent, Input.BoneIndices, Input.BoneWeights);
 #endif
-    VS_OUTPUT Output;
-    const float4 WorldPosition = mul(float4(Input.Position, 1.0f), World);
-    const float3 WorldNormal = normalize(mul(float4(Input.Normal, 0.0f), NormalMatrix).xyz);
-    Output.Position = mul(WorldPosition, VP);
+	uint PrimitiveId = InstancePrimitiveIds[Input.InstanceId + StartInstance];
+	FPrimitiveSceneData Prim = PrimitiveSceneData[PrimitiveId];
+	VS_OUTPUT Output;
+	float4 WorldPosition = mul(float4(Input.Position, 1.0f), Prim.LocalToWorld);
+	WorldPosition.xyz += PreShadowTranslation;
+	const float3 WorldNormal = normalize(mul(float4(Input.Normal, 0.0f), Prim.NormalMatrix).xyz);
+	Output.Position = mul(WorldPosition, VP);
 
     if (bPerspective)
     {

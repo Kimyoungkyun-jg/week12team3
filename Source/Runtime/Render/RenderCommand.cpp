@@ -61,10 +61,35 @@ TUniquePtr<FStructuredBuffer> RenderCommand::CreateDynamicStructuredBuffer(uint3
 	return std::make_unique<FStructuredBuffer>(RenderDevice->GetDevice(), Desc, Capacity);
 }
 
+TUniquePtr<FStructuredBuffer> RenderCommand::CreateDefaultStructuredBuffer(uint32 Capacity, uint32 Stride)
+{
+	assert(RenderDevice);
+	if (!Capacity || !Stride || Capacity > UINT32_MAX / Stride)
+		return nullptr;
+	return RenderDevice->CreateDefaultStructuredBuffer(Stride, Capacity);
+}
+
 TUniquePtr<FStructuredBuffer> RenderCommand::CreateRWStructuredBuffer(uint32 Stride, uint32 Count)
 {
 	assert(RenderDevice);
 	return RenderDevice->CreateRWStructuredBuffer(Stride, Count);
+}
+
+void RenderCommand::UpdateStructuredBufferRange(FStructuredBuffer* Buffer, uint32 StartElement, uint32 ElementCount, uint32 ElementStride, const void* Data)
+{
+	assert(RenderDevice);
+	if (!Buffer || !Buffer->GetBuffer() || !Data || ElementCount == 0 || ElementStride == 0)
+		return;
+	if (StartElement + ElementCount > Buffer->GetCapacity())
+		return;
+	D3D11_BOX Box{};
+	Box.left = StartElement * ElementStride;
+	Box.right = (StartElement + ElementCount) * ElementStride;
+	Box.top = 0;
+	Box.bottom = 1;
+	Box.front = 0;
+	Box.back = 1;
+	RenderDevice->GetContext()->UpdateSubresource(Buffer->GetBuffer(), 0, &Box, Data, 0, 0);
 }
 
 TUniquePtr<FTexture2D> RenderCommand::CreateTexture2D(const FTextureDesc& Desc, const FImageData& Image)
@@ -160,11 +185,6 @@ void RenderCommand::DrawIndexedInstanced(uint32 IndexCountPerInstance, uint32 In
 {
 	RenderDevice->GetContext()->DrawIndexedInstanced(
 		IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
-}
-
-void RenderCommand::DrawInstance(uint32 IndexCount, uint32 StartIndexLocation, int32 BaseVertexLocation)
-{
-	//RenderDevice->GetContext()->DrawInstanced();
 }
 
 void RenderCommand::UpdateBufferData(FBuffer* InBuffer, const void* Data, uint32 DataSize)

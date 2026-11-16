@@ -21,7 +21,6 @@ struct FEditorSettings
 	bool bCacheShadows = true; // r.Shadow.CacheWholeSceneShadows
 	EPcfMode PcfMode = EPcfMode::Sample32;   // PCF 7x7
 	ELightCullingMode LightCullingMode = ELightCullingMode::Tiled;
-	ERenderingPath RenderingPath = ERenderingPath::Deferred;
 	ESkinningMode SkinningMode = ESkinningMode::CPU;
 	EReflectionModel ReflectionModel = EReflectionModel::BlinnPhong;
 	EShadingModel ShadingModel = EShadingModel::Phong;

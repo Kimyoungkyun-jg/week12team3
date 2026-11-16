@@ -11,7 +11,7 @@
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 
 namespace
 {
@@ -79,46 +79,6 @@ FBox UBillboardComponent::CalcLocalBounds() const
 	return FBox{ FVector(-Extent, -Extent, -Extent), FVector(Extent, Extent, Extent) };
 }
 
-void UBillboardComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext)
-{
-	if (QuadMesh == nullptr || Material == nullptr)
-	{
-		return;
-	}
-
-	const FVector WorldPos = GetWorldLocation();
-	const FVector WorldScale = GetWorldScale3D();
-	const float Width = bEditorIcon ? IconSize : WorldScale.Y;
-	const float Height = bEditorIcon ? IconSize : WorldScale.Z;
-	const FMatrix BillboardWorldMatrix = ViewContext.BuildBillboardMatrix(WorldPos, Width, Height);
-	const uint32 PacketIndex = RenderQueue.Num();
-	SubmitToRenderQueue(RenderQueue, BillboardWorldMatrix);
-	if (static_cast<uint32>(RenderQueue.Num()) > PacketIndex)
-	{
-		const FVector Delta = WorldPos - ViewContext.CameraPosition;
-		RenderQueue[PacketIndex].CameraToParticleDistance = Delta.Dot(Delta);
-	}
-}
-
-// View별 Billboard 행렬과 Material을 렌더 패킷에 담는다.
-void UBillboardComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FMatrix& BillboardWorldMatrix)
-{
-	if (QuadMesh == nullptr || Material == nullptr)
-		return;
-
-	// Light Component light 가져와서 IconParams로 전달
-	IconParams.Tint = TintSource ? TintSource->GetLightColor().ToVector4() : FVector4(1, 1, 1, 1);
-	// 현재 반투명 패스는 톤 매핑 이후 SceneColor(LDR)에 그려진다.
-	IconParams.DecodeSRGB = 0.0f;
-	FRenderPacket Packet;
-	Packet.Mesh = QuadMesh;
-	Packet.Material = Material;
-	Packet.Model = RenderQueue.StoreWorldMatrix(BillboardWorldMatrix);
-	Packet.MaterialParamData = &IconParams;
-	Packet.MaterialParamDataSize = sizeof(FSubUVConstants);
-	RenderQueue.Add(Packet);
-}
-
 void UBillboardComponent::Serialize(json& Handle, bool bIsLoading)
 {
 	Super::Serialize(Handle, bIsLoading);
@@ -140,7 +100,7 @@ void UBillboardComponent::Serialize(json& Handle, bool bIsLoading)
 	}
 }
 
-// 판정용 Billboard 행렬. 렌더(SubmitToRenderQueue)와 같은 FViewContext::BuildBillboardMatrix로 만들어
+// 판정용 Billboard 행렬. 렌더와 같은 FViewContext::BuildBillboardMatrix 로 만들어
 // 화면에 보이는 면과 Raycast에 맞는 면이 같도록 한다.
 void UBillboardComponent::GetWorldTransformedMatrix(FMatrix* OutWorldMatrix) const
 {

@@ -4,7 +4,7 @@
 #include "Render/Mesh.h"
 #include "Render/SkeletalMesh.h"
 #include "Render/Material.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include <algorithm>
@@ -94,7 +94,6 @@ void FStaticMeshSceneProxy::SetStaticMeshData(const FStaticMeshProxyData& Data)
 
 	ApplyBaseRenderState(Data.BaseState);
 	RenderState = Data.RenderState;
-	bEditorIcon = Data.bEditorIcon;
 
 	if (StaticMesh)
 		LocalLODSphere = StaticMesh->GetLocalLODSphere();
@@ -125,64 +124,72 @@ void FStaticMeshSceneProxy::OnMeshDestroyed()
 	bVisible = false;
 }
 
-void FStaticMeshSceneProxy::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext, uint32 LODIndex) const
+void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PDI) const
 {
-	if (!bVisible || !StaticMesh)
+	if (!PDI || !bVisible || !StaticMesh || PackedIndex < 0)
 		return;
 
-	if (RenderState && RenderState->LODCount > 0)
+	const uint32 PrimIdx = static_cast<uint32>(PackedIndex);
+	auto EmitStaticSection = [&](uint8 ClampedLOD, FVertexBuffer* VB, FIndexBuffer* IB,
+		UMaterial* SectionMat, uint32 StartIndex, uint32 IndexCount)
 	{
-		const uint32 ClampedLOD = std::min(LODIndex, static_cast<uint32>(RenderState->LODCount) - 1u);
-		const FCachedMeshLOD& CachedLOD = RenderState->LODs[ClampedLOD];
-		for (uint32 i = 0; i < CachedLOD.NumSections; ++i)
+		if (!VB || !IB || !SectionMat)
+			return;
+		FStaticMeshBatch Batch{};
+		Batch.PrimitiveSceneProxy = this;
+		Batch.PrimitiveIndex = PrimIdx;
+		Batch.VertexFactory.Type = EVertexFactoryType::Local;
+		Batch.VertexFactory.VertexBuffer = VB;
+		Batch.Material = SectionMat;
+		Batch.MeshSortID = StaticMesh->SortID;
+		Batch.LODIndex = ClampedLOD;
+		Batch.bCastShadow = bCastsShadow;
+
+		FMeshBatchElement Element{};
+		Element.Proxy = this;
+		Element.IndexBuffer = IB;
+		Element.FirstIndex = StartIndex;
+		Element.IndexCount = IndexCount;
+		Element.PrimitiveId = PrimIdx;
+		Element.bReceiveShadow = bReceiveShadow;
+		Element.bReceiveDecal = bReceiveDecal;
+		Batch.Elements.Add(Element);
+		PDI->DrawMesh(Batch);
+	};
+
+	if (RenderState && RenderState->LODCount > 0) // RenderState 는 컴포넌트가 만든 FMeshRenderState
+	{
+		for (uint32 LOD = 0; LOD < RenderState->LODCount; ++LOD)
 		{
-			const FCachedMeshSection& Section = RenderState->Sections[CachedLOD.FirstSection + i];
-			FRenderPacket Packet;
-			Packet.Proxy = this;
-			Packet.Mesh = StaticMesh;
-			Packet.Material = Section.Material;
-			Packet.StartIndex = Section.StartIndex;
-			Packet.IndexCount = Section.IndexCount;
-			Packet.LODIndex = static_cast<uint8>(ClampedLOD);
-			RenderQueue.Add(Packet);
+			FVertexBuffer* VB = StaticMesh->GetVertexBuffer(LOD);
+			FIndexBuffer* IB = StaticMesh->GetIndexBuffer(LOD);
+			const FCachedMeshLOD& CachedLOD = RenderState->LODs[LOD];
+			for (uint32 i = 0; i < CachedLOD.NumSections; ++i)
+			{
+				const FCachedMeshSection& Section = RenderState->Sections[CachedLOD.FirstSection + i];
+				EmitStaticSection(static_cast<uint8>(LOD), VB, IB, Section.Material, Section.StartIndex, Section.IndexCount);
+			}
 		}
 		return;
 	}
 
-	const uint32 ClampedLOD = std::min(LODIndex, StaticMesh->GetLODCount() - 1u);
-	const FStaticMeshData& MeshData = StaticMesh->GetMeshData(ClampedLOD);
-	if (MeshData.Sections.IsEmpty())
+	const uint32 NumMeshLODs = StaticMesh->GetLODCount();
+	for (uint32 LOD = 0; LOD < NumMeshLODs; ++LOD) // StaticMesh 에셋 원본의 MeshData.Sections와 기본 머티리얼을 직접 순회
 	{
-		FRenderPacket Packet;
-		Packet.Proxy = this;
-		Packet.Mesh = StaticMesh;
-		Packet.Material = StaticMesh->GetMaterial(0);
-		Packet.LODIndex = static_cast<uint8>(ClampedLOD);
-		RenderQueue.Add(Packet);
-		return;
+		FVertexBuffer* VB = StaticMesh->GetVertexBuffer(LOD);
+		FIndexBuffer* IB = StaticMesh->GetIndexBuffer(LOD);
+		const FStaticMeshData& MeshData = StaticMesh->GetMeshData(LOD);
+		if (MeshData.Sections.IsEmpty())
+		{
+			EmitStaticSection(static_cast<uint8>(LOD), VB, IB, StaticMesh->GetMaterial(0), 0, 0);
+			continue;
+		}
+		for (const FStaticMeshSection& Section : MeshData.Sections)
+		{
+			EmitStaticSection(static_cast<uint8>(LOD), VB, IB, StaticMesh->GetMaterial(Section.MaterialSlotIndex),
+				Section.StartIndex, Section.IndexCount);
+		}
 	}
-
-	for (const FStaticMeshSection& Section : MeshData.Sections)
-	{
-		FRenderPacket Packet;
-		Packet.Proxy = this;
-		Packet.Mesh = StaticMesh;
-		Packet.Material = StaticMesh->GetMaterial(Section.MaterialSlotIndex);
-		Packet.StartIndex = Section.StartIndex;
-		Packet.IndexCount = Section.IndexCount;
-		Packet.LODIndex = static_cast<uint8>(ClampedLOD);
-		RenderQueue.Add(Packet);
-	}
-}
-
-FVertexBuffer* FStaticMeshSceneProxy::GetVertexBuffer(uint8 LOD) const
-{
-	return StaticMesh ? StaticMesh->GetVertexBuffer(LOD) : nullptr;
-}
-
-FIndexBuffer* FStaticMeshSceneProxy::GetIndexBuffer(uint8 LOD) const
-{
-	return StaticMesh ? StaticMesh->GetIndexBuffer(LOD) : nullptr;
 }
 
 // ---------------- FSkeletalMeshSceneProxy ----------------
@@ -257,18 +264,51 @@ void FSkeletalMeshSceneProxy::OnMeshDestroyed()
 	bVisible = false;
 }
 
-void FSkeletalMeshSceneProxy::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext, uint32 LODIndex) const
+void FSkeletalMeshSceneProxy::GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const
 {
 	if (!bVisible || !SkeletalMesh)
 		return;
 
 	const ESkinningMode Mode = static_cast<ESkinningMode>(AppliedMode);
 	const bool bUseGPUSkinning = (Mode != ESkinningMode::CPU) && (SkinningMatricesBuffer != nullptr);
-	const uint32 ClampedLOD = bUseGPUSkinning && RenderState && RenderState->LODCount > 0
+	const uint8 ClampedLOD = static_cast<uint8>(bUseGPUSkinning && RenderState && RenderState->LODCount > 0
 		? std::min(LODIndex, static_cast<uint32>(RenderState->LODCount) - 1u)
-		: 0u;
-	FVertexBuffer* CPUVB = !bUseGPUSkinning ? CPUSkinnedVertexBuffer : nullptr;
+		: 0u);
+	FVertexBuffer* VB = bUseGPUSkinning ? SkeletalMesh->GetVertexBuffer(ClampedLOD) : CPUSkinnedVertexBuffer;
+	FIndexBuffer* IB = SkeletalMesh->GetIndexBuffer(ClampedLOD);
+	if (!VB || !IB)
+		return;
+
 	UMaterial* HeatmapMaterial = bBoneWeightHeatmap ? UAssetManager::GetAssetByPath<UMaterial>("BoneWeightHeatmapMaterial") : nullptr;
+	const FVector Delta = Bounds.Center - ViewContext.CameraPosition;
+	const float DistanceSq = Delta.Dot(Delta);
+
+	auto EmitSectionBatch = [&](UMaterial* SectionMat, uint32 StartIndex, uint32 IndexCount)
+	{
+		if (!SectionMat)
+			return;
+		FMeshBatch Batch{};
+		Batch.VertexFactory.Type = bUseGPUSkinning ? EVertexFactoryType::GPUSkin : EVertexFactoryType::Local;
+		Batch.VertexFactory.VertexBuffer = VB;
+		Batch.VertexFactory.SkinningMatricesBuffer = bUseGPUSkinning ? SkinningMatricesBuffer : nullptr;
+		Batch.VertexFactory.bComputeSkinned = (Mode == ESkinningMode::Compute) && bUseGPUSkinning;
+		Batch.Material = SectionMat;
+		Batch.MeshSortID = SkeletalMesh->SortID;
+		Batch.LODIndex = ClampedLOD;
+		Batch.bCastShadow = bCastsShadow;
+		Batch.CameraDistanceSq = DistanceSq;
+
+		FMeshBatchElement Element{};
+		Element.Proxy = this;
+		Element.IndexBuffer = IB;
+		Element.FirstIndex = StartIndex;
+		Element.IndexCount = IndexCount;
+		Element.PrimitiveId = PackedIndex >= 0 ? static_cast<uint32>(PackedIndex) : InvalidPrimitiveId;
+		Element.bReceiveShadow = bReceiveShadow;
+		Element.bReceiveDecal = bReceiveDecal;
+		Batch.Elements.Add(Element);
+		Collector.AddMesh(std::move(Batch));
+	};
 
 	if (RenderState && RenderState->LODCount > 0)
 	{
@@ -276,17 +316,7 @@ void FSkeletalMeshSceneProxy::SubmitToRenderQueue(FRenderQueue& RenderQueue, con
 		for (uint32 i = 0; i < CachedLOD.NumSections; ++i)
 		{
 			const FCachedMeshSection& Section = RenderState->Sections[CachedLOD.FirstSection + i];
-			FRenderPacket Packet;
-			Packet.Proxy = this;
-			Packet.SkeletalMesh = SkeletalMesh;
-			Packet.SkeletalVertexBuffer = CPUVB;
-			Packet.SkinningMatricesBuffer = bUseGPUSkinning ? SkinningMatricesBuffer : nullptr;
-			Packet.bComputeSkinned = (Mode == ESkinningMode::Compute) && bUseGPUSkinning;
-			Packet.Material = HeatmapMaterial ? HeatmapMaterial : Section.Material;
-			Packet.StartIndex = Section.StartIndex;
-			Packet.IndexCount = Section.IndexCount;
-			Packet.LODIndex = static_cast<uint8>(ClampedLOD);
-			RenderQueue.Add(Packet);
+			EmitSectionBatch(HeatmapMaterial ? HeatmapMaterial : Section.Material, Section.StartIndex, Section.IndexCount);
 		}
 		return;
 	}
@@ -294,51 +324,15 @@ void FSkeletalMeshSceneProxy::SubmitToRenderQueue(FRenderQueue& RenderQueue, con
 	const auto& Sections = SkeletalMesh->MeshData.Sections;
 	if (Sections.IsEmpty())
 	{
-		FRenderPacket Packet;
-		Packet.Proxy = this;
-		Packet.SkeletalMesh = SkeletalMesh;
-		Packet.SkeletalVertexBuffer = CPUVB;
-		Packet.SkinningMatricesBuffer = bUseGPUSkinning ? SkinningMatricesBuffer : nullptr;
-		Packet.bComputeSkinned = (Mode == ESkinningMode::Compute) && bUseGPUSkinning;
-		Packet.Material = HeatmapMaterial ? HeatmapMaterial : SkeletalMesh->GetMaterial(0);
-		Packet.LODIndex = static_cast<uint8>(ClampedLOD);
-		RenderQueue.Add(Packet);
+		EmitSectionBatch(HeatmapMaterial ? HeatmapMaterial : SkeletalMesh->GetMaterial(0), 0, 0);
 		return;
 	}
 
 	for (const FSkeletalMeshSection& Section : Sections)
 	{
-		FRenderPacket Packet;
-		Packet.Proxy = this;
-		Packet.SkeletalMesh = SkeletalMesh;
-		Packet.SkeletalVertexBuffer = CPUVB;
-		Packet.SkinningMatricesBuffer = bUseGPUSkinning ? SkinningMatricesBuffer : nullptr;
-		Packet.bComputeSkinned = (Mode == ESkinningMode::Compute) && bUseGPUSkinning;
-		Packet.Material = HeatmapMaterial ? HeatmapMaterial : SkeletalMesh->GetMaterial(Section.MaterialSlotIndex);
-		Packet.StartIndex = Section.StartIndex;
-		Packet.IndexCount = Section.IndexCount;
-		Packet.LODIndex = static_cast<uint8>(ClampedLOD);
-		RenderQueue.Add(Packet);
+		EmitSectionBatch(HeatmapMaterial ? HeatmapMaterial : SkeletalMesh->GetMaterial(Section.MaterialSlotIndex),
+			Section.StartIndex, Section.IndexCount);
 	}
-}
-
-FVertexBuffer* FSkeletalMeshSceneProxy::GetVertexBuffer(uint8 LOD) const
-{
-	if (!SkeletalMesh)
-		return nullptr;
-	if (static_cast<ESkinningMode>(AppliedMode) == ESkinningMode::CPU && LOD == 0 && CPUSkinnedVertexBuffer)
-		return CPUSkinnedVertexBuffer;
-	return SkeletalMesh->GetVertexBuffer(LOD);
-}
-
-FIndexBuffer* FSkeletalMeshSceneProxy::GetIndexBuffer(uint8 LOD) const
-{
-	return SkeletalMesh ? SkeletalMesh->GetIndexBuffer(LOD) : nullptr;
-}
-
-bool FSkeletalMeshSceneProxy::IsComputeSkinned() const
-{
-	return static_cast<ESkinningMode>(AppliedMode) == ESkinningMode::Compute;
 }
 
 // ---------------- FBillboardSceneProxy ----------------
@@ -365,9 +359,14 @@ void FBillboardSceneProxy::SetBillboardData(const FBillboardProxyData& Data)
 	SubUVParticles = Data.SubUVParticles;
 }
 
-void FBillboardSceneProxy::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext, uint32 LODIndex) const
+void FBillboardSceneProxy::GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const
 {
 	if (!bVisible || !QuadMesh || !Material)
+		return;
+
+	FVertexBuffer* VB = QuadMesh->GetVertexBuffer(0);
+	FIndexBuffer* IB = QuadMesh->GetIndexBuffer(0);
+	if (!VB || !IB)
 		return;
 
 	if (!bSubUVEmitter)
@@ -379,15 +378,26 @@ void FBillboardSceneProxy::SubmitToRenderQueue(FRenderQueue& RenderQueue, const 
 		const float Height = bEditorIcon ? IconSize : WorldScale3D.Z;
 		const FVector WorldLocation(LocalToWorld.M[3][0], LocalToWorld.M[3][1], LocalToWorld.M[3][2]);
 		const FMatrix WorldMatrix = ViewContext.BuildBillboardMatrix(WorldLocation, Width, Height);
+		const FVector Delta = WorldLocation - ViewContext.CameraPosition;
 
-		FRenderPacket Packet;
-		Packet.Proxy = this;
-		Packet.Model = RenderQueue.StoreWorldMatrix(WorldMatrix);
-		Packet.Mesh = QuadMesh;
-		Packet.Material = Material;
-		Packet.MaterialParamData = &IconParams;
-		Packet.MaterialParamDataSize = sizeof(IconParams);
-		RenderQueue.Add(Packet);
+		FMeshBatch Batch{};
+		Batch.VertexFactory.Type = EVertexFactoryType::Local;
+		Batch.VertexFactory.VertexBuffer = VB;
+		Batch.Material = Material;
+		Batch.MaterialParamData = &IconParams;
+		Batch.MaterialParamDataSize = sizeof(IconParams);
+		Batch.MeshSortID = QuadMesh->SortID;
+		Batch.CameraDistanceSq = Delta.Dot(Delta);
+		Batch.bCastShadow = false;
+
+		FMeshBatchElement Element{};
+		Element.Proxy = this;
+		Element.IndexBuffer = IB;
+		Element.WorldMatrix = Collector.StoreWorldMatrix(WorldMatrix);
+		Element.bReceiveShadow = false;
+		Element.bReceiveDecal = false;
+		Batch.Elements.Add(Element);
+		Collector.AddMesh(std::move(Batch));
 		return;
 	}
 
@@ -434,24 +444,23 @@ void FBillboardSceneProxy::SubmitToRenderQueue(FRenderQueue& RenderQueue, const 
 		Param.ColSize = static_cast<float>(ColSize);
 		Param.Alpha = P.Alpha;
 
-		FRenderPacket Packet;
-		Packet.Proxy = this;
-		Packet.Model = RenderQueue.StoreWorldMatrix(WorldMatrix);
-		Packet.Mesh = QuadMesh;
-		Packet.Material = Material;
-		Packet.MaterialParamData = &Param;
-		Packet.MaterialParamDataSize = sizeof(Param);
-		Packet.CameraToParticleDistance = Item.DistSq;
-		RenderQueue.Add(Packet);
+		FMeshBatch Batch{};
+		Batch.VertexFactory.Type = EVertexFactoryType::Local;
+		Batch.VertexFactory.VertexBuffer = VB;
+		Batch.Material = Material;
+		Batch.MaterialParamData = &Param;
+		Batch.MaterialParamDataSize = sizeof(Param);
+		Batch.MeshSortID = QuadMesh->SortID;
+		Batch.CameraDistanceSq = Item.DistSq;
+		Batch.bCastShadow = false;
+
+		FMeshBatchElement Element{};
+		Element.Proxy = this;
+		Element.IndexBuffer = IB;
+		Element.WorldMatrix = Collector.StoreWorldMatrix(WorldMatrix);
+		Element.bReceiveShadow = false;
+		Element.bReceiveDecal = false;
+		Batch.Elements.Add(Element);
+		Collector.AddMesh(std::move(Batch));
 	}
-}
-
-FVertexBuffer* FBillboardSceneProxy::GetVertexBuffer(uint8 LOD) const
-{
-	return QuadMesh ? QuadMesh->GetVertexBuffer(LOD) : nullptr;
-}
-
-FIndexBuffer* FBillboardSceneProxy::GetIndexBuffer(uint8 LOD) const
-{
-	return QuadMesh ? QuadMesh->GetIndexBuffer(LOD) : nullptr;
 }

@@ -3,7 +3,7 @@
 #include "SceneComponent.h"
 #include "../Render/Shader.h"
 #include "../Render/Mesh.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Render/GeometryGenerator.h"
 #include "Collision/HitResult.h"
 #include "Core/Delegate/Delegate.h"
@@ -45,10 +45,6 @@ public:
 	virtual ~UPrimitiveComponent();
 
 	virtual void BeginPlay() override;
-
-	// Todo: subuv
-	//void SubmitToRenderQueue(TQueue<FRenderPacket>& RenderQueue);
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext);
 
 	virtual const FStaticMeshData* GetMeshData() const { return nullptr; }
 

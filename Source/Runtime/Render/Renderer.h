@@ -1,6 +1,6 @@
 #pragma once
 
-#include "RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Render/ObjectConstants.h"
 #include "Texture2D.h"
 #include "Text/Font.h"
@@ -9,8 +9,9 @@
 #include "Engine/LightSceneProxy.h"
 #include "Render/Buffer.h"
 #include "MeshPassProcessor.h"
-#include <span>
+#include <array>
 #include <memory>
+#include <span>
 
 struct FGpuTimingHistory;
 
@@ -25,31 +26,27 @@ class FProjectedDecalRenderer;
 class FRenderer
 {
 public:
-	// 전방 선언한 패스 객체를 TUniquePtr로 소유하므로 정의는 cpp에 둔다.
 	FRenderer();
 	~FRenderer();
 
 	bool Init();
 
-	// 패스의 의미를 해석하지 않고 준비된 GPU 상태와 드로우만 제출한다.
-	void UploadViewMatrix(const FMatrix& ViewProjection);
-	FConstantBuffer* GetViewConstantBuffer() const { return ViewCB.get(); }
-	void DrawMeshes(std::span<const FMeshDrawBatch> Batches,
+	void UploadViewConstants(const FMatrix& ViewProjection, const FMatrix& ViewMatrix,
+		const FMatrix& ProjectionMatrix, float TotalTime = 0.0f);
+
+	void SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> Commands,
+		const FStructuredBuffer* GPUSceneBuffer = nullptr,
+		uint32* OutDrawCalls = nullptr,
 		const std::shared_ptr<FGpuTimingHistory>& SkeletalTiming = {},
 		ESkinningMode MeasuredMode = ESkinningMode::CPU);
 
-	// 오클루전 객체 조회
 	FGPUOcclusion& GetGPUOcclusion() { return GPUOcclusion; }
 
-	// 측정 대상 드로우를 동일한 GPU 상태로 다시 제출한다.
-	FOcclusionMeasureResult MeasureDrawVisibility(std::span<const FMeshDrawBatch> Batches);
-
-	uint8* BeginObjectConstants(uint32 MaxSlots);
-	void EndObjectConstants();
+	FOcclusionMeasureResult MeasureDrawVisibility(std::span<const FVisibleMeshDrawCommand> Commands,
+		const FStructuredBuffer* GPUSceneBuffer = nullptr);
 
 	void InitScenePasses(const FString& SkyPanoramaPath);
 
-	// FSceneRenderer::Render가 쓰는 상주 패스 객체. UE에서는 렌더러 모듈의 글로벌 자원에 해당한다.
 	FSkyboxRenderer* GetSkybox() const { return Skybox.get(); }
 	FHeightFogRenderer* GetHeightFog() const { return HeightFog.get(); }
 	FFXAARenderer* GetFXAA() const { return FXAA.get(); }
@@ -58,18 +55,31 @@ public:
 	FProjectedDecalRenderer* GetProjectedDecal() const { return ProjectedDecal.get(); }
 
 	FConstantBuffer* GetToneMapConstants() const { return ToneMapConstants.get(); }
-	
+
 private:
-	void EnsurePerObjectSlotCapacity(uint32 SlotCount);
-	void BindBatch(const FMeshDrawBatch& Batch);
-	void BindObject(const FMeshDrawBatch& Batch, const FMeshDrawBatch::FItem& Item);
-	TUniquePtr<FConstantBuffer> ObjectCB;
+	struct FDrawRun
+	{
+		const FVisibleMeshDrawCommand* Visible = nullptr;
+		uint32 StartInstance = 0;
+		uint32 InstanceCount = 0;
+		bool bGPUSceneInstanced = false;
+	};
+
+	void EnsureInstanceIdCapacity(uint32 Count);
+	void UnbindUnusedResources(const TArray<FMeshDrawShaderResource>& NextResources,
+		TArray<FMeshDrawShaderResource>& InOutBoundResources);
+
+	static constexpr uint32 MaxCommandSlotCBs = 4;
+	std::array<TUniquePtr<FConstantBuffer>, MaxCommandSlotCBs> CommandSlotCBs;
 	TUniquePtr<FConstantBuffer> ViewCB;
-	TUniquePtr<FConstantBuffer> MaterialCB;
-	TUniquePtr<FConstantBuffer> PerObjectSlotCB;
+	TUniquePtr<FConstantBuffer> DrawBatchCB;
 	TUniquePtr<FConstantBuffer> ToneMapConstants;
-	uint32 PerObjectSlotCapacity = 0;
-	bool bUsePerObjectSlots = false;
+	TUniquePtr<FStructuredBuffer> InstanceIdBuffer;
+	uint32 InstanceIdCapacity = 0;
+
+	TArray<uint32> ScratchInstanceIds;
+	TArray<FDrawRun> ScratchDrawRuns;
+
 	TArray<ComPtr<ID3D11Query>> OcclusionQueries;
 	ComPtr<ID3D11DepthStencilState> DepthLessEqualReadOnly;
 	FGPUOcclusion GPUOcclusion;

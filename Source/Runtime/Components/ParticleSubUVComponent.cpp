@@ -184,22 +184,6 @@ void UParticleSubUVComponent::TickComponent(float DeltaTime)
 	PushRenderStateToProxy();
 }
 
-// 뷰 기준으로 파티클 상수와 렌더 패킷을 구성
-void UParticleSubUVComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext)
-{
-	if (!QuadMesh || !Material || Particles.IsEmpty()) return;
-	BeginViewSubmission();
-	for (int32 Index = 0; Index < Particles.Num(); ++Index)
-	{
-		const FParticle& Particle = Particles[Index];
-		if (!Particle.bAlive) continue;
-		const FMatrix WorldMatrix = ViewContext.BuildBillboardMatrix(
-			Particle.Location, Particle.Scale, Particle.Scale);
-		const FVector Delta = Particle.Location - ViewContext.CameraPosition;
-		SubmitParticleToRenderQueue(RenderQueue, Index, WorldMatrix, Delta.Dot(Delta));
-	}
-}
-
 // 파티클 위치·속도·수명 등 재생성 상태를 초기화한다.
 void UParticleSubUVComponent::RespawnParticle(FParticle& Particle)
 {
@@ -279,32 +263,6 @@ void UParticleSubUVComponent::BeginViewSubmission()
 		Value.DecodeSRGB = 0.0f;
         Constants.Add(Value);
     }
-}
-
-// 파티클의 View 행렬·거리·SubUV 상수를 렌더 패킷에 담는다.
-void UParticleSubUVComponent::SubmitParticleToRenderQueue(
-	FRenderQueue& RenderQueue,
-	const int32 ParticleIndex,
-	const FMatrix& WorldMatrix,
-	const float CameraDistanceSquared)
-{
-	if (ParticleIndex < 0 || ParticleIndex >= Particles.Num() || QuadMesh == nullptr || Material == nullptr)
-		return;
-
-	const FParticle& Particle = Particles[ParticleIndex];
-	if (!Particle.bAlive)
-		return;
-
-	assert(Constants.Num() == Particles.Num());
-
-	FRenderPacket Packet;
-	Packet.Model = RenderQueue.StoreWorldMatrix(WorldMatrix);
-	Packet.Mesh = QuadMesh;
-	Packet.Material = Material;
-	Packet.CameraToParticleDistance = CameraDistanceSquared;
-	Packet.MaterialParamData = &Constants[ParticleIndex];
-	Packet.MaterialParamDataSize = sizeof(FSubUVConstants);
-	RenderQueue.Add(Packet);
 }
 
 

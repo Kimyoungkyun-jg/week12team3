@@ -9,12 +9,6 @@ enum class EShaderType
 	Compute,
 };
 
-enum class ERenderingPath
-{
-    Forward,
-    Deferred
-};
-
 enum class ESkinningMode : uint8_t
 {
 	CPU,

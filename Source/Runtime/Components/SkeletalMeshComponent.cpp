@@ -2,7 +2,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Render/RenderCommand.h"
 #include "Render/RenderResourceManager.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Collision/Ray.h"
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Engine/World.h"
@@ -686,42 +686,6 @@ FVertexBuffer* USkeletalMeshComponent::GetSkinnedVertexBuffer(uint32 LOD)
 	}
 	Cached.Revision = PoseRevision;
 	return Cached.Buffer.get();
-}
-
-void USkeletalMeshComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext)
-{
-	EnsureBoneState();
-	if (!SkeletalMesh) return;
-	if (NeedsSkinningUpdate()) UpdateSkinning();
-	if (!SkinnedVertexBuffer && AppliedMode == ESkinningMode::CPU) return;
-	FMeshRenderState State;
-	State.LODCount = static_cast<uint8>(SkeletalMesh->GetLODCount());
-	for (int I = 0; I < 3; ++I) State.LODThresholdSq[I] = SkeletalMesh->ScreenThresholds[I] * SkeletalMesh->ScreenThresholds[I];
-	const FLODSelectionInput Input{ SkeletalMesh->GetLocalLODSphere().Transform(GetWorldMatrix()), &State };
-	const uint32 LOD = ViewContext.bOrthographic ? SelectSphereLOD<true>(Input, ViewContext) : SelectSphereLOD<false>(Input, ViewContext);
-	const FSkeletalMeshData& MeshData = SkeletalMesh->GetMeshData(LOD);
-	FVertexBuffer* VertexBuffer = AppliedMode != ESkinningMode::GPU ? GetSkinnedVertexBuffer(LOD) : nullptr;
-	if (AppliedMode != ESkinningMode::GPU && !VertexBuffer) return;
-	// 히트맵은 텍스처 없는 흰 머티리얼로 모든 섹션을 덮는다. 그래야 UberLit이 정점 색(히트 색)을 표면 색으로 쓴다.
-	UMaterial* HeatmapMaterial = bBoneWeightHeatmap ? UAssetManager::GetAssetByPath<UMaterial>("BoneWeightHeatmapMaterial") : nullptr;
-
-	for (const FSkeletalMeshSection& Section : MeshData.Sections)
-	{
-		UMaterial* SectionMaterial = HeatmapMaterial ? HeatmapMaterial : GetMaterial(static_cast<int32>(Section.MaterialSlotIndex));
-		if (!SectionMaterial) continue;
-
-		FRenderPacket Packet;
-		Packet.SkeletalMesh = SkeletalMesh;
-		Packet.SkeletalVertexBuffer = VertexBuffer;
-		Packet.LODIndex = static_cast<uint8>(LOD);
-		Packet.SkinningMatricesBuffer = AppliedMode == ESkinningMode::GPU ? SkinningMatricesBuffer.get() : nullptr;
-		Packet.bComputeSkinned = AppliedMode == ESkinningMode::Compute;
-		Packet.Model = RenderQueue.StoreWorldMatrix(GetWorldMatrix());
-		Packet.StartIndex = Section.StartIndex;
-		Packet.IndexCount = Section.IndexCount;
-		Packet.Material = SectionMaterial;
-		RenderQueue.Add(Packet);
-	}
 }
 
 void USkeletalMeshComponent::UpdatePickPositions()
