@@ -88,7 +88,7 @@ void UBillboardComponent::Serialize(json& Handle, bool bIsLoading)
 		// 예전 파일은 "Material"이 문자열(경로)이라 형식을 확인하고 읽는다
 		if (Handle.contains("Material") && Handle["Material"].is_object())
 		{
-			if (UMaterial* Loaded = UMaterial::LoadMaterial(Handle["Material"]))
+			if (UMaterialInterface* Loaded = UMaterial::LoadMaterial(Handle["Material"]))
 			{
 				Material = Loaded;   // 못 만들었으면 생성자 기본값 유지
 			}
@@ -127,7 +127,7 @@ void UBillboardComponent::Serialize(FStructuredArchive::FRecord Record)
 {
 	Super::Serialize(Record);
 
-	UMaterial* Loaded = Material;
+	UMaterialInterface* Loaded = Material;
 	UMaterial::SerializeMaterialReference(Record.EnterField("Material"), Loaded);
 
 	// 불러오기에 실패하면(null) 생성자가 넣어 둔 기본 머티리얼을 유지한다
@@ -157,7 +157,7 @@ FBillboardProxyData UBillboardComponent::BuildBillboardProxyData() const
 
 	FSubUVConstants CurrentIconParams = IconParams;
 	CurrentIconParams.Tint = TintSource ? TintSource->GetLightColor().ToVector4() : FVector4(1, 1, 1, 1);
-	CurrentIconParams.DecodeSRGB = 0.0f;
+	CurrentIconParams.DecodeSRGB = 1.0f;
 	static_assert(sizeof(Data.IconParams) == sizeof(CurrentIconParams), "FBillboardSubUVConstants must match FSubUVConstants");
 	std::memcpy(&Data.IconParams, &CurrentIconParams, sizeof(Data.IconParams));
 	return Data;

@@ -69,7 +69,7 @@ private:
 	void UnbindUnusedResources(const TArray<FMeshDrawShaderResource>& NextResources,
 		TArray<FMeshDrawShaderResource>& InOutBoundResources);
 
-	static constexpr uint32 MaxCommandSlotCBs = 4;
+	static constexpr uint32 MaxCommandSlotCBs = 5;
 	std::array<TUniquePtr<FConstantBuffer>, MaxCommandSlotCBs> CommandSlotCBs;
 	TUniquePtr<FConstantBuffer> ViewCB;
 	TUniquePtr<FConstantBuffer> DrawBatchCB;

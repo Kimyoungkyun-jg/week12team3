@@ -143,7 +143,7 @@ void FRenderer::SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> C
 			const uint32 StartInstance = static_cast<uint32>(ScratchInstanceIds.Num());
 			ScratchInstanceIds.Add(Vis.PrimitiveId);
 			uint32 RunCount = 1;
-			while (i + RunCount < TotalCount && AreVisibleCommandsInstanceCompatible(Vis, Commands[i + RunCount]))
+			while (i + RunCount < TotalCount && AreVisibleCommandsInstanceCompatible(Vis, Commands[i + RunCount])) // 바로 옆에 나란히 붙어 있는 완전히 같은 오브젝트들을 몇 개까지 하나의 DrawIndexedInstanced로 합칠 수 있는지
 			{
 				ScratchInstanceIds.Add(Commands[i + RunCount].PrimitiveId);
 				++RunCount;
@@ -320,6 +320,7 @@ void FRenderer::SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> C
 
 	const TArray<FMeshDrawShaderResource> EmptyResources{};
 	UnbindUnusedResources(EmptyResources, BoundResources);
+	RenderCommand::BindConstantBuffer(4, nullptr, EShaderBindFlagBits::Pixel);
 	if (bBoundGPUScene)
 	{
 		RenderCommand::UnbindShaderResources(17, 1, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
@@ -470,6 +471,7 @@ FOcclusionMeasureResult FRenderer::MeasureDrawVisibility(std::span<const FVisibl
 	RenderCommand::SetDepthStencilState(EDepthStencilState::Default);
 	const TArray<FMeshDrawShaderResource> EmptyResources{};
 	UnbindUnusedResources(EmptyResources, BoundResources);
+	RenderCommand::BindConstantBuffer(4, nullptr, EShaderBindFlagBits::Pixel);
 	RenderCommand::UnbindShaderResources(17, 1, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 	RenderCommand::UnbindShaderResources(18, 1, EShaderBindFlagBits::Vertex);
 	RenderCommand::BindConstantBuffer(5, nullptr, EShaderBindFlagBits::Vertex);

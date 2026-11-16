@@ -20,6 +20,8 @@ public:
 	void OpenAsset(const FString& Path);
 	void RenderPreview(UEditorEngine* Engine);
 	void Release();
+	void SaveIfDirty();
+	bool HasFocusedWindow() const { return IsOpen() && bFocused; }
 private:
 	void SaveMaterial();
 	FString Path;
@@ -30,4 +32,6 @@ private:
 	float CameraSpeed = 1.0f;
 	TUniquePtr<FSkyboxRenderer> Skybox;
 	bool bVisible = false;
+	bool bDirty = false;
+	bool bFocused = false;
 };

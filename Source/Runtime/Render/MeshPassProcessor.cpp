@@ -3,6 +3,7 @@
 #include "Render/SceneRenderData.h"
 #include "Render/RenderResourceManager.h"
 #include "Render/Mesh.h"
+#include "Render/MaterialRenderProxy.h"
 #include "Render/NormalMapUtils.h"
 #include "Engine/PrimitiveSceneProxy.h"
 #include <algorithm>
@@ -51,7 +52,7 @@ namespace
 		return InvalidPrimitiveId;
 	}
 
-	FForwardMaterialConstants MakeForwardMaterial(const UMaterial& Material)
+	FForwardMaterialConstants MakeForwardMaterial(const FMaterialRenderProxy& Material)
 	{
 		FForwardMaterialConstants Params{};
 		Params.BaseColor = Material.BaseColor;
@@ -70,7 +71,7 @@ namespace
 		return Params;
 	}
 
-	FStaticMeshMaterialParams MakeStaticMaterial(const UMaterial& Material)
+	FStaticMeshMaterialParams MakeStaticMaterial(const FMaterialRenderProxy& Material)
 	{
 		const auto Forward = MakeForwardMaterial(Material);
 		FStaticMeshMaterialParams Params{};
@@ -87,12 +88,12 @@ namespace
 		return Params;
 	}
 
-	FShaderProgram* GetMaterialForwardShader(const UMaterial& Material, const FSceneRenderOptions& Options, bool bGPUSkinning)
+	FSceneRenderOptions ResolveMaterialLighting(const FMaterialRenderProxy& Material, const FSceneRenderOptions& Options)
 	{
 		FSceneRenderOptions Effective = Options;
 		if (!Options.bUnlit && !Options.bOverrideMaterialLighting && Material.bOverrideShadingModel)
 			Effective.SetLegacyLightingModel(Material.ShadingModel);
-		return FRenderResourceManager::GetForwardShaderProgram(Effective.ReflectionModel, Effective.ShadingModel, bGPUSkinning, Effective.bUnlit);
+		return Effective;
 	}
 
 	FVertexBuffer* ResolveBatchVertexBuffer(const FVertexFactory& VF, const FMeshElementCollector* Collector)
@@ -109,14 +110,13 @@ namespace
 		return Element.IndexBuffer;
 	}
 
-	void AppendMaterialTextures(const UMaterial& Material, bool bUsesUberShader, TArray<FMeshDrawShaderResource>& OutResources)
+	void AppendMaterialTextures(const FMaterialRenderProxy& Material, bool bUsesUberShader, TArray<FMeshDrawShaderResource>& OutResources, bool bUsesGraph = false)
 	{
-		OutResources.Reserve(OutResources.Num() + Material.Textures.Num());
-		for (int32 Index = 0; Index < Material.Textures.Num(); ++Index)
+		// 그래프는 t2~t7, 포워드 조명은 t8 이상을 사용한다.
+		const int32 TextureCount = std::min(Material.Textures.Num(), bUsesGraph ? 2 : bUsesUberShader ? 8 : Material.Textures.Num());
+		OutResources.Reserve(OutResources.Num() + TextureCount);
+		for (int32 Index = 0; Index < TextureCount; ++Index)
 		{
-			// Forward 조명은 tSlot 상위를 전역 리소스에 사용한다.
-			if (bUsesUberShader && Index >= 8)
-				break;
 			UTexture2D* Texture = Material.Textures[Index];
 			EShaderBindFlagBits Stages = EShaderBindFlagBits::Pixel;
 			if (bUsesUberShader && Index == 1)
@@ -129,7 +129,116 @@ namespace
 		}
 	}
 
-	FMeshDrawConstantBuffer MakeForwardMaterialCB(const UMaterial& Material)
+	EMaterialUsage ResolveMaterialGraphUsage(EPSOType PSO, bool bSkeletalMesh)
+	{
+		switch (PSO)
+		{
+		case EPSOType::Particle_AlphaBlend:
+		case EPSOType::Particle_Additive:
+		case EPSOType::Particle_Sprite:
+		case EPSOType::Particle_Instanced:
+		case EPSOType::Particle_GpuInstanced:
+			return EMaterialUsage::ParticleSprite;
+
+		case EPSOType::Particle_MeshOpaque:
+		case EPSOType::Particle_MeshTranslucent:
+		case EPSOType::Particle_MeshAdditive:
+			return EMaterialUsage::ParticleMesh;
+
+		case EPSOType::SkeletalMesh_GBuffer:
+			return EMaterialUsage::SkeletalMesh;
+
+		case EPSOType::StaticMesh_GBuffer:
+			return EMaterialUsage::StaticMesh;
+
+		case EPSOType::StaticMesh_Forward:
+		case EPSOType::StaticMesh_Translucent:
+			return bSkeletalMesh ? EMaterialUsage::SkeletalMesh : EMaterialUsage::StaticMesh;
+
+		default:
+			return EMaterialUsage::None;
+		}
+	}
+
+	FShaderProgram* FindGraphShader(const FMaterialRenderProxy& Material, EPSOType PSO,
+		EReflectionModel Reflection = EReflectionModel::Lambert, bool bUnlit = false, bool bGPUSkinning = false, bool bSkeletalMesh = false)
+	{
+		const UMaterial* Base = Material.BaseMaterial;
+		if (!Base || !Base->HasGraphOutput())
+		{
+			return nullptr;
+		}
+
+		const EMaterialUsage RequiredUsage = ResolveMaterialGraphUsage(PSO, bSkeletalMesh);
+		if (RequiredUsage == EMaterialUsage::None || !Base->HasUsage(RequiredUsage))
+		{
+			return nullptr;
+		}
+
+		FString Error;
+		return FRenderResourceManager::GetMaterialGraphShaderProgram(*Base, PSO, Reflection, bUnlit, bGPUSkinning, Error);
+	}
+
+	void AppendGraphBindings(const FMaterialRenderProxy& Material, TArray<FMeshDrawShaderResource>& Resources,
+		TArray<FMeshDrawConstantBuffer>& ConstantBuffers)
+	{
+		for (int32 Index = 0; Index < Material.GraphTextures.Num(); ++Index)
+		{
+			Resources.Add({ 2u + static_cast<uint32>(Index), EShaderBindFlagBits::Pixel,
+				Material.GraphTextures[Index], nullptr });
+		}
+
+		FMeshDrawConstantBuffer& CB = ConstantBuffers.AddDefaulted_GetRef();
+		CB.Slot = 4;
+		CB.Stages = EShaderBindFlagBits::Pixel;
+		const uint32 BufferSize = sizeof(FVector4) * MaxMaterialGraphParameters;
+		static_assert(BufferSize <= sizeof(CB.Data));
+
+		int32 ParameterIndex = 0;
+
+		for (const FMaterialExpressionNode& Node : Material.BaseMaterial->ExpressionNodes)
+		{
+			if (Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter)
+			{
+				continue;
+			}
+
+			if (ParameterIndex >= MaxMaterialGraphParameters)
+				break;
+
+			FVector4 Value = Node.Type == EMaterialExpressionType::ScalarParameter
+				? FVector4(Node.ScalarValue, 0.0f, 0.0f, 0.0f)
+				: Node.VectorValue;
+
+			const FName Name(Node.ParameterName);
+
+			for (const FMaterialParameterOverride& Override : Material.ParameterOverrides)
+			{
+				if (Override.ParameterName != Name)
+				{
+					continue;
+				}
+
+				if (Node.Type == EMaterialExpressionType::ScalarParameter && Override.Type == EMaterialParameterType::Scalar)
+				{
+					Value.X = Override.ScalarValue;
+				}
+				else if (Node.Type == EMaterialExpressionType::VectorParameter && Override.Type == EMaterialParameterType::Vector)
+				{
+					Value = Override.VectorValue;
+				}
+
+				break;
+			}
+
+			std::memcpy(CB.Data.data() + ParameterIndex * sizeof(FVector4), &Value, sizeof(FVector4));
+			++ParameterIndex;
+		}
+
+		CB.DataSize = BufferSize;
+	}
+
+	FMeshDrawConstantBuffer MakeForwardMaterialCB(const FMaterialRenderProxy& Material)
 	{
 		FMeshDrawConstantBuffer CB{};
 		CB.Slot = 2;
@@ -160,18 +269,30 @@ namespace
 
 		const bool bGPUSkinning = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) &&
 			(Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+		const bool bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
 
 		FPipelineState* Base = FRenderResourceManager::GetPSO(bWorldNormal
 			? EPSOType::StaticMesh_WorldNormal : EPSOType::StaticMesh_Forward);
+		FMaterialRenderProxy Material{};
+		Batch.Material->GetRenderProxy(Material);
+		const FSceneRenderOptions Effective = ResolveMaterialLighting(Material, Options);
+		FShaderProgram* GraphShader = bWorldNormal ? nullptr
+												   : FindGraphShader(Material, EPSOType::StaticMesh_Forward, Effective.ReflectionModel, Effective.bUnlit, bGPUSkinning, bSkeletalMesh);
 		FShaderProgram* Shader = bWorldNormal
 			? FRenderResourceManager::GetWorldNormalShaderProgram(bGPUSkinning)
-			: GetMaterialForwardShader(*Batch.Material, Options, bGPUSkinning);
+			: FRenderResourceManager::GetForwardShaderProgram(Effective.ReflectionModel, Effective.ShadingModel, bGPUSkinning, Effective.bUnlit);
+		if (GraphShader)
+			Shader = GraphShader;
 		if (!Base || !Shader || !Shader->VertexShader || !Shader->PixelShader)
 			return;
 
-		const FMeshDrawConstantBuffer MaterialCB = MakeForwardMaterialCB(*Batch.Material);
+		FShaderProgram* UnlitGraphShader = GraphShader
+			? (Effective.bUnlit ? GraphShader : FindGraphShader(Material, EPSOType::StaticMesh_Forward, Effective.ReflectionModel, true, bGPUSkinning, bSkeletalMesh))
+			: nullptr;
+
+		const FMeshDrawConstantBuffer MaterialCB = MakeForwardMaterialCB(Material);
 		TArray<FMeshDrawShaderResource> BaseResources;
-		AppendMaterialTextures(*Batch.Material, true, BaseResources);
+		AppendMaterialTextures(Material, true, BaseResources, GraphShader != nullptr);
 		if (bGPUSkinning)
 			BaseResources.Add({ 16, EShaderBindFlagBits::Vertex, nullptr, Batch.VertexFactory.SkinningMatricesBuffer });
 
@@ -190,20 +311,24 @@ namespace
 			Cmd.IndexCount = Element.IndexCount ? Element.IndexCount : IB->GetIndexCount();
 			Cmd.BaseVertexLocation = Element.BaseVertexLocation;
 			Cmd.InstanceCount = Element.InstanceCount;
-			Cmd.Sampler = Batch.Material->SamplerState;
+			Cmd.Sampler = Material.SamplerState;
 			Cmd.SamplerStages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
 			Cmd.ShaderResources = BaseResources;
 			Cmd.ConstantBuffers.Add(MaterialCB);
+			if (GraphShader)
+				AppendGraphBindings(Material, Cmd.ShaderResources, Cmd.ConstantBuffers);
+			Cmd.UnlitMaterialGraphShader = UnlitGraphShader;
+			Cmd.bGPUSkinning = bGPUSkinning;
 			Cmd.PrimitiveId = ResolveElementPrimitiveId(Element);
 			Cmd.Material = Batch.Material;
 			Cmd.bUsesGPUScene = (Element.InstanceCount == 0);
-			Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+			Cmd.bSkeletalMesh = bSkeletalMesh;
 			Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
 			Cmd.bIsParticle = Batch.bIsParticle;
 			Cmd.bReceiveDecal = Element.bReceiveDecal;
 			Cmd.ObjectKey = Element.Proxy ? static_cast<const void*>(Element.Proxy) : static_cast<const void*>(&Element);
 			Cmd.Proxy = Element.Proxy;
-			FinalizeCommandKeys(Cmd, Batch.Material->SortID, Batch.MeshSortID, Batch.LODIndex);
+			FinalizeCommandKeys(Cmd, Batch.Material->GetSortID(), Batch.MeshSortID, Batch.LODIndex);
 			OutCommands.Add(std::move(Cmd));
 		}
 	}
@@ -220,14 +345,42 @@ namespace
 		case EVertexFactoryType::ParticleGpuSprite:
 			return EPSOType::Particle_GpuInstanced;
 		case EVertexFactoryType::ParticleMesh:
-			if (Batch.Material && Batch.Material->BlendState == EBlendState::Opaque)
+			if (Batch.Material && Batch.Material->GetBlendState() == EBlendState::Opaque)
 				return EPSOType::Particle_MeshOpaque;
-			if (Batch.Material && Batch.Material->BlendState == EBlendState::Additive)
+			if (Batch.Material && Batch.Material->GetBlendState() == EBlendState::Additive)
 				return EPSOType::Particle_MeshAdditive;
 			return EPSOType::Particle_MeshTranslucent;
 		default:
 			return EPSOType::Particle_Instanced;
 		}
+	}
+
+	// 파티클 머티리얼의 텍스처 유무와 기본 색상을 픽셀 셰이더 상수 버퍼로 전달한다
+	void AppendParticleMaterialBindings(const FMaterialRenderProxy& Material, FMeshDrawCommand& Cmd)
+	{
+		UTexture2D* AtlasTex = Material.Textures.IsValidIndex(0) ? Material.Textures[0] : nullptr;
+		const bool bHasTexture = AtlasTex && AtlasTex->GetResource() && AtlasTex->GetResource()->GetSRV();
+
+		struct FParticleMaterialConstants
+		{
+			FVector4 BaseColor;
+			float HasTexture = 0.0f;
+			float Pad[3] = {};
+		};
+
+		FMeshDrawConstantBuffer MaterialCB{};
+		MaterialCB.Slot = 2;
+		MaterialCB.Stages = EShaderBindFlagBits::Pixel;
+		FParticleMaterialConstants Constants{
+			Material.BaseColor,
+			bHasTexture ? 1.0f : 0.0f,
+			{ 0.0f, 0.0f, 0.0f }
+		};
+		std::memcpy(MaterialCB.Data.data(), &Constants, sizeof(Constants));
+		MaterialCB.DataSize = sizeof(Constants);
+
+		Cmd.ShaderResources.Add({ 0, EShaderBindFlagBits::Pixel, bHasTexture ? AtlasTex : nullptr, nullptr });
+		Cmd.ConstantBuffers.Add(MaterialCB);
 	}
 
 	void BuildParticleInstancedCommands(const FMeshBatch& Batch, const FMeshElementCollector* Collector,
@@ -249,7 +402,9 @@ namespace
 		if (!PSO || !PSO->Shader || !PSO->Shader->VertexShader || !PSO->Shader->PixelShader)
 			return;
 
-		UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
+		FMaterialRenderProxy Material{};
+		Batch.Material->GetRenderProxy(Material);
+		FShaderProgram* GraphShader = FindGraphShader(Material, PSOType);
 
 		for (const FMeshBatchElement& Element : Batch.Elements)
 		{
@@ -280,9 +435,14 @@ namespace
 			Cmd.IndexCount = Element.IndexCount ? Element.IndexCount : IB->GetIndexCount();
 			Cmd.BaseVertexLocation = Element.BaseVertexLocation;
 			Cmd.InstanceCount = Element.InstanceCount;
-			Cmd.Sampler = Batch.Material->SamplerState;
+			Cmd.Sampler = Material.SamplerState;
 			Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
-			Cmd.ShaderResources.Add({ 0, EShaderBindFlagBits::Pixel, AtlasTex, nullptr });
+			AppendParticleMaterialBindings(Material, Cmd);
+			if (GraphShader)
+			{
+				Cmd.Pipeline.Shader = GraphShader;
+				AppendGraphBindings(Material, Cmd.ShaderResources, Cmd.ConstantBuffers);
+			}
 			Cmd.ShaderResources.Add({ 1, EShaderBindFlagBits::Vertex, nullptr, InstanceBuffer });
 			Cmd.ConstantBuffers.Add(BatchCB);
 			Cmd.Material = Batch.Material;
@@ -290,7 +450,7 @@ namespace
 			Cmd.bIsParticle = true;
 			Cmd.bReceiveDecal = false;
 			Cmd.Proxy = Element.Proxy;
-			FinalizeCommandKeys(Cmd, Batch.Material->SortID, Batch.MeshSortID, Batch.LODIndex, SortKey);
+			FinalizeCommandKeys(Cmd, Batch.Material->GetSortID(), Batch.MeshSortID, Batch.LODIndex, SortKey);
 			OutCommands.Add(std::move(Cmd));
 		}
 	}
@@ -309,11 +469,14 @@ namespace
 		if (!VB)
 			return;
 
-		FPipelineState* PSO = FRenderResourceManager::GetPSO(EPSOType::Particle_GpuInstanced);
+		const EPSOType PSOType = EPSOType::Particle_GpuInstanced;
+		FPipelineState* PSO = FRenderResourceManager::GetPSO(PSOType);
 		if (!PSO || !PSO->Shader || !PSO->Shader->VertexShader || !PSO->Shader->PixelShader)
 			return;
 
-		UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
+		FMaterialRenderProxy Material{};
+		Batch.Material->GetRenderProxy(Material);
+		FShaderProgram* GraphShader = FindGraphShader(Material, PSOType);
 
 		for (const FMeshBatchElement& Element : Batch.Elements)
 		{
@@ -338,9 +501,14 @@ namespace
 			Cmd.IndexCount = Element.IndexCount ? Element.IndexCount : IB->GetIndexCount();
 			Cmd.BaseVertexLocation = Element.BaseVertexLocation;
 			Cmd.InstanceCount = Element.InstanceCount;
-			Cmd.Sampler = Batch.Material->SamplerState;
+			Cmd.Sampler = Material.SamplerState;
 			Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
-			Cmd.ShaderResources.Add({ 0, EShaderBindFlagBits::Pixel, AtlasTex, nullptr });
+			AppendParticleMaterialBindings(Material, Cmd);
+			if (GraphShader)
+			{
+				Cmd.Pipeline.Shader = GraphShader;
+				AppendGraphBindings(Material, Cmd.ShaderResources, Cmd.ConstantBuffers);
+			}
 			Cmd.ShaderResources.Add({ 1, EShaderBindFlagBits::Vertex, nullptr, Res->ParticleBuffer.get() });
 			Cmd.ConstantBuffers.Add(DrawCB);
 			Cmd.Material = Batch.Material;
@@ -348,7 +516,7 @@ namespace
 			Cmd.bIsParticle = true;
 			Cmd.bReceiveDecal = false;
 			Cmd.Proxy = Element.Proxy;
-			FinalizeCommandKeys(Cmd, Batch.Material->SortID, Batch.MeshSortID, Batch.LODIndex, SortKey);
+			FinalizeCommandKeys(Cmd, Batch.Material->GetSortID(), Batch.MeshSortID, Batch.LODIndex, SortKey);
 			OutCommands.Add(std::move(Cmd));
 		}
 	}
@@ -476,7 +644,9 @@ FShaderProgram* ResolveUnlitShaderOverride(const FMeshDrawCommand& Command, cons
 {
 	if (!Options.bUnlit || Command.bIsParticle)
 		return nullptr;
-	return FRenderResourceManager::GetForwardShaderProgram(Options.ReflectionModel, Options.ShadingModel, Command.bSkeletalMesh, true);
+	if (Command.UnlitMaterialGraphShader)
+		return Command.UnlitMaterialGraphShader;
+	return FRenderResourceManager::GetForwardShaderProgram(Options.ReflectionModel, Options.ShadingModel, Command.bGPUSkinning, true);
 }
 
 bool FDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
@@ -496,7 +666,7 @@ bool FDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FScene
 	if (!DepthPipeline || !Shader || !Shader->VertexShader || !Shader->PixelShader)
 		return false;
 
-	const uint16 MaterialSort = Batch.Material ? Batch.Material->SortID : 0;
+	const uint16 MaterialSort = Batch.Material ? Batch.Material->GetSortID() : 0;
 	for (const FMeshBatchElement& Element : Batch.Elements)
 	{
 		FIndexBuffer* IB = ResolveElementIndexBuffer(Element, Batch.VertexFactory, Collector);
@@ -554,7 +724,7 @@ bool FWorldNormalPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const 
 {
 	if (!Batch.IsOpaque() || Batch.bIsParticle || !Batch.Material)
 		return true;
-	if (Batch.Material->PSOType != EPSOType::StaticMesh_Opaque)
+	if (Batch.Material->GetPSOType() != EPSOType::StaticMesh_Opaque)
 		return true;
 
 	BuildForwardUberCommands(Batch, Options, Collector, true, OutCommands);
@@ -586,13 +756,23 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 	if (!VB)
 		return true;
 
-	const EPSOType PSOType = Batch.OverridePSOType != EPSOType::Count ? Batch.OverridePSOType : Batch.Material->PSOType;
+	const bool bIsStaticMaterialPSO =
+		Batch.Material->GetPSOType() == EPSOType::StaticMesh_Opaque ||
+		Batch.Material->GetPSOType() == EPSOType::StaticMesh_Translucent ||
+		Batch.Material->GetPSOType() == EPSOType::StaticMesh_Wireframe;
+	// 빌보드나 파티클 머티리얼을 썸네일 등 정적 메시로 그릴 때는 정적 반투명 셰이더로 폴백한다
+	const bool bStaticMeshFallback =
+		Batch.OverridePSOType == EPSOType::Count && !Batch.MaterialParamData && !bIsStaticMaterialPSO;
+	const EPSOType PSOType = bStaticMeshFallback
+		? EPSOType::StaticMesh_Translucent
+		: (Batch.OverridePSOType != EPSOType::Count ? Batch.OverridePSOType : Batch.Material->GetPSOType());
 	FPipelineState* Pipeline = FRenderResourceManager::GetPSO(PSOType);
 	if (!Pipeline)
 		return false;
 
 	const bool bGPUSkinning = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) &&
 		(Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+	const bool bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
 	const bool bUsesGPUSceneShader = (PSOType == EPSOType::StaticMesh_Translucent ||
 		PSOType == EPSOType::StaticMesh_Opaque || PSOType == EPSOType::StaticMesh_Wireframe);
 
@@ -604,14 +784,29 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 			return false;
 	}
 
+	FMaterialRenderProxy Material{};
+	Batch.Material->GetRenderProxy(Material);
+	FShaderProgram* GraphShader = nullptr;
+	switch (PSOType)
+	{
+	case EPSOType::StaticMesh_Translucent:
+	case EPSOType::Particle_AlphaBlend:
+	case EPSOType::Particle_Additive:
+	case EPSOType::Particle_Sprite:
+		GraphShader = FindGraphShader(Material, PSOType, Options.ReflectionModel, Options.bUnlit, bGPUSkinning, bSkeletalMesh);
+		if (GraphShader)
+			EffectivePipeline.Shader = GraphShader;
+		break;
+	default:
+		break;
+	}
+
 	FMeshDrawConstantBuffer MaterialCB{};
 	MaterialCB.Slot = 1;
 	MaterialCB.Stages = EShaderBindFlagBits::Pixel;
-	if (Batch.Material->PSOType == EPSOType::StaticMesh_Opaque ||
-		Batch.Material->PSOType == EPSOType::StaticMesh_Translucent ||
-		Batch.Material->PSOType == EPSOType::StaticMesh_Wireframe)
+	if (bIsStaticMaterialPSO || bStaticMeshFallback)
 	{
-		const FStaticMeshMaterialParams Params = MakeStaticMaterial(*Batch.Material);
+		const FStaticMeshMaterialParams Params = MakeStaticMaterial(Material);
 		std::memcpy(MaterialCB.Data.data(), &Params, sizeof(Params));
 		MaterialCB.DataSize = sizeof(Params);
 	}
@@ -622,7 +817,7 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 	}
 
 	TArray<FMeshDrawShaderResource> Resources;
-	AppendMaterialTextures(*Batch.Material, false, Resources);
+	AppendMaterialTextures(Material, false, Resources, GraphShader != nullptr);
 	if (bGPUSkinning)
 		Resources.Add({ 16, EShaderBindFlagBits::Vertex, nullptr, Batch.VertexFactory.SkinningMatricesBuffer });
 
@@ -640,11 +835,13 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 		Cmd.IndexCount = Element.IndexCount ? Element.IndexCount : IB->GetIndexCount();
 		Cmd.BaseVertexLocation = Element.BaseVertexLocation;
 		Cmd.InstanceCount = Element.InstanceCount;
-		Cmd.Sampler = Batch.Material->SamplerState;
+		Cmd.Sampler = Material.SamplerState;
 		Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
 		Cmd.ShaderResources = Resources;
 		if (MaterialCB.DataSize > 0)
 			Cmd.ConstantBuffers.Add(MaterialCB);
+		if (GraphShader)
+			AppendGraphBindings(Material, Cmd.ShaderResources, Cmd.ConstantBuffers);
 
 		if (bUsesGPUSceneShader)
 		{
@@ -664,13 +861,13 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 		}
 
 		Cmd.Material = Batch.Material;
-		Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
+		Cmd.bSkeletalMesh = bSkeletalMesh;
 		Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
 		Cmd.bIsParticle = Batch.bIsParticle;
 		Cmd.bReceiveDecal = Element.bReceiveDecal;
 		Cmd.ObjectKey = Element.Proxy ? static_cast<const void*>(Element.Proxy) : static_cast<const void*>(&Element);
 		Cmd.Proxy = Element.Proxy;
-		FinalizeCommandKeys(Cmd, Batch.Material->SortID, Batch.MeshSortID, Batch.LODIndex, SortKey);
+		FinalizeCommandKeys(Cmd, Batch.Material->GetSortID(), Batch.MeshSortID, Batch.LODIndex, SortKey);
 		OutCommands.Add(std::move(Cmd));
 	}
 	return true;
@@ -700,7 +897,7 @@ bool FShadowDepthMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSce
 			return false;
 	}
 
-	const uint16 MaterialSort = Batch.Material ? Batch.Material->SortID : 0;
+	const uint16 MaterialSort = Batch.Material ? Batch.Material->GetSortID() : 0;
 	for (const FMeshBatchElement& Element : Batch.Elements)
 	{
 		FIndexBuffer* IB = ResolveElementIndexBuffer(Element, Batch.VertexFactory, Collector);

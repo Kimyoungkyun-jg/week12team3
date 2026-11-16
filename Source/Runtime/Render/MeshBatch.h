@@ -79,7 +79,7 @@ struct FGpuParticleBatch
 {
 	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
 	UStaticMesh* Mesh = nullptr;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	uint32 MaxParticles = 0;
 	uint32 ParticleStride = 112;
 	bool bResetRequested = false;
@@ -256,7 +256,7 @@ struct FMeshBatchElement
 struct FMeshBatch
 {
 	FVertexFactory VertexFactory{};
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	const void* MaterialParamData = nullptr;
 	uint32 MaterialParamDataSize = 0;
 	EPSOType OverridePSOType = EPSOType::Count;
@@ -275,7 +275,7 @@ struct FMeshBatch
 			OverridePSOType != EPSOType::StaticMesh_Opaque &&
 			OverridePSOType != EPSOType::StaticMesh_Wireframe)
 			return false;
-		return Material && Material->PSOType == EPSOType::StaticMesh_Opaque;
+		return Material && Material->GetPSOType() == EPSOType::StaticMesh_Opaque;
 	}
 };
 

@@ -26,7 +26,7 @@ public:
 
 	virtual int32 GetNumMaterials() const override;
 	virtual FString GetMaterialSlotName(int32 SlotIndex) const override;
-	virtual UMaterial* GetDefaultMaterial(int32 SlotIndex) const override;
+	virtual UMaterialInterface* GetDefaultMaterial(int32 SlotIndex) const override;
 
 	bool IsEditorIcon() const { return bEditorIcon; }
 	void SetEditorIcon(bool IsEditorIcon)

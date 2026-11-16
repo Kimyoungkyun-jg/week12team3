@@ -63,9 +63,11 @@ struct FMeshDrawCommand
 	uint32 PrimitiveId = InvalidPrimitiveId;
 	uint32 StateBucketId = 0;
 	uint64 SortKey = 0;
-	const UMaterial* Material = nullptr;
+	const UMaterialInterface* Material = nullptr;
+	FShaderProgram* UnlitMaterialGraphShader = nullptr;
 
 	bool bUsesGPUScene = false;
+	bool bGPUSkinning = false;
 	bool bForceWireframe = false;
 	bool bSkeletalMesh = false;
 	bool bComputeSkinned = false;

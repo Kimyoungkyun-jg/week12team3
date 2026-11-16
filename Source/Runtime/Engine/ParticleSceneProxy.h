@@ -18,7 +18,7 @@ struct FParticleRenderData
 	float Width = 1.0f;
 	float Height = 1.0f;
 	float Rotation = 0.0f;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	FSubUVConstants Constants{};
 	UStaticMesh* Mesh = nullptr;
 	FVector MeshScale = FVector::OneVector;
@@ -33,7 +33,7 @@ public:
 	virtual ~FDynamicEmitterDataBase() = default;
 	virtual bool HasParticles() const = 0;
 	virtual void GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
-		UMaterial* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const = 0;
+		UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const = 0;
 };
 
 class FDynamicSpriteEmitterData : public FDynamicEmitterDataBase
@@ -43,28 +43,28 @@ public:
 
 	bool HasParticles() const override { return !Sprites.IsEmpty(); }
 	void GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
-		UMaterial* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
+		UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
 };
 
 class FDynamicMeshEmitterData : public FDynamicEmitterDataBase
 {
 public:
 	UStaticMesh* Mesh = nullptr;
-	UMaterial* MaterialOverride = nullptr;
+	UMaterialInterface* MaterialOverride = nullptr;
 	bool bUseLocalSpace = false;
 	FMatrix LocalToWorld = FMatrix::Identity;
 	TArray<FParticleRenderData> Particles;
 
 	bool HasParticles() const override { return Mesh != nullptr && !Particles.IsEmpty(); }
 	void GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
-		UMaterial* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
+		UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
 };
 
 class FDynamicGpuSpriteEmitterData : public FDynamicEmitterDataBase
 {
 public:
 	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	mutable FGpuParticleSimParams SimParams{};
 	mutable TArray<uint8> PendingSpawnBytes;
 	TArray<FVector4> CurveLUT;
@@ -79,7 +79,7 @@ public:
 
 	bool HasParticles() const override { return MaxParticles > 0 && GpuResources != nullptr; }
 	void GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
-		UMaterial* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
+		UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
 };
 
 struct FParticleDynamicData
@@ -110,6 +110,6 @@ private:
 	void SyncPrimitiveState();
 
 	UStaticMesh* QuadMesh = nullptr;
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	FParticleDynamicData DynamicData;
 };

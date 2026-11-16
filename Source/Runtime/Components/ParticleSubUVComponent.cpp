@@ -2,6 +2,7 @@
 #include "Components/ParticleSubUVComponent.h"
 #include "Asset/AssetManager.h"
 #include "Render/RenderCommand.h"
+#include "Render/MaterialInstance.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -44,13 +45,17 @@ bool UParticleSubUVComponent::SetParticleTexture(const FString& Path)
 
 	if (Material != TextureMaterialInstance)
 	{
-		UMaterial* Instance = UMaterial::CreateInstance(Material);
+		UMaterialInstanceDynamic* Instance = UMaterial::CreateDynamicInstance(Material);
+		if (!Instance)
+		{
+			return false;
+		}
+
 		delete TextureMaterialInstance;
 		TextureMaterialInstance = Instance;
 		SetMaterial(0, Instance);
 	}
-	if (Material->Textures.IsEmpty()) Material->Textures.Add(Texture);
-	else Material->Textures[0] = Texture;
+	TextureMaterialInstance->SetTexture0Override(Texture);
 	return true;
 }
 
@@ -260,7 +265,7 @@ void UParticleSubUVComponent::BeginViewSubmission()
         Value.AtlasColSize = static_cast<float>(ColSize);
         Value.AtlasRowSize = static_cast<float>(RowSize);
         Value.Alpha = Particle.Alpha;
-		Value.DecodeSRGB = 0.0f;
+		Value.DecodeSRGB = 1.0f;
         Constants.Add(Value);
     }
 }
@@ -269,7 +274,7 @@ void UParticleSubUVComponent::BeginViewSubmission()
 // 실제 재질의 블렌드 상태로 프레임 공통 정렬과 View별 정렬을 구분한다.
 bool UParticleSubUVComponent::UsesOpaqueMaterial() const
 {
-    return Material && Material->BlendState == EBlendState::Opaque;
+	return Material && Material->GetBlendState() == EBlendState::Opaque;
 }
 
 void UParticleSubUVComponent::PushRenderStateToProxy()

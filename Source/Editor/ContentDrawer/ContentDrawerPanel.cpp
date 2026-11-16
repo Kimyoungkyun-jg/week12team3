@@ -40,6 +40,8 @@ FString SkeletonKeyFromPath(const std::filesystem::path& Path);
 #include "Render/Swapchain.h"
 #include "Render/SkyboxRenderer.h"
 #include <cctype>
+#include <algorithm>
+#include <cmath>
 
 FContentDrawerPanel* FContentDrawerPanel::ActiveInstance = nullptr;
 
@@ -65,6 +67,14 @@ void FContentDrawerPanel::Release()
 	MaterialThumbnailActor = nullptr;
 	ThumbnailSkybox.reset();
 	ThumbnailCache.clear();
+
+	PendingMaterialThumbnailPaths.clear();
+	PendingStaticMeshThumbnailPaths.clear();
+	PendingSkeletalMeshThumbnailPaths.clear();
+
+	PendingTransientMaterialThumbnails.clear();
+	PendingTransientStaticMeshThumbnails.clear();
+
 	bStudioInitialized = false;
 }
 
@@ -90,6 +100,69 @@ void FContentDrawerPanel::Tick(float DeltaTime)
 		FbxCachePath.clear();
 		bRefreshThumbnails = false;
 	}
+
+	UStaticMesh* SphereMesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
+
+	if (SphereMesh)
+	{
+		for (const FString& Path : PendingMaterialThumbnailPaths)
+		{
+			const FString CacheKey = "MAT:" + Path;
+			ThumbnailCache.erase(CacheKey);
+
+			if (UMaterialInterface* Material = UAssetManager::LoadMaterialAsset(Path))
+			{
+				RenderStaticMeshThumbnail(CacheKey, SphereMesh, Material);
+			}
+		}
+
+		PendingMaterialThumbnailPaths.clear();
+
+		for (const auto& [CacheKey, Material] : PendingTransientMaterialThumbnails)
+		{
+			ThumbnailCache.erase(CacheKey);
+
+			if (Material && !Material->IsRetired())
+			{
+				RenderStaticMeshThumbnail(CacheKey, SphereMesh, Material);
+			}
+		}
+
+		PendingTransientMaterialThumbnails.clear();
+	}
+
+	for (const FString& Path : PendingStaticMeshThumbnailPaths)
+	{
+		const FString CacheKey = "MESH:" + Path;
+		ThumbnailCache.erase(CacheKey);
+
+		if (UStaticMesh* Mesh = UAssetManager::GetAssetByPath<UStaticMesh>(Path))
+		{
+			RenderStaticMeshThumbnail(CacheKey, Mesh, nullptr);
+		}
+	}
+
+	PendingStaticMeshThumbnailPaths.clear();
+
+	for (const auto& [CacheKey, Mesh] : PendingTransientStaticMeshThumbnails)
+	{
+		ThumbnailCache.erase(CacheKey);
+
+		if (Mesh && !Mesh->IsRetired())
+		{
+			RenderStaticMeshThumbnail(CacheKey, Mesh, nullptr);
+		}
+	}
+
+	PendingTransientStaticMeshThumbnails.clear();
+
+	for (const FString& Path : PendingSkeletalMeshThumbnailPaths)
+	{
+		ThumbnailCache.erase(Path);
+		RenderSkeletalMeshThumbnail(Path);
+	}
+
+	PendingSkeletalMeshThumbnailPaths.clear();
 }
 
 void FContentDrawerPanel::OnRender()
@@ -185,6 +258,11 @@ void FContentDrawerPanel::OnRender()
 				bNewBlendSpace2D = true;
 				bOpenCreateBlendSpace = true;
 			}
+			if (ImGui::MenuItem("Create Material"))
+			{
+				strcpy_s(NewAssetName, "NewMaterial");
+				bOpenCreateMaterial = true;
+			}
 			if (ImGui::MenuItem("Create AnimMontage") && OnOpenAsset)
 			{
 				strcpy_s(NewAssetName, "NewMontage");
@@ -205,6 +283,8 @@ void FContentDrawerPanel::OnRender()
 		if (bOpenCreateWidget) { ImGui::OpenPopup("Create Widget"); bOpenCreateWidget = false; }
 		if (bOpenCreateAnimGraph) { ImGui::OpenPopup("Create AnimGraph"); bOpenCreateAnimGraph = false; }
 		if (bOpenCreateBlendSpace) { ImGui::OpenPopup("Create BlendSpace"); bOpenCreateBlendSpace = false; }
+		if (bOpenCreateMaterial) { ImGui::OpenPopup("Create Material"); bOpenCreateMaterial = false; }
+		if (bOpenCreateMaterialInstance) { ImGui::OpenPopup("Create Material Instance"); bOpenCreateMaterialInstance = false; }
 		if (bOpenCreateAnimationAsset) { ImGui::OpenPopup("Create Animation Asset"); bOpenCreateAnimationAsset = false; }
 		if (bOpenCreateParticleSystem) { ImGui::OpenPopup("Create Particle System"); bOpenCreateParticleSystem = false; }
 		if (ImGui::BeginPopupModal("Create Particle System", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
@@ -277,6 +357,47 @@ void FContentDrawerPanel::OnRender()
 			{
 				ImGui::CloseCurrentPopup();
 			}
+			ImGui::EndPopup();
+		}
+		if (ImGui::BeginPopupModal("Create Material", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::InputText("Name", NewAssetName, sizeof(NewAssetName));
+			const FString Name = NewAssetName;
+			const fs::path Target = CurrentPath / (Name + ".material");
+			const bool bExists = fs::exists(Target);
+			const bool bInvalid = Name.empty() || Name == "." || Name == ".." || Name.find_first_of("\\/:*?\"<>|") != FString::npos;
+			if (bExists) ImGui::TextUnformatted("An asset with this name already exists.");
+			if (bInvalid) ImGui::TextUnformatted("Enter a valid asset name.");
+			ImGui::BeginDisabled(bExists || bInvalid || !OnCreateMaterial);
+			if (ImGui::Button("Create"))
+			{
+				OnCreateMaterial(FbxPath::ToString(Target));
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+			ImGui::EndPopup();
+		}
+		if (ImGui::BeginPopupModal("Create Material Instance", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::TextWrapped("Parent Material: %s", PendingMaterialInstanceParent.c_str());
+			ImGui::InputText("Name", NewAssetName, sizeof(NewAssetName));
+			const FString Name = NewAssetName;
+			const fs::path Target = CurrentPath / (Name + ".material");
+			const bool bExists = fs::exists(Target);
+			const bool bInvalid = Name.empty() || Name == "." || Name == ".." || Name.find_first_of("\\/:*?\"<>|") != FString::npos;
+			if (bExists) ImGui::TextUnformatted("An asset with this name already exists.");
+			if (bInvalid) ImGui::TextUnformatted("Enter a valid asset name.");
+			ImGui::BeginDisabled(bExists || bInvalid || !OnCreateMaterialInstance);
+			if (ImGui::Button("Create"))
+			{
+				OnCreateMaterialInstance(FbxPath::ToString(Target), PendingMaterialInstanceParent);
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndDisabled();
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
 			ImGui::EndPopup();
 		}
 		if (ImGui::BeginPopupModal("Create AnimGraph", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
@@ -429,7 +550,7 @@ void FContentDrawerPanel::OnRender()
 							ThumbnailSRV = FbxThumb->GetSRV();
 						}
 					}
-					else if (UMaterial* MatAsset = Cast<UMaterial>(Asset))
+					else if (UMaterialInterface* MatAsset = Cast<UMaterialInterface>(Asset))
 					{
 						if (FTexture2D* MatThumb = GetOrCreateMaterialThumbnail(MatAsset))
 						{
@@ -493,6 +614,12 @@ void FContentDrawerPanel::OnRender()
 					if (Extension == ".fbxbin")
 					{
 						DrawFbxBinaryMenu(PathString);
+					}
+					if (Extension == ".material" && UAssetManager::GetAssetByPath<UMaterialInterface>(PathString) && ImGui::MenuItem("Create Material Instance"))
+					{
+						PendingMaterialInstanceParent = PathString;
+						strcpy_s(NewAssetName, "NewMaterialInstance");
+						bOpenCreateMaterialInstance = true;
 					}
 					if (Extension == ".fbxbin" && Path.filename().string().starts_with("SKEL_") &&
 						ImGui::MenuItem("Create AnimGraph"))
@@ -865,13 +992,49 @@ void FContentDrawerPanel::InitThumbnailStudio()
 
 FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString& FbxPath)
 {
+	if (FbxPath.empty())
+	{
+		return nullptr;
+	}
+
 	auto It = ThumbnailCache.find(FbxPath);
-	if (It != ThumbnailCache.end())
+
+	if (It != ThumbnailCache.end() && It->second)
 	{
 		return It->second.get();
 	}
 
+	if (It != ThumbnailCache.end())
+	{
+		ThumbnailCache.erase(It);
+	}
+
+	PendingSkeletalMeshThumbnailPaths.insert(FbxPath);
+	return nullptr;
+}
+
+
+FTexture2D* FContentDrawerPanel::RenderSkeletalMeshThumbnail(const FString& FbxPath)
+{
+	if (FbxPath.empty())
+	{
+		return nullptr;
+	}
+
+	auto It = ThumbnailCache.find(FbxPath);
+
+	if (It != ThumbnailCache.end() && It->second)
+	{
+		return It->second.get();
+	}
+
+	if (It != ThumbnailCache.end())
+	{
+		ThumbnailCache.erase(It);
+	}
+
 	InitThumbnailStudio();
+
 	if (!ThumbnailActor || !ThumbnailWorld)
 	{
 		ThumbnailCache[FbxPath] = nullptr;
@@ -879,19 +1042,30 @@ FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString&
 	}
 
 	USkeletalMesh* Mesh = UAssetManager::LoadFbxSkeletalMesh(FbxPath);
+
 	if (!Mesh)
 	{
 		ThumbnailCache[FbxPath] = nullptr;
 		return nullptr;
 	}
+
+	USkeletalMeshComponent* MeshComp = ThumbnailActor->GetSkeletalMeshComponent();
+
+	if (!MeshComp)
+	{
+		ThumbnailCache[FbxPath] = nullptr;
+		return nullptr;
+	}
+
 	if (MaterialThumbnailActor && MaterialThumbnailActor->GetStaticMeshComponent())
 	{
 		MaterialThumbnailActor->GetStaticMeshComponent()->SetVisibility(false);
 	}
-	ThumbnailActor->GetSkeletalMeshComponent()->SetVisibility(true);
-	ThumbnailActor->GetSkeletalMeshComponent()->SetSkeletalMesh(Mesh);
 
-	const FBox Bounds = ThumbnailActor->GetSkeletalMeshComponent()->CalcBounds();
+	MeshComp->SetVisibility(true);
+	MeshComp->SetSkeletalMesh(Mesh);
+
+	const FBox Bounds = MeshComp->CalcBounds();
 	const FVector Extent = Bounds.Max - Bounds.Min;
 	const FVector Center = (Bounds.Min + Bounds.Max) * 0.5f;
 
@@ -906,18 +1080,20 @@ FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString&
 	if (UEditorEngine* EdEngine = Cast<UEditorEngine>(GEngine))
 	{
 		EdEngine->RenderPreviewViewport(&ThumbnailClient, ThumbnailWorld, nullptr, ThumbnailSkybox.get(), false);
+
 		FEngineLoop& Loop = GEngine->GetEngineLoop();
+
 		if (FSwapchain* SC = Loop.GetSwapchain())
 		{
 			if (FWindow* Win = Loop.GetMainWindow())
 			{
-				RenderCommand::BindRenderPassNoClear(SC->GetBackbuffer(), nullptr,
-					Win->GetWidth(), Win->GetHeight());
+				RenderCommand::BindRenderPassNoClear(SC->GetBackbuffer(), nullptr, Win->GetWidth(), Win->GetHeight());
 			}
 		}
 	}
 
 	FTexture2D* RenderedTarget = ThumbnailClient.GetColorTarget();
+
 	if (!RenderedTarget)
 	{
 		ThumbnailCache[FbxPath] = nullptr;
@@ -932,6 +1108,7 @@ FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString&
 	Desc.BindFlags = ETextureBindFlags::ShaderResource;
 
 	TUniquePtr<FTexture2D> CachedTex = RenderCommand::CreateTexture2D(Desc);
+
 	if (CachedTex)
 	{
 		RenderCommand::CopyTexture(CachedTex.get(), RenderedTarget);
@@ -943,10 +1120,11 @@ FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString&
 	return nullptr;
 }
 
+
 FTexture2D* FContentDrawerPanel::RenderStaticMeshThumbnail(
 	const FString& CacheKey,
 	UStaticMesh* Mesh,
-	UMaterial* OverrideMaterial)
+	UMaterialInterface* OverrideMaterial)
 {
 	if (!Mesh)
 	{
@@ -973,6 +1151,11 @@ FTexture2D* FContentDrawerPanel::RenderStaticMeshThumbnail(
 	}
 
 	UStaticMeshComponent* MeshComp = MaterialThumbnailActor->GetStaticMeshComponent();
+
+	if (!MeshComp)
+	{
+		return nullptr;
+	}
 	MeshComp->SetVisibility(true);
 	MeshComp->ClearOverrideMaterials();
 	MeshComp->SetStaticMesh(Mesh);
@@ -1029,39 +1212,94 @@ FTexture2D* FContentDrawerPanel::RenderStaticMeshThumbnail(
 	return nullptr;
 }
 
-FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterial* Material)
+FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterialInterface* Material)
 {
-	if (!Material)
+	if (!Material || Material->IsRetired())
 	{
 		return nullptr;
 	}
 
-	const FString MatKey = !Material->GetPath().empty()
-		? Material->GetPath()
-		: std::to_string(reinterpret_cast<uintptr_t>(Material));
-	const FString CacheKey = "MAT:" + MatKey;
+	FString MaterialPath = Material->GetPath();
+	std::replace(MaterialPath.begin(), MaterialPath.end(), '\\', '/');
+
+	while (MaterialPath.rfind("Assets/", 0) == 0)
+	{
+		MaterialPath.erase(0, 7);
+	}
+
+	const bool bTransient = MaterialPath.empty();
+
+	const FString CacheKey = bTransient
+		? "MAT_PTR:" + std::to_string(reinterpret_cast<uintptr_t>(Material))
+		: "MAT:" + MaterialPath;
 
 	auto It = ThumbnailCache.find(CacheKey);
-	if (It != ThumbnailCache.end())
+
+	if (It != ThumbnailCache.end() && It->second)
 	{
 		return It->second.get();
 	}
 
-	UStaticMesh* SphereMesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
-	return RenderStaticMeshThumbnail(CacheKey, SphereMesh, Material);
+	if (It != ThumbnailCache.end())
+	{
+		ThumbnailCache.erase(It);
+	}
+
+	if (bTransient)
+	{
+		PendingTransientMaterialThumbnails[CacheKey] = Material;
+	}
+	else
+	{
+		PendingMaterialThumbnailPaths.insert(MaterialPath);
+	}
+
+	return nullptr;
 }
 
 FTexture2D* FContentDrawerPanel::GetOrCreateStaticMeshThumbnail(UStaticMesh* Mesh)
 {
-	if (!Mesh)
+	if (!Mesh || Mesh->IsRetired())
 	{
 		return nullptr;
 	}
 
-	const FString MeshKey = !Mesh->GetPath().empty()
-		? Mesh->GetPath()
-		: std::to_string(reinterpret_cast<uintptr_t>(Mesh));
-	return RenderStaticMeshThumbnail("MESH:" + MeshKey, Mesh, nullptr);
+	FString MeshPath = Mesh->GetPath();
+	std::replace(MeshPath.begin(), MeshPath.end(), '\\', '/');
+
+	while (MeshPath.rfind("Assets/", 0) == 0)
+	{
+		MeshPath.erase(0, 7);
+	}
+
+	const bool bTransient = MeshPath.empty();
+
+	const FString MeshKey = bTransient
+		? "MESH_PTR:" + std::to_string(reinterpret_cast<uintptr_t>(Mesh))
+		: "MESH:" + MeshPath;
+
+	auto It = ThumbnailCache.find(MeshKey);
+
+	if (It != ThumbnailCache.end() && It->second)
+	{
+		return It->second.get();
+	}
+
+	if (It != ThumbnailCache.end())
+	{
+		ThumbnailCache.erase(It);
+	}
+
+	if (bTransient)
+	{
+		PendingTransientStaticMeshThumbnails[MeshKey] = Mesh;
+	}
+	else
+	{
+		PendingStaticMeshThumbnailPaths.insert(MeshPath);
+	}
+
+	return nullptr;
 }
 
 ID3D11ShaderResourceView* FContentDrawerPanel::GetStaticMeshThumbnailSRV(UStaticMesh* Mesh)
@@ -1075,7 +1313,7 @@ ID3D11ShaderResourceView* FContentDrawerPanel::GetStaticMeshThumbnailSRV(UStatic
 	return Tex ? Tex->GetSRV() : nullptr;
 }
 
-ID3D11ShaderResourceView* FContentDrawerPanel::GetMaterialThumbnailSRV(UMaterial* Material)
+ID3D11ShaderResourceView* FContentDrawerPanel::GetMaterialThumbnailSRV(UMaterialInterface* Material)
 {
 	if (!ActiveInstance || !Material)
 	{
@@ -1088,13 +1326,15 @@ ID3D11ShaderResourceView* FContentDrawerPanel::GetMaterialThumbnailSRV(UMaterial
 
 bool FContentDrawerPanel::DrawMaterialPicker(
 	const char* Label,
-	UMaterial*& InOutMaterial,
+	UMaterialInterface*& InOutMaterial,
 	const char* NullLabel,
-	const UMaterial* HighlightBase)
+	const UMaterial* HighlightBase,
+	uint32 RequiredUsageFlag)
 {
 	bool bChanged = false;
 	const float InlineThumbSize = EditorUIScale::Px(64.0f);
-	const UMaterial* DisplayBase = HighlightBase ? HighlightBase : (InOutMaterial ? InOutMaterial->GetBaseAsset() : nullptr);
+	const UMaterial* DisplayBase = HighlightBase ? HighlightBase : (InOutMaterial ? InOutMaterial->GetBaseMaterial() : nullptr);
+	UMaterial* FallbackPreview = const_cast<UMaterial*>(HighlightBase);
 	const FString PreviewText =
 		(InOutMaterial && !InOutMaterial->GetPath().empty()) ? InOutMaterial->GetPath() :
 		DisplayBase ? DisplayBase->GetPath() :
@@ -1103,7 +1343,7 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 
 	ImGui::PushID(Label);
 
-	if (ID3D11ShaderResourceView* InlineSRV = GetMaterialThumbnailSRV(InOutMaterial))
+	if (ID3D11ShaderResourceView* InlineSRV = GetMaterialThumbnailSRV(InOutMaterial ? InOutMaterial : FallbackPreview))
 	{
 		ImGui::Image(reinterpret_cast<ImTextureID>(InlineSRV), ImVec2(InlineThumbSize, InlineThumbSize));
 		if (ImGui::IsItemHovered())
@@ -1120,7 +1360,8 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 	ImGui::BeginGroup();
 	ImGui::TextUnformatted(Label);
 	ImGui::SetNextItemWidth(-1.0f);
-	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Appearing);
+	// 콤보 팝업의 자동 리사이즈와 가용 영역 계산이 매 프레임 순환하지 않도록 크기를 고정한다
+	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Always);
 	ImGui::SetNextWindowSizeConstraints(
 		ImVec2(EditorUIScale::Px(420.0f), EditorUIScale::Px(220.0f)),
 		ImVec2(EditorUIScale::Px(760.0f), EditorUIScale::Px(460.0f)));
@@ -1128,10 +1369,10 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 	if (ImGui::BeginCombo("##MaterialPicker", PreviewText.c_str()))
 	{
 		const ImVec2 Avail = ImGui::GetContentRegionAvail();
-		const float PreviewPaneWidth = EditorUIScale::Px(176.0f);
+		const float PreviewPaneWidth = std::floor(EditorUIScale::Px(176.0f));
 		const float Spacing = ImGui::GetStyle().ItemSpacing.x;
-		const float ListPaneWidth = std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing);
-		const float PaneHeight = std::max(EditorUIScale::Px(180.0f), Avail.y);
+		const float ListPaneWidth = std::floor(std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing));
+		const float PaneHeight = std::floor(std::max(EditorUIScale::Px(120.0f), Avail.y));
 
 		// 왼쪽 목록 창
 		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.45f, 0.30f, 0.38f, 1.00f));
@@ -1145,13 +1386,21 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 			if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 				ImGui::CloseCurrentPopup();
 
-			const TArray<UMaterial*> Candidates = EditorSort::CollectSorted<UMaterial>(
-				TObjectIterator<UMaterial>(),
-				[](const UMaterial* M) { return M->GetPath(); },
-				[](const UMaterial* M) { return !M->IsRetired() && !M->GetPath().empty(); });
+			const TArray<UMaterialInterface*> Candidates = EditorSort::CollectSorted<UMaterialInterface>(
+				TObjectIterator<UMaterialInterface>(),
+				[](const UMaterialInterface* M) { return M->GetPath(); },
+				[](const UMaterialInterface* M) { return !M->IsRetired() && !M->GetPath().empty(); });
 
-			for (UMaterial* Candidate : Candidates)
+			for (UMaterialInterface* Candidate : Candidates)
 			{
+				const UMaterial* CandidateBase = Candidate->GetBaseMaterial();
+
+				if (RequiredUsageFlag != 0 && Candidate != InOutMaterial &&
+					(!CandidateBase || (CandidateBase->UsageFlags & RequiredUsageFlag) != RequiredUsageFlag))
+				{
+					continue;
+				}
+
 				const bool bSelected = (Candidate == InOutMaterial) || (HighlightBase && Candidate == HighlightBase);
 				ImGui::PushID(Candidate);
 				if (ImGui::Selectable(Candidate->GetPath().c_str(), bSelected, ImGuiSelectableFlags_NoAutoClosePopups))
@@ -1172,13 +1421,15 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 		ImGui::SameLine();
 
 		// 오른쪽 선택 썸네일 창
-		if (ImGui::BeginChild("##MaterialThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
+		if (ImGui::BeginChild("##MaterialThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders,
+			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 		{
 			const float LargeThumbSize = EditorUIScale::Px(136.0f);
 			const float PadX = std::max(0.0f, (ImGui::GetContentRegionAvail().x - LargeThumbSize) * 0.5f);
 			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + PadX);
 
-			if (ID3D11ShaderResourceView* ThumbSRV = GetMaterialThumbnailSRV(InOutMaterial))
+			UMaterialInterface* PreviewMaterial = InOutMaterial ? InOutMaterial : FallbackPreview;
+			if (ID3D11ShaderResourceView* ThumbSRV = GetMaterialThumbnailSRV(PreviewMaterial))
 			{
 				ImGui::Image(reinterpret_cast<ImTextureID>(ThumbSRV), ImVec2(LargeThumbSize, LargeThumbSize));
 			}
@@ -1189,8 +1440,8 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 				ImGui::EndDisabled();
 			}
 
-			const FString CurrentLabel = InOutMaterial
-				? (!InOutMaterial->GetPath().empty() ? InOutMaterial->GetPath() : PreviewText)
+			const FString CurrentLabel = PreviewMaterial
+				? (!PreviewMaterial->GetPath().empty() ? PreviewMaterial->GetPath() : PreviewText)
 				: FString(NullLabel);
 			ImGui::Separator();
 			ImGui::TextWrapped("%s", CurrentLabel.c_str());
@@ -1234,7 +1485,8 @@ bool FContentDrawerPanel::DrawStaticMeshPicker(
 	ImGui::BeginGroup();
 	ImGui::TextUnformatted(Label);
 	ImGui::SetNextItemWidth(-1.0f);
-	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Appearing);
+	// 콤보 팝업의 자동 리사이즈와 가용 영역 계산이 매 프레임 순환하지 않도록 크기를 고정한다
+	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Always);
 	ImGui::SetNextWindowSizeConstraints(
 		ImVec2(EditorUIScale::Px(420.0f), EditorUIScale::Px(220.0f)),
 		ImVec2(EditorUIScale::Px(760.0f), EditorUIScale::Px(460.0f)));
@@ -1242,10 +1494,10 @@ bool FContentDrawerPanel::DrawStaticMeshPicker(
 	if (ImGui::BeginCombo("##StaticMeshPicker", PreviewText.c_str()))
 	{
 		const ImVec2 Avail = ImGui::GetContentRegionAvail();
-		const float PreviewPaneWidth = EditorUIScale::Px(176.0f);
+		const float PreviewPaneWidth = std::floor(EditorUIScale::Px(176.0f));
 		const float Spacing = ImGui::GetStyle().ItemSpacing.x;
-		const float ListPaneWidth = std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing);
-		const float PaneHeight = std::max(EditorUIScale::Px(180.0f), Avail.y);
+		const float ListPaneWidth = std::floor(std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing));
+		const float PaneHeight = std::floor(std::max(EditorUIScale::Px(120.0f), Avail.y));
 
 		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.45f, 0.30f, 0.38f, 1.00f));
 		if (ImGui::BeginChild("##MeshListPane", ImVec2(ListPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
@@ -1284,7 +1536,8 @@ bool FContentDrawerPanel::DrawStaticMeshPicker(
 
 		ImGui::SameLine();
 
-		if (ImGui::BeginChild("##MeshThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
+		if (ImGui::BeginChild("##MeshThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders,
+			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 		{
 			const float LargeThumbSize = EditorUIScale::Px(136.0f);
 			const float PadX = std::max(0.0f, (ImGui::GetContentRegionAvail().x - LargeThumbSize) * 0.5f);
@@ -1321,5 +1574,18 @@ void FContentDrawerPanel::InvalidateMaterialThumbnail(const FString& Path)
 		return;
 	}
 
-	ActiveInstance->ThumbnailCache.erase("MAT:" + Path);
+	FString MaterialPath = Path;
+	std::replace(MaterialPath.begin(), MaterialPath.end(), '\\', '/');
+
+	while (MaterialPath.rfind("Assets/", 0) == 0)
+	{
+		MaterialPath.erase(0, 7);
+	}
+
+	if (MaterialPath.empty())
+	{
+		return;
+	}
+
+	ActiveInstance->PendingMaterialThumbnailPaths.insert(MaterialPath);
 }

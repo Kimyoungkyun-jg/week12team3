@@ -626,7 +626,7 @@ FSkeletalMeshProxyData USkeletalMeshComponent::BuildProxyData() const
 			Range.FirstSection = State->Sections.Num();
 			for (const FSkeletalMeshSection& Section : SkeletalMesh->GetMeshData(LOD).Sections)
 			{
-				UMaterial* Material = GetMaterial(Section.MaterialSlotIndex);
+				UMaterialInterface* Material = GetMaterial(Section.MaterialSlotIndex);
 				if (Material)
 					State->Sections.Add({ Material, Section.StartIndex, Section.IndexCount });
 			}

@@ -2,6 +2,8 @@
 #include "Core/ResourcePaths.h"
 #include "ExponentialHeightFogActor.h"
 #include "Asset/AssetManager.h"
+#include "Render/Material.h"
+#include "Render/MaterialInstance.h"
 
 AExponentialHeightFogActor::AExponentialHeightFogActor()
 {
@@ -21,8 +23,13 @@ AExponentialHeightFogActor::AExponentialHeightFogActor()
     UTexture2D* Icon = UAssetManager::Get().LoadTexture(ResourcePaths::FogIcon);
     if (Base && Icon)
     {
-        UMaterial* IconMat = UMaterial::CreateInstance(Base);
-        IconMat->Textures[0] = Icon;                 
-        BillboardComponent->SetMaterial(0, IconMat);
+		UMaterialInstanceDynamic* IconMat = UMaterial::CreateDynamicInstance(Base);
+		if (!IconMat)
+		{
+			return;
+		}
+
+		IconMat->SetTexture0Override(Icon);
+		BillboardComponent->SetMaterial(0, IconMat);
     }
 }

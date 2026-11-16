@@ -131,7 +131,7 @@ void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 
 	const uint32 PrimIdx = static_cast<uint32>(PackedIndex);
 	auto EmitStaticSection = [&](uint8 ClampedLOD, FVertexBuffer* VB, FIndexBuffer* IB,
-		UMaterial* SectionMat, uint32 StartIndex, uint32 IndexCount)
+		UMaterialInterface* SectionMat, uint32 StartIndex, uint32 IndexCount)
 	{
 		if (!VB || !IB || !SectionMat)
 			return;
@@ -157,7 +157,7 @@ void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 		PDI->DrawMesh(Batch);
 	};
 
-	if (RenderState && RenderState->LODCount > 0) // RenderState ¥¬ ƒƒ∆˜≥Õ∆Æ∞° ∏∏µÁ FMeshRenderState
+	if (RenderState && RenderState->LODCount > 0) // RenderState Îäî Ïª¥Ìè¨ÎÑåÌä∏Í∞Ä ÎßåÎì† FMeshRenderState
 	{
 		for (uint32 LOD = 0; LOD < RenderState->LODCount; ++LOD)
 		{
@@ -174,7 +174,7 @@ void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 	}
 
 	const uint32 NumMeshLODs = StaticMesh->GetLODCount();
-	for (uint32 LOD = 0; LOD < NumMeshLODs; ++LOD) // StaticMesh ø°º¬ ø¯∫ª¿« MeshData.SectionsøÕ ±‚∫ª ∏”∆º∏ÆæÛ¿ª ¡˜¡¢ º¯»∏
+	for (uint32 LOD = 0; LOD < NumMeshLODs; ++LOD) // StaticMesh ÏóêÏÖã ÏõêÎ≥∏Ïùò MeshData.SectionsÏôÄ Í∏∞Î≥∏ Î®∏Ìã∞Î¶¨ÏñºÏùÑ ÏßÅÏ†ë ÏàúÌöå
 	{
 		FVertexBuffer* VB = StaticMesh->GetVertexBuffer(LOD);
 		FIndexBuffer* IB = StaticMesh->GetIndexBuffer(LOD);
@@ -283,7 +283,7 @@ void FSkeletalMeshSceneProxy::GetDynamicMeshElements(const FViewContext& ViewCon
 	const FVector Delta = Bounds.Center - ViewContext.CameraPosition;
 	const float DistanceSq = Delta.Dot(Delta);
 
-	auto EmitSectionBatch = [&](UMaterial* SectionMat, uint32 StartIndex, uint32 IndexCount)
+	auto EmitSectionBatch = [&](UMaterialInterface* SectionMat, uint32 StartIndex, uint32 IndexCount)
 	{
 		if (!SectionMat)
 			return;
@@ -443,6 +443,7 @@ void FBillboardSceneProxy::GetDynamicMeshElements(const FViewContext& ViewContex
 		Param.RowSize = static_cast<float>(RowSize);
 		Param.ColSize = static_cast<float>(ColSize);
 		Param.Alpha = P.Alpha;
+		Param.DecodeSRGB = 1.0f;
 
 		FMeshBatch Batch{};
 		Batch.VertexFactory.Type = EVertexFactoryType::Local;

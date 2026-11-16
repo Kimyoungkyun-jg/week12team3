@@ -12,6 +12,13 @@ cbuffer batchConstants : register(b1)
 	uint3 BatchPad;
 };
 
+cbuffer particleMaterialConstants : register(b2)
+{
+	float4 MaterialBaseColor;
+	float HasTexture;
+	float3 MaterialPad;
+};
+
 struct FParticleInstanceData
 {
 	matrix World;
@@ -21,7 +28,11 @@ struct FParticleInstanceData
 
 StructuredBuffer<FParticleInstanceData> ParticleInstances : register(t1);
 Texture2D AtlasTexture : register(t0);
-SamplerState AtlasSampler : register(s0);
+SamplerState ColorSampler : register(s0);
+
+#ifdef MATERIAL_GRAPH
+#include MATERIAL_GRAPH_INCLUDE
+#endif
 
 struct VS_INPUT
 {
@@ -62,15 +73,38 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
 	float2 cellSize = float2(1.0f / atlasColSize, 1.0f / atlasRowSize);
 	float2 cellUV = input.uv * cellSize + float2(atlasCol, atlasRow) * cellSize;
 
-	float4 color = AtlasTexture.Sample(AtlasSampler, cellUV);
+	// 텍스처가 없으면 머티리얼의 리니어 기본 색상을 사용한다
+	float4 color = MaterialBaseColor;
+	if (HasTexture > 0.5f)
+	{
+		color = AtlasTexture.Sample(ColorSampler, cellUV);
+		if (decodeSRGB > 0.5f)
+		{
+			color.rgb = SRGBToLinear(color.rgb);
+		}
+		color *= MaterialBaseColor;
+	}
+	float3 tintRGB = (decodeSRGB > 0.5f) ? SRGBToLinear(input.tintAndAlpha.rgb) : input.tintAndAlpha.rgb;
+	color.rgb *= tintRGB;
 	color.a *= input.tintAndAlpha.a;
-	if (decodeSRGB > 0.5f)
-	{
-		color.rgb = SRGBToLinear(color.rgb) * SRGBToLinear(input.tintAndAlpha.rgb);
-	}
-	else
-	{
-		color.rgb *= input.tintAndAlpha.rgb;
-	}
+#ifdef MATERIAL_GRAPH
+	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(cellUV);
+
+#ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
+	color *= GraphOutput.BaseColor;
+#endif
+
+	float3 GraphEmissive = float3(0, 0, 0);
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_COLOR
+	GraphEmissive = GraphOutput.EmissiveColor;
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR
+	GraphEmissive *= GraphOutput.EmissiveFactor;
+#endif
+
+	color.rgb += GraphEmissive;
+#endif
 	return color;
 }

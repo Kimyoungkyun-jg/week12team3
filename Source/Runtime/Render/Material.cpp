@@ -3,15 +3,22 @@
 #include "RenderCommand.h"
 
 #include "Material.h"
+#include "Render/MaterialRenderProxy.h"
+#include "Render/MaterialInstance.h"
 
 #include "Asset/AssetManager.h"
 #include "UObject/UObjectGlobals.h"
 #include "Serialization/TypeSerializer.h"
 #include "Serialization/MathSerialization.h"
+#include "Serialization/StructuredArchive.h"
+#include "Serialization/StructuredArchiveSlots.h"
+#include <functional>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace
 {
-	// 저장된 경로로 텍스처를 찾고, 아직 로드 전이면 로드한다
 	UTexture2D* FindOrLoadTexture(const FString& Path)
 	{
 		if (UTexture2D* Texture = UAssetManager::GetAssetByPath<UTexture2D>(Path))
@@ -20,6 +27,559 @@ namespace
 		}
 		return UAssetManager::Get().LoadTexture(Path);
 	}
+
+	const FMaterialExpressionNode* FindExpressionNode(const UMaterial& Material, int32 NodeId)
+	{
+		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
+		{
+			if (Node.Id == NodeId)
+			{
+				return &Node;
+			}
+		}
+
+		return nullptr;
+	}
+}
+
+void UMaterial::EnsureDefaultGraph()
+{
+	int32 MaxId = 0;
+	int32 FirstOutputId = 0;
+	int32 OutputCount = 0;
+
+	for (const FMaterialExpressionNode& Node : ExpressionNodes)
+	{
+		MaxId = std::max(MaxId, Node.Id);
+
+		if (Node.Type == EMaterialExpressionType::MaterialOutput)
+		{
+			if (FirstOutputId == 0)
+			{
+				FirstOutputId = Node.Id;
+			}
+			++OutputCount;
+		}
+	}
+
+	if (OutputCount == 0)
+	{
+		FMaterialExpressionNode Output;
+		Output.Id = MaxId + 1;
+		Output.Type = EMaterialExpressionType::MaterialOutput;
+		Output.Position = FVector2(650.0f, 150.0f);
+
+		ExpressionNodes.Add(Output);
+		OutputNodeId = Output.Id;
+	}
+	else
+	{
+		const FMaterialExpressionNode* CurrentOutput = FindExpressionNode(*this, OutputNodeId);
+
+		if (!CurrentOutput || CurrentOutput->Type != EMaterialExpressionType::MaterialOutput)
+		{
+			OutputNodeId = FirstOutputId;
+		}
+	}
+}
+
+int32 UMaterial::GetExpressionInputPinCount(EMaterialExpressionType Type) const
+{
+	switch (Type)
+	{
+	case EMaterialExpressionType::TextureSample:
+		return 1;
+	case EMaterialExpressionType::Add:
+	case EMaterialExpressionType::Multiply:
+		return 2;
+	case EMaterialExpressionType::Lerp:
+		return 3;
+	case EMaterialExpressionType::OneMinus:
+		return 1;
+	case EMaterialExpressionType::MaterialOutput:
+		return 5;
+	default:
+		return 0;
+	}
+}
+
+int32 UMaterial::GetExpressionOutputPinCount(EMaterialExpressionType Type) const
+{
+	return Type == EMaterialExpressionType::MaterialOutput ? 0 : 1;
+}
+
+const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, int32 PinIndex) const
+{
+	static const char* MathNames[] = { "A", "B", "Alpha" };
+	static const char* OutputNames[] = { "Base Color", "Specular Color", "Shininess", "Emissive Color", "Emissive Factor" };
+
+	switch (Type)
+	{
+	case EMaterialExpressionType::TextureSample:
+		return PinIndex == 0 ? "UV" : nullptr;
+	case EMaterialExpressionType::Add:
+	case EMaterialExpressionType::Multiply:
+		return PinIndex >= 0 && PinIndex < 2 ? MathNames[PinIndex] : nullptr;
+	case EMaterialExpressionType::Lerp:
+		return PinIndex >= 0 && PinIndex < 3 ? MathNames[PinIndex] : nullptr;
+	case EMaterialExpressionType::OneMinus:
+		return PinIndex == 0 ? "Input" : nullptr;
+	case EMaterialExpressionType::MaterialOutput:
+		return PinIndex >= 0 && PinIndex < 5 ? OutputNames[PinIndex] : nullptr;
+	default:
+		return nullptr;
+	}
+}
+
+const char* UMaterial::GetExpressionOutputPinName(EMaterialExpressionType Type, int32 PinIndex) const
+{
+	return GetExpressionOutputPinCount(Type) > PinIndex && PinIndex >= 0 ? "Value" : nullptr;
+}
+
+EMaterialValueType UMaterial::GetExpressionOutputType(int32 NodeId, int32 OutputPin) const
+{
+	if (OutputPin != 0)
+	{
+		return EMaterialValueType::Unknown;
+	}
+
+	std::unordered_set<int32> Visiting;
+
+	const auto Resolve = [&](auto&& Self, int32 CurrentId) -> EMaterialValueType
+	{
+		if (!Visiting.insert(CurrentId).second)
+		{
+			return EMaterialValueType::Unknown;
+		}
+
+		const FMaterialExpressionNode* Node = FindExpressionNode(*this, CurrentId);
+		if (!Node)
+		{
+			Visiting.erase(CurrentId);
+			return EMaterialValueType::Unknown;
+		}
+
+		const auto GetInputType = [&](int32 InputPin)
+		{
+			for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+			{
+				if (Connection.InputNodeId == CurrentId && Connection.InputPin == InputPin)
+				{
+					return Self(Self, Connection.OutputNodeId);
+				}
+			}
+
+			return EMaterialValueType::Unknown;
+		};
+
+		EMaterialValueType Result = EMaterialValueType::Unknown;
+
+		switch (Node->Type)
+		{
+		case EMaterialExpressionType::Constant:
+		case EMaterialExpressionType::ScalarParameter:
+			Result = EMaterialValueType::Scalar;
+			break;
+
+		case EMaterialExpressionType::Constant2Vector:
+		case EMaterialExpressionType::TextureCoordinate:
+			Result = EMaterialValueType::Vector2;
+			break;
+
+		case EMaterialExpressionType::Constant3Vector:
+			Result = EMaterialValueType::Vector3;
+			break;
+
+		case EMaterialExpressionType::Constant4Vector:
+		case EMaterialExpressionType::VectorParameter:
+		case EMaterialExpressionType::TextureSample:
+			Result = EMaterialValueType::Vector4;
+			break;
+
+		case EMaterialExpressionType::Add:
+		case EMaterialExpressionType::Multiply:
+		{
+			const EMaterialValueType A = GetInputType(0);
+			const EMaterialValueType B = GetInputType(1);
+
+			if (A != EMaterialValueType::Unknown && B != EMaterialValueType::Unknown && A != B)
+			{
+				Result = EMaterialValueType::Unknown;
+			}
+			else
+			{
+				Result = A != EMaterialValueType::Unknown ? A : B;
+			}
+			break;
+		}
+
+		case EMaterialExpressionType::Lerp:
+		{
+			const EMaterialValueType A = GetInputType(0);
+			const EMaterialValueType B = GetInputType(1);
+
+			if (A != EMaterialValueType::Unknown && B != EMaterialValueType::Unknown && A != B)
+			{
+				Result = EMaterialValueType::Unknown;
+			}
+			else
+			{
+				Result = A != EMaterialValueType::Unknown ? A : B;
+			}
+			break;
+		}
+
+		case EMaterialExpressionType::OneMinus:
+			Result = GetInputType(0);
+			break;
+
+		default:
+			break;
+		}
+
+		Visiting.erase(CurrentId);
+		return Result;
+	};
+
+	return Resolve(Resolve, NodeId);
+}
+
+bool UMaterial::ConnectExpressionPins(int32 OutputId, int32 OutputPin, int32 InputId, int32 InputPin, FString& OutError)
+{
+	if (OutputId == InputId)
+	{
+		OutError = "A node cannot connect to itself.";
+		return false;
+	}
+
+	const FMaterialExpressionNode* Output = FindExpressionNode(*this, OutputId);
+	const FMaterialExpressionNode* Input = FindExpressionNode(*this, InputId);
+
+	if (!Output || !Input)
+	{
+		OutError = "Connected node does not exist.";
+		return false;
+	}
+
+	if (OutputPin < 0 || OutputPin >= GetExpressionOutputPinCount(Output->Type) ||
+		InputPin < 0 || InputPin >= GetExpressionInputPinCount(Input->Type))
+	{
+		OutError = "Invalid expression pin.";
+		return false;
+	}
+
+	const TArray<FMaterialExpressionConnection> Previous = ExpressionConnections;
+
+	for (int32 Index = ExpressionConnections.Num() - 1; Index >= 0; --Index)
+	{
+		const auto& Connection = ExpressionConnections[Index];
+
+		if (Connection.InputNodeId == InputId && Connection.InputPin == InputPin)
+		{
+			ExpressionConnections.RemoveAt(Index);
+		}
+	}
+
+	ExpressionConnections.Add({ OutputId, OutputPin, InputId, InputPin });
+
+	if (!ValidateExpressionGraph(OutError))
+	{
+		ExpressionConnections = Previous;
+		return false;
+	}
+
+	OutError.clear();
+	return true;
+}
+
+bool UMaterial::ValidateExpressionGraph(FString& OutError) const
+{
+	std::unordered_map<int32, const FMaterialExpressionNode*> Nodes;
+	std::set<FString> ParameterNames;
+	std::set<FString> TexturePaths;
+
+	int32 OutputCount = 0;
+	int32 ParameterCount = 0;
+
+	for (const FMaterialExpressionNode& Node : ExpressionNodes)
+	{
+		if (Node.Id <= 0 || !Nodes.emplace(Node.Id, &Node).second)
+		{
+			OutError = "Duplicate or invalid expression node ID.";
+			return false;
+		}
+
+		if (static_cast<uint8>(Node.Type) > static_cast<uint8>(EMaterialExpressionType::MaterialOutput))
+		{
+			OutError = "Invalid expression node type.";
+			return false;
+		}
+
+		if (Node.Type == EMaterialExpressionType::MaterialOutput)
+		{
+			++OutputCount;
+		}
+
+		if (Node.Type == EMaterialExpressionType::ScalarParameter || Node.Type == EMaterialExpressionType::VectorParameter)
+		{
+			++ParameterCount;
+
+			if (Node.ParameterName.empty() || !ParameterNames.insert(Node.ParameterName).second)
+			{
+				OutError = "Parameter names must be unique and non-empty.";
+				return false;
+			}
+
+			if (ParameterCount > MaxMaterialGraphParameters)
+			{
+				OutError = "Material Graph supports up to 16 parameters.";
+				return false;
+			}
+		}
+
+		if (Node.Type == EMaterialExpressionType::TextureSample && !Node.TexturePath.empty())
+		{
+			TexturePaths.insert(Node.TexturePath);
+
+			if (TexturePaths.size() > MaxMaterialGraphTextures)
+			{
+				OutError = "Material Graph supports up to 6 unique textures.";
+				return false;
+			}
+		}
+
+		if (Node.Type == EMaterialExpressionType::TextureCoordinate && Node.CoordinateIndex != 0)
+		{
+			OutError = "Only Texture Coordinate index 0 is supported.";
+			return false;
+		}
+	}
+
+	if (OutputCount != 1 || !Nodes.contains(OutputNodeId) ||
+		Nodes[OutputNodeId]->Type != EMaterialExpressionType::MaterialOutput)
+	{
+		OutError = "Material must have exactly one valid Output node.";
+		return false;
+	}
+
+	std::set<std::pair<int32, int32>> ConnectedInputs;
+
+	for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+	{
+		auto OutputIt = Nodes.find(Connection.OutputNodeId);
+		auto InputIt = Nodes.find(Connection.InputNodeId);
+
+		if (OutputIt == Nodes.end() || InputIt == Nodes.end())
+		{
+			OutError = "Connection references a missing node.";
+			return false;
+		}
+
+		const auto* Output = OutputIt->second;
+		const auto* Input = InputIt->second;
+
+		if (Connection.OutputNodeId == Connection.InputNodeId ||
+			Connection.OutputPin < 0 || Connection.OutputPin >= GetExpressionOutputPinCount(Output->Type) ||
+			Connection.InputPin < 0 || Connection.InputPin >= GetExpressionInputPinCount(Input->Type))
+		{
+			OutError = "Connection references an invalid pin.";
+			return false;
+		}
+
+		if (!ConnectedInputs.insert({ Connection.InputNodeId, Connection.InputPin }).second)
+		{
+			OutError = "An input pin cannot have multiple connections.";
+			return false;
+		}
+	}
+
+	std::unordered_map<int32, uint8> VisitState;
+
+	const auto Visit = [&](auto&& Self, int32 NodeId) -> bool
+	{
+		if (VisitState[NodeId] == 1)
+		{
+			return false;
+		}
+		if (VisitState[NodeId] == 2)
+		{
+			return true;
+		}
+
+		VisitState[NodeId] = 1;
+
+		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+		{
+			if (Connection.OutputNodeId == NodeId && !Self(Self, Connection.InputNodeId))
+			{
+				return false;
+			}
+		}
+
+		VisitState[NodeId] = 2;
+		return true;
+	};
+
+	for (const auto& [NodeId, Node] : Nodes)
+	{
+		if (!Visit(Visit, NodeId))
+		{
+			OutError = "Material graph contains a circular dependency.";
+			return false;
+		}
+	}
+
+	for (const FMaterialExpressionNode& Node : ExpressionNodes)
+	{
+		bool bOutputConnected = false;
+
+		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+		{
+			if (Connection.OutputNodeId == Node.Id)
+			{
+				bOutputConnected = true;
+				break;
+			}
+		}
+
+		if (!bOutputConnected)
+		{
+			continue;
+		}
+
+		int32 RequiredInputCount = 0;
+
+		switch (Node.Type)
+		{
+		case EMaterialExpressionType::Add:
+		case EMaterialExpressionType::Multiply:
+			RequiredInputCount = 2;
+			break;
+
+		case EMaterialExpressionType::Lerp:
+			RequiredInputCount = 3;
+			break;
+
+		case EMaterialExpressionType::OneMinus:
+		case EMaterialExpressionType::TextureSample:
+			RequiredInputCount = 1;
+			break;
+
+		default:
+			continue;
+		}
+
+		for (int32 Pin = 0; Pin < RequiredInputCount; ++Pin)
+		{
+			bool bConnected = false;
+
+			for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+			{
+				if (Connection.InputNodeId == Node.Id && Connection.InputPin == Pin)
+				{
+					bConnected = true;
+					break;
+				}
+			}
+
+			if (!bConnected)
+			{
+				OutError = "Expression node has an unconnected required input.";
+				return false;
+			}
+		}
+
+		if (Node.Type == EMaterialExpressionType::TextureSample && Node.TexturePath.empty())
+		{
+			OutError = "Texture Sample requires a texture.";
+			return false;
+		}
+	}
+
+	const auto IsNumeric = [](EMaterialValueType Type)
+	{
+		return Type == EMaterialValueType::Scalar || Type == EMaterialValueType::Vector2 ||
+			Type == EMaterialValueType::Vector3 || Type == EMaterialValueType::Vector4;
+	};
+
+	for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+	{
+		const auto* Input = Nodes[Connection.InputNodeId];
+		const EMaterialValueType SourceType = GetExpressionOutputType(Connection.OutputNodeId, Connection.OutputPin);
+
+		if (SourceType == EMaterialValueType::Unknown)
+		{
+			OutError = "Cannot resolve expression output type.";
+			return false;
+		}
+
+		bool bValidType = true;
+
+		switch (Input->Type)
+		{
+		case EMaterialExpressionType::TextureSample:
+			bValidType = SourceType == EMaterialValueType::Vector2;
+			break;
+
+		case EMaterialExpressionType::Add:
+		case EMaterialExpressionType::Multiply:
+		case EMaterialExpressionType::OneMinus:
+			bValidType = IsNumeric(SourceType);
+			break;
+
+		case EMaterialExpressionType::Lerp:
+			bValidType = Connection.InputPin == 2 ? SourceType == EMaterialValueType::Scalar : IsNumeric(SourceType);
+			break;
+
+		case EMaterialExpressionType::MaterialOutput:
+			if (Connection.InputPin == 0 || Connection.InputPin == 1 || Connection.InputPin == 3)
+			{
+				bValidType = SourceType == EMaterialValueType::Vector3 || SourceType == EMaterialValueType::Vector4;
+			}
+			else
+			{
+				bValidType = SourceType == EMaterialValueType::Scalar;
+			}
+			break;
+
+		default:
+			break;
+		}
+
+		if (!bValidType)
+		{
+			OutError = "Expression pin type mismatch.";
+			return false;
+		}
+
+		if (Input->Type == EMaterialExpressionType::Add || Input->Type == EMaterialExpressionType::Multiply ||
+			Input->Type == EMaterialExpressionType::Lerp)
+		{
+			for (const FMaterialExpressionConnection& Other : ExpressionConnections)
+			{
+				if (Other.InputNodeId != Connection.InputNodeId || Other.InputPin == Connection.InputPin)
+				{
+					continue;
+				}
+
+				if (Input->Type == EMaterialExpressionType::Lerp && (Other.InputPin == 2 || Connection.InputPin == 2))
+				{
+					continue;
+				}
+
+				const EMaterialValueType OtherType = GetExpressionOutputType(Other.OutputNodeId, Other.OutputPin);
+
+				if (OtherType != EMaterialValueType::Unknown && OtherType != SourceType)
+				{
+					OutError = "Math node inputs must have matching types.";
+					return false;
+				}
+			}
+		}
+	}
+
+	OutError.clear();
+	return true;
 }
 
 void UMaterial::ApplyImportedProperties(const FImportedMaterialProperties& Properties)
@@ -33,6 +593,41 @@ void UMaterial::ApplyImportedProperties(const FImportedMaterialProperties& Prope
 	bOverrideShadingModel = Properties.bOverrideShadingModel;
 }
 
+void UMaterial::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
+{
+	OutProxy = FMaterialRenderProxy{};
+	OutProxy.BaseMaterial = this;
+	OutProxy.Textures = Textures;
+	OutProxy.GraphTextures.Reset();
+
+	std::set<FString> GraphTexturePaths;
+
+	for (const FMaterialExpressionNode& Node : ExpressionNodes)
+	{
+		if (Node.Type == EMaterialExpressionType::TextureSample && !Node.TexturePath.empty() && GraphTexturePaths.insert(Node.TexturePath).second)
+		{
+			OutProxy.GraphTextures.Add(FindOrLoadTexture(Node.TexturePath));
+		}
+	}
+	OutProxy.BaseColor = BaseColor;
+	OutProxy.SpecularColor = SpecularColor;
+	OutProxy.Shininess = Shininess;
+	OutProxy.UVScrollSpeed = UVScrollSpeed;
+	OutProxy.bFlipNormalY = bFlipNormalY;
+	OutProxy.SpecularFactor = SpecularFactor;
+	OutProxy.EmissiveColor = EmissiveColor;
+	OutProxy.EmissiveFactor = EmissiveFactor;
+	OutProxy.UVTiling = UVTiling;
+	OutProxy.WorldUVTileSize = WorldUVTileSize;
+	OutProxy.bWorldUVLocalSpace = bWorldUVLocalSpace;
+	OutProxy.ShadingModel = ShadingModel;
+	OutProxy.bOverrideShadingModel = bOverrideShadingModel;
+	OutProxy.PSOType = PSOType;
+	OutProxy.BlendState = BlendState;
+	OutProxy.DepthStencilState = DepthStencilState;
+	OutProxy.SamplerState = SamplerState;
+}
+
 void UMaterial::SetBlendState(EBlendState InBlendState)
 {
 	BlendState = InBlendState;
@@ -43,259 +638,237 @@ void UMaterial::SetBlendState(EBlendState InBlendState)
 	}
 }
 
-UMaterial* UMaterial::CreateInstance(const UMaterial* Source)
+UMaterialInstanceDynamic* UMaterial::CreateDynamicInstance(UMaterialInterface* Parent)
 {
-	if (Source == nullptr)
+	if (!Parent)
 	{
 		return nullptr;
 	}
 
-	UMaterial* Instance = NewObject<UMaterial>();
-
-	Instance->ParamLayout = Source->ParamLayout;
-	Instance->Shader = Source->Shader;
-	Instance->Textures = Source->Textures;
-	Instance->BlendState = Source->BlendState;
-	Instance->DepthStencilState = Source->DepthStencilState;
-	Instance->SamplerState = Source->SamplerState;
-	Instance->BaseColor = Source->BaseColor;
-	Instance->SpecularColor = Source->SpecularColor;
-	Instance->Shininess = Source->Shininess;
-	Instance->UVScrollSpeed = Source->UVScrollSpeed;
-	Instance->bFlipNormalY = Source->bFlipNormalY;
-	Instance->SpecularFactor = Source->SpecularFactor;
-	Instance->EmissiveColor = Source->EmissiveColor;
-	Instance->EmissiveFactor = Source->EmissiveFactor;
-	Instance->UVTiling = Source->UVTiling;
-	Instance->WorldUVTileSize = Source->WorldUVTileSize;
-	Instance->bWorldUVLocalSpace = Source->bWorldUVLocalSpace;
-	Instance->ShadingModel = Source->ShadingModel;
-	Instance->bOverrideShadingModel = Source->bOverrideShadingModel;
-	Instance->PSOType = Source->PSOType;
-
-	// ParamBuffer는 TUniquePtr라 복사할 수 없다.
-	// 원본이 갖고 있으면 같은 크기로 새로 만들어 준다. 내용은 매 프레임 갱신되므로 옮기지 않는다.
-	if (Source->ParamBuffer)
-	{
-		Instance->ParamBuffer = RenderCommand::CreateConstantBuffer(Source->ParamBuffer->GetBufferSize());
-	}
-
-	Instance->BaseColor = Source->BaseColor;
-	Instance->bIsInstance = true;
-	Instance->Parent = Source;
-
-	return Instance;
-}
-
-const UMaterial* UMaterial::GetBaseAsset() const
-{
-	for (const UMaterial* Current = this; Current; Current = Current->Parent)
-	{
-		if (!Current->GetPath().empty())
-		{
-			return Current;
-		}
-	}
-	return nullptr;
-}
-
-// 머티리얼 하나를 JSON으로.
-// 에셋이면 경로만, 경로 없는 인스턴스면 "기준 에셋 + 텍스처 + 색"으로 풀어서 쓴다
-json UMaterial::SaveMaterial(const UMaterial* Material)
-{
-	json Out;
-	if (!Material) return json::object();
-
-	if (!Material->GetPath().empty())
-	{
-		Out["Asset"] = Material->GetPath();
-		return Out;
-	}
-
-	const UMaterial* Base = Material->GetBaseAsset();
-	Out["Base"] = Base ? Base->GetPath() : FString("DefaultMaterial");
-	Out["PSOType"] = static_cast<uint8>(Material->PSOType);
-	Out["BaseColor"] = Material->BaseColor;
-	Out["SpecularColor"] = Material->SpecularColor;
-	Out["Shininess"] = Material->Shininess;
-	Out["SpecularFactor"] = Material->SpecularFactor;
-	Out["EmissiveColor"] = Material->EmissiveColor;
-	Out["EmissiveFactor"] = Material->EmissiveFactor;
-	Out["UVTiling"] = { Material->UVTiling.X, Material->UVTiling.Y };
-	Out["WorldUVTileSize"] = { Material->WorldUVTileSize.X, Material->WorldUVTileSize.Y };
-	Out["WorldUVLocalSpace"] = Material->bWorldUVLocalSpace;
-	Out["ShadingModel"] = static_cast<int>(Material->ShadingModel);
-	Out["OverrideShadingModel"] = Material->bOverrideShadingModel;
-	Out["FlipNormalY"] = Material->bFlipNormalY;
-	Out["UVScrollSpeed"] = {
-		Material->UVScrollSpeed.X,
-		Material->UVScrollSpeed.Y
-	};
-	Out["SamplerState"] = Material->SamplerState == ESamplerState::LinearWrap ? "LinearWrap" : "LinearClamp";
-	Out["BlendState"] = Material->BlendState == EBlendState::AlphaBlend ? "AlphaBlend" : "Opaque";
-
-	json Textures = json::array();
-	for (UTexture2D* Texture : Material->Textures)
-	{
-		if (Texture && !Texture->GetPath().empty())
-			Textures.push_back(Texture->GetPath());
-		else
-			Textures.push_back(nullptr);
-	}
-	Out["Textures"] = Textures;
-
-	return Out;
-}
-
-UMaterial* UMaterial::LoadMaterial(const json& In)
-{
-	if (In.contains("Asset"))
-	{
-		return UAssetManager::GetAssetByPath<UMaterial>(In["Asset"].get<FString>());
-	}
-
-	UMaterial* Base = nullptr;
-	if (In.contains("Base"))
-	{
-		Base = UAssetManager::GetAssetByPath<UMaterial>(In["Base"].get<FString>());
-	}
-	if (!Base)
-	{
-		Base = UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
-	}
-
-	UMaterial* Instance = UMaterial::CreateInstance(Base);
+	UMaterialInstanceDynamic* Instance = NewObject<UMaterialInstanceDynamic>();
 	if (!Instance)
 	{
 		return nullptr;
 	}
 
-	if (In.contains("BaseColor"))
-	{
-		In["BaseColor"].get_to(Instance->BaseColor);
-	}
-	else if (In.contains("DiffuseOrFactor")) In["DiffuseOrFactor"].get_to(Instance->BaseColor);
-	if (In.contains("SpecularColor"))
-	{
-		In["SpecularColor"].get_to(Instance->SpecularColor);
-	}
-	if (In.contains("Shininess"))
-	{
-		Instance->Shininess = std::max(1.0f, In["Shininess"].get<float>());
-	}
-	if (In.contains("FlipNormalY"))
-	{
-		Instance->bFlipNormalY = In["FlipNormalY"].get<bool>();
-	}
-	if (In.contains("SpecularFactor")) Instance->SpecularFactor = std::max(0.0f, In["SpecularFactor"].get<float>());
-	if (In.contains("EmissiveColor")) In["EmissiveColor"].get_to(Instance->EmissiveColor);
-	if (In.contains("EmissiveFactor")) Instance->EmissiveFactor = std::max(0.0f, In["EmissiveFactor"].get<float>());
-	if (In.contains("UVTiling")) Instance->UVTiling = FVector2(In["UVTiling"][0].get<float>(), In["UVTiling"][1].get<float>());
-	if (In.contains("WorldUVTileSize")) Instance->WorldUVTileSize = FVector2(In["WorldUVTileSize"][0].get<float>(), In["WorldUVTileSize"][1].get<float>());
-	if (In.contains("WorldUVLocalSpace")) Instance->bWorldUVLocalSpace = In["WorldUVLocalSpace"].get<bool>();
-	if (In.contains("ShadingModel")) Instance->ShadingModel = static_cast<ELightingModel>(std::clamp(In["ShadingModel"].get<int>(), 0, 3));
-	if (In.contains("OverrideShadingModel")) Instance->bOverrideShadingModel = In["OverrideShadingModel"].get<bool>();
-
-	if (In.contains("Textures"))
-	{
-		Instance->Textures.Reset();
-		for (const json& TexturePath : In["Textures"])
-		{
-			Instance->Textures.Add(TexturePath.is_null() ? nullptr : FindOrLoadTexture(TexturePath.get<FString>()));
-		}
-	}
-	if (In.contains("UVScrollSpeed"))
-	{
-		const auto& UV = In["UVScrollSpeed"];
-		Instance->UVScrollSpeed = FVector2(UV[0].get<float>(), UV[1].get<float>());
-	}
-	if (In.contains("SamplerState"))
-	{
-		const FString State = In["SamplerState"].get<FString>();
-		Instance->SamplerState = State == "LinearWrap" ? ESamplerState::LinearWrap : ESamplerState::LinearClamp;
-	}
-	if (In.contains("PSOType"))
-	{
-		Instance->PSOType = static_cast<EPSOType>(In["PSOType"].get<uint8>());
-	}
-	else if (In.contains("BlendState"))
-	{
-		const FString State = In["BlendState"].get<FString>();
-		Instance->PSOType = (State == "AlphaBlend")
-			? EPSOType::StaticMesh_Translucent
-			: EPSOType::StaticMesh_Opaque;
-		Instance->BlendState = State == "AlphaBlend" ? EBlendState::AlphaBlend : EBlendState::Opaque;
-	}
-
-	if (In.contains("BlendState"))
-		Instance->SetBlendState(In["BlendState"].get<FString>() == "AlphaBlend" ? EBlendState::AlphaBlend : EBlendState::Opaque);
-	else if (Instance->PSOType == EPSOType::StaticMesh_Translucent)
-		Instance->SetBlendState(EBlendState::AlphaBlend);
-	else Instance->SetBlendState(Instance->BlendState);
+	Instance->SetParent(Parent);
 	return Instance;
 }
 
-// Material.cpp
-void UMaterial::SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterial*& Material)
+json UMaterial::SaveMaterial(const UMaterialInterface* Material)
+{
+	if (!Material)
+	{
+		return nullptr;
+	}
+
+	if (!Material->GetPath().empty())
+	{
+		return json{ { "Asset", Material->GetPath() } };
+	}
+
+	const UMaterialInstance* Instance = Cast<UMaterialInstance>(Material);
+	if (!Instance || !Instance->GetParent())
+	{
+		return nullptr;
+	}
+
+	json Out;
+	Out["Base"] = Instance->GetParent()->GetPath();
+	json Parameters = json::array();
+	for (const FMaterialParameterOverride& Override : Instance->GetParameterOverrides())
+	{
+		json Parameter;
+		Parameter["Name"] = Override.ParameterName.ToString();
+		Parameter["Type"] = static_cast<uint8>(Override.Type);
+		if (Override.Type == EMaterialParameterType::Scalar)
+		{
+			Parameter["Scalar"] = Override.ScalarValue;
+		}
+		else if (Override.Type == EMaterialParameterType::Vector)
+		{
+			Parameter["Vector"] = Override.VectorValue;
+		}
+		else if (Override.Type == EMaterialParameterType::Texture)
+		{
+			Parameter["Texture"] = Override.TextureValue ? Override.TextureValue->GetPath() : FString();
+		}
+		Parameters.push_back(Parameter);
+	}
+	Out["Parameters"] = Parameters;
+	return Out;
+}
+
+UMaterialInterface* UMaterial::LoadMaterial(const json& In)
+{
+	if (!In.is_object())
+	{
+		return nullptr;
+	}
+
+	if (In.contains("Asset"))
+	{
+		return UAssetManager::LoadMaterialAsset(In["Asset"].get<FString>());
+	}
+
+	FString BasePath = In.value("Base", FString("DefaultMaterial"));
+	UMaterialInterface* Base = UAssetManager::LoadMaterialAsset(BasePath);
+	if (!Base)
+	{
+		Base = UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
+	}
+	if (!Base)
+	{
+		return nullptr;
+	}
+
+	UMaterialInstanceDynamic* Instance = NewObject<UMaterialInstanceDynamic>();
+	if (!Instance)
+	{
+		return nullptr;
+	}
+	Instance->SetParent(Base);
+
+	if (In.contains("Parameters") && In["Parameters"].is_array())
+	{
+		for (const json& Parameter : In["Parameters"])
+		{
+			if (!Parameter.is_object() || !Parameter.contains("Name") || !Parameter.contains("Type"))
+			{
+				continue;
+			}
+			const FName Name(Parameter["Name"].get<FString>());
+			const EMaterialParameterType Type = static_cast<EMaterialParameterType>(Parameter["Type"].get<uint8>());
+			if (Type == EMaterialParameterType::Scalar && Parameter.contains("Scalar"))
+			{
+				Instance->SetScalarParameterValue(Name, Parameter["Scalar"].get<float>());
+			}
+			else if (Type == EMaterialParameterType::Vector && Parameter.contains("Vector"))
+			{
+				FVector4 Value;
+				Parameter["Vector"].get_to(Value);
+				Instance->SetVectorParameterValue(Name, Value);
+			}
+			else if (Type == EMaterialParameterType::Texture && Parameter.contains("Texture"))
+			{
+				const FString Path = Parameter["Texture"].get<FString>();
+				Instance->SetTextureParameterValue(Name, Path.empty() ? nullptr : UAssetManager::Get().LoadTexture(Path));
+			}
+		}
+	}
+
+	if (In.contains("BaseColor"))
+	{
+		FVector4 Color;
+		In["BaseColor"].get_to(Color);
+		Instance->SetBaseColorOverride(Color);
+	}
+
+	FString TexturePath;
+	if (In.contains("Texture0Override"))
+	{
+		TexturePath = In["Texture0Override"].get<FString>();
+	}
+	else if (In.contains("Textures") && In["Textures"].is_array() && !In["Textures"].empty() && In["Textures"][0].is_string())
+	{
+		TexturePath = In["Textures"][0].get<FString>();
+	}
+	if (!TexturePath.empty())
+	{
+		Instance->SetTexture0Override(UAssetManager::Get().LoadTexture(TexturePath));
+	}
+	return Instance;
+}
+
+void UMaterial::SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterialInterface*& Material)
 {
 	FArchive& Ar = Slot.GetUnderlyingArchive();
 	FStructuredArchive::FRecord Record = Slot.EnterRecord();
-
-	// ── 에셋 참조 ──
-	// 저장과 불러오기가 같은 순서로 같은 함수를 부르게 TryEnterField를 쓴다 (바이너리 포맷에서도 맞도록)
 	const bool bIsAsset = Ar.IsSaving() && Material && !Material->GetPath().empty();
-	if (TOptional<FStructuredArchive::FSlot> AssetSlot = Record.TryEnterField("Asset", bIsAsset))
+	if (auto AssetSlot = Record.TryEnterField("Asset", bIsAsset))
 	{
 		FString Path = Ar.IsSaving() ? Material->GetPath() : FString();
 		AssetSlot.GetValue() << Path;
 		if (Ar.IsLoading())
-			Material = UAssetManager::GetAssetByPath<UMaterial>(Path);
+		{
+			Material = UAssetManager::LoadMaterialAsset(Path);
+		}
 		return;
 	}
 
-	// ── 인스턴스 ──
-	const bool bIsInstance = Ar.IsSaving() && Material != nullptr;
-	TOptional<FStructuredArchive::FSlot> BaseSlot = Record.TryEnterField("Base", bIsInstance);
-	if (!BaseSlot.IsSet())
+	const bool bIsInstance = Ar.IsSaving() && Cast<UMaterialInstance>(Material) != nullptr;
+	auto InstanceSlot = Record.TryEnterField("Instance", bIsInstance);
+	if (!InstanceSlot.IsSet())
 	{
 		if (Ar.IsLoading())
-			Material = nullptr;     // 빈 Record = 머티리얼 없음
+		{
+			Material = nullptr;
+		}
 		return;
 	}
-
-	FString BasePath;
-	if (Ar.IsSaving())
-	{
-		const UMaterial* Base = Material->GetBaseAsset();
-		BasePath = Base ? Base->GetPath() : FString("DefaultMaterial");
-	}
-	BaseSlot.GetValue() << BasePath;
-
 	if (Ar.IsLoading())
 	{
-		UMaterial* Base = UAssetManager::GetAssetByPath<UMaterial>(BasePath);
-		if (!Base)
-		{
-			HTR_LOG(Warning, "Load: base material '{}' not found, using DefaultMaterial", BasePath);
-			Base = UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
-		}
-		Material = CreateInstance(Base);   // 먼저 만들고
+		Material = NewObject<UMaterialInstanceDynamic>();
 	}
+	if (UMaterialInstance* Instance = Cast<UMaterialInstance>(Material))
+	{
+		Instance->Serialize(InstanceSlot.GetValue().EnterRecord());
+	}
+}
 
-	if (Material)
-		Material->Serialize(Record.EnterRecord("Instance"));   // 그다음 값을 채운다
+void UMaterial::CopySettingsFrom(const UMaterial& Source)
+{
+	UsageFlags = Source.UsageFlags;
+	Shader = Source.Shader;
+	Textures = Source.Textures;
+	BlendState = Source.BlendState;
+	DepthStencilState = Source.DepthStencilState;
+	SamplerState = Source.SamplerState;
+	BaseColor = Source.BaseColor;
+	SpecularColor = Source.SpecularColor;
+	Shininess = Source.Shininess;
+	UVScrollSpeed = Source.UVScrollSpeed;
+	bFlipNormalY = Source.bFlipNormalY;
+	SpecularFactor = Source.SpecularFactor;
+	EmissiveColor = Source.EmissiveColor;
+	EmissiveFactor = Source.EmissiveFactor;
+	UVTiling = Source.UVTiling;
+	WorldUVTileSize = Source.WorldUVTileSize;
+	bWorldUVLocalSpace = Source.bWorldUVLocalSpace;
+	ShadingModel = Source.ShadingModel;
+	bOverrideShadingModel = Source.bOverrideShadingModel;
+	PSOType = Source.PSOType;
+	ExpressionNodes = Source.ExpressionNodes;
+	ExpressionConnections = Source.ExpressionConnections;
+	OutputNodeId = Source.OutputNodeId;
+	EnsureDefaultGraph();
+
+	ParamBuffer.reset();
+	if (Source.ParamBuffer)
+	{
+		ParamBuffer = RenderCommand::CreateConstantBuffer(Source.ParamBuffer->GetBufferSize());
+	}
+}
+
+void UMaterial::InitializeRenderResources(const UMaterial& Template)
+{
+	Shader = Template.Shader;
+	DepthStencilState = Template.DepthStencilState;
+	ParamBuffer.reset();
+	if (Template.ParamBuffer)
+	{
+		ParamBuffer = RenderCommand::CreateConstantBuffer(Template.ParamBuffer->GetBufferSize());
+	}
 }
 
 void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 {
-	Super::Serialize(Record);   // "Properties" (리플렉션 프로퍼티. 지금은 없음)
-
+	Super::Serialize(Record);
 	FArchive& Ar = Record.GetUnderlyingArchive();
 
 	if (auto ColorSlot = Record.TryEnterField("BaseColor", Ar.IsSaving())) ColorSlot.GetValue() << BaseColor;
 	else if (auto LegacyColor = Record.TryEnterField("DiffuseOrFactor", false)) LegacyColor.GetValue() << BaseColor;
 	Record << SA_VALUE("Shininess", Shininess) << SA_VALUE("UVScrollSpeed", UVScrollSpeed);
-	// Optional fields preserve older scenes and clipboard records.
 	auto Optional = [&]<typename T>(const char* Name, T& Value)
 	{
 		if (auto Slot = Record.TryEnterField(Name, Ar.IsSaving())) Slot.GetValue() << Value;
@@ -313,38 +886,121 @@ void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 	Optional("ShadingModel", Model);
 	if (Ar.IsLoading()) ShadingModel = static_cast<ELightingModel>(std::min<uint8>(Model, 3));
 
-	// enum은 이름 문자열로 (UE 텍스트 포맷도 enum을 이름으로 쓴다)
 	FString Sampler = SamplerState == ESamplerState::LinearWrap ? "LinearWrap" : "LinearClamp";
 	Record << SA_VALUE("SamplerState", Sampler);
-	if (Ar.IsLoading())
-		SamplerState = Sampler == "LinearWrap" ? ESamplerState::LinearWrap : ESamplerState::LinearClamp;
-
+	if (Ar.IsLoading()) SamplerState = Sampler == "LinearWrap" ? ESamplerState::LinearWrap : ESamplerState::LinearClamp;
 	FString Blend = BlendState == EBlendState::AlphaBlend ? "AlphaBlend" : "Opaque";
 	Record << SA_VALUE("BlendState", Blend);
-	if (Ar.IsLoading())
-		BlendState = Blend == "AlphaBlend" ? EBlendState::AlphaBlend : EBlendState::Opaque;
-
+	if (Ar.IsLoading()) BlendState = Blend == "AlphaBlend" ? EBlendState::AlphaBlend : EBlendState::Opaque;
 	uint8 PSOVal = static_cast<uint8>(PSOType);
 	Record << SA_VALUE("PSOType", PSOVal);
-	if (Ar.IsLoading())
-		PSOType = static_cast<EPSOType>(PSOVal);
+	if (Ar.IsLoading()) PSOType = static_cast<EPSOType>(PSOVal);
 	if (Ar.IsLoading()) SetBlendState(BlendState);
 
-	// 텍스처: 경로 문자열 배열. 없는 칸은 빈 문자열
+	if (auto UsageSlot = Record.TryEnterField("UsageFlags", Ar.IsSaving()))
+	{
+		UsageSlot.GetValue() << UsageFlags;
+	}
+	else if (Ar.IsLoading())
+	{
+		UsageFlags = static_cast<uint32>(EMaterialUsage::StaticMesh);
+
+		if (PSOType == EPSOType::Particle_Sprite || PSOType == EPSOType::Particle_AlphaBlend || PSOType == EPSOType::Particle_Additive)
+		{
+			UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleSprite);
+		}
+		else if (PSOType == EPSOType::Particle_MeshOpaque || PSOType == EPSOType::Particle_MeshTranslucent || PSOType == EPSOType::Particle_MeshAdditive)
+		{
+			UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleMesh);
+		}
+	}
+
 	int32 Num = Textures.Num();
 	FStructuredArchive::FArray TextureArray = Record.EnterArray("Textures", Num);
-	if (Ar.IsLoading())
-		Textures.Reset();
-
+	if (Ar.IsLoading()) Textures.Reset();
 	for (int32 i = 0; i < Num; ++i)
 	{
 		FString Path;
-		if (Ar.IsSaving() && Textures[i])
-			Path = Textures[i]->GetPath();
-
+		if (Ar.IsSaving() && Textures[i]) Path = Textures[i]->GetPath();
 		TextureArray.EnterElement() << Path;
+		if (Ar.IsLoading()) Textures.Add(Path.empty() ? nullptr : FindOrLoadTexture(Path));
+	}
+
+	int32 NodeCount = ExpressionNodes.Num();
+
+	if (auto NodeSlot = Record.TryEnterField("ExpressionNodes", Ar.IsSaving()))
+	{
+		FStructuredArchive::FArray NodeArray = NodeSlot.GetValue().EnterArray(NodeCount);
 
 		if (Ar.IsLoading())
-			Textures.Add(Path.empty() ? nullptr : FindOrLoadTexture(Path));
+		{
+			ExpressionNodes.Reset();
+		}
+
+		for (int32 Index = 0; Index < NodeCount; ++Index)
+		{
+			FMaterialExpressionNode Node = Ar.IsSaving() ? ExpressionNodes[Index] : FMaterialExpressionNode{};
+			uint8 Type = static_cast<uint8>(Node.Type);
+
+			FStructuredArchive::FRecord NodeRecord = NodeArray.EnterElement().EnterRecord();
+			NodeRecord << SA_VALUE("Id", Node.Id);
+			NodeRecord << SA_VALUE("Type", Type);
+			NodeRecord << SA_VALUE("Position", Node.Position);
+			NodeRecord << SA_VALUE("ScalarValue", Node.ScalarValue);
+			NodeRecord << SA_VALUE("VectorValue", Node.VectorValue);
+			NodeRecord << SA_VALUE("ParameterName", Node.ParameterName);
+			NodeRecord << SA_VALUE("ParameterGroup", Node.ParameterGroup);
+			NodeRecord << SA_VALUE("TexturePath", Node.TexturePath);
+			NodeRecord << SA_VALUE("CoordinateIndex", Node.CoordinateIndex);
+
+			if (Ar.IsLoading())
+			{
+				if (Type > static_cast<uint8>(EMaterialExpressionType::MaterialOutput))
+				{
+					continue;
+				}
+
+				Node.Type = static_cast<EMaterialExpressionType>(Type);
+				ExpressionNodes.Add(Node);
+			}
+		}
+	}
+
+	int32 ConnectionCount = ExpressionConnections.Num();
+
+	if (auto ConnectionSlot = Record.TryEnterField("ExpressionConnections", Ar.IsSaving()))
+	{
+		FStructuredArchive::FArray ConnectionArray = ConnectionSlot.GetValue().EnterArray(ConnectionCount);
+
+		if (Ar.IsLoading())
+		{
+			ExpressionConnections.Reset();
+		}
+
+		for (int32 Index = 0; Index < ConnectionCount; ++Index)
+		{
+			FMaterialExpressionConnection Connection = Ar.IsSaving() ? ExpressionConnections[Index] : FMaterialExpressionConnection{};
+			FStructuredArchive::FRecord ConnectionRecord = ConnectionArray.EnterElement().EnterRecord();
+
+			ConnectionRecord << SA_VALUE("OutputNodeId", Connection.OutputNodeId);
+			ConnectionRecord << SA_VALUE("OutputPin", Connection.OutputPin);
+			ConnectionRecord << SA_VALUE("InputNodeId", Connection.InputNodeId);
+			ConnectionRecord << SA_VALUE("InputPin", Connection.InputPin);
+
+			if (Ar.IsLoading())
+			{
+				ExpressionConnections.Add(Connection);
+			}
+		}
+	}
+
+	if (auto OutputSlot = Record.TryEnterField("OutputNodeId", Ar.IsSaving()))
+	{
+		OutputSlot.GetValue() << OutputNodeId;
+	}
+
+	if (Ar.IsLoading())
+	{
+		EnsureDefaultGraph();
 	}
 }

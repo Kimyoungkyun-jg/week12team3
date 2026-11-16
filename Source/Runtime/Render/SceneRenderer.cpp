@@ -302,7 +302,7 @@ void FSceneRenderer::BuildVisiblePassCommands(const FScene& Scene, EMeshPass Pas
 	}
 
 	std::stable_sort(OutCommands.begin(), OutCommands.end(),
-		[](const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B) { return A.SortKey < B.SortKey; });  // 불투명 패스 (같은 material 끼리) , 반 투명 패스 (머터리얼 
+		[](const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B) { return A.SortKey < B.SortKey; });  // 불투명 패스 (같은 material 끼리) , 반 투명 패스 (머터리얼
 }
 
 void FSceneRenderer::DrawBasePassMeshes(FRenderer* Renderer, const TArray<FVisibleMeshDrawCommand>& Commands)
@@ -779,6 +779,125 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 			UnbindForwardLighting(Renderer);
 		})) return false;
 
+	bHasFog = false;
+	if (Options.bDrawPrimitives && Options.bEnableFog)
+	{
+		FRenderGraphRasterPassDesc FogPass = MakeViewportPass("HeightFog", LightingHDR);
+		FogPass.ReadTextures = { Depth };
+		if (!Graph.AddRasterPass(std::move(FogPass), [this, Renderer, DepthTarget = Targets.Depth.get(), ColorTarget = Targets.SceneColor.get()]
+			{
+				if (bCorePassSucceeded)
+					bHasFog = RenderHeightFog(Renderer, DepthTarget, ColorTarget);
+			})) return false;
+	}
+
+	if (Options.bDrawPrimitives)
+	{
+		const TArray<FGpuParticleBatch>& GpuBatches = RenderData.Collector.GetGpuParticleBatches();
+		if (!GpuBatches.IsEmpty())
+		{
+			FRenderGraphComputePassDesc ComputeDesc{};
+			ComputeDesc.Name = "GpuParticleSimulate";
+			for (const FGpuParticleBatch& Batch : GpuBatches)
+			{
+				if (!Batch.GpuResources || Batch.MaxParticles == 0) continue;
+				FGpuParticleEmitterResources& Res = *Batch.GpuResources;
+				if (!Res.ParticleBuffer || Res.MaxParticles != Batch.MaxParticles)
+				{
+					Res.ParticleBuffer = RenderCommand::CreateRWStructuredBuffer(Batch.ParticleStride, Batch.MaxParticles);
+					Res.MaxParticles = Batch.MaxParticles;
+					if (Res.ParticleBuffer)
+						RenderCommand::ClearUnorderedAccess(Res.ParticleBuffer.get(), 0);
+				}
+				else if (Batch.bResetRequested && Res.ParticleBuffer)
+				{
+					RenderCommand::ClearUnorderedAccess(Res.ParticleBuffer.get(), 0);
+				}
+				if (Res.ParticleBuffer && Res.ParticleBuffer->GetBuffer())
+				{
+					ID3D11Resource* RawRes = Res.ParticleBuffer->GetBuffer();
+					if (std::find(ComputeDesc.WriteResources.begin(), ComputeDesc.WriteResources.end(), RawRes) == ComputeDesc.WriteResources.end())
+						ComputeDesc.WriteResources.push_back(RawRes);
+				}
+			}
+
+			if (!ComputeDesc.WriteResources.empty())
+			{
+				Graph.AddComputePass(std::move(ComputeDesc), [this]
+					{
+						FComputeShader* InjectCS = FRenderResourceManager::GetComputeShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSInjectSpawns");
+						FComputeShader* SimCS = FRenderResourceManager::GetComputeShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSSimulate");
+						if (!InjectCS || !SimCS) return;
+
+						for (const FGpuParticleBatch& Batch : RenderData.Collector.GetGpuParticleBatches())
+						{
+							if (!Batch.GpuResources || Batch.MaxParticles == 0) continue;
+							FGpuParticleEmitterResources& Res = *Batch.GpuResources;
+							if (!Res.ParticleBuffer) continue;
+
+							if (!Res.CurveLUTBuffer)
+								Res.CurveLUTBuffer = RenderCommand::CreateDynamicStructuredBuffer(384, sizeof(FVector4));
+							if (!Res.SimCB)
+								Res.SimCB = RenderCommand::CreateConstantBuffer(sizeof(FGpuParticleSimParams));
+							if (!Res.DrawCB)
+								Res.DrawCB = RenderCommand::CreateConstantBuffer(sizeof(FGpuParticleDrawParams));
+							if (!Res.CurveLUTBuffer || !Res.SimCB || !Res.DrawCB) continue;
+
+							if (void* MappedLUT = RenderCommand::MapWriteDiscard(Res.CurveLUTBuffer.get()))
+							{
+								std::memcpy(MappedLUT, Batch.CurveLUT.GetData(), 384 * sizeof(FVector4));
+								RenderCommand::Unmap(Res.CurveLUTBuffer.get());
+							}
+							RenderCommand::UpdateBufferData(Res.SimCB.get(), &Batch.SimParams, sizeof(FGpuParticleSimParams));
+
+							if (Batch.SpawnCount > 0 && !Batch.PendingSpawnBytes.IsEmpty())
+							{
+								if (!Res.SpawnUploadBuffer || Res.SpawnCapacity < Batch.SpawnCount)
+								{
+									const uint32 NewCap = std::max(Batch.SpawnCount, 64u);
+									Res.SpawnUploadBuffer = RenderCommand::CreateDynamicStructuredBuffer(NewCap, Batch.ParticleStride);
+									Res.SpawnCapacity = Res.SpawnUploadBuffer ? NewCap : 0;
+								}
+								if (Res.SpawnUploadBuffer)
+								{
+									if (void* MappedSpawn = RenderCommand::MapWriteDiscard(Res.SpawnUploadBuffer.get()))
+									{
+										std::memcpy(MappedSpawn, Batch.PendingSpawnBytes.GetData(), Batch.PendingSpawnBytes.Num());
+										RenderCommand::Unmap(Res.SpawnUploadBuffer.get());
+									}
+									RenderCommand::BindComputeShader(InjectCS);
+									RenderCommand::BindConstantBuffer(0, Res.SimCB.get(), EShaderBindFlagBits::Compute);
+									RenderCommand::BindShaderResource(0, Res.SpawnUploadBuffer.get(), EShaderBindFlagBits::Compute);
+									RenderCommand::BindUnorderedAccess(0, Res.ParticleBuffer.get());
+									RenderCommand::Dispatch((Batch.SpawnCount + 63u) / 64u, 1, 1);
+									RenderCommand::UnbindShaderResources(0, 1, EShaderBindFlagBits::Compute);
+								}
+							}
+
+							RenderCommand::BindComputeShader(SimCS);
+							RenderCommand::BindConstantBuffer(0, Res.SimCB.get(), EShaderBindFlagBits::Compute);
+							RenderCommand::BindShaderResource(1, Res.CurveLUTBuffer.get(), EShaderBindFlagBits::Compute);
+							RenderCommand::BindUnorderedAccess(0, Res.ParticleBuffer.get());
+							RenderCommand::Dispatch((Batch.MaxParticles + 255u) / 256u, 1, 1);
+
+							RenderCommand::UnbindUnorderedAccess(0);
+							RenderCommand::UnbindShaderResources(1, 1, EShaderBindFlagBits::Compute);
+							RenderCommand::BindComputeShader(nullptr);
+						}
+					});
+			}
+		}
+
+		if (!Graph.AddRasterPass(MakeViewportPass("Translucent", LightingHDR, Depth),
+			[this, Renderer]
+			{
+				if (!bCorePassSucceeded)
+					return;
+				FHeightFogRenderer* Fog = Renderer->GetHeightFog();
+				RenderTranslucent(Renderer, Fog ? Fog->GetTranslucentFogConstants(bHasFog) : nullptr);
+			})) return false;
+	}
+
 	if (Options.bDrawPrimitives && Options.bShowShadowMask && ShadowAtlasRef)
 	{
 		const FRenderGraphTextureRef ShadowMaskVis = Graph.CreateTexture({ Width, Height, ETextureFormat::R8G8B8A8_UNorm }, "ShadowMaskVisualization");
@@ -854,121 +973,7 @@ bool FSceneRenderer::AddViewportPasses(FRenderGraphBuilder& Graph, FRenderer* Re
 	const FRenderGraphTextureRef SceneColor = Graph.ImportTexture(Targets.SceneColor.get(), "SceneColor");
 	const FRenderGraphTextureRef Depth = Graph.ImportTexture(Targets.Depth.get(), "SceneDepth");
 	if (!SceneColor || !Depth) return false;
-	bHasFog = false;
 	bFXAAPassSucceeded = true;
-
-	if (!Options.bShowWorldNormal && Options.bDrawPrimitives && Options.bEnableFog && Callbacks.HeightFog)
-	{
-		FRenderGraphRasterPassDesc Pass = MakeViewportPass("HeightFog", SceneColor);
-		Pass.ReadTextures = { Depth };
-		if (!Graph.AddRasterPass(std::move(Pass), [this, DrawFog = Callbacks.HeightFog]
-			{
-				bHasFog = DrawFog();
-			})) return false;
-	}
-	if (!Options.bShowWorldNormal && Options.bDrawPrimitives)
-	{
-		const TArray<FGpuParticleBatch>& GpuBatches = RenderData.Collector.GetGpuParticleBatches();
-		if (!GpuBatches.IsEmpty())
-		{
-			FRenderGraphComputePassDesc ComputeDesc{};
-			ComputeDesc.Name = "GpuParticleSimulate";
-			for (const FGpuParticleBatch& Batch : GpuBatches)
-			{
-				if (!Batch.GpuResources || Batch.MaxParticles == 0) continue;
-				FGpuParticleEmitterResources& Res = *Batch.GpuResources;
-				if (!Res.ParticleBuffer || Res.MaxParticles != Batch.MaxParticles)
-				{
-					Res.ParticleBuffer = RenderCommand::CreateRWStructuredBuffer(Batch.ParticleStride, Batch.MaxParticles);
-					Res.MaxParticles = Batch.MaxParticles;
-					if (Res.ParticleBuffer)
-						RenderCommand::ClearUnorderedAccess(Res.ParticleBuffer.get(), 0);
-				}
-				else if (Batch.bResetRequested && Res.ParticleBuffer)
-				{
-					RenderCommand::ClearUnorderedAccess(Res.ParticleBuffer.get(), 0);
-				}
-				if (Res.ParticleBuffer && Res.ParticleBuffer->GetBuffer())
-				{
-					ID3D11Resource* RawRes = Res.ParticleBuffer->GetBuffer();
-					if (std::find(ComputeDesc.WriteResources.begin(), ComputeDesc.WriteResources.end(), RawRes) == ComputeDesc.WriteResources.end())
-						ComputeDesc.WriteResources.push_back(RawRes);
-				}
-			}
-
-			if (!ComputeDesc.WriteResources.empty())
-			{
-				Graph.AddComputePass(std::move(ComputeDesc), [this]
-				{
-					FComputeShader* InjectCS = FRenderResourceManager::GetComputeShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSInjectSpawns");
-					FComputeShader* SimCS = FRenderResourceManager::GetComputeShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSSimulate");
-					if (!InjectCS || !SimCS) return;
-
-					for (const FGpuParticleBatch& Batch : RenderData.Collector.GetGpuParticleBatches())
-					{
-						if (!Batch.GpuResources || Batch.MaxParticles == 0) continue;
-						FGpuParticleEmitterResources& Res = *Batch.GpuResources;
-						if (!Res.ParticleBuffer) continue;
-
-					if (!Res.CurveLUTBuffer)
-						Res.CurveLUTBuffer = RenderCommand::CreateDynamicStructuredBuffer(384, sizeof(FVector4));
-					if (!Res.SimCB)
-						Res.SimCB = RenderCommand::CreateConstantBuffer(sizeof(FGpuParticleSimParams));
-					if (!Res.DrawCB)
-						Res.DrawCB = RenderCommand::CreateConstantBuffer(sizeof(FGpuParticleDrawParams));
-					if (!Res.CurveLUTBuffer || !Res.SimCB || !Res.DrawCB) continue;
-
-					if (void* MappedLUT = RenderCommand::MapWriteDiscard(Res.CurveLUTBuffer.get()))
-					{
-						std::memcpy(MappedLUT, Batch.CurveLUT.GetData(), 384 * sizeof(FVector4));
-						RenderCommand::Unmap(Res.CurveLUTBuffer.get());
-					}
-					RenderCommand::UpdateBufferData(Res.SimCB.get(), &Batch.SimParams, sizeof(FGpuParticleSimParams));
-
-					if (Batch.SpawnCount > 0 && !Batch.PendingSpawnBytes.IsEmpty())
-					{
-						if (!Res.SpawnUploadBuffer || Res.SpawnCapacity < Batch.SpawnCount)
-						{
-							const uint32 NewCap = std::max(Batch.SpawnCount, 64u);
-							Res.SpawnUploadBuffer = RenderCommand::CreateDynamicStructuredBuffer(NewCap, Batch.ParticleStride);
-							Res.SpawnCapacity = Res.SpawnUploadBuffer ? NewCap : 0;
-						}
-						if (Res.SpawnUploadBuffer)
-						{
-							if (void* MappedSpawn = RenderCommand::MapWriteDiscard(Res.SpawnUploadBuffer.get()))
-							{
-								std::memcpy(MappedSpawn, Batch.PendingSpawnBytes.GetData(), Batch.PendingSpawnBytes.Num());
-								RenderCommand::Unmap(Res.SpawnUploadBuffer.get());
-							}
-							RenderCommand::BindComputeShader(InjectCS);
-							RenderCommand::BindConstantBuffer(0, Res.SimCB.get(), EShaderBindFlagBits::Compute);
-							RenderCommand::BindShaderResource(0, Res.SpawnUploadBuffer.get(), EShaderBindFlagBits::Compute);
-							RenderCommand::BindUnorderedAccess(0, Res.ParticleBuffer.get());
-							RenderCommand::Dispatch((Batch.SpawnCount + 63u) / 64u, 1, 1);
-							RenderCommand::UnbindShaderResources(0, 1, EShaderBindFlagBits::Compute);
-						}
-					}
-
-					RenderCommand::BindComputeShader(SimCS);
-					RenderCommand::BindConstantBuffer(0, Res.SimCB.get(), EShaderBindFlagBits::Compute);
-					RenderCommand::BindShaderResource(1, Res.CurveLUTBuffer.get(), EShaderBindFlagBits::Compute);
-					RenderCommand::BindUnorderedAccess(0, Res.ParticleBuffer.get());
-					RenderCommand::Dispatch((Batch.MaxParticles + 255u) / 256u, 1, 1);
-
-					RenderCommand::UnbindUnorderedAccess(0);
-					RenderCommand::UnbindShaderResources(1, 1, EShaderBindFlagBits::Compute);
-					RenderCommand::BindComputeShader(nullptr);
-					}
-				});
-			}
-		}
-
-		if (!Graph.AddRasterPass(MakeViewportPass("Translucent", SceneColor, Depth),
-			[this, Renderer, GetFog = Callbacks.TranslucentFogConstants]
-			{
-				RenderTranslucent(Renderer, GetFog ? GetFog(bHasFog) : nullptr);
-			})) return false;
-	}
 	if (!Options.bShowWorldNormal && Callbacks.SceneText &&
 		!Graph.AddRasterPass(MakeViewportPass("SceneText", SceneColor, Depth), Callbacks.SceneText))
 		return false;
@@ -1082,15 +1087,6 @@ bool FSceneRenderer::Render(FRenderer* Renderer, FSceneViewTargets& Targets, con
 	FDecalViewStatsScope DecalStatsScope(DecalStats);
 
 	FScenePassCallbacks Callbacks;
-	Callbacks.HeightFog = [this, Renderer, DepthTarget, ColorTarget]
-		{
-			return RenderHeightFog(Renderer, DepthTarget, ColorTarget);
-		};
-	Callbacks.TranslucentFogConstants = [Renderer](bool bHasFog)
-		{
-			FHeightFogRenderer* Fog = Renderer->GetHeightFog();
-			return Fog ? Fog->GetTranslucentFogConstants(bHasFog) : nullptr;
-		};
 	Callbacks.SceneText = [this, Renderer] { RenderSceneText(Renderer); };
 
 	FFXAARenderer* FXAA = Renderer->GetFXAA();
@@ -1266,9 +1262,9 @@ void FSceneRenderer::GatherViewVisibilityAndDynamicElements(FScene& Scene, FScen
 			if (Batch.bIsParticle)
 				continue;
 			const bool bUsesGPUSceneMaterial = !Batch.Material ||
-				Batch.Material->PSOType == EPSOType::StaticMesh_Opaque ||
-				Batch.Material->PSOType == EPSOType::StaticMesh_Translucent ||
-				Batch.Material->PSOType == EPSOType::StaticMesh_Wireframe;
+				Batch.Material->GetPSOType() == EPSOType::StaticMesh_Opaque ||
+				Batch.Material->GetPSOType() == EPSOType::StaticMesh_Translucent ||
+				Batch.Material->GetPSOType() == EPSOType::StaticMesh_Wireframe;
 			if (!bUsesGPUSceneMaterial)
 				continue;
 

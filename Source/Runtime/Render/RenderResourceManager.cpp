@@ -4,10 +4,18 @@
 #include "RenderCommand.h"
 
 #include "RenderUtil.h"
+#include "Render/Material.h"
+#include "Render/MaterialRenderProxy.h"
+#include "Asset/AssetManager.h"
 #include <cstring>
 #include <fstream>
 #include <iterator>
 #include <set>
+#include <sstream>
+#include <iomanip>
+#include <unordered_map>
+#include <unordered_set>
+#include <functional>
 
 namespace
 {
@@ -32,8 +40,411 @@ namespace
 			AppendShaderSource(Path.parent_path() / Source.substr(Open + 1, Close - Open - 1), Visited, Out);
 		}
 	}
+
+	const FMaterialExpressionNode* FindGraphNode(const UMaterial& Material, int32 NodeId)
+	{
+		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
+		{
+			if (Node.Id == NodeId)
+			{
+				return &Node;
+			}
+		}
+
+		return nullptr;
+	}
+
+	const FMaterialExpressionConnection* FindGraphInput(const UMaterial& Material, int32 NodeId, int32 Pin)
+	{
+		for (const FMaterialExpressionConnection& Connection : Material.ExpressionConnections)
+		{
+			if (Connection.InputNodeId == NodeId && Connection.InputPin == Pin)
+			{
+				return &Connection;
+			}
+		}
+
+		return nullptr;
+	}
+
+	FString GraphNodeVariable(int32 NodeId)
+	{
+		return "GraphNode_" + std::to_string(NodeId);
+	}
+
+	FString HlslFloat(float Value)
+	{
+		std::ostringstream Stream;
+		Stream << std::fixed << std::setprecision(6) << Value << "f";
+		return Stream.str();
+	}
+
+	bool GenerateMaterialGraphSource(const UMaterial& Material, FString& OutSource, FString& OutError)
+	{
+		if (!Material.ValidateExpressionGraph(OutError))
+		{
+			return false;
+		}
+
+		std::unordered_map<FString, int32> TextureIndices;
+		std::unordered_map<FString, int32> ParameterIndices;
+
+		TArray<FString> TexturePaths;
+		int32 ParameterCount = 0;
+
+		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
+		{
+			if (Node.Type == EMaterialExpressionType::TextureSample && !Node.TexturePath.empty())
+			{
+				if (!TextureIndices.contains(Node.TexturePath))
+				{
+					TextureIndices[Node.TexturePath] = TexturePaths.Num();
+					TexturePaths.Add(Node.TexturePath);
+				}
+			}
+
+			if (Node.Type == EMaterialExpressionType::ScalarParameter || Node.Type == EMaterialExpressionType::VectorParameter)
+			{
+				ParameterIndices[Node.ParameterName] = ParameterCount++;
+			}
+		}
+
+		if (TexturePaths.Num() > MaxMaterialGraphTextures || ParameterCount > MaxMaterialGraphParameters)
+		{
+			OutError = "Material Graph resource limit exceeded.";
+			return false;
+		}
+
+		TArray<const FMaterialExpressionNode*> EvaluationOrder;
+		std::unordered_map<int32, uint8> VisitState;
+
+		const auto Visit = [&](auto&& Self, int32 NodeId) -> bool
+		{
+			if (VisitState[NodeId] == 1)
+			{
+				return false;
+			}
+
+			if (VisitState[NodeId] == 2)
+			{
+				return true;
+			}
+
+			VisitState[NodeId] = 1;
+
+			for (const FMaterialExpressionConnection& Connection : Material.ExpressionConnections)
+			{
+				if (Connection.InputNodeId == NodeId && !Self(Self, Connection.OutputNodeId))
+				{
+					return false;
+				}
+			}
+
+			const FMaterialExpressionNode* Node = FindGraphNode(Material, NodeId);
+
+			if (!Node)
+			{
+				return false;
+			}
+
+			if (Node->Type != EMaterialExpressionType::MaterialOutput)
+			{
+				EvaluationOrder.Add(Node);
+			}
+
+			VisitState[NodeId] = 2;
+			return true;
+		};
+
+		if (!Visit(Visit, Material.OutputNodeId))
+		{
+			OutError = "Failed to build Material Graph evaluation order.";
+			return false;
+		}
+
+		OutSource.clear();
+
+		OutSource += "struct FMaterialGraphOutput\n";
+		OutSource += "{\n";
+		OutSource += "    float4 BaseColor;\n";
+		OutSource += "    float3 SpecularColor;\n";
+		OutSource += "    float Shininess;\n";
+		OutSource += "    float3 EmissiveColor;\n";
+		OutSource += "    float EmissiveFactor;\n";
+		OutSource += "};\n";
+
+		OutSource += "cbuffer MaterialGraphParameters : register(b4)\n";
+		OutSource += "{\n";
+		OutSource += "    float4 GraphParameterValues[16];\n";
+		OutSource += "};\n";
+
+		for (int32 Index = 0; Index < TexturePaths.Num(); ++Index)
+		{
+			OutSource += "Texture2D GraphTexture" + std::to_string(Index) + " : register(t" + std::to_string(Index + 2) + ");\n";
+		}
+
+		const auto GetInputVariable = [&](int32 NodeId, int32 Pin) -> FString
+		{
+			const FMaterialExpressionConnection* Connection = FindGraphInput(Material, NodeId, Pin);
+			return Connection ? GraphNodeVariable(Connection->OutputNodeId) : FString();
+		};
+
+		OutSource += "FMaterialGraphOutput EvaluateMaterialGraph(float2 UV)\n";
+		OutSource += "{\n";
+		OutSource += "    FMaterialGraphOutput Result = (FMaterialGraphOutput)0;\n";
+
+		for (const FMaterialExpressionNode* Node : EvaluationOrder)
+		{
+			const FString Variable = GraphNodeVariable(Node->Id);
+			const FString A = GetInputVariable(Node->Id, 0);
+			const FString B = GetInputVariable(Node->Id, 1);
+			const FString C = GetInputVariable(Node->Id, 2);
+
+			const EMaterialValueType OutputType = Material.GetExpressionOutputType(Node->Id, 0);
+
+			const char* HlslType = nullptr;
+
+			switch (OutputType)
+			{
+			case EMaterialValueType::Scalar:
+				HlslType = "float";
+				break;
+
+			case EMaterialValueType::Vector2:
+				HlslType = "float2";
+				break;
+
+			case EMaterialValueType::Vector3:
+				HlslType = "float3";
+				break;
+
+			case EMaterialValueType::Vector4:
+				HlslType = "float4";
+				break;
+
+			default:
+				OutError = "Cannot resolve expression output type.";
+				return false;
+			}
+
+			switch (Node->Type)
+			{
+			case EMaterialExpressionType::Constant:
+				OutSource += "    float " + Variable + " = " + HlslFloat(Node->ScalarValue) + ";\n";
+				break;
+
+			case EMaterialExpressionType::Constant2Vector:
+				OutSource += "    float2 " + Variable + " = float2(" + HlslFloat(Node->VectorValue.X) + ", " + HlslFloat(Node->VectorValue.Y) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Constant3Vector:
+				OutSource += "    float3 " + Variable + " = float3(" + HlslFloat(Node->VectorValue.X) + ", " + HlslFloat(Node->VectorValue.Y) + ", " + HlslFloat(Node->VectorValue.Z) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Constant4Vector:
+				OutSource += "    float4 " + Variable + " = float4(" + HlslFloat(Node->VectorValue.X) + ", " + HlslFloat(Node->VectorValue.Y) + ", " + HlslFloat(Node->VectorValue.Z) + ", " + HlslFloat(Node->VectorValue.W) + ");\n";
+				break;
+
+			case EMaterialExpressionType::ScalarParameter:
+				OutSource += "    float " + Variable + " = GraphParameterValues[" + std::to_string(ParameterIndices[Node->ParameterName]) + "].x;\n";
+				break;
+
+			case EMaterialExpressionType::VectorParameter:
+				OutSource += "    float4 " + Variable + " = GraphParameterValues[" + std::to_string(ParameterIndices[Node->ParameterName]) + "];\n";
+				break;
+
+			case EMaterialExpressionType::TextureCoordinate:
+				OutSource += "    float2 " + Variable + " = UV;\n";
+				break;
+
+			case EMaterialExpressionType::TextureSample:
+				OutSource += "    float4 " + Variable + " = GraphTexture" + std::to_string(TextureIndices[Node->TexturePath]) + ".Sample(ColorSampler, " + A + ");\n";
+				break;
+
+			case EMaterialExpressionType::Add:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + A + " + " + B + ";\n";
+				break;
+
+			case EMaterialExpressionType::Multiply:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + A + " * " + B + ";\n";
+				break;
+
+			case EMaterialExpressionType::Lerp:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = lerp(" + A + ", " + B + ", " + C + ");\n";
+				break;
+
+			case EMaterialExpressionType::OneMinus:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = 1.0f - " + A + ";\n";
+				break;
+
+			default:
+				OutError = "Unsupported Material Expression.";
+				return false;
+			}
+		}
+
+		const auto EmitOutput = [&](int32 Pin, const char* Define, const char* Field, bool bVector4, bool bVector3) -> bool
+		{
+			const FMaterialExpressionConnection* Connection = FindGraphInput(Material, Material.OutputNodeId, Pin);
+
+			if (!Connection)
+			{
+				return true;
+			}
+
+			const FString Variable = GraphNodeVariable(Connection->OutputNodeId);
+			const EMaterialValueType Type = Material.GetExpressionOutputType(Connection->OutputNodeId, Connection->OutputPin);
+
+			OutSource += FString("#define ") + Define + " 1\n";
+
+			if (bVector4 && Type == EMaterialValueType::Vector3)
+			{
+				OutSource += "    Result." + FString(Field) + " = float4(" + Variable + ", 1.0f);\n";
+			}
+			else if (bVector3 && Type == EMaterialValueType::Vector4)
+			{
+				OutSource += "    Result." + FString(Field) + " = " + Variable + ".rgb;\n";
+			}
+			else
+			{
+				OutSource += "    Result." + FString(Field) + " = " + Variable + ";\n";
+			}
+
+			return true;
+		};
+
+		OutSource += "    Result.BaseColor = float4(1, 1, 1, 1);\n";
+		OutSource += "    Result.SpecularColor = float3(1, 1, 1);\n";
+		OutSource += "    Result.Shininess = 32.0f;\n";
+		OutSource += "    Result.EmissiveColor = float3(0, 0, 0);\n";
+		OutSource += "    Result.EmissiveFactor = 1.0f;\n";
+
+		EmitOutput(0, "MATERIAL_GRAPH_HAS_BASE_COLOR", "BaseColor", true, false);
+		EmitOutput(1, "MATERIAL_GRAPH_HAS_SPECULAR_COLOR", "SpecularColor", false, true);
+		EmitOutput(2, "MATERIAL_GRAPH_HAS_SHININESS", "Shininess", false, false);
+		EmitOutput(3, "MATERIAL_GRAPH_HAS_EMISSIVE_COLOR", "EmissiveColor", false, true);
+		EmitOutput(4, "MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR", "EmissiveFactor", false, false);
+
+		OutSource += "    return Result;\n";
+		OutSource += "}\n";
+
+		OutError.clear();
+		return true;
+	}
 }
 
+FString GetMaterialGraphHash(const FString& Source)
+{
+	uint64 Hash = 14695981039346656037ull;
+
+	for (unsigned char Value : Source)
+	{
+		Hash ^= Value;
+		Hash *= 1099511628211ull;
+	}
+
+	std::ostringstream Stream;
+	Stream << std::hex << Hash;
+	return Stream.str();
+}
+
+FString GetMaterialGraphAssetId(const UMaterial& Material)
+{
+	FString Identity = Material.GetPath();
+
+	if (Identity.empty())
+	{
+		Identity = std::to_string(reinterpret_cast<uintptr_t>(&Material));
+	}
+
+	return GetMaterialGraphHash(Identity);
+}
+
+bool SaveGeneratedMaterialGraph(const FString& Source, const FString& AssetId, FString& OutIncludePath)
+{
+	const fs::path Directory = fs::path(ResourcePaths::ShaderFolder) / "GeneratedMaterial";
+	std::error_code Error;
+	fs::create_directories(Directory, Error);
+
+	if (Error)
+	{
+		return false;
+	}
+
+	const fs::path File = Directory / ("Graph_" + AssetId + ".hlsli");
+
+	std::ifstream Existing(File, std::ios::binary);
+	const FString ExistingSource(std::istreambuf_iterator<char>{ Existing }, std::istreambuf_iterator<char>{});
+
+	if (ExistingSource != Source)
+	{
+		std::ofstream Output(File, std::ios::binary | std::ios::trunc);
+
+		if (!Output)
+		{
+			return false;
+		}
+
+		Output.write(Source.data(), static_cast<std::streamsize>(Source.size()));
+
+		if (!Output)
+		{
+			return false;
+		}
+	}
+
+	OutIncludePath = "GeneratedMaterial/Graph_" + AssetId + ".hlsli";
+	return true;
+}
+
+bool SaveGeneratedMaterialShaderVariant(const FString& BaseShaderPath, const FString& IncludePath, const FString& AssetId, FString& OutShaderPath)
+{
+	std::ifstream Input(BaseShaderPath, std::ios::binary);
+
+	if (!Input)
+	{
+		return false;
+	}
+
+	const FString BaseSource(std::istreambuf_iterator<char>{ Input }, std::istreambuf_iterator<char>{});
+	const FString IncludeMarker = "#include MATERIAL_GRAPH_INCLUDE";
+	const size_t IncludePosition = BaseSource.find(IncludeMarker);
+
+	if (IncludePosition == FString::npos)
+	{
+		return false;
+	}
+
+	FString GeneratedSource = BaseSource;
+	const FString LiteralInclude = "#include \"" + IncludePath + "\"";
+	GeneratedSource.replace(IncludePosition, IncludeMarker.size(), LiteralInclude);
+
+	const fs::path BasePath(BaseShaderPath);
+	const fs::path VariantPath = BasePath.parent_path() / (BasePath.stem().string() + "_Graph_" + AssetId + ".hlsli");
+
+	std::ifstream Existing(VariantPath, std::ios::binary);
+	const FString ExistingSource(std::istreambuf_iterator<char>{ Existing }, std::istreambuf_iterator<char>{});
+
+	if (ExistingSource != GeneratedSource)
+	{
+		std::ofstream Output(VariantPath, std::ios::binary | std::ios::trunc);
+
+		if (!Output)
+		{
+			return false;
+		}
+
+		Output.write(GeneratedSource.data(), static_cast<std::streamsize>(GeneratedSource.size()));
+
+		if (!Output)
+		{
+			return false;
+		}
+	}
+
+	OutShaderPath = VariantPath.generic_string();
+	return true;
+}
 
 struct FPipelineTableEntry
 {
@@ -56,7 +467,7 @@ constexpr FPipelineTableEntry PipelineTable[] =
 	{ EPSOType::Grid,                    "Resources/Shader/GridShader.hlsl",          EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::AlphaBlend,   EDepthStencilState::Default },
 	{ EPSOType::Outline_Mask,            "Resources/Shader/OutlineShader.hlsl",       EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::NoColorWrite, EDepthStencilState::StencilMask },
 	{ EPSOType::Outline_Draw,            "Resources/Shader/OutlineShader.hlsl",       EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::StencilOutline },
-	{ EPSOType::Reserved_9,              nullptr,                                            EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::Default },
+	{ EPSOType::StaticMesh_GBuffer,     "Resources/Shader/StaticMeshGBufferShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default },
 	{ EPSOType::Reserved_10,             nullptr,                                            EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::Default },
 	{ EPSOType::Reserved_11,             nullptr,                                            EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::Default },
 	{ EPSOType::ToneMap,                "Resources/Shader/ToneMapShader.hlsl",              EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::Disabled },
@@ -77,7 +488,9 @@ constexpr FPipelineTableEntry PipelineTable[] =
 	{ EPSOType::Particle_GpuInstanced, "Resources/Shader/ParticleGpuInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
 	{ EPSOType::Particle_MeshOpaque, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default },
 	{ EPSOType::Particle_MeshTranslucent, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
-	{ EPSOType::Particle_MeshAdditive, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Additive, EDepthStencilState::ReadOnly }
+	{ EPSOType::Particle_MeshAdditive, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Additive, EDepthStencilState::ReadOnly },
+	{ EPSOType::Particle_Sprite, "Resources/Shader/ParticleSpriteShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
+	{ EPSOType::SkeletalMesh_GBuffer, "Resources/Shader/SkeletalMeshGBufferShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default }
 };
 
 static_assert(sizeof(PipelineTable) / sizeof(PipelineTable[0]) == static_cast<size_t>(EPSOType::Count));
@@ -188,6 +601,28 @@ void FRenderResourceManager::InitPipelineStates()
 		}
 	}
 
+	const FString SkeletalGBufferPath = "Resources/Shader/SkeletalMeshGBufferShader.hlsl";
+
+	if (auto* Base = ShaderProgramMap.Find(SkeletalGBufferPath))
+	{
+		const D3D_SHADER_MACRO Defines[] = { { "GPU_SKINNING", "1" }, { nullptr, nullptr } };
+
+		FString VSPath;
+		FShaderByteCode Code = RenderUtil::GetOrCompile(SkeletalGBufferPath, "mainVS", EShaderType::Vertex, VSPath, Defines);
+
+		if (Code.IsValid())
+		{
+			auto VS = RenderCommand::CreateVertexShader(Code);
+
+			if (VS && VS->IsValid())
+			{
+				FVertexShader* VSRaw = VS.get();
+				VertexShaderMap[VSPath] = std::move(VS);
+				ShaderProgramMap[SkeletalGBufferPath + "#GPU"] = MakeUnique<FShaderProgram>(VSRaw, (*Base)->PixelShader);
+			}
+		}
+	}
+
 	if (DepthProgram && DepthProgram->PixelShader)
 	{
 		if (FShaderProgram* StaticVSProg = GetForwardShaderProgram(EReflectionModel::Lambert, EShadingModel::Phong, false, true);
@@ -201,6 +636,16 @@ void FRenderResourceManager::InitPipelineStates()
 			ShaderProgramMap["DepthPrepass#Uber#GPU"] = MakeUnique<FShaderProgram>(SkinVSProg->VertexShader, DepthProgram->PixelShader);
 		}
 	}
+}
+
+FShaderProgram* FRenderResourceManager::GetSkeletalMeshGBufferShaderProgram(bool bGPUSkinning)
+{
+	const FString Key = FString("Resources/Shader/SkeletalMeshGBufferShader.hlsl") + (bGPUSkinning ? "#GPU" : "");
+	if (auto* Found = Get().ShaderProgramMap.Find(Key))
+	{
+		return Found->get();
+	}
+	return nullptr;
 }
 
 FShaderProgram* FRenderResourceManager::GetGPUSkinningShadowDepthShaderProgram()
@@ -218,6 +663,175 @@ FShaderProgram* FRenderResourceManager::GetForwardShaderProgram(EReflectionModel
 	const FString Key = FString("Resources/Shader/UberLit.hlsl#") + Name + (bGPUSkinning ? "#GPU" : "");
 	if (auto* Found = Get().ShaderProgramMap.Find(Key)) return Found->get();
 	return nullptr;
+}
+
+FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMaterial& Material, EPSOType TargetPSO, EReflectionModel Reflection, bool bUnlit, bool bGPUSkinning, FString& OutError)
+{
+	FString GeneratedSource;
+
+	if (!GenerateMaterialGraphSource(Material, GeneratedSource, OutError))
+	{
+		return nullptr;
+	}
+
+	const FString Hash = GetMaterialGraphHash(GeneratedSource);
+	const FString AssetId = GetMaterialGraphAssetId(Material);
+
+	FString ShaderPath;
+	FShaderProgram* BaseProgram = nullptr;
+
+	switch (TargetPSO)
+	{
+	case EPSOType::StaticMesh_Forward:
+		ShaderPath = "Resources/Shader/UberLit.hlsl";
+		BaseProgram = GetForwardShaderProgram(Reflection, EShadingModel::Phong, bGPUSkinning, bUnlit);
+		break;
+
+	case EPSOType::StaticMesh_GBuffer:
+		ShaderPath = "Resources/Shader/StaticMeshGBufferShader.hlsl";
+		BaseProgram = GetShaderProgram(ShaderPath);
+		break;
+
+	case EPSOType::StaticMesh_Translucent:
+		ShaderPath = "Resources/Shader/StaticMeshTranslucentShader.hlsl";
+		BaseProgram = GetTranslucentShaderProgram(bGPUSkinning);
+		break;
+
+	case EPSOType::Particle_AlphaBlend:
+	case EPSOType::Particle_Additive:
+		ShaderPath = "Resources/Shader/ParticleSubUVShader.hlsl";
+		break;
+
+	case EPSOType::Particle_Sprite:
+		ShaderPath = "Resources/Shader/ParticleSpriteShader.hlsl";
+		break;
+
+	case EPSOType::Particle_Instanced:
+		ShaderPath = "Resources/Shader/ParticleInstancedShader.hlsl";
+		break;
+
+	case EPSOType::Particle_GpuInstanced:
+		ShaderPath = "Resources/Shader/ParticleGpuInstancedShader.hlsl";
+		break;
+
+	case EPSOType::Particle_MeshOpaque:
+	case EPSOType::Particle_MeshTranslucent:
+	case EPSOType::Particle_MeshAdditive:
+		ShaderPath = "Resources/Shader/ParticleMeshInstancedShader.hlsl";
+		break;
+
+	case EPSOType::SkeletalMesh_GBuffer:
+		ShaderPath = "Resources/Shader/SkeletalMeshGBufferShader.hlsl";
+		BaseProgram = GetSkeletalMeshGBufferShaderProgram(bGPUSkinning);
+		break;
+
+	default:
+		OutError = "Unsupported Material Graph PSO.";
+		return nullptr;
+	}
+
+	if (!BaseProgram)
+	{
+		FPipelineState* Pipeline = GetPSO(TargetPSO);
+		BaseProgram = Pipeline ? Pipeline->Shader : nullptr;
+	}
+
+	if (!BaseProgram || !BaseProgram->VertexShader)
+	{
+		OutError = "Base Material Shader is not available.";
+		return nullptr;
+	}
+
+	FString Key = ShaderPath + "#MaterialGraph_" + Hash + "#PSO_" + std::to_string(static_cast<uint8>(TargetPSO));
+
+	if (TargetPSO == EPSOType::StaticMesh_Forward)
+	{
+		Key += "#Reflection_" + std::to_string(static_cast<int32>(Reflection));
+		Key += bUnlit ? "#Unlit" : "#Lit";
+	}
+
+	if (bGPUSkinning)
+	{
+		Key += "#GPU";
+	}
+
+	if (auto* Found = Get().ShaderProgramMap.Find(Key))
+	{
+		OutError.clear();
+		return Found->get();
+	}
+
+	if (FString* PreviousError = Get().MaterialGraphErrorMap.Find(Key))
+	{
+		OutError = *PreviousError;
+		return nullptr;
+	}
+
+	FString IncludePath;
+
+	if (!SaveGeneratedMaterialGraph(GeneratedSource, AssetId, IncludePath))
+	{
+		OutError = "Failed to write generated Material Graph HLSL.";
+		return nullptr;
+	}
+
+	FString GeneratedShaderPath;
+
+	if (!SaveGeneratedMaterialShaderVariant(ShaderPath, IncludePath, AssetId, GeneratedShaderPath))
+	{
+		OutError = "Failed to generate Material Graph shader variant.";
+		return nullptr;
+	}
+
+	const FString UniqueDefine = "MATERIAL_GRAPH_HASH_" + Hash;
+
+	D3D_SHADER_MACRO Defines[5]{};
+	int32 DefineCount = 0;
+
+	if (TargetPSO == EPSOType::StaticMesh_Forward)
+	{
+		Defines[DefineCount++] = { bUnlit ? "VIEW_MODE_UNLIT" : "SHADING_MODEL_PHONG", "1" };
+
+		const char* ReflectionDefine = Reflection == EReflectionModel::Phong
+			? "REFLECTION_MODEL_PHONG"
+			: Reflection == EReflectionModel::Lambert
+			? "REFLECTION_MODEL_LAMBERT"
+			: "REFLECTION_MODEL_BLINN_PHONG";
+
+		Defines[DefineCount++] = { ReflectionDefine, "1" };
+	}
+
+	Defines[DefineCount++] = { "MATERIAL_GRAPH", "1" };
+	Defines[DefineCount++] = { UniqueDefine.c_str(), "1" };
+	Defines[DefineCount] = { nullptr, nullptr };
+
+	FString CsoPath;
+	FShaderByteCode PixelCode = RenderUtil::GetOrCompile(GeneratedShaderPath, "mainPS", EShaderType::Pixel, CsoPath, Defines);
+
+	if (!PixelCode.IsValid())
+	{
+		OutError = "[MaterialGraph] Pixel Shader compilation failed: " + Key;
+		Get().MaterialGraphErrorMap[Key] = OutError;
+		HTR_LOG(Error, "{}", OutError);
+		return nullptr;
+	}
+
+	TUniquePtr<FPixelShader> PixelShader = RenderCommand::CreatePixelShader(PixelCode);
+
+	if (!PixelShader || !PixelShader->IsValid())
+	{
+		OutError = "[MaterialGraph] Failed to create Pixel Shader: " + Key;
+		Get().MaterialGraphErrorMap[Key] = OutError;
+		HTR_LOG(Error, "{}", OutError);
+		return nullptr;
+	}
+
+	FPixelShader* PixelRaw = PixelShader.get();
+	Get().PixelShaderMap[Key + "#PS"] = std::move(PixelShader);
+	Get().ShaderProgramMap[Key] = MakeUnique<FShaderProgram>(BaseProgram->VertexShader, PixelRaw);
+
+	OutError.clear();
+	return Get().ShaderProgramMap[Key].get();
 }
 
 FShaderProgram* FRenderResourceManager::GetWorldNormalShaderProgram(bool bGPUSkinning)
@@ -299,6 +913,7 @@ void FRenderResourceManager::Shutdown()
 	Get().VertexShaderMap.Empty();
 	Get().PixelShaderMap.Empty();
 	Get().ShaderProgramMap.Empty();
+	Get().MaterialGraphErrorMap.Empty();
 }
 
 FShaderProgram* FRenderResourceManager::GetShaderProgram(const FString& InPath)
