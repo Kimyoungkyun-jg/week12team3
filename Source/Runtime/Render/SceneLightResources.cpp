@@ -12,17 +12,6 @@
 
 namespace
 {
-	static_assert(offsetof(FDeferredLightConstants, ViewportSize) == 96);
-	static_assert(offsetof(FDeferredLightConstants, Ambient) == 112);
-	static_assert(offsetof(FDeferredLightConstants, LightCounts) == 128);
-	static_assert(offsetof(FDeferredLightConstants, LightOffsets) == 144);
-	static_assert(offsetof(FDeferredLightConstants, SkyColorIntensity) == 160);
-	static_assert(offsetof(FDeferredLightConstants, bSingleLightPass) == 176);
-	static_assert(offsetof(FDeferredLightConstants, SingleLightIndex) == 180);
-	static_assert(offsetof(FDeferredLightConstants, ReflectionModel) == 184);
-	static_assert(offsetof(FDeferredLightConstants, bOverrideMaterialLighting) == 188);
-	static_assert(sizeof(FDeferredLightConstants) == 192);
-
 	// 용량이 모자랄 때만 두 배로 키우고 Map 한 번으로 채운다.
 	bool UploadStructured(TUniquePtr<FStructuredBuffer>& Buffer, const void* Data, uint32 Count, uint32 Stride)
 	{
@@ -50,13 +39,12 @@ bool FSceneLightResources::Init()
 	if (bInitialized) return true;
 
 	ForwardLightCB = RenderCommand::CreateConstantBuffer(sizeof(FForwardLightingConstants));
-	DeferredLightCB = RenderCommand::CreateConstantBuffer(sizeof(FDeferredLightConstants));
 	ShadowDepthPassCB = RenderCommand::CreateConstantBuffer(sizeof(FShadowDepthPassConstants));
 	ShadowProjectionCB = RenderCommand::CreateConstantBuffer(sizeof(FShadowProjectionConstants));
 
 	if (!ForwardTileGrid.Init())
 		HTR_LOG(Warning, "Forward tile culling compute shader unavailable");
-	bInitialized = ForwardLightCB && DeferredLightCB;
+	bInitialized = ForwardLightCB != nullptr;
 	return bInitialized;
 }
 

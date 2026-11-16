@@ -542,6 +542,7 @@ void FMaterialEditorPanel::SaveMaterial()
 
 void FMaterialEditorPanel::MarkMaterialChanged()
 {
+	UMaterialInterface::NotifyRenderDataChanged();
 	bDirty = true;
 	bMaterialThumbnailDirty = true;
 }

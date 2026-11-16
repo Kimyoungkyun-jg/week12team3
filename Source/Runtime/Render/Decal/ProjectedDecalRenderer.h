@@ -9,7 +9,8 @@
 #include <span>
 
 class FRenderer;
-struct FMeshDrawBatch;
+class FStructuredBuffer;
+struct FVisibleMeshDrawCommand;
 struct FSceneView;
 struct FDecalFrameStats;
 class FProjectedDecalRenderer
@@ -19,13 +20,9 @@ public:
 
 	bool IsReady() const;
 
-	// 호출 전제:
-	// 1. DBuffer RTV가 바인딩되어 있다.
-	// 2. Prepass Detpth가 DSV로 바인딩되어 있다.
-	//
-	// 렌더 타깃 설정과 Clear는 RenderGraphs가 담당한다.
 	bool OnRenderMesh(
-		std::span<const FMeshDrawBatch> ReceiverBatches,
+		std::span<const FVisibleMeshDrawCommand> ReceiverCommands,
+		const FStructuredBuffer* GPUSceneBuffer,
 		std::span<const FProjectedDecalRenderData> Decals,
 		std::span<const FProjectedDecalMeshDrawList> DrawLists,
 		bool bUnlitPass,

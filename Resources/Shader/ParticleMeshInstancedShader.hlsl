@@ -61,12 +61,13 @@ PS_INPUT mainVS(VS_INPUT input)
 float4 mainPS(PS_INPUT input) : SV_TARGET
 {
 	float hasTexture = input.extraParams.x;
-    float4 color = input.tintAndAlpha;
-    if (hasTexture > 0.5f)
-    {
-        color *= AtlasTexture.Sample(ColorSampler, input.uv);
-    }
-
+	float4 color = input.tintAndAlpha;
+	if (hasTexture > 0.5f)
+	{
+		float4 tex = AtlasTexture.Sample(ColorSampler, input.uv);
+		tex.rgb = SRGBToLinear(tex.rgb);
+		color *= tex;
+	}
 #ifdef MATERIAL_GRAPH
 	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(input.uv);
 

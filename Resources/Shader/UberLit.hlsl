@@ -29,14 +29,29 @@ struct FAmbientLightInfo
     float4 ColorIntensity; // rgb: 선형 색상, a: 광도
 };
 
-cbuffer PerObject : register(b0)
+cbuffer ViewConstants : register(b0)
 {
-    matrix World;
-    matrix View;
-    matrix Projection;
-    matrix NormalMatrix; // World 행렬의 역행렬을 전치한 법선 변환 행렬
-    float4 ShadowFlags;
+	matrix VP;
+	matrix View;
+	matrix Projection;
+	float4 ViewTimeParams;
 };
+
+cbuffer DrawBatchConstants : register(b5)
+{
+	uint StartInstance;
+	uint3 DrawBatchPad;
+};
+
+struct FPrimitiveSceneData
+{
+	matrix LocalToWorld;
+	matrix NormalMatrix;
+	float4 Flags;
+};
+
+StructuredBuffer<FPrimitiveSceneData> PrimitiveSceneData : register(t17);
+StructuredBuffer<uint> InstancePrimitiveIds : register(t18);
 
 cbuffer Lighting : register(b1)
 {
@@ -63,23 +78,24 @@ Texture2D<float4> DBufferNormal : register(t16);
 
 cbuffer MaterialParams : register(b2)
 {
-    float4 BaseColor;
-    float4 Emissive;
-    float4 SurfaceParams; // x: 노멀맵 Y 반전, y: 예약, z: 컬러 텍스처 사용, w: 노멀맵 인코딩
-    float4 UVTransform; // xy: 이동량, zw: 배율
-    float4 SpecularColorShininess; // rgb: 정반사 색상, w: 광택 지수
-    float4 WorldUVParams; // xy: tile size, z: local axes, w: opaque
+	float4 BaseColor;
+	float4 Emissive;
+	float4 SurfaceParams;
+	float4 UVTransform;
+	float4 SpecularColorShininess;
+	float4 WorldUVParams;
+	float4 UVScrollAndFlags;
 };
 
 Texture2D ColorTexture : register(t0);
 Texture2D NormalTexture : register(t1);
 
 SamplerState ColorSampler : register(s0);
-SamplerState SkySampler : register(s1);
 
 #ifdef MATERIAL_GRAPH
 #include MATERIAL_GRAPH_INCLUDE
 #endif
+SamplerState SkySampler : register(s1);
 
 struct VS_IN
 {
@@ -92,44 +108,43 @@ struct VS_IN
 	int4 BoneIndices : BLENDINDICES;
 	float4 BoneWeights : BLENDWEIGHT;
 #endif
+	uint InstanceId : SV_InstanceID;
 };
 
 struct VS_OUT
 {
-    float4 Position : SV_POSITION;
-    float4 Color : COLOR;
-    float2 UV : TEXCOORD0;
-    float3 WorldNormal : TEXCOORD4;
-    float4 WorldTangent : TEXCOORD5;
-    float3 MaterialWorldPos : TEXCOORD6;
-    float3 MaterialLocalPos : TEXCOORD7;
-    float3 MaterialLocalNormal : TEXCOORD8;
+	float4 Position : SV_POSITION;
+	float4 Color : COLOR;
+	float2 UV : TEXCOORD0;
+	float3 WorldNormal : TEXCOORD4;
+	float4 WorldTangent : TEXCOORD5;
+	float3 MaterialWorldPos : TEXCOORD6;
+	float3 MaterialLocalPos : TEXCOORD7;
+	float3 MaterialLocalNormal : TEXCOORD8;
+	nointerpolation uint PrimitiveId : TEXCOORD9;
 #if SHADING_MODEL_GOURAUD
-    float3 VertexDiffuse : TEXCOORD1;
-    float3 VertexSpecular : TEXCOORD2;
+	float3 VertexDiffuse : TEXCOORD1;
+	float3 VertexSpecular : TEXCOORD2;
 #elif !VIEW_MODE_WORLD_NORMAL
-    float3 WorldPosition : TEXCOORD1;
-    float ViewDepth : TEXCOORD2;
+	float3 WorldPosition : TEXCOORD1;
+	float ViewDepth : TEXCOORD2;
 #endif
 };
 
 struct FUberOutput
 {
     float4 LitColor : SV_Target0;
-#if !VIEW_MODE_WORLD_NORMAL
-    float4 NormalRoughness : SV_Target1;
-#endif
 };
 
 // 광원의 그림자 (1 = 빛 받음). 채널이 없거나 이 물체의 bReceiveShadow가 꺼져 있으면 1.
 // Gouraud는 채널을 받지 않으므로 정점 셰이더에서 불려도 마스크를 읽지 않는다.
-float GetLightShadow(FLightRenderParameters Light, float3 PixelPosition)
+float GetLightShadow(FLightRenderParameters Light, float3 PixelPosition, float ReceiveShadow)
 {
 #if SHADING_MODEL_GOURAUD
-    return 1.0f;
+	return 1.0f;
 #else
-    if (Light.ShadowMapChannel == INVALID_SHADOW_CHANNEL || ShadowFlags.x < 0.5f) return 1.0f;
-    return ScreenShadowMask.Load(int3(int2(PixelPosition.xy), 0))[Light.ShadowMapChannel];
+	if (Light.ShadowMapChannel == INVALID_SHADOW_CHANNEL || ReceiveShadow < 0.5f) return 1.0f;
+	return ScreenShadowMask.Load(int3(int2(PixelPosition.xy), 0))[Light.ShadowMapChannel];
 #endif
 }
 
@@ -227,7 +242,7 @@ void CalculateSpotLight(inout FLightResult Result, FLightRenderParameters Info, 
 }
 
 void CalculateRectLight(inout FLightResult Result, FLightRenderParameters Info,
-    float3 P, float3 N, float3 V, bool bIncludeSpecular, float4 ActiveSpecular)
+	float3 P, float3 N, float3 V, bool bIncludeSpecular, float4 ActiveSpecular)
 {
 	float3 Position = Info.Position;
 	float Radius = Info.Radius;
@@ -277,143 +292,136 @@ void CalculateRectLight(inout FLightResult Result, FLightRenderParameters Info,
 	}
 
 	float3 Radiance = Color * max(Intensity, 0.0f) * Attenuation * FrontFace * BarnDoorMask;
-    AddLight(Result, N, V, L, Radiance, bIncludeSpecular, ActiveSpecular);
+	AddLight(Result, N, V, L, Radiance, bIncludeSpecular, ActiveSpecular);
 }
 
-FLightResult CalculateBaseLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 N, float3 V, bool bIncludeSpecular, float4 ActiveSpecular)
+FLightResult CalculateBaseLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 N, float3 V, bool bIncludeSpecular, float ReceiveShadow, float4 ActiveSpecular)
 {
-    FLightResult Result;
-    Result.Diffuse = CalculateAmbientLight(Ambient) + CalculateSkyLight(N);
-    Result.Specular = 0.0f;
+	FLightResult Result;
+	Result.Diffuse = CalculateAmbientLight(Ambient) + CalculateSkyLight(N);
+	Result.Specular = 0.0f;
 
-    [loop]
-    for (uint DirectionalIndex = 0; DirectionalIndex < LightCounts.z; ++DirectionalIndex)
-    {
-        FLightRenderParameters Light = SceneLights[LightOffsets.z + DirectionalIndex];
-        
-        float Shadow = GetLightShadow(Light, PixelPosition);
-            
-        FLightResult DirectionalResult = (FLightResult) 0;
-        CalculateDirectionalLight(DirectionalResult, Light, N, V, bIncludeSpecular, ActiveSpecular);
-        DirectionalResult.Diffuse *= Shadow;
-        DirectionalResult.Specular *= Shadow;
-         
-        Result.Diffuse += DirectionalResult.Diffuse;
-        Result.Specular += DirectionalResult.Specular;
-    }
-    
-    return Result;
+	[loop]
+	for (uint DirectionalIndex = 0; DirectionalIndex < LightCounts.z; ++DirectionalIndex)
+	{
+		FLightRenderParameters Light = SceneLights[LightOffsets.z + DirectionalIndex];
+		float Shadow = GetLightShadow(Light, PixelPosition, ReceiveShadow);
+
+		FLightResult DirectionalResult = (FLightResult)0;
+		CalculateDirectionalLight(DirectionalResult, Light, N, V, bIncludeSpecular, ActiveSpecular);
+		DirectionalResult.Diffuse *= Shadow;
+		DirectionalResult.Specular *= Shadow;
+
+		Result.Diffuse += DirectionalResult.Diffuse;
+		Result.Specular += DirectionalResult.Specular;
+	}
+
+	return Result;
 }
 
 void AddAllLocalLights(inout FLightResult Result, float3 PixelPosition, float3 P, float3 N,
-    float3 V, bool bIncludeSpecular, float4 ActiveSpecular)
+	float3 V, bool bIncludeSpecular, float ReceiveShadow, float4 ActiveSpecular)
 {
-    [loop]
-    for (uint PointIndex = 0; PointIndex < LightCounts.x; ++PointIndex)
-    {
-        FLightRenderParameters Light = SceneLights[LightOffsets.x + PointIndex];
+	[loop]
+	for (uint PointIndex = 0; PointIndex < LightCounts.x; ++PointIndex)
+	{
+		FLightRenderParameters Light = SceneLights[LightOffsets.x + PointIndex];
+		float Shadow = GetLightShadow(Light, PixelPosition, ReceiveShadow);
 
-        float Shadow = GetLightShadow(Light, PixelPosition);
+		FLightResult PointResult = (FLightResult)0;
+		CalculatePointLight(PointResult, SceneLights[LightOffsets.x + PointIndex], P, N, V, bIncludeSpecular, ActiveSpecular);
 
-        FLightResult PointResult = (FLightResult) 0;
-        CalculatePointLight(PointResult, SceneLights[LightOffsets.x + PointIndex], P, N, V, bIncludeSpecular, ActiveSpecular);
-         
-        Result.Diffuse += PointResult.Diffuse * Shadow;
-        Result.Specular += PointResult.Specular * Shadow;
-    }
-    [loop]
-    for (uint SpotIndex = 0; SpotIndex < LightCounts.y; ++SpotIndex)
-    {
-        FLightRenderParameters Light = SceneLights[LightOffsets.y + SpotIndex];
-        
-        float Shadow = GetLightShadow(Light, PixelPosition);
-            
-        FLightResult SpotResult = (FLightResult) 0;
-        CalculateSpotLight(SpotResult, Light, P, N, V, bIncludeSpecular, ActiveSpecular);
+		Result.Diffuse += PointResult.Diffuse * Shadow;
+		Result.Specular += PointResult.Specular * Shadow;
+	}
+	[loop]
+	for (uint SpotIndex = 0; SpotIndex < LightCounts.y; ++SpotIndex)
+	{
+		FLightRenderParameters Light = SceneLights[LightOffsets.y + SpotIndex];
+		float Shadow = GetLightShadow(Light, PixelPosition, ReceiveShadow);
 
-        Result.Diffuse += SpotResult.Diffuse * Shadow;
-        Result.Specular += SpotResult.Specular * Shadow;
-    }
+		FLightResult SpotResult = (FLightResult)0;
+		CalculateSpotLight(SpotResult, Light, P, N, V, bIncludeSpecular, ActiveSpecular);
+
+		Result.Diffuse += SpotResult.Diffuse * Shadow;
+		Result.Specular += SpotResult.Specular * Shadow;
+	}
 	[loop]
 	for (uint RectIndex = 0; RectIndex < LightCounts.w; ++RectIndex)
-    {
-        CalculateRectLight(Result, SceneLights[LightOffsets.w + RectIndex], P, N, V, bIncludeSpecular, ActiveSpecular);
-    }
+	{
+		CalculateRectLight(Result, SceneLights[LightOffsets.w + RectIndex], P, N, V, bIncludeSpecular, ActiveSpecular);
+	}
 }
 
-FLightResult CalculateLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 Normal, bool bIncludeSpecular)
+FLightResult CalculateLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 Normal, bool bIncludeSpecular, float ReceiveShadow, float4 ActiveSpecular)
 {
-    float3 N = normalize(Normal);
-    float3 ToCamera = CameraPosition.xyz - P;
-    float3 V = ToCamera * rsqrt(max(dot(ToCamera, ToCamera), 1.0e-8f));
-    FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular, SpecularColorShininess);
-    AddAllLocalLights(Result, PixelPosition, P, N, V, bIncludeSpecular, SpecularColorShininess);
-    return Result;
+	float3 N = normalize(Normal);
+	float3 ToCamera = CameraPosition.xyz - P;
+	float3 V = ToCamera * rsqrt(max(dot(ToCamera, ToCamera), 1.0e-8f));
+	FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular, ReceiveShadow, ActiveSpecular);
+	AddAllLocalLights(Result, PixelPosition, P, N, V, bIncludeSpecular, ReceiveShadow, ActiveSpecular);
+	return Result;
 }
 
-// 타일 목록의 인덱스는 kim의 공유 SceneLights 안에서 종류별 시작 위치에 더한다.
-FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 Normal, bool bIncludeSpecular, float4 ActiveSpecular)
+// 타일 목록의 인덱스는 공유 SceneLights 안에서 종류별 시작 위치에 더한다.
+FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 Normal, bool bIncludeSpecular, float ReceiveShadow, float4 ActiveSpecular)
 {
-    float3 N = normalize(Normal);
-    float3 ToCamera = CameraPosition.xyz - P;
-    float3 V = ToCamera * rsqrt(max(dot(ToCamera, ToCamera), 1.0e-8f));
-    FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular, ActiveSpecular);
+	float3 N = normalize(Normal);
+	float3 ToCamera = CameraPosition.xyz - P;
+	float3 V = ToCamera * rsqrt(max(dot(ToCamera, ToCamera), 1.0e-8f));
+	FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular, ReceiveShadow, ActiveSpecular);
 
-    if (GridMode == LIGHT_GRID_MODE_OFF)
-    {
-        // Off는 업로드된 전체 로컬 광원을 평가한다.
-        AddAllLocalLights(Result, PixelPosition, P, N, V, bIncludeSpecular, ActiveSpecular);
-    }
-    else
-    {
-        // SV_POSITION.xy는 픽셀 위치, z는 현재 표면의 DeviceZ다.
-        uint CellIndex = GetLightGridCellIndex(uint2(PixelPosition.xy), PixelPosition.z);
-        uint4 Range = TileLightRanges[CellIndex];
-        bool UsePointList = Range.x != 0xffffffffu;
-        bool UseSpotList = Range.z != 0xffffffffu;
-        uint PointCount = UsePointList ? Range.y : LightCounts.x;
-        uint SpotCount = UseSpotList ? Range.w : LightCounts.y;
+	if (GridMode == LIGHT_GRID_MODE_OFF)
+	{
+		// Off는 업로드된 전체 로컬 광원을 평가한다.
+		AddAllLocalLights(Result, PixelPosition, P, N, V, bIncludeSpecular, ReceiveShadow, ActiveSpecular);
+	}
+	else
+	{
+		// SV_POSITION.xy는 픽셀 위치, z는 현재 표면의 DeviceZ다.
+		uint CellIndex = GetLightGridCellIndex(uint2(PixelPosition.xy), PixelPosition.z);
+		uint4 Range = TileLightRanges[CellIndex];
+		bool UsePointList = Range.x != 0xffffffffu;
+		bool UseSpotList = Range.z != 0xffffffffu;
+		uint PointCount = UsePointList ? Range.y : LightCounts.x;
+		uint SpotCount = UseSpotList ? Range.w : LightCounts.y;
 
-        // 예약 실패한 종류만 전체 배열을 평가하는 기존 fallback을 유지한다.
-        [loop]
-        for (uint PointListIndex = 0; PointListIndex < PointCount; ++PointListIndex)
-        {
-            uint LightIndex = UsePointList ? TilePointIndices[Range.x + PointListIndex] : PointListIndex;
-            
-            FLightRenderParameters Light = SceneLights[LightOffsets.x + LightIndex];
+		// 예약 실패한 종류만 전체 배열을 평가하는 폴백을 유지한다.
+		[loop]
+		for (uint PointListIndex = 0; PointListIndex < PointCount; ++PointListIndex)
+		{
+			uint LightIndex = UsePointList ? TilePointIndices[Range.x + PointListIndex] : PointListIndex;
+			FLightRenderParameters Light = SceneLights[LightOffsets.x + LightIndex];
+			float Shadow = GetLightShadow(Light, PixelPosition, ReceiveShadow);
 
-            float Shadow = GetLightShadow(Light, PixelPosition);
-            
-            FLightResult PointResult = (FLightResult) 0;
-            CalculatePointLight(PointResult, Light, P, N, V, bIncludeSpecular, ActiveSpecular);
-            
-            Result.Diffuse += PointResult.Diffuse * Shadow;
-            Result.Specular += PointResult.Specular * Shadow;
-        }
+			FLightResult PointResult = (FLightResult)0;
+			CalculatePointLight(PointResult, Light, P, N, V, bIncludeSpecular, ActiveSpecular);
 
-        [loop]
-        for (uint SpotListIndex = 0; SpotListIndex < SpotCount; ++SpotListIndex)
-        {
-            uint LightIndex = UseSpotList ? TileSpotIndices[Range.z + SpotListIndex] : SpotListIndex;
-            
-            FLightRenderParameters Light = SceneLights[LightOffsets.y + LightIndex];
-            
-            float Shadow = GetLightShadow(Light, PixelPosition);
-            
-            FLightResult SpotResult = (FLightResult) 0;
-            CalculateSpotLight(SpotResult, Light, P, N, V, bIncludeSpecular, ActiveSpecular);
-            
-            Result.Diffuse += SpotResult.Diffuse * Shadow;
-            Result.Specular += SpotResult.Specular * Shadow;
-        }
+			Result.Diffuse += PointResult.Diffuse * Shadow;
+			Result.Specular += PointResult.Specular * Shadow;
+		}
+
+		[loop]
+		for (uint SpotListIndex = 0; SpotListIndex < SpotCount; ++SpotListIndex)
+		{
+			uint LightIndex = UseSpotList ? TileSpotIndices[Range.z + SpotListIndex] : SpotListIndex;
+			FLightRenderParameters Light = SceneLights[LightOffsets.y + LightIndex];
+			float Shadow = GetLightShadow(Light, PixelPosition, ReceiveShadow);
+
+			FLightResult SpotResult = (FLightResult)0;
+			CalculateSpotLight(SpotResult, Light, P, N, V, bIncludeSpecular, ActiveSpecular);
+
+			Result.Diffuse += SpotResult.Diffuse * Shadow;
+			Result.Specular += SpotResult.Specular * Shadow;
+		}
 
 		[loop]
 		for (uint RectIndex = 0; RectIndex < LightCounts.w; ++RectIndex)
 		{
-            CalculateRectLight(Result, SceneLights[LightOffsets.w + RectIndex], P, N, V, bIncludeSpecular, ActiveSpecular);
-        }
-    }
-    return Result;
+			CalculateRectLight(Result, SceneLights[LightOffsets.w + RectIndex], P, N, V, bIncludeSpecular, ActiveSpecular);
+		}
+	}
+	return Result;
 }
 
 #endif
@@ -422,149 +430,140 @@ FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDe
 VS_OUT Uber_VS(VS_IN Input)
 {
 #if GPU_SKINNING
-    SkinVertex(Input.Position, Input.Normal, Input.Tangent, Input.BoneIndices, Input.BoneWeights);
+	SkinVertex(Input.Position, Input.Normal, Input.Tangent, Input.BoneIndices, Input.BoneWeights);
 #endif
-    VS_OUT Output;
-    float4 WorldPosition = mul(float4(Input.Position, 1.0f), World);
-    float4 ViewPosition = mul(WorldPosition, View);
-    Output.Position = mul(ViewPosition, Projection);
-    Output.Color = Input.Color;
-    Output.UV = Input.UV;
-    Output.MaterialWorldPos = WorldPosition.xyz;
-    Output.MaterialLocalPos = Input.Position;
-    Output.MaterialLocalNormal = Input.Normal;
+	uint PrimitiveId = InstancePrimitiveIds[Input.InstanceId + StartInstance];
+	FPrimitiveSceneData Prim = PrimitiveSceneData[PrimitiveId];
+	VS_OUT Output;
+	float4 WorldPosition = mul(float4(Input.Position, 1.0f), Prim.LocalToWorld);
+	float4 ViewPosition = mul(WorldPosition, View);
+	Output.Position = mul(ViewPosition, Projection);
+	Output.Color = Input.Color;
+	Output.UV = Input.UV;
+	Output.MaterialWorldPos = WorldPosition.xyz;
+	Output.MaterialLocalPos = Input.Position;
+	Output.MaterialLocalNormal = Input.Normal;
+	Output.PrimitiveId = PrimitiveId;
 
-    float3 N = mul(float4(Input.Normal, 0.0f), NormalMatrix).xyz;
-    Output.WorldNormal = N;
-    float3 T = mul(float4(Input.Tangent.xyz, 0.0f), World).xyz;
-    // CPU가 구한 로컬 공간 부호에 월드 변환의 거울 반전만 반영한다.
-    float Handedness = Input.Tangent.w * (determinant((float3x3)World) < 0.0f ? -1.0f : 1.0f);
-    Output.WorldTangent = float4(T, Handedness);
+	float3 N = mul(float4(Input.Normal, 0.0f), Prim.NormalMatrix).xyz;
+	Output.WorldNormal = N;
+	float3 T = mul(float4(Input.Tangent.xyz, 0.0f), Prim.LocalToWorld).xyz;
+	// CPU가 구한 로컬 공간 부호에 월드 변환의 거울 반전만 반영한다.
+	float Handedness = Input.Tangent.w * (determinant((float3x3)Prim.LocalToWorld) < 0.0f ? -1.0f : 1.0f);
+	Output.WorldTangent = float4(T, Handedness);
 #if SHADING_MODEL_GOURAUD
-    FLightResult Lit = CalculateLighting(float3(0.0f, 0.0f, 0.0f), WorldPosition.xyz, ViewPosition.x, N, !REFLECTION_MODEL_LAMBERT);
-    Output.VertexDiffuse = Lit.Diffuse;
-    Output.VertexSpecular = Lit.Specular;
+	FLightResult Lit = CalculateLighting(float3(0.0f, 0.0f, 0.0f), WorldPosition.xyz, ViewPosition.x, N, !REFLECTION_MODEL_LAMBERT, Prim.Flags.x, SpecularColorShininess);
+	Output.VertexDiffuse = Lit.Diffuse;
+	Output.VertexSpecular = Lit.Specular;
 #elif !VIEW_MODE_WORLD_NORMAL
-    Output.WorldPosition = WorldPosition.xyz;
-    Output.ViewDepth = ViewPosition.x;
+	Output.WorldPosition = WorldPosition.xyz;
+	Output.ViewDepth = ViewPosition.x;
 #endif
-    return Output;
+	return Output;
 }
 
 FUberOutput Uber_PS(VS_OUT Input)
 {
-    FUberOutput Output;
-    float3 ProjectedT, ProjectedB;
-    Input.UV = ResolveMaterialUV(Input.UV, Input.MaterialWorldPos, Input.WorldNormal,
-    Input.MaterialLocalPos, Input.MaterialLocalNormal, World,
-    UVTransform.zw, UVTransform.xy, WorldUVParams.xy, WorldUVParams.z > 0.5f, ProjectedT, ProjectedB);
-    float3 ShadingNormal = GetShadingNormal(Input, ProjectedT, ProjectedB);
+	FPrimitiveSceneData Prim = PrimitiveSceneData[Input.PrimitiveId];
+	FUberOutput Output;
+	float3 ProjectedT, ProjectedB;
+	float2 DynamicUVOffset = UVTransform.xy + UVScrollAndFlags.xy * ViewTimeParams.x;
+	Input.UV = ResolveMaterialUV(Input.UV, Input.MaterialWorldPos, Input.WorldNormal,
+		Input.MaterialLocalPos, Input.MaterialLocalNormal, Prim.LocalToWorld,
+		UVTransform.zw, DynamicUVOffset, WorldUVParams.xy, WorldUVParams.z > 0.5f, ProjectedT, ProjectedB);
+	float3 ShadingNormal = GetShadingNormal(Input, ProjectedT, ProjectedB);
+#if VIEW_MODE_WORLD_NORMAL
+	Output.LitColor = float4(ShadingNormal * 0.5f + 0.5f, 1.0f);
+#else
+	float4 ActiveSpecular = SpecularColorShininess;
 
-    float4 ActiveSpecular = SpecularColorShininess;
+	float3 ActiveEmissive = Emissive.rgb;
 
 #ifdef MATERIAL_GRAPH
-    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(Input.UV);
+	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(Input.UV);
 
 #ifdef MATERIAL_GRAPH_HAS_SPECULAR_COLOR
-    ActiveSpecular.rgb = GraphOutput.SpecularColor;
+	ActiveSpecular.rgb = GraphOutput.SpecularColor;
 #endif
 
 #ifdef MATERIAL_GRAPH_HAS_SHININESS
-    ActiveSpecular.a = GraphOutput.Shininess;
+	ActiveSpecular.a = GraphOutput.Shininess;
 #endif
 
-    float3 ActiveEmissive = Emissive.rgb;
-
 #ifdef MATERIAL_GRAPH_HAS_EMISSIVE_COLOR
-    ActiveEmissive = GraphOutput.EmissiveColor;
+	ActiveEmissive = GraphOutput.EmissiveColor;
 #endif
 
 #ifdef MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR
-    ActiveEmissive *= GraphOutput.EmissiveFactor;
+	ActiveEmissive *= GraphOutput.EmissiveFactor;
 #endif
 #endif
-#if VIEW_MODE_WORLD_NORMAL
-    Output.LitColor = float4(ShadingNormal * 0.5f + 0.5f, 1.0f);
-#else
-    float4 SurfaceColor;
+	float4 SurfaceColor;
 
 #ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
-    SurfaceColor = GraphOutput.BaseColor;
-    float3 Albedo = SurfaceColor.rgb;
+	SurfaceColor = GraphOutput.BaseColor;
+	float3 Albedo = SurfaceColor.rgb;
 #else
-    if (SurfaceParams.z > 0.5f)
-    {
-        float4 TextureColor = ColorTexture.Sample(ColorSampler, Input.UV);
-        SurfaceColor = float4(pow(max(TextureColor.rgb, 0.0f), 2.2f), TextureColor.a);
-    }
-    else
-    {
-        SurfaceColor = Input.Color;
-    }
-    float3 Albedo = SurfaceColor.rgb * BaseColor.rgb;
+	if (SurfaceParams.z > 0.5f)
+	{
+		float4 TextureColor = ColorTexture.Sample(ColorSampler, Input.UV);
+		SurfaceColor = float4(pow(max(TextureColor.rgb, 0.0f), 2.2f), TextureColor.a);
+	}
+	else
+	{
+		SurfaceColor = Input.Color;
+	}
+	float3 Albedo = SurfaceColor.rgb * BaseColor.rgb;
 #endif
-    
-    int3 PixelCoord = int3(int2(Input.Position.xy), 0);
-    
-    bool bReceiveDecal = ShadowFlags.y > 0.5f;
-    
-    if (bReceiveDecal)
-    {
-        float4 LitDecal = DBufferLit.Load(PixelCoord);
-        
-        Albedo = Albedo * (1.0f - LitDecal.a) + LitDecal.rgb;
-    }
+
+	int3 PixelCoord = int3(int2(Input.Position.xy), 0);
+
+	bool bReceiveDecal = Prim.Flags.y > 0.5f;
+
+	if (bReceiveDecal)
+	{
+		float4 LitDecal = DBufferLit.Load(PixelCoord);
+		Albedo = Albedo * (1.0f - LitDecal.a) + LitDecal.rgb;
+	}
 
 #if SHADING_MODEL_PHONG
-    if (bReceiveDecal)
-    {
-        float4 DecalNormal =
-            DBufferNormal.Load(PixelCoord);
-        
-        float3 Combined =
-            ShadingNormal * (1.0f - DecalNormal.a) +
-            DecalNormal.rgb;
-        
-        float LengthSquared = dot(Combined, Combined);
-        
-        if (LengthSquared > 1.0e-8f)
-        {
-            ShadingNormal = Combined * rsqrt(LengthSquared);
-        }
-
-    }
+	if (bReceiveDecal)
+	{
+		float4 DecalNormal = DBufferNormal.Load(PixelCoord);
+		float3 Combined = ShadingNormal * (1.0f - DecalNormal.a) + DecalNormal.rgb;
+		float LengthSquared = dot(Combined, Combined);
+		if (LengthSquared > 1.0e-8f)
+		{
+			ShadingNormal = Combined * rsqrt(LengthSquared);
+		}
+	}
 #endif
-      
-    float3 Diffuse;
-    float3 Specular = 0.0f;
+
+	float3 Diffuse;
+	float3 Specular = 0.0f;
 
 #if SHADING_MODEL_GOURAUD
-    Diffuse = Input.VertexDiffuse;
-    Specular = Input.VertexSpecular;
+	Diffuse = Input.VertexDiffuse;
+	Specular = Input.VertexSpecular;
 #elif SHADING_MODEL_PHONG
-    FLightResult Lit = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, !REFLECTION_MODEL_LAMBERT, ActiveSpecular);
-    Diffuse = Lit.Diffuse;
-    Specular = Lit.Specular;
+	FLightResult Lit = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, !REFLECTION_MODEL_LAMBERT, Prim.Flags.x, ActiveSpecular);
+	Diffuse = Lit.Diffuse;
+	Specular = Lit.Specular;
 #elif VIEW_MODE_UNLIT
-    // 조명·그림자를 계산하지 않고 표면 색을 그대로 낸다.
-    Diffuse = 1.0f;
+	// 조명·그림자를 계산하지 않고 표면 색을 그대로 낸다.
+	Diffuse = 1.0f;
 #endif
-#ifdef MATERIAL_GRAPH
-    float3 FinalColor = Albedo * Diffuse + Specular + ActiveEmissive;
-#else
-    float3 FinalColor = Albedo * Diffuse + Specular + Emissive.rgb;
-#endif
-    float4 UnlitDecal = DBufferUnlit.Load(PixelCoord);
+	float3 FinalColor = Albedo * Diffuse + Specular + ActiveEmissive;
+	float4 UnlitDecal = DBufferUnlit.Load(PixelCoord);
 
-    if (bReceiveDecal)
-    {
-        FinalColor = FinalColor * (1.0f - UnlitDecal.a) + UnlitDecal.rgb;
-    }
+	if (bReceiveDecal)
+	{
+		FinalColor = FinalColor * (1.0f - UnlitDecal.a) + UnlitDecal.rgb;
+	}
 
-    Output.LitColor = float4(FinalColor, WorldUVParams.w > 0.5f ? 1.0f : SurfaceColor.a * BaseColor.a);
-    Output.NormalRoughness = float4(ShadingNormal, 0.8f);
+	Output.LitColor = float4(FinalColor, WorldUVParams.w > 0.5f ? 1.0f : SurfaceColor.a * BaseColor.a);
 #endif
-    return Output;
+	return Output;
 }
 
 // 현재 리소스 매니저는 .hlsl 파일을 스캔할 때 mainVS/mainPS 진입점을 찾는다.

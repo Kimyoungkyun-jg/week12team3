@@ -23,4 +23,11 @@ public:
 	virtual EBlendState GetBlendState() const = 0;
 	virtual ESamplerState GetSamplerState() const = 0;
 	virtual uint16 GetSortID() const = 0;
+
+	// 정적 드로우 커맨드에는 머티리얼 리소스와 파라미터 복사본이 들어간다.
+	static void NotifyRenderDataChanged() { ++RenderDataRevision; }
+	static uint64 GetRenderDataRevision() { return RenderDataRevision; }
+
+private:
+	inline static uint64 RenderDataRevision = 0;
 };

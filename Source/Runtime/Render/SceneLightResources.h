@@ -6,24 +6,6 @@
 #include "Render/Texture2D.h"
 #include "Containers/Array.h"
 
-struct FDeferredLightConstants
-{
-	FMatrix InverseViewProjection;
-	FVector4 CameraPosition;
-	FVector4 CameraForward;
-	FVector4 ViewportSize;
-	FAmbientLightRenderData Ambient;
-	uint32 LightCounts[4];
-	uint32 LightOffsets[4];
-	FVector4 SkyColorIntensity;
-	// 0: 그림자 없는 광원 전부 + Ambient/Sky (그림자 광원은 건너뜀)
-	// 1: SingleLightIndex 광원 하나만 ScreenShadowMask를 곱해 더한다 (언리얼 RenderLights의 그림자 광원 루프)
-	uint32 bSingleLightPass = 0;
-	uint32 SingleLightIndex = 0;
-	uint32 ReflectionModel = 1; // EReflectionModel: Phong=0, BlinnPhong=1, Lambert=2
-	uint32 bOverrideMaterialLighting = 0;
-};
-
 // 뷰별 조명 GPU 리소스. 패스나 드로우는 실행하지 않는다.
 class FSceneLightResources
 {
@@ -37,7 +19,6 @@ public:
 	FStructuredBuffer* GetSceneLights() const { return SceneLightBuffer.get(); }
 
 	FConstantBuffer* GetForwardConstants() const { return ForwardLightCB.get(); }
-	FConstantBuffer* GetDeferredConstants() const { return DeferredLightCB.get(); }
 
 	FForwardLightTileGrid& GetTiles() { return ForwardTileGrid; }
 
@@ -54,7 +35,6 @@ private:
 
 
 	TUniquePtr<FConstantBuffer> ForwardLightCB;
-	TUniquePtr<FConstantBuffer> DeferredLightCB;
 
 	FForwardLightTileGrid ForwardTileGrid;
 	bool bInitialized = false;

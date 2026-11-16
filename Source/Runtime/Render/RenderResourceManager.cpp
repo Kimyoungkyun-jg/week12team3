@@ -467,9 +467,9 @@ constexpr FPipelineTableEntry PipelineTable[] =
 	{ EPSOType::Grid,                    "Resources/Shader/GridShader.hlsl",          EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::AlphaBlend,   EDepthStencilState::Default },
 	{ EPSOType::Outline_Mask,            "Resources/Shader/OutlineShader.hlsl",       EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::NoColorWrite, EDepthStencilState::StencilMask },
 	{ EPSOType::Outline_Draw,            "Resources/Shader/OutlineShader.hlsl",       EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::StencilOutline },
-	{ EPSOType::StaticMesh_GBuffer,		 "Resources/Shader/StaticMeshGBufferShader.hlsl",	EPrimitiveTopology::TriangleList,	ERasterizerState::SolidBack,	EBlendState::Opaque,  EDepthStencilState::Default },
-	{ EPSOType::DeferredLighting,       "Resources/Shader/DeferredLightingShader.hlsl",    EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::Disabled },
-	{ EPSOType::DeferredPointLighting,  "Resources/Shader/DeferredLightingShader.hlsl",    EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Additive,     EDepthStencilState::Disabled },
+	{ EPSOType::StaticMesh_GBuffer,     "Resources/Shader/StaticMeshGBufferShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default },
+	{ EPSOType::Reserved_10,             nullptr,                                            EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::Default },
+	{ EPSOType::Reserved_11,             nullptr,                                            EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::Default },
 	{ EPSOType::ToneMap,                "Resources/Shader/ToneMapShader.hlsl",              EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::Disabled },
 	{ EPSOType::Reserved_13,            nullptr,                                            EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Opaque,       EDepthStencilState::Default },
 	{ EPSOType::Billboard,              "Resources/Shader/BillboardShader.hlsl",            EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend,   EDepthStencilState::ReadOnly },
@@ -513,10 +513,7 @@ void FRenderResourceManager::InitPipelineStates()
 		State->StencilRef =
 			Type == EPSOType::Outline_Mask ? StencilBits::Outline : 0;
 	}
-	// Shadow 배치가 참조하는 VS 전용 프로그램은 리소스 매니저가 소유한다.
 	FShaderProgram* DepthProgram = GetShaderProgram("Resources/Shader/DepthPrepass.hlsl");
-	if (DepthProgram && DepthProgram->VertexShader)
-		ShaderProgramMap["ShadowDepth"] = MakeUnique<FShaderProgram>(DepthProgram->VertexShader, nullptr);
 	const FString ShadowPath = "Resources/Shader/ShadowDepth.hlsl";
 	if (auto* Base = ShaderProgramMap.Find(ShadowPath))
 	{
@@ -625,12 +622,20 @@ void FRenderResourceManager::InitPipelineStates()
 			}
 		}
 	}
-}
 
-FShaderProgram* FRenderResourceManager::GetShadowDepthShaderProgram()
-{
-	if (auto* Found = Get().ShaderProgramMap.Find("ShadowDepth")) return Found->get();
-	return nullptr;
+	if (DepthProgram && DepthProgram->PixelShader)
+	{
+		if (FShaderProgram* StaticVSProg = GetForwardShaderProgram(EReflectionModel::Lambert, EShadingModel::Phong, false, true);
+			StaticVSProg && StaticVSProg->VertexShader)
+		{
+			ShaderProgramMap["DepthPrepass#Uber"] = MakeUnique<FShaderProgram>(StaticVSProg->VertexShader, DepthProgram->PixelShader);
+		}
+		if (FShaderProgram* SkinVSProg = GetForwardShaderProgram(EReflectionModel::Lambert, EShadingModel::Phong, true, true);
+			SkinVSProg && SkinVSProg->VertexShader)
+		{
+			ShaderProgramMap["DepthPrepass#Uber#GPU"] = MakeUnique<FShaderProgram>(SkinVSProg->VertexShader, DepthProgram->PixelShader);
+		}
+	}
 }
 
 FShaderProgram* FRenderResourceManager::GetSkeletalMeshGBufferShaderProgram(bool bGPUSkinning)
@@ -832,6 +837,13 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 FShaderProgram* FRenderResourceManager::GetWorldNormalShaderProgram(bool bGPUSkinning)
 {
 	const FString Key = FString("Resources/Shader/UberLit.hlsl#VIEW_MODE_WORLD_NORMAL") + (bGPUSkinning ? "#GPU" : "");
+	if (auto* Found = Get().ShaderProgramMap.Find(Key)) return Found->get();
+	return nullptr;
+}
+
+FShaderProgram* FRenderResourceManager::GetDepthPrepassShaderProgram(bool bGPUSkinning)
+{
+	const FString Key = bGPUSkinning ? FString("DepthPrepass#Uber#GPU") : FString("DepthPrepass#Uber");
 	if (auto* Found = Get().ShaderProgramMap.Find(Key)) return Found->get();
 	return nullptr;
 }

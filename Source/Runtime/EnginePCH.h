@@ -29,6 +29,7 @@ using namespace Microsoft::WRL;
 
 #include <iostream>
 #include <fstream>
+#include <span>
 #include "Containers/Containers.h"
 #include "Core/EngineString.h"
 #include "UObject/Casts.h"

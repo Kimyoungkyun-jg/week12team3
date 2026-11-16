@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "Box.h"
+#include <span>
 
 enum class EBVHCullResult : uint8 { Outside, Intersect, Inside };
 

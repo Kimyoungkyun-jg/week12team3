@@ -62,10 +62,6 @@ void UPrimitiveComponent::OnUnregister()
 }
 
 
-void UPrimitiveComponent::SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext)
-{
-}
-
 bool UPrimitiveComponent::LineTraceComponent(const FRay& WorldRay, FHitResult& OutHit)
 {
 	const FStaticMeshData* Mesh = GetMeshData();
