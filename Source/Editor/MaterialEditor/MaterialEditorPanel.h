@@ -40,6 +40,7 @@ public:
 
 private:
 	void SaveMaterial();
+	void MarkMaterialChanged();
 
 	void DrawMaterialGraph(UMaterial& Material);
 	void DrawMaterialGraphPalette(UMaterial& Material);
@@ -76,6 +77,7 @@ private:
 	bool bVisible = false;
 	bool bFocused = false;
 	bool bDirty = false;
+	bool bMaterialThumbnailDirty = false;
 
 	char SearchText[128]{};
 };

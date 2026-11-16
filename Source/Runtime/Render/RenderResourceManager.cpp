@@ -348,7 +348,19 @@ FString GetMaterialGraphHash(const FString& Source)
 	return Stream.str();
 }
 
-bool SaveGeneratedMaterialGraph(const FString& Source, const FString& Hash, FString& OutIncludePath)
+FString GetMaterialGraphAssetId(const UMaterial& Material)
+{
+	FString Identity = Material.GetPath();
+
+	if (Identity.empty())
+	{
+		Identity = std::to_string(reinterpret_cast<uintptr_t>(&Material));
+	}
+
+	return GetMaterialGraphHash(Identity);
+}
+
+bool SaveGeneratedMaterialGraph(const FString& Source, const FString& AssetId, FString& OutIncludePath)
 {
 	const fs::path Directory = fs::path(ResourcePaths::ShaderFolder) / "GeneratedMaterial";
 	std::error_code Error;
@@ -359,26 +371,33 @@ bool SaveGeneratedMaterialGraph(const FString& Source, const FString& Hash, FStr
 		return false;
 	}
 
-	const fs::path File = Directory / ("Graph_" + Hash + ".hlsli");
-	std::ofstream Output(File, std::ios::binary | std::ios::trunc);
+	const fs::path File = Directory / ("Graph_" + AssetId + ".hlsli");
 
-	if (!Output)
+	std::ifstream Existing(File, std::ios::binary);
+	const FString ExistingSource(std::istreambuf_iterator<char>{ Existing }, std::istreambuf_iterator<char>{});
+
+	if (ExistingSource != Source)
 	{
-		return false;
+		std::ofstream Output(File, std::ios::binary | std::ios::trunc);
+
+		if (!Output)
+		{
+			return false;
+		}
+
+		Output.write(Source.data(), static_cast<std::streamsize>(Source.size()));
+
+		if (!Output)
+		{
+			return false;
+		}
 	}
 
-	Output.write(Source.data(), static_cast<std::streamsize>(Source.size()));
-
-	if (!Output)
-	{
-		return false;
-	}
-
-	OutIncludePath = "GeneratedMaterial/Graph_" + Hash + ".hlsli";
+	OutIncludePath = "GeneratedMaterial/Graph_" + AssetId + ".hlsli";
 	return true;
 }
 
-bool SaveGeneratedMaterialShaderVariant(const FString& BaseShaderPath, const FString& IncludePath, const FString& Hash, FString& OutShaderPath)
+bool SaveGeneratedMaterialShaderVariant(const FString& BaseShaderPath, const FString& IncludePath, const FString& AssetId, FString& OutShaderPath)
 {
 	std::ifstream Input(BaseShaderPath, std::ios::binary);
 
@@ -401,7 +420,7 @@ bool SaveGeneratedMaterialShaderVariant(const FString& BaseShaderPath, const FSt
 	GeneratedSource.replace(IncludePosition, IncludeMarker.size(), LiteralInclude);
 
 	const fs::path BasePath(BaseShaderPath);
-	const fs::path VariantPath = BasePath.parent_path() / (BasePath.stem().string() + "_Graph_" + Hash + ".hlsli");
+	const fs::path VariantPath = BasePath.parent_path() / (BasePath.stem().string() + "_Graph_" + AssetId + ".hlsli");
 
 	std::ifstream Existing(VariantPath, std::ios::binary);
 	const FString ExistingSource(std::istreambuf_iterator<char>{ Existing }, std::istreambuf_iterator<char>{});
@@ -618,13 +637,7 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 	}
 
 	const FString Hash = GetMaterialGraphHash(GeneratedSource);
-	FString IncludePath;
-
-	if (!SaveGeneratedMaterialGraph(GeneratedSource, Hash, IncludePath))
-	{
-		OutError = "Failed to write generated Material Graph HLSL.";
-		return nullptr;
-	}
+	const FString AssetId = GetMaterialGraphAssetId(Material);
 
 	const FString ShaderPath = bDeferred
 		? FString("Resources/Shader/StaticMeshGBufferShader.hlsl")
@@ -656,8 +669,23 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 		return nullptr;
 	}
 
-	const FString UniqueDefine = "MATERIAL_GRAPH_HASH_" + Hash;
+	FString IncludePath;
+
+	if (!SaveGeneratedMaterialGraph(GeneratedSource, AssetId, IncludePath))
+	{
+		OutError = "Failed to write generated Material Graph HLSL.";
+		return nullptr;
+	}
+
 	FString GeneratedShaderPath;
+
+	if (!SaveGeneratedMaterialShaderVariant(ShaderPath, IncludePath, AssetId, GeneratedShaderPath))
+	{
+		OutError = "Failed to generate Material Graph shader variant.";
+		return nullptr;
+	}
+
+	const FString UniqueDefine = "MATERIAL_GRAPH_HASH_" + Hash;
 
 	if (!SaveGeneratedMaterialShaderVariant(ShaderPath, IncludePath, Hash, GeneratedShaderPath))
 	{

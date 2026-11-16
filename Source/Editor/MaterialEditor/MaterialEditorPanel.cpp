@@ -85,10 +85,117 @@ namespace
 		}
 	}
 
+	const char* GetMaterialValueTypeName(EMaterialValueType Type)
+	{
+		switch (Type)
+		{
+		case EMaterialValueType::Scalar:
+			return "float";
+		case EMaterialValueType::Vector2:
+			return "float2";
+		case EMaterialValueType::Vector3:
+			return "float3";
+		case EMaterialValueType::Vector4:
+			return "float4";
+		case EMaterialValueType::Texture2D:
+			return "Texture2D";
+		default:
+			return "Unknown";
+		}
+	}
+
+	FString GetMaterialInputTypeLabel(const UMaterial& Material, const FMaterialExpressionNode& Node, int32 PinIndex)
+	{
+		const auto GetConnectedType = [&](int32 InputPin)
+		{
+			for (const FMaterialExpressionConnection& Connection : Material.ExpressionConnections)
+			{
+				if (Connection.InputNodeId == Node.Id && Connection.InputPin == InputPin)
+				{
+					return Material.GetExpressionOutputType(Connection.OutputNodeId, Connection.OutputPin);
+				}
+			}
+
+			return EMaterialValueType::Unknown;
+		};
+
+		EMaterialValueType Type = EMaterialValueType::Unknown;
+
+		switch (Node.Type)
+		{
+		case EMaterialExpressionType::TextureSample:
+			return "float2";
+
+		case EMaterialExpressionType::Add:
+		case EMaterialExpressionType::Multiply:
+			Type = GetConnectedType(PinIndex);
+
+			if (Type == EMaterialValueType::Unknown)
+			{
+				Type = GetConnectedType(1 - PinIndex);
+			}
+
+			return Type == EMaterialValueType::Unknown ? FString("same numeric type") : FString(GetMaterialValueTypeName(Type));
+
+		case EMaterialExpressionType::Lerp:
+			if (PinIndex == 2)
+			{
+				return "float";
+			}
+
+			Type = GetConnectedType(PinIndex);
+
+			if (Type == EMaterialValueType::Unknown)
+			{
+				Type = GetConnectedType(1 - PinIndex);
+			}
+
+			return Type == EMaterialValueType::Unknown ? FString("same numeric type") : FString(GetMaterialValueTypeName(Type));
+
+		case EMaterialExpressionType::OneMinus:
+			Type = GetConnectedType(PinIndex);
+			return Type == EMaterialValueType::Unknown ? FString("numeric") : FString(GetMaterialValueTypeName(Type));
+
+		case EMaterialExpressionType::MaterialOutput:
+			switch (PinIndex)
+			{
+			case 0:
+			case 1:
+			case 3:
+				return "float3 / float4";
+			case 2:
+			case 4:
+				return "float";
+			default:
+				return "Unknown";
+			}
+
+		default:
+			return "Unknown";
+		}
+	}
+
+	bool HasInlineMaterialValue(EMaterialExpressionType Type)
+	{
+		switch (Type)
+		{
+		case EMaterialExpressionType::Constant:
+		case EMaterialExpressionType::Constant2Vector:
+		case EMaterialExpressionType::Constant3Vector:
+		case EMaterialExpressionType::Constant4Vector:
+		case EMaterialExpressionType::ScalarParameter:
+		case EMaterialExpressionType::VectorParameter:
+			return true;
+		default:
+			return false;
+		}
+	}
+
 	ImVec2 GetMaterialNodeSize(const UMaterial& Material, const FMaterialExpressionNode& Node)
 	{
-		const float Height = std::max(76.0f, 48.0f + Material.GetExpressionInputPinCount(Node.Type) * 25.0f);
-		return ImVec2(205.0f, Height);
+		const float ValueHeight = HasInlineMaterialValue(Node.Type) ? 42.0f : 0.0f;
+		const float Height = std::max(76.0f, 48.0f + Material.GetExpressionInputPinCount(Node.Type) * 25.0f + ValueHeight);
+		return ImVec2(230.0f, Height);
 	}
 
 	ImVec2 GetMaterialInputPinPosition(ImVec2 Min, int32 PinIndex, float Scale)
@@ -427,9 +534,16 @@ void FMaterialEditorPanel::SaveMaterial()
 	}
 
 	bDirty = false;
+	bMaterialThumbnailDirty = false;
 	Status = "Saved";
 
 	FContentDrawerPanel::InvalidateMaterialThumbnail(Path);
+}
+
+void FMaterialEditorPanel::MarkMaterialChanged()
+{
+	bDirty = true;
+	bMaterialThumbnailDirty = true;
 }
 
 void FMaterialEditorPanel::SaveIfDirty()
@@ -672,8 +786,10 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 		{
 			const ImVec2 PinPosition = GetMaterialInputPinPosition(Min, Pin, Scale);
 			const char* PinName = Material.GetExpressionInputPinName(Node.Type, Pin);
+			const FString PinLabel = FString(PinName ? PinName : "Input") + " (" + GetMaterialInputTypeLabel(Material, Node, Pin) + ")";
 
 			Draw->AddCircleFilled(PinPosition, 5.0f * Scale, IM_COL32(130, 190, 230, 255));
+			Draw->AddText({ PinPosition.x + 10.0f * Scale, PinPosition.y - 7.0f * Scale }, IM_COL32(220, 220, 225, 255), PinLabel.c_str());
 
 			if (PinName)
 			{
@@ -713,6 +829,12 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 			const ImVec2 PinPosition = GetMaterialOutputPinPosition(Min, NodeSize, Scale);
 
 			Draw->AddCircleFilled(PinPosition, 5.0f * Scale, IM_COL32(130, 190, 230, 255));
+			const char* OutputPinName = Material.GetExpressionOutputPinName(Node.Type, 0);
+			const EMaterialValueType OutputType = Material.GetExpressionOutputType(Node.Id, 0);
+			const FString OutputLabel = FString(OutputPinName ? OutputPinName : "Value") + " (" + GetMaterialValueTypeName(OutputType) + ")";
+			const ImVec2 OutputTextSize = ImGui::CalcTextSize(OutputLabel.c_str());
+
+			Draw->AddText({ PinPosition.x - OutputTextSize.x - 10.0f * Scale, PinPosition.y - 7.0f * Scale }, IM_COL32(220, 220, 225, 255), OutputLabel.c_str());
 
 			if (bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
 				Mouse.x >= PinPosition.x - 10.0f * Scale && Mouse.x <= PinPosition.x + 10.0f * Scale &&
@@ -723,6 +845,54 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 				bDraggingConnection = true;
 				bHandledClick = true;
 			}
+		}
+
+		if (HasInlineMaterialValue(Node.Type))
+		{
+			ImGui::PushID(Node.Id);
+
+			ImGui::SetCursorScreenPos({ Min.x + 10.0f * Scale, Min.y + 55.0f * Scale });
+			ImGui::SetNextItemWidth((NodeSize.x - 20.0f) * Scale);
+
+			bool bValueChanged = false;
+
+			switch (Node.Type)
+			{
+			case EMaterialExpressionType::Constant:
+			case EMaterialExpressionType::ScalarParameter:
+				bValueChanged = ImGui::DragFloat("Value", &Node.ScalarValue, 0.01f);
+				break;
+
+			case EMaterialExpressionType::Constant2Vector:
+				bValueChanged = ImGui::DragFloat2("Value", &Node.VectorValue.X, 0.01f);
+				break;
+
+			case EMaterialExpressionType::Constant3Vector:
+				bValueChanged = EditMaterialColor("Value", &Node.VectorValue.X);
+				break;
+
+			case EMaterialExpressionType::Constant4Vector:
+			case EMaterialExpressionType::VectorParameter:
+				bValueChanged = EditMaterialColor("Value", &Node.VectorValue.X, true);
+				break;
+
+			default:
+				break;
+			}
+
+			const bool bControlHovered = ImGui::IsItemHovered() || ImGui::IsItemActive();
+
+			if (bControlHovered)
+			{
+				bHandledClick = true;
+			}
+
+			if (bValueChanged)
+			{
+				MarkMaterialChanged();
+			}
+
+			ImGui::PopID();
 		}
 
 		if (bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !bHandledClick &&
@@ -1306,6 +1476,12 @@ void FMaterialEditorPanel::OnRender()
 		}
 
 		DrawPreview();
+	}
+
+	if (bMaterialThumbnailDirty && !ImGui::IsMouseDown(ImGuiMouseButton_Left))
+	{
+		FContentDrawerPanel::InvalidateMaterialThumbnail(Path);
+		bMaterialThumbnailDirty = false;
 	}
 
 	ImGui::End();
