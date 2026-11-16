@@ -365,7 +365,24 @@ void FMaterialEditorPanel::OpenAsset(const FString& InPath)
 
 void FMaterialEditorPanel::SaveMaterial()
 {
-	if (!Asset || !UAssetManager::SaveMaterialAsset(Path, *Asset))
+	if (!Asset)
+	{
+		Status = "No Material is open.";
+		return;
+	}
+
+	FString ValidationError;
+
+	if (UMaterial* BaseMaterial = Asset->GetBaseMaterial())
+	{
+		if (!BaseMaterial->ValidateExpressionGraph(ValidationError))
+		{
+			Status = "Cannot save: " + ValidationError;
+			return;
+		}
+	}
+
+	if (!UAssetManager::SaveMaterialAsset(Path, *Asset))
 	{
 		Status = "Failed to save Material.";
 		return;
@@ -725,14 +742,19 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 		bDirty = true;
 	}
 
-	if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("MATERIAL_EXPRESSION"))
+	if (ImGui::BeginDragDropTarget())
 	{
-		const auto Type = *static_cast<const EMaterialExpressionType*>(Payload->Data);
+		if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("MATERIAL_EXPRESSION"))
+		{
+			const auto Type = *static_cast<const EMaterialExpressionType*>(Payload->Data);
 
-		const float X = (Mouse.x - Origin.x - GraphPanX) / Scale;
-		const float Y = (Mouse.y - Origin.y - GraphPanY) / Scale;
+			const float X = (Mouse.x - Origin.x - GraphPanX) / Scale;
+			const float Y = (Mouse.y - Origin.y - GraphPanY) / Scale;
 
-		AddMaterialExpression(Material, Type, X, Y);
+			AddMaterialExpression(Material, Type, X, Y);
+		}
+
+		ImGui::EndDragDropTarget();
 	}
 
 	Draw->PopClipRect();
@@ -851,7 +873,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 
 	case EMaterialExpressionType::TextureSample:
 	{
-		UTexture2D* Current = UAssetManager::GetAssetByPath<UTexture2D>(Selected->TexturePath);
+		UTexture2D* Current = Selected->TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Selected->TexturePath);
 		const FString CurrentName = Current ? Current->GetPath() : FString("None");
 
 		if (ImGui::BeginCombo("Texture", CurrentName.c_str()))

@@ -72,9 +72,14 @@ void UMaterial::EnsureDefaultGraph()
 		ExpressionNodes.Add(Output);
 		OutputNodeId = Output.Id;
 	}
-	else if (OutputNodeId == 0 || !FindExpressionNode(*this, OutputNodeId))
+	else
 	{
-		OutputNodeId = FirstOutputId;
+		const FMaterialExpressionNode* CurrentOutput = FindExpressionNode(*this, OutputNodeId);
+
+		if (!CurrentOutput || CurrentOutput->Type != EMaterialExpressionType::MaterialOutput)
+		{
+			OutputNodeId = FirstOutputId;
+		}
 	}
 }
 
@@ -403,6 +408,73 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 		}
 	}
 
+	for (const FMaterialExpressionNode& Node : ExpressionNodes)
+	{
+		bool bOutputConnected = false;
+
+		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+		{
+			if (Connection.OutputNodeId == Node.Id)
+			{
+				bOutputConnected = true;
+				break;
+			}
+		}
+
+		if (!bOutputConnected)
+		{
+			continue;
+		}
+
+		int32 RequiredInputCount = 0;
+
+		switch (Node.Type)
+		{
+		case EMaterialExpressionType::Add:
+		case EMaterialExpressionType::Multiply:
+			RequiredInputCount = 2;
+			break;
+
+		case EMaterialExpressionType::Lerp:
+			RequiredInputCount = 3;
+			break;
+
+		case EMaterialExpressionType::OneMinus:
+		case EMaterialExpressionType::TextureSample:
+			RequiredInputCount = 1;
+			break;
+
+		default:
+			continue;
+		}
+
+		for (int32 Pin = 0; Pin < RequiredInputCount; ++Pin)
+		{
+			bool bConnected = false;
+
+			for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+			{
+				if (Connection.InputNodeId == Node.Id && Connection.InputPin == Pin)
+				{
+					bConnected = true;
+					break;
+				}
+			}
+
+			if (!bConnected)
+			{
+				OutError = "Expression node has an unconnected required input.";
+				return false;
+			}
+		}
+
+		if (Node.Type == EMaterialExpressionType::TextureSample && Node.TexturePath.empty())
+		{
+			OutError = "Texture Sample requires a texture.";
+			return false;
+		}
+	}
+
 	const auto IsNumeric = [](EMaterialValueType Type)
 	{
 		return Type == EMaterialValueType::Scalar || Type == EMaterialValueType::Vector2 ||
@@ -416,7 +488,8 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 
 		if (SourceType == EMaterialValueType::Unknown)
 		{
-			continue;
+			OutError = "Cannot resolve expression output type.";
+			return false;
 		}
 
 		bool bValidType = true;
