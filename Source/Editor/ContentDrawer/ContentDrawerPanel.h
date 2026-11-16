@@ -111,9 +111,16 @@ private:
 	const FString FileIconPath = EditorResourcePaths::FileIcon;
 	
 	std::unordered_map<FString, TUniquePtr<FTexture2D>> ThumbnailCache;
+
 	std::set<FString> PendingMaterialThumbnailPaths;
 	std::set<FString> PendingStaticMeshThumbnailPaths;
+	std::set<FString> PendingSkeletalMeshThumbnailPaths;
+
+	std::unordered_map<FString, UMaterialInterface*> PendingTransientMaterialThumbnails;
+	std::unordered_map<FString, UStaticMesh*> PendingTransientStaticMeshThumbnails;
+
 	std::unordered_map<FString, FString> AnimSequenceDisplayNames;
+
 	UWorld* ThumbnailWorld = nullptr;
 	ASkeletalMeshActor* ThumbnailActor = nullptr;
 	AStaticMeshActor* MaterialThumbnailActor = nullptr;
@@ -124,6 +131,7 @@ private:
 	static FContentDrawerPanel* ActiveInstance;
 	void InitThumbnailStudio();
 	FTexture2D* GetOrCreateSkeletalMeshThumbnail(const FString& FbxPath);
+	FTexture2D* RenderSkeletalMeshThumbnail(const FString& FbxPath);
 	FTexture2D* GetOrCreateMaterialThumbnail(UMaterialInterface* Material);
 	FTexture2D* GetOrCreateStaticMeshThumbnail(UStaticMesh* Mesh);
 	FTexture2D* RenderStaticMeshThumbnail(const FString& CacheKey, UStaticMesh* Mesh, UMaterialInterface* OverrideMaterial);

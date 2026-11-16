@@ -1354,7 +1354,7 @@ void FMaterialEditorPanel::OnRender()
 				Instance->ClearParameterOverride(FName("BaseColor"));
 			}
 
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 
 		ImGui::BeginDisabled(!Instance->HasBaseColorOverride());
@@ -1364,7 +1364,7 @@ void FMaterialEditorPanel::OnRender()
 		if (EditMaterialColor("Base Color", &Color.X, true))
 		{
 			Instance->SetBaseColorOverride(Color);
-			bDirty = true;
+			MarkMaterialChanged();
 		}
 
 		ImGui::EndDisabled();
@@ -1435,7 +1435,7 @@ void FMaterialEditorPanel::OnRender()
 							Instance->ClearParameterOverride(ParameterName);
 						}
 
-						bDirty = true;
+						MarkMaterialChanged();
 					}
 
 					const FMaterialParameterOverride* CurrentOverride = Instance->GetParameterOverride(ParameterName);
@@ -1451,7 +1451,7 @@ void FMaterialEditorPanel::OnRender()
 						if (ImGui::DragFloat("Value", &Value, 0.01f))
 						{
 							Instance->SetScalarParameterValue(ParameterName, Value);
-							bDirty = true;
+							MarkMaterialChanged();
 						}
 					}
 					else
@@ -1463,7 +1463,7 @@ void FMaterialEditorPanel::OnRender()
 						if (EditMaterialColor("Value", &Value.X, true))
 						{
 							Instance->SetVectorParameterValue(ParameterName, Value);
-							bDirty = true;
+							MarkMaterialChanged();
 						}
 					}
 

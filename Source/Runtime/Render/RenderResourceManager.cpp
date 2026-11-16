@@ -653,9 +653,18 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 		return nullptr;
 	}
 
-	const FString Key = ShaderPath + "#MaterialGraph_" + Hash +
-		(bDeferred ? "#Deferred" : "#Forward") +
-		(bGPUSkinning ? "#GPU" : "");
+	FString Key = ShaderPath + "#MaterialGraph_" + Hash + (bDeferred ? "#Deferred" : "#Forward");
+
+	if (!bDeferred)
+	{
+		Key += "#Reflection_" + std::to_string(static_cast<int32>(Reflection));
+		Key += bUnlit ? "#Unlit" : "#Lit";
+	}
+
+	if (bGPUSkinning)
+	{
+		Key += "#GPU";
+	}
 
 	if (auto* Found = Get().ShaderProgramMap.Find(Key))
 	{

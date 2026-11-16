@@ -40,6 +40,7 @@ FString SkeletonKeyFromPath(const std::filesystem::path& Path);
 #include "Render/Swapchain.h"
 #include "Render/SkyboxRenderer.h"
 #include <cctype>
+#include <algorithm>
 
 FContentDrawerPanel* FContentDrawerPanel::ActiveInstance = nullptr;
 
@@ -65,6 +66,14 @@ void FContentDrawerPanel::Release()
 	MaterialThumbnailActor = nullptr;
 	ThumbnailSkybox.reset();
 	ThumbnailCache.clear();
+
+	PendingMaterialThumbnailPaths.clear();
+	PendingStaticMeshThumbnailPaths.clear();
+	PendingSkeletalMeshThumbnailPaths.clear();
+
+	PendingTransientMaterialThumbnails.clear();
+	PendingTransientStaticMeshThumbnails.clear();
+
 	bStudioInitialized = false;
 }
 
@@ -91,25 +100,34 @@ void FContentDrawerPanel::Tick(float DeltaTime)
 		bRefreshThumbnails = false;
 	}
 
-	if (!PendingMaterialThumbnailPaths.empty())
+	UStaticMesh* SphereMesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
+
+	if (SphereMesh)
 	{
-		UStaticMesh* SphereMesh = UAssetManager::GetAssetByPath<UStaticMesh>("Sphere");
-
-		if (SphereMesh)
+		for (const FString& Path : PendingMaterialThumbnailPaths)
 		{
-			for (const FString& Path : PendingMaterialThumbnailPaths)
+			const FString CacheKey = "MAT:" + Path;
+			ThumbnailCache.erase(CacheKey);
+
+			if (UMaterialInterface* Material = UAssetManager::LoadMaterialAsset(Path))
 			{
-				const FString CacheKey = "MAT:" + Path;
-				ThumbnailCache.erase(CacheKey);
-
-				if (UMaterialInterface* Material = UAssetManager::LoadMaterialAsset(Path))
-				{
-					RenderStaticMeshThumbnail(CacheKey, SphereMesh, Material);
-				}
+				RenderStaticMeshThumbnail(CacheKey, SphereMesh, Material);
 			}
-
-			PendingMaterialThumbnailPaths.clear();
 		}
+
+		PendingMaterialThumbnailPaths.clear();
+
+		for (const auto& [CacheKey, Material] : PendingTransientMaterialThumbnails)
+		{
+			ThumbnailCache.erase(CacheKey);
+
+			if (Material && !Material->IsRetired())
+			{
+				RenderStaticMeshThumbnail(CacheKey, SphereMesh, Material);
+			}
+		}
+
+		PendingTransientMaterialThumbnails.clear();
 	}
 
 	for (const FString& Path : PendingStaticMeshThumbnailPaths)
@@ -124,6 +142,26 @@ void FContentDrawerPanel::Tick(float DeltaTime)
 	}
 
 	PendingStaticMeshThumbnailPaths.clear();
+
+	for (const auto& [CacheKey, Mesh] : PendingTransientStaticMeshThumbnails)
+	{
+		ThumbnailCache.erase(CacheKey);
+
+		if (Mesh && !Mesh->IsRetired())
+		{
+			RenderStaticMeshThumbnail(CacheKey, Mesh, nullptr);
+		}
+	}
+
+	PendingTransientStaticMeshThumbnails.clear();
+
+	for (const FString& Path : PendingSkeletalMeshThumbnailPaths)
+	{
+		ThumbnailCache.erase(Path);
+		RenderSkeletalMeshThumbnail(Path);
+	}
+
+	PendingSkeletalMeshThumbnailPaths.clear();
 }
 
 void FContentDrawerPanel::OnRender()
@@ -959,81 +997,47 @@ void FContentDrawerPanel::InitThumbnailStudio()
 
 FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString& FbxPath)
 {
+	if (FbxPath.empty())
+	{
+		return nullptr;
+	}
+
 	auto It = ThumbnailCache.find(FbxPath);
-	if (It != ThumbnailCache.end())
+
+	if (It != ThumbnailCache.end() && It->second)
 	{
 		return It->second.get();
 	}
 
-	InitThumbnailStudio();
-	if (!ThumbnailActor || !ThumbnailWorld)
+	if (It != ThumbnailCache.end())
 	{
-		ThumbnailCache[FbxPath] = nullptr;
+		ThumbnailCache.erase(It);
+	}
+
+	PendingSkeletalMeshThumbnailPaths.insert(FbxPath);
+	return nullptr;
+}
+
+FTexture2D* FContentDrawerPanel::RenderSkeletalMeshThumbnail(const FString& FbxPath)
+{
+	if (FbxPath.empty())
+	{
 		return nullptr;
 	}
 
-	USkeletalMesh* Mesh = UAssetManager::LoadFbxSkeletalMesh(FbxPath);
-	if (!Mesh)
+	auto It = ThumbnailCache.find(FbxPath);
+
+	if (It != ThumbnailCache.end() && It->second)
 	{
-		ThumbnailCache[FbxPath] = nullptr;
-		return nullptr;
-	}
-	if (MaterialThumbnailActor && MaterialThumbnailActor->GetStaticMeshComponent())
-	{
-		MaterialThumbnailActor->GetStaticMeshComponent()->SetVisibility(false);
-	}
-	ThumbnailActor->GetSkeletalMeshComponent()->SetVisibility(true);
-	ThumbnailActor->GetSkeletalMeshComponent()->SetSkeletalMesh(Mesh);
-
-	const FBox Bounds = ThumbnailActor->GetSkeletalMeshComponent()->CalcBounds();
-	const FVector Extent = Bounds.Max - Bounds.Min;
-	const FVector Center = (Bounds.Min + Bounds.Max) * 0.5f;
-
-	const float HalfDim = std::max(Extent.Z * 0.5f, std::max(Extent.X, Extent.Y) * 0.5f);
-	const float HalfFov = FMath::DegreesToRadians(ThumbnailClient.GetViewFOV()) * 0.5f;
-	const float Distance = (HalfDim / std::max(0.2f, std::sin(HalfFov))) * 0.8f;
-
-	ThumbnailClient.SetViewRotation(FRotator(10.0f, 165.0f, 0.0f));
-	const FVector TargetPos = Center + FVector(0.0f, 0.0f, Extent.Z * 0.04f);
-	ThumbnailClient.SetViewLocation(TargetPos - ThumbnailClient.GetViewForward() * Distance);
-
-	if (UEditorEngine* EdEngine = Cast<UEditorEngine>(GEngine))
-	{
-		EdEngine->RenderPreviewViewport(&ThumbnailClient, ThumbnailWorld, nullptr, ThumbnailSkybox.get(), false);
-		FEngineLoop& Loop = GEngine->GetEngineLoop();
-		if (FSwapchain* SC = Loop.GetSwapchain())
-		{
-			if (FWindow* Win = Loop.GetMainWindow())
-			{
-				RenderCommand::BindRenderPassNoClear(SC->GetBackbuffer(), nullptr,
-					Win->GetWidth(), Win->GetHeight());
-			}
-		}
+		return It->second.get();
 	}
 
-	FTexture2D* RenderedTarget = ThumbnailClient.GetColorTarget();
-	if (!RenderedTarget)
+	if (It != ThumbnailCache.end())
 	{
-		ThumbnailCache[FbxPath] = nullptr;
-		return nullptr;
+		ThumbnailCache.erase(It);
 	}
 
-	FTextureDesc Desc{};
-	Desc.Width = RenderedTarget->GetWidth();
-	Desc.Height = RenderedTarget->GetHeight();
-	Desc.Format = RenderedTarget->GetTextureFormat();
-	Desc.Usage = ETextureUsage::Default;
-	Desc.BindFlags = ETextureBindFlags::ShaderResource;
-
-	TUniquePtr<FTexture2D> CachedTex = RenderCommand::CreateTexture2D(Desc);
-	if (CachedTex)
-	{
-		RenderCommand::CopyTexture(CachedTex.get(), RenderedTarget);
-		ThumbnailCache[FbxPath] = std::move(CachedTex);
-		return ThumbnailCache[FbxPath].get();
-	}
-
-	ThumbnailCache[FbxPath] = nullptr;
+	PendingSkeletalMeshThumbnailPaths.insert(FbxPath);
 	return nullptr;
 }
 
@@ -1130,22 +1134,24 @@ FTexture2D* FContentDrawerPanel::RenderStaticMeshThumbnail(
 
 FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterialInterface* Material)
 {
-	if (!Material)
+	if (!Material || Material->IsRetired())
 	{
 		return nullptr;
 	}
 
-	const FString MatKey = !Material->GetPath().empty()
-		? Material->GetPath()
-		: std::to_string(reinterpret_cast<uintptr_t>(Material));
-	const FString MaterialPath = Material->GetPath();
+	FString MaterialPath = Material->GetPath();
+	std::replace(MaterialPath.begin(), MaterialPath.end(), '\\', '/');
 
-	if (MaterialPath.empty())
+	while (MaterialPath.rfind("Assets/", 0) == 0)
 	{
-		return nullptr;
+		MaterialPath.erase(0, 7);
 	}
 
-	const FString CacheKey = "MAT:" + MaterialPath;
+	const bool bTransient = MaterialPath.empty();
+
+	const FString CacheKey = bTransient
+		? "MAT_PTR:" + std::to_string(reinterpret_cast<uintptr_t>(Material))
+		: "MAT:" + MaterialPath;
 
 	auto It = ThumbnailCache.find(CacheKey);
 
@@ -1159,21 +1165,61 @@ FTexture2D* FContentDrawerPanel::GetOrCreateMaterialThumbnail(UMaterialInterface
 		ThumbnailCache.erase(It);
 	}
 
-	PendingMaterialThumbnailPaths.insert(MaterialPath);
+	if (bTransient)
+	{
+		PendingTransientMaterialThumbnails[CacheKey] = Material;
+	}
+	else
+	{
+		PendingMaterialThumbnailPaths.insert(MaterialPath);
+	}
+
 	return nullptr;
 }
 
 FTexture2D* FContentDrawerPanel::GetOrCreateStaticMeshThumbnail(UStaticMesh* Mesh)
 {
-	if (!Mesh)
+	if (!Mesh || Mesh->IsRetired())
 	{
 		return nullptr;
 	}
 
-	const FString MeshKey = !Mesh->GetPath().empty()
-		? Mesh->GetPath()
-		: std::to_string(reinterpret_cast<uintptr_t>(Mesh));
-	return RenderStaticMeshThumbnail("MESH:" + MeshKey, Mesh, nullptr);
+	FString MeshPath = Mesh->GetPath();
+	std::replace(MeshPath.begin(), MeshPath.end(), '\\', '/');
+
+	while (MeshPath.rfind("Assets/", 0) == 0)
+	{
+		MeshPath.erase(0, 7);
+	}
+
+	const bool bTransient = MeshPath.empty();
+
+	const FString MeshKey = bTransient
+		? "MESH_PTR:" + std::to_string(reinterpret_cast<uintptr_t>(Mesh))
+		: "MESH:" + MeshPath;
+
+	auto It = ThumbnailCache.find(MeshKey);
+
+	if (It != ThumbnailCache.end() && It->second)
+	{
+		return It->second.get();
+	}
+
+	if (It != ThumbnailCache.end())
+	{
+		ThumbnailCache.erase(It);
+	}
+
+	if (bTransient)
+	{
+		PendingTransientStaticMeshThumbnails[MeshKey] = Mesh;
+	}
+	else
+	{
+		PendingStaticMeshThumbnailPaths.insert(MeshPath);
+	}
+
+	return nullptr;
 }
 
 ID3D11ShaderResourceView* FContentDrawerPanel::GetStaticMeshThumbnailSRV(UStaticMesh* Mesh)
@@ -1433,5 +1479,18 @@ void FContentDrawerPanel::InvalidateMaterialThumbnail(const FString& Path)
 		return;
 	}
 
-	ActiveInstance->PendingMaterialThumbnailPaths.insert(Path);
+	FString MaterialPath = Path;
+	std::replace(MaterialPath.begin(), MaterialPath.end(), '\\', '/');
+
+	while (MaterialPath.rfind("Assets/", 0) == 0)
+	{
+		MaterialPath.erase(0, 7);
+	}
+
+	if (MaterialPath.empty())
+	{
+		return;
+	}
+
+	ActiveInstance->PendingMaterialThumbnailPaths.insert(MaterialPath);
 }
