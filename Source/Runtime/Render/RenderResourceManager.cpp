@@ -4,6 +4,7 @@
 #include "RenderCommand.h"
 
 #include "RenderUtil.h"
+#include "ParticleCurveTexture.h"
 #include <cstring>
 #include <fstream>
 #include <iterator>
@@ -295,6 +296,7 @@ FComputeShader* FRenderResourceManager::GetComputeShader(const FString& InPath, 
 
 void FRenderResourceManager::Shutdown()
 {
+	FParticleCurveTexture::Get().Shutdown();
 	Get().ComputeShaderMap.Empty();
 	Get().VertexShaderMap.Empty();
 	Get().PixelShaderMap.Empty();

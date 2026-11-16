@@ -102,6 +102,8 @@ public:
 
 	// 크기·포맷이 같은 두 텍스처의 내용을 통째로 복사한다.
 	static void CopyTexture(FTexture2D* Dst, FTexture2D* Src);
+	// 텍스처의 지정 영역만 부분 업로드한다
+	static void UpdateTexture2DRegion(FTexture2D* Texture, uint32 X, uint32 Y, uint32 Width, uint32 Height, const void* Data, uint32 RowPitch);
 
 	static void SetViewport(uint32 InX, uint32 InY, uint32 InWidth, uint32 InHeight);
 

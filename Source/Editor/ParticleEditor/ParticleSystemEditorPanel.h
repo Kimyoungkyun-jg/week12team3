@@ -7,6 +7,9 @@
 class UParticleSystem;
 class UParticleEmitter;
 class UParticleModule;
+class UDistributionFloat;
+class UDistributionVector;
+class UObject;
 class AParticleSystemActor;
 class UWorld;
 class FSkyboxRenderer;
@@ -37,6 +40,9 @@ private:
 	void RenderEmittersPanel(float Width, float Height);
 	void RenderDetailsPanel(float Width, float Height);
 	void RenderCurveEditorPanel(float Width, float Height);
+	void MarkSelectedLODBuildDirty();
+	void DrawDistributionFloat(const char* Label, UDistributionFloat*& InOutDist, UObject* Outer, float DefaultValue, float DragSpeed, float MinVal, float MaxVal);
+	void DrawDistributionVector(const char* Label, UDistributionVector*& InOutDist, UObject* Outer, const FVector& DefaultValue, bool bAsColor, float DragSpeed);
 
 	FString AssetPath;
 	FString StatusMessage;

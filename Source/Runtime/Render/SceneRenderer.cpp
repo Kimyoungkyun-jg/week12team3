@@ -6,6 +6,7 @@
 #include "Render/SceneViewTargets.h"
 #include "Render/SkyboxRenderer.h"
 #include "Render/RenderResourceManager.h"
+#include "Render/ParticleCurveTexture.h"
 #include "Engine/World.h"
 #include "Engine/ParticleSceneProxy.h"
 #include "Components/ParticleSystemComponent.h"
@@ -829,25 +830,21 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 						FComputeShader* SimCS = FRenderResourceManager::GetComputeShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSSimulate");
 						if (!InjectCS || !SimCS) return;
 
+						FParticleCurveTexture& CurveAtlas = FParticleCurveTexture::Get();
+						CurveAtlas.FlushPendingUploads();
+
 						for (const FGpuParticleBatch& Batch : RenderData.Collector.GetGpuParticleBatches())
 						{
 							if (!Batch.GpuResources || Batch.MaxParticles == 0) continue;
 							FGpuParticleEmitterResources& Res = *Batch.GpuResources;
 							if (!Res.ParticleBuffer) continue;
 
-							if (!Res.CurveLUTBuffer)
-								Res.CurveLUTBuffer = RenderCommand::CreateDynamicStructuredBuffer(384, sizeof(FVector4));
 							if (!Res.SimCB)
 								Res.SimCB = RenderCommand::CreateConstantBuffer(sizeof(FGpuParticleSimParams));
 							if (!Res.DrawCB)
 								Res.DrawCB = RenderCommand::CreateConstantBuffer(sizeof(FGpuParticleDrawParams));
-							if (!Res.CurveLUTBuffer || !Res.SimCB || !Res.DrawCB) continue;
+							if (!Res.SimCB || !Res.DrawCB) continue;
 
-							if (void* MappedLUT = RenderCommand::MapWriteDiscard(Res.CurveLUTBuffer.get()))
-							{
-								std::memcpy(MappedLUT, Batch.CurveLUT.GetData(), 384 * sizeof(FVector4));
-								RenderCommand::Unmap(Res.CurveLUTBuffer.get());
-							}
 							RenderCommand::UpdateBufferData(Res.SimCB.get(), &Batch.SimParams, sizeof(FGpuParticleSimParams));
 
 							if (Batch.SpawnCount > 0 && !Batch.PendingSpawnBytes.IsEmpty())
@@ -876,7 +873,8 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 
 							RenderCommand::BindComputeShader(SimCS);
 							RenderCommand::BindConstantBuffer(0, Res.SimCB.get(), EShaderBindFlagBits::Compute);
-							RenderCommand::BindShaderResource(1, Res.CurveLUTBuffer.get(), EShaderBindFlagBits::Compute);
+							RenderCommand::BindShaderResource(1, CurveAtlas.GetTexture(), EShaderBindFlagBits::Compute);
+							RenderCommand::BindSamplerState(0, ESamplerState::LinearClamp, EShaderBindFlagBits::Compute);
 							RenderCommand::BindUnorderedAccess(0, Res.ParticleBuffer.get());
 							RenderCommand::Dispatch((Batch.MaxParticles + 255u) / 256u, 1, 1);
 

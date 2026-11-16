@@ -2,10 +2,12 @@
 
 #include "UObject/Object.h"
 #include "Math/Vector.h"
+#include "Math/Vector4.h"
 #include "Math/Color.h"
 #include "Containers/Array.h"
-#include "Containers/Map.h"
 #include "Curves/CurveFloat.h"
+#include "Particles/ParticleDistribution.h"
+#include "Render/ParticleCurveTexture.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
 #include "ParticleSystem.generated.h"
@@ -24,6 +26,7 @@ struct FBaseParticle
 	float Lifetime = 1.0f;
 	float Rotation = 0.0f;
 	float RotationRate = 0.0f;
+	float BaseRotationRate = 0.0f;
 	uint8 BaseAlpha = 255;
 };
 
@@ -48,29 +51,45 @@ struct FParticleSysParam
 	FColor Color = FColor(255, 255, 255, 255);
 };
 
-struct FParticleInstanceParameters
+// 빌드 단계에서 GPU 커브 채널별로 베이킹된 아틀라스 정보
+struct FGpuDistributionBuildChannel
 {
-	TMap<FString, FColor> ColorParams;
-	TMap<FString, FVector> VectorParams;
-	TMap<FString, float> FloatParams;
-
-	FColor GetColor(const FString& Name, const FColor& Default) const;
-	FVector GetVector(const FString& Name, const FVector& Default) const;
-	float GetFloat(const FString& Name, float Default) const;
+	int32 Mode = 0;
+	FVector4 ConstantValue = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	FVector4 ValueScale = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	FVector4 ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+	FParticleCurveAtlasHandle AtlasHandle{};
 };
 
-struct FParticleRandom
+// LOD 컴파일 시 모듈들로부터 수집해 캐싱하는 시뮬레이션 정보
+struct FParticleEmitterBuildInfo
 {
-	uint32 State = 1;
-	const FParticleInstanceParameters* InstanceParams = nullptr;
-	float Range(float Min, float Max);
-};
+	~FParticleEmitterBuildInfo();
 
-struct FParticleCurveTrack
-{
-	FString Name;
-	UCurveFloat* Curve = nullptr;
-	FColor Color = FColor(255, 255, 255, 255);
+	void Reset();
+	void ReleaseAtlasHandles();
+
+	float MaxLifetime = 1.0f;
+	FVector SpawnLocationMin = FVector::ZeroVector;
+	FVector SpawnLocationMax = FVector::ZeroVector;
+	FVector MaxVelocity = FVector::ZeroVector;
+	FVector MaxStartSize = FVector::OneVector;
+	FVector MaxLifeScale = FVector::OneVector;
+
+	FVector4 InitialColorStart = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	FString ColorParameterName;
+
+	float SubUVCols = 1.0f;
+	float SubUVRows = 1.0f;
+	float SubUVPlayRate = 1.0f;
+	bool bHasSubUV = false;
+	bool bSubUVLinear = true;
+
+	FGpuDistributionBuildChannel SizeScale;
+	FGpuDistributionBuildChannel ColorOverLife;
+	FGpuDistributionBuildChannel SubUV;
+	FGpuDistributionBuildChannel VelocityScale;
+	FGpuDistributionBuildChannel RotationRateScale;
 };
 
 UCLASS()
@@ -81,10 +100,12 @@ public:
 	virtual bool RunsOnSpawn() const { return false; }
 	virtual bool RunsOnUpdate() const { return false; }
 	virtual void Spawn(FBaseParticle& Particle, FParticleRandom& Random) const {}
-	virtual void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0) const {}
+	virtual void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0, const FParticleInstanceParameters* InstanceParams = nullptr) const {}
 	virtual uint32 RequiredBytes() const { return 0; }
 	virtual const char* GetDisplayName() const { return "Module"; }
 	virtual void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const {}
+	virtual void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const {}
+	virtual void InvalidateDistributions() const {}
 
 	UPROPERTY(EditAnywhere)
 	bool bEnabled = true;
@@ -174,13 +195,16 @@ class UParticleModuleLifetime : public UParticleModule
 {
 	GENERATED_BODY()
 public:
+	UParticleModuleLifetime();
 	bool RunsOnSpawn() const override { return true; }
 	void Spawn(FBaseParticle& Particle, FParticleRandom& Random) const override;
 	const char* GetDisplayName() const override { return "Lifetime"; }
-	UPROPERTY(EditAnywhere)
-	float Min = 1.0f;
-	UPROPERTY(EditAnywhere)
-	float Max = 1.0f;
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(Instanced)
+	UDistributionFloat* Lifetime = nullptr;
 };
 
 UCLASS()
@@ -188,15 +212,16 @@ class UParticleModuleLocation : public UParticleModule
 {
 	GENERATED_BODY()
 public:
+	UParticleModuleLocation();
 	bool RunsOnSpawn() const override { return true; }
 	void Spawn(FBaseParticle& Particle, FParticleRandom& Random) const override;
 	const char* GetDisplayName() const override { return "Initial Location"; }
-	UPROPERTY(EditAnywhere)
-	FVector Min = FVector::ZeroVector;
-	UPROPERTY(EditAnywhere)
-	FVector Max = FVector::ZeroVector;
-	UPROPERTY(EditAnywhere)
-	FString ParameterName;
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(Instanced)
+	UDistributionVector* StartLocation = nullptr;
 };
 
 UCLASS()
@@ -204,15 +229,16 @@ class UParticleModuleVelocity : public UParticleModule
 {
 	GENERATED_BODY()
 public:
+	UParticleModuleVelocity();
 	bool RunsOnSpawn() const override { return true; }
 	void Spawn(FBaseParticle& Particle, FParticleRandom& Random) const override;
 	const char* GetDisplayName() const override { return "Initial Velocity"; }
-	UPROPERTY(EditAnywhere)
-	FVector Min = FVector::ZeroVector;
-	UPROPERTY(EditAnywhere)
-	FVector Max = FVector::ZeroVector;
-	UPROPERTY(EditAnywhere)
-	FString ParameterName;
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(Instanced)
+	UDistributionVector* StartVelocity = nullptr;
 };
 
 UCLASS()
@@ -220,17 +246,18 @@ class UParticleModuleColor : public UParticleModule
 {
 	GENERATED_BODY()
 public:
+	UParticleModuleColor();
 	bool RunsOnSpawn() const override { return true; }
-	bool RunsOnUpdate() const override { return true; }
 	void Spawn(FBaseParticle& Particle, FParticleRandom& Random) const override;
-	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0) const override;
 	const char* GetDisplayName() const override { return "Initial Color"; }
-	UPROPERTY(EditAnywhere)
-	FColor Start = FColor(255, 255, 255, 255);
-	UPROPERTY(EditAnywhere)
-	FColor End = FColor(255, 255, 255, 255);
-	UPROPERTY(EditAnywhere)
-	FString ParameterName;
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(Instanced)
+	UDistributionVector* StartColor = nullptr;
+	UPROPERTY(Instanced)
+	UDistributionFloat* StartAlpha = nullptr;
 };
 
 UCLASS()
@@ -238,31 +265,16 @@ class UParticleModuleSize : public UParticleModule
 {
 	GENERATED_BODY()
 public:
+	UParticleModuleSize();
 	bool RunsOnSpawn() const override { return true; }
-	bool RunsOnUpdate() const override { return true; }
 	void Spawn(FBaseParticle& Particle, FParticleRandom& Random) const override;
-	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0) const override;
 	const char* GetDisplayName() const override { return "Initial Size"; }
-	UPROPERTY(EditAnywhere)
-	FVector Start = FVector::OneVector;
-	UPROPERTY(EditAnywhere)
-	FVector End = FVector::OneVector;
-};
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
 
-UCLASS()
-class UParticleModuleInitialSize : public UParticleModule
-{
-	GENERATED_BODY()
-public:
-	bool RunsOnSpawn() const override { return true; }
-	void Spawn(FBaseParticle& Particle, FParticleRandom& Random) const override;
-	const char* GetDisplayName() const override { return "Initial Size (Random)"; }
-	UPROPERTY(EditAnywhere)
-	FVector MinSize = FVector(0.5f, 0.5f, 0.5f);
-	UPROPERTY(EditAnywhere)
-	FVector MaxSize = FVector(1.5f, 1.5f, 1.5f);
-	UPROPERTY(EditAnywhere)
-	bool bUniformScale = true;
+	UPROPERTY(Instanced)
+	UDistributionVector* StartSize = nullptr;
 };
 
 UCLASS()
@@ -272,16 +284,14 @@ class UParticleModuleSizeByLife : public UParticleModule
 public:
 	UParticleModuleSizeByLife();
 	bool RunsOnUpdate() const override { return true; }
-	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0) const override;
+	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0, const FParticleInstanceParameters* InstanceParams = nullptr) const override;
 	const char* GetDisplayName() const override { return "Size By Life"; }
 	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
 
 	UPROPERTY(Instanced)
-	UCurveFloat* ScaleX = nullptr;
-	UPROPERTY(Instanced)
-	UCurveFloat* ScaleY = nullptr;
-	UPROPERTY(Instanced)
-	UCurveFloat* ScaleZ = nullptr;
+	UDistributionVector* LifeScale = nullptr;
 };
 
 UCLASS()
@@ -291,21 +301,17 @@ class UParticleModuleColorOverLife : public UParticleModule
 public:
 	UParticleModuleColorOverLife();
 	bool RunsOnUpdate() const override { return true; }
-	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0) const override;
+	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0, const FParticleInstanceParameters* InstanceParams = nullptr) const override;
 	const char* GetDisplayName() const override { return "Color Over Life"; }
 	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
-	float EvaluateAlphaScale(float RelativeTime) const;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
+	float EvaluateAlphaScale(float RelativeTime, const FParticleInstanceParameters* InstanceParams = nullptr) const;
 
 	UPROPERTY(Instanced)
-	UCurveFloat* ColorR = nullptr;
+	UDistributionVector* ColorScale = nullptr;
 	UPROPERTY(Instanced)
-	UCurveFloat* ColorG = nullptr;
-	UPROPERTY(Instanced)
-	UCurveFloat* ColorB = nullptr;
-	UPROPERTY(Instanced)
-	UCurveFloat* Alpha = nullptr;
-	UPROPERTY(EditAnywhere)
-	FString ParameterName;
+	UDistributionFloat* AlphaScale = nullptr;
 	UPROPERTY(EditAnywhere)
 	bool bUseFadeInOut = false;
 	UPROPERTY(EditAnywhere)
@@ -319,18 +325,17 @@ class UParticleModuleRotation : public UParticleModule
 {
 	GENERATED_BODY()
 public:
+	UParticleModuleRotation();
 	bool RunsOnSpawn() const override { return true; }
 	void Spawn(FBaseParticle& Particle, FParticleRandom& Random) const override;
 	const char* GetDisplayName() const override { return "Initial Rotation"; }
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void InvalidateDistributions() const override;
 
-	UPROPERTY(EditAnywhere)
-	float Min = 0.0f;
-	UPROPERTY(EditAnywhere)
-	float Max = 0.0f;
-	UPROPERTY(EditAnywhere)
-	float RateMin = 0.0f;
-	UPROPERTY(EditAnywhere)
-	float RateMax = 0.0f;
+	UPROPERTY(Instanced)
+	UDistributionFloat* StartRotation = nullptr;
+	UPROPERTY(Instanced)
+	UDistributionFloat* StartRotationRate = nullptr;
 };
 
 UCLASS()
@@ -340,10 +345,12 @@ class UParticleModuleSubUV : public UParticleModule
 public:
 	UParticleModuleSubUV();
 	bool RunsOnUpdate() const override { return true; }
-	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0) const override;
+	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0, const FParticleInstanceParameters* InstanceParams = nullptr) const override;
 	uint32 RequiredBytes() const override { return sizeof(FSubUVPayload); }
 	const char* GetDisplayName() const override { return "SubImage Index"; }
 	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
 
 	UPROPERTY(EditAnywhere)
 	int32 SubImagesHorizontal = 1;
@@ -354,7 +361,41 @@ public:
 	UPROPERTY(EditAnywhere)
 	float PlayRate = 1.0f;
 	UPROPERTY(Instanced)
-	UCurveFloat* SubImageIndex = nullptr;
+	UDistributionFloat* SubImageIndex = nullptr;
+};
+
+UCLASS()
+class UParticleModuleVelocityOverLife : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	UParticleModuleVelocityOverLife();
+	bool RunsOnUpdate() const override { return true; }
+	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0, const FParticleInstanceParameters* InstanceParams = nullptr) const override;
+	const char* GetDisplayName() const override { return "Velocity Over Life"; }
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(Instanced)
+	UDistributionVector* VelocityScale = nullptr;
+};
+
+UCLASS()
+class UParticleModuleRotationRateOverLife : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	UParticleModuleRotationRateOverLife();
+	bool RunsOnUpdate() const override { return true; }
+	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0, const FParticleInstanceParameters* InstanceParams = nullptr) const override;
+	const char* GetDisplayName() const override { return "Rotation Rate Over Life"; }
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(Instanced)
+	UDistributionFloat* RotationRateScale = nullptr;
 };
 
 UCLASS()
@@ -362,6 +403,7 @@ class UParticleLODLevel : public UObject
 {
 	GENERATED_BODY()
 public:
+	~UParticleLODLevel() override;
 	UParticleModule* AddModule(UClass* ModuleClass);
 	bool RemoveModule(UParticleModule* Module);
 	bool MoveModule(int32 FromIndex, int32 ToIndex);
@@ -369,6 +411,9 @@ public:
 	UParticleModuleSpawn* GetOrCreateSpawn();
 	UParticleModuleTypeDataBase* SetTypeData(UClass* TypeDataClass);
 	UParticleModuleTypeDataBase* GetOrCreateTypeData();
+	void MarkBuildDirty();
+	const FParticleEmitterBuildInfo& EnsureBuilt();
+
 	UPROPERTY(EditAnywhere)
 	int32 Level = 0;
 	UPROPERTY(EditAnywhere)
@@ -383,6 +428,10 @@ public:
 	UParticleModuleTypeDataBase* TypeDataModule = nullptr;
 	TArray<UParticleModule*> SpawnModules;
 	TArray<UParticleModule*> UpdateModules;
+
+private:
+	FParticleEmitterBuildInfo BuildInfo;
+	bool bBuildDirty = true;
 };
 
 UCLASS()

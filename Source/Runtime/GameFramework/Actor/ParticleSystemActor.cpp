@@ -10,9 +10,12 @@ AParticleSystemActor::AParticleSystemActor()
 	UParticleLODLevel* LOD = System->AddEmitter()->AddLODLevel();
 	LOD->AddModule(UParticleModuleLifetime::StaticClass());
 	LOD->AddModule(UParticleModuleLocation::StaticClass());
-	auto* Velocity = static_cast<UParticleModuleVelocity*>(LOD->AddModule(UParticleModuleVelocity::StaticClass()));
-	Velocity->Min = FVector(-0.5f, -0.5f, 0.5f);
-	Velocity->Max = FVector(0.5f, 0.5f, 1.5f);
+	UParticleModuleVelocity* Velocity = static_cast<UParticleModuleVelocity*>(LOD->AddModule(UParticleModuleVelocity::StaticClass()));
+	if (UDistributionVectorUniform* VelDist = Cast<UDistributionVectorUniform>(Velocity ? Velocity->StartVelocity : nullptr))
+	{
+		VelDist->Min = FVector(-0.5f, -0.5f, 0.5f);
+		VelDist->Max = FVector(0.5f, 0.5f, 1.5f);
+	}
 	LOD->AddModule(UParticleModuleColor::StaticClass());
 	LOD->AddModule(UParticleModuleSize::StaticClass());
 	ParticleSystemComponent->SetTemplate(System);

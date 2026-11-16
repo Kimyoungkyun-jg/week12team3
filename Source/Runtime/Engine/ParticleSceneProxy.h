@@ -67,7 +67,6 @@ public:
 	UMaterial* Material = nullptr;
 	mutable FGpuParticleSimParams SimParams{};
 	mutable TArray<uint8> PendingSpawnBytes;
-	TArray<FVector4> CurveLUT;
 	uint32 MaxParticles = 0;
 	uint32 ParticleStride = 0;
 	mutable bool bResetRequested = false;

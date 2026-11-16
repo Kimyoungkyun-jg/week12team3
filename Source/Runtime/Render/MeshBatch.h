@@ -29,12 +29,20 @@ struct FGpuParticleEmitterResources
 {
 	TUniquePtr<FStructuredBuffer> ParticleBuffer;
 	TUniquePtr<FStructuredBuffer> SpawnUploadBuffer;
-	TUniquePtr<FStructuredBuffer> CurveLUTBuffer;
 	TUniquePtr<FConstantBuffer> SimCB;
 	TUniquePtr<FConstantBuffer> DrawCB;
 	uint32 MaxParticles = 0;
 	uint32 SpawnCapacity = 0;
 };
+
+struct FGpuDistributionDesc
+{
+	// 아틀라스 uv 시작점 범위 행 좌표와 평가 모드를 담는다
+	FVector4 AtlasUVAndMode = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+	FVector4 ValueScale = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	FVector4 ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+};
+static_assert(sizeof(FGpuDistributionDesc) == 48);
 
 struct FGpuParticleSimParams
 {
@@ -43,27 +51,22 @@ struct FGpuParticleSimParams
 	uint32 SpawnCount = 0;
 	uint32 WriteCursor = 0;
 
-	FVector4 ColorStart = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
-	FVector4 ColorEnd = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	FGpuDistributionDesc SizeScale{};
+	FGpuDistributionDesc ColorOverLife{};
+	FGpuDistributionDesc SubUV{};
+	FGpuDistributionDesc VelocityScale{};
+	FGpuDistributionDesc RotationRateScale{};
 
-	FVector SizeStart = FVector::OneVector;
 	float SubUVCols = 1.0f;
-
-	FVector SizeEnd = FVector::OneVector;
 	float SubUVRows = 1.0f;
-
-	uint32 UseColorModule = 0;
-	uint32 UseSizeModule = 0;
-	uint32 UseColorOverLife = 0;
-	uint32 UseSizeByLife = 0;
-
-	uint32 UseSubUV = 0;
-	uint32 SubUVLinear = 1;
 	float SubUVPlayRate = 1.0f;
-	uint32 HasColorOverride = 0;
+	uint32 SubUVLinear = 1;
 
+	uint32 HasColorOverride = 0;
+	uint32 Pad[3] = {};
 	FVector4 ColorOverride = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
 };
+static_assert(sizeof(FGpuParticleSimParams) == 304);
 
 struct FGpuParticleDrawParams
 {
@@ -81,11 +84,10 @@ struct FGpuParticleBatch
 	UStaticMesh* Mesh = nullptr;
 	UMaterial* Material = nullptr;
 	uint32 MaxParticles = 0;
-	uint32 ParticleStride = 112;
+	uint32 ParticleStride = 128;
 	bool bResetRequested = false;
 	TArray<uint8> PendingSpawnBytes;
 	uint32 SpawnCount = 0;
-	TArray<FVector4> CurveLUT;
 	FGpuParticleSimParams SimParams{};
 	FGpuParticleDrawParams DrawParams{};
 };

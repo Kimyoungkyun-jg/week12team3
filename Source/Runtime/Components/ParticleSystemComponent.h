@@ -32,10 +32,13 @@ struct FGpuParticle
 	FVector Size = FVector::OneVector;
 	float RotationRate = 0.0f;
 	FVector4 BaseColor = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	FVector BaseVelocity = FVector::ZeroVector;
+	float BaseRotationRate = 0.0f;
 	float SubImageIndex = 0.0f;
 	uint32 bAlive = 0;
 	float Pad[2] = {};
 };
+static_assert(sizeof(FGpuParticle) == 128);
 
 struct FParticleEmitterInstance
 {

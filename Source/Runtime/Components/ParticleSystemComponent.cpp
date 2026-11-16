@@ -32,22 +32,9 @@ namespace
 			std::max(InOutBounds.Max.Z, Max.Z));
 	}
 
-	float SampleMaxCurveAbs(const UCurveFloat* Curve)
-	{
-		if (!Curve)
-			return 1.0f;
-		float MaxVal = 0.0f;
-		constexpr int32 SampleCount = 8;
-		for (int32 i = 0; i <= SampleCount; ++i)
-		{
-			const float T = static_cast<float>(i) / static_cast<float>(SampleCount);
-			MaxVal = std::max(MaxVal, std::abs(Curve->GetFloatValue(T)));
-		}
-		return MaxVal;
-	}
-
+	// 빌드 캐시로부터 GPU 에미터의 예상 최대 도달 범위를 계산한다
 	void ComputeGpuEmitterReach(
-		const UParticleLODLevel* LOD,
+		UParticleLODLevel* LOD,
 		FVector& OutOffsetMin,
 		FVector& OutOffsetMax,
 		FVector& OutVelReach,
@@ -62,61 +49,36 @@ namespace
 		if (!LOD)
 			return;
 
-		FVector VelMax = FVector::ZeroVector;
-		float MaxSizeX = 1.0f;
-		float MaxSizeY = 1.0f;
-		float ScaleX = 1.0f;
-		float ScaleY = 1.0f;
-
-		for (const UParticleModule* Module : LOD->Modules)
-		{
-			if (!Module || !Module->bEnabled)
-				continue;
-			if (const auto* LifeMod = Cast<UParticleModuleLifetime>(Module))
-			{
-				OutMaxLifetime = std::max(0.05f, LifeMod->Max);
-			}
-			else if (const auto* LocMod = Cast<UParticleModuleLocation>(Module))
-			{
-				const FVector ModMin(
-					std::min(LocMod->Min.X, LocMod->Max.X),
-					std::min(LocMod->Min.Y, LocMod->Max.Y),
-					std::min(LocMod->Min.Z, LocMod->Max.Z));
-				const FVector ModMax(
-					std::max(LocMod->Min.X, LocMod->Max.X),
-					std::max(LocMod->Min.Y, LocMod->Max.Y),
-					std::max(LocMod->Min.Z, LocMod->Max.Z));
-				OutOffsetMin = FVector(
-					std::min(OutOffsetMin.X, ModMin.X),
-					std::min(OutOffsetMin.Y, ModMin.Y),
-					std::min(OutOffsetMin.Z, ModMin.Z));
-				OutOffsetMax = FVector(
-					std::max(OutOffsetMax.X, ModMax.X),
-					std::max(OutOffsetMax.Y, ModMax.Y),
-					std::max(OutOffsetMax.Z, ModMax.Z));
-			}
-			else if (const auto* VelMod = Cast<UParticleModuleVelocity>(Module))
-			{
-				VelMax.X = std::max({ VelMax.X, std::abs(VelMod->Min.X), std::abs(VelMod->Max.X) });
-				VelMax.Y = std::max({ VelMax.Y, std::abs(VelMod->Min.Y), std::abs(VelMod->Max.Y) });
-				VelMax.Z = std::max({ VelMax.Z, std::abs(VelMod->Min.Z), std::abs(VelMod->Max.Z) });
-			}
-			else if (const auto* SizeMod = Cast<UParticleModuleSize>(Module))
-			{
-				MaxSizeX = std::max({ MaxSizeX, std::abs(SizeMod->Start.X), std::abs(SizeMod->End.X) });
-				MaxSizeY = std::max({ MaxSizeY, std::abs(SizeMod->Start.Y), std::abs(SizeMod->End.Y) });
-			}
-			else if (const auto* SizeByLife = Cast<UParticleModuleSizeByLife>(Module))
-			{
-				ScaleX = std::max(ScaleX, SampleMaxCurveAbs(SizeByLife->ScaleX));
-				ScaleY = std::max(ScaleY, SampleMaxCurveAbs(SizeByLife->ScaleY));
-			}
-		}
-
-		OutVelReach = VelMax * OutMaxLifetime;
-		const float FinalSizeX = MaxSizeX * ScaleX;
-		const float FinalSizeY = MaxSizeY * ScaleY;
+		const FParticleEmitterBuildInfo& Build = LOD->EnsureBuilt();
+		OutOffsetMin = Build.SpawnLocationMin;
+		OutOffsetMax = Build.SpawnLocationMax;
+		OutMaxLifetime = std::max(0.05f, Build.MaxLifetime);
+		OutVelReach = Build.MaxVelocity * OutMaxLifetime;
+		const float FinalSizeX = Build.MaxStartSize.X * Build.MaxLifeScale.X;
+		const float FinalSizeY = Build.MaxStartSize.Y * Build.MaxLifeScale.Y;
 		OutHalfDiagSize = 0.5f * std::sqrt(FinalSizeX * FinalSizeX + FinalSizeY * FinalSizeY);
+	}
+
+	FGpuDistributionDesc MakeGpuDistributionDesc(const FGpuDistributionBuildChannel& Channel)
+	{
+		FGpuDistributionDesc Desc{};
+		if (Channel.Mode == 2 && Channel.AtlasHandle.IsValid())
+		{
+			Desc.AtlasUVAndMode = FVector4(
+				Channel.AtlasHandle.UStart,
+				Channel.AtlasHandle.UScale,
+				Channel.AtlasHandle.VCoord,
+				2.0f);
+			Desc.ValueScale = Channel.ValueScale;
+			Desc.ValueBias = Channel.ValueBias;
+		}
+		else if (Channel.Mode == 1)
+		{
+			Desc.AtlasUVAndMode = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
+			Desc.ValueScale = Channel.ConstantValue;
+			Desc.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+		}
+		return Desc;
 	}
 }
 
@@ -490,24 +452,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 			for (const UParticleModule* Module : CurrentLODLevel->UpdateModules)
 			{
 				if (!Module) continue;
-				Module->Update(Particle, DeltaTime, GetModuleDataOffset(Module));
-				if (!InstanceParameters) continue;
-				if (const auto* ColorMod = Cast<UParticleModuleColor>(Module))
-				{
-					if (!ColorMod->ParameterName.empty())
-					{
-						if (const FColor* Override = InstanceParameters->ColorParams.Find(ColorMod->ParameterName))
-							Particle.Color = *Override;
-					}
-				}
-				else if (const auto* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
-				{
-					if (!ColorOverLife->ParameterName.empty())
-					{
-						if (const FColor* Override = InstanceParameters->ColorParams.Find(ColorOverLife->ParameterName))
-							Particle.Color = FColor(Override->R, Override->G, Override->B, Particle.Color.A);
-					}
-				}
+				Module->Update(Particle, DeltaTime, GetModuleDataOffset(Module), InstanceParameters);
 			}
 			++Index;
 		}
@@ -569,6 +514,8 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 			GpuP.Size = Base.Size;
 			GpuP.RotationRate = Base.RotationRate;
 			GpuP.BaseColor = GpuP.Color;
+			GpuP.BaseVelocity = Base.BaseVelocity;
+			GpuP.BaseRotationRate = Base.BaseRotationRate;
 			GpuP.SubImageIndex = 0.0f;
 			GpuP.bAlive = 1;
 			PendingGpuSpawns.Add(GpuP);
@@ -632,7 +579,7 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 	bool bHasBounds = false;
 	for (const FParticleEmitterInstance& Emitter : EmitterInstances)
 	{
-		const UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
+		UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
 		if (!LOD || !LOD->bEnabled || !LOD->RequiredModule || !LOD->TypeDataModule)
 			continue;
 		if (LOD->TypeDataModule->GetEmitterType() == EParticleEmitterType::GpuSprite)
@@ -713,7 +660,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 
 	for (FParticleEmitterInstance& Emitter : EmitterInstances)
 	{
-		const UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
+		UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
 		if (!LOD || !LOD->bEnabled || !LOD->RequiredModule || !LOD->TypeDataModule) continue;
 		const EParticleEmitterType EmitterType = LOD->TypeDataModule->GetEmitterType();
 		if (EmitterType == EParticleEmitterType::GpuSprite)
@@ -788,6 +735,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 				Emitter.PendingGpuSpawns.Reset();
 			}
 
+			const FParticleEmitterBuildInfo& Build = LOD->EnsureBuilt();
 			GpuData->SimParams.DeltaTime = Emitter.LastGpuDeltaTime;
 			Emitter.LastGpuDeltaTime = 0.0f;
 			GpuData->SimParams.MaxParticles = GpuData->MaxParticles;
@@ -796,85 +744,23 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			if (GpuData->MaxParticles > 0 && SpawnCount > 0)
 				Emitter.GpuWriteCursor = (Emitter.GpuWriteCursor + SpawnCount) % GpuData->MaxParticles;
 
-			GpuData->CurveLUT.SetNum(384);
-			for (int32 i = 0; i < 384; ++i)
-				GpuData->CurveLUT[i] = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+			GpuData->SimParams.SizeScale = MakeGpuDistributionDesc(Build.SizeScale);
+			GpuData->SimParams.ColorOverLife = MakeGpuDistributionDesc(Build.ColorOverLife);
+			GpuData->SimParams.SubUV = MakeGpuDistributionDesc(Build.SubUV);
+			GpuData->SimParams.VelocityScale = MakeGpuDistributionDesc(Build.VelocityScale);
+			GpuData->SimParams.RotationRateScale = MakeGpuDistributionDesc(Build.RotationRateScale);
+			GpuData->SimParams.SubUVCols = Build.SubUVCols;
+			GpuData->SimParams.SubUVRows = Build.SubUVRows;
+			GpuData->SimParams.SubUVPlayRate = Build.SubUVPlayRate;
+			GpuData->SimParams.SubUVLinear = Build.bSubUVLinear ? 1u : 0u;
 
-			const UParticleModuleSubUV* SubUVMod = nullptr;
-			for (const UParticleModule* Module : LOD->Modules)
+			if (!Build.ColorParameterName.empty())
 			{
-				if (!Module || !Module->bEnabled) continue;
-				if (const auto* ColorMod = Cast<UParticleModuleColor>(Module))
+				if (const FColor* Override = InstanceParameters.ColorParams.Find(Build.ColorParameterName))
 				{
-					GpuData->SimParams.UseColorModule = 1;
-					GpuData->SimParams.ColorStart = FVector4(ColorMod->Start.R / 255.0f, ColorMod->Start.G / 255.0f, ColorMod->Start.B / 255.0f, ColorMod->Start.A / 255.0f);
-					GpuData->SimParams.ColorEnd = FVector4(ColorMod->End.R / 255.0f, ColorMod->End.G / 255.0f, ColorMod->End.B / 255.0f, ColorMod->End.A / 255.0f);
-					if (!ColorMod->ParameterName.empty())
-					{
-						if (const FColor* Override = InstanceParameters.ColorParams.Find(ColorMod->ParameterName))
-						{
-							GpuData->SimParams.HasColorOverride = 1;
-							GpuData->SimParams.ColorOverride = FVector4(Override->R / 255.0f, Override->G / 255.0f, Override->B / 255.0f, Override->A / 255.0f);
-						}
-					}
-				}
-				else if (const auto* SizeMod = Cast<UParticleModuleSize>(Module))
-				{
-					GpuData->SimParams.UseSizeModule = 1;
-					GpuData->SimParams.SizeStart = SizeMod->Start;
-					GpuData->SimParams.SizeEnd = SizeMod->End;
-				}
-				else if (const auto* SizeByLife = Cast<UParticleModuleSizeByLife>(Module))
-				{
-					GpuData->SimParams.UseSizeByLife = 1;
-					for (int32 i = 0; i < 128; ++i)
-					{
-						const float T = static_cast<float>(i) / 127.0f;
-						GpuData->CurveLUT[i] = FVector4(
-							SizeByLife->ScaleX ? SizeByLife->ScaleX->GetFloatValue(T) : 1.0f,
-							SizeByLife->ScaleY ? SizeByLife->ScaleY->GetFloatValue(T) : 1.0f,
-							SizeByLife->ScaleZ ? SizeByLife->ScaleZ->GetFloatValue(T) : 1.0f,
-							1.0f);
-					}
-				}
-				else if (const auto* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
-				{
-					GpuData->SimParams.UseColorOverLife = 1;
-					for (int32 i = 0; i < 128; ++i)
-					{
-						const float T = static_cast<float>(i) / 127.0f;
-						GpuData->CurveLUT[128 + i] = FVector4(
-							ColorOverLife->ColorR ? ColorOverLife->ColorR->GetFloatValue(T) : 1.0f,
-							ColorOverLife->ColorG ? ColorOverLife->ColorG->GetFloatValue(T) : 1.0f,
-							ColorOverLife->ColorB ? ColorOverLife->ColorB->GetFloatValue(T) : 1.0f,
-							ColorOverLife->EvaluateAlphaScale(T));
-					}
-					if (!ColorOverLife->ParameterName.empty())
-					{
-						if (const FColor* Override = InstanceParameters.ColorParams.Find(ColorOverLife->ParameterName))
-						{
-							GpuData->SimParams.HasColorOverride = 1;
-							GpuData->SimParams.ColorOverride = FVector4(Override->R / 255.0f, Override->G / 255.0f, Override->B / 255.0f, Override->A / 255.0f);
-						}
-					}
-				}
-				else if (const auto* CandidateSubUV = Cast<UParticleModuleSubUV>(Module))
-				{
-					SubUVMod = CandidateSubUV;
-					GpuData->SimParams.UseSubUV = 1;
-					GpuData->SimParams.SubUVCols = static_cast<float>(std::max(1, CandidateSubUV->SubImagesHorizontal));
-					GpuData->SimParams.SubUVRows = static_cast<float>(std::max(1, CandidateSubUV->SubImagesVertical));
-					GpuData->SimParams.SubUVLinear = CandidateSubUV->bUseLinearOverLife ? 1u : 0u;
-					GpuData->SimParams.SubUVPlayRate = CandidateSubUV->PlayRate;
-					if (!CandidateSubUV->bUseLinearOverLife && CandidateSubUV->SubImageIndex)
-					{
-						for (int32 i = 0; i < 128; ++i)
-						{
-							const float T = static_cast<float>(i) / 127.0f;
-							const float V = CandidateSubUV->SubImageIndex->GetFloatValue(T);
-							GpuData->CurveLUT[256 + i] = FVector4(V, 0.0f, 0.0f, 0.0f);
-						}
-					}
+					GpuData->SimParams.HasColorOverride = 1;
+					GpuData->SimParams.ColorOverride = FVector4(
+						Override->R / 255.0f, Override->G / 255.0f, Override->B / 255.0f, Override->A / 255.0f);
 				}
 			}
 
@@ -883,10 +769,10 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			GpuData->WorldLocation = Data.WorldLocation;
 			GpuData->WorldScale = Data.WorldScale;
 			GpuData->AtlasParams = FVector4(
-				SubUVMod ? static_cast<float>(std::max(1, SubUVMod->SubImagesVertical)) : 1.0f,
-				SubUVMod ? static_cast<float>(std::max(1, SubUVMod->SubImagesHorizontal)) : 1.0f,
+				Build.bHasSubUV ? Build.SubUVRows : 1.0f,
+				Build.bHasSubUV ? Build.SubUVCols : 1.0f,
 				1.0f,
-				SubUVMod ? 1.0f : 0.0f);
+				Build.bHasSubUV ? 1.0f : 0.0f);
 			Data.DynamicEmitters.Add(std::move(GpuData));
 			continue;
 		}

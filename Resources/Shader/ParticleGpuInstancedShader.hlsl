@@ -13,6 +13,8 @@ struct FGpuParticle
 	float3 Size;
 	float RotationRate;
 	float4 BaseColor;
+	float3 BaseVelocity;
+	float BaseRotationRate;
 	float SubImageIndex;
 	uint bAlive;
 	float2 Pad;

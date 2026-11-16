@@ -386,6 +386,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					const bool bSelected = (SelectedModule == Mod);
 					if (ImGui::Checkbox("##En", &Mod->bEnabled))
 					{
+						LOD->MarkBuildDirty();
 						if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 							PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
 					}
@@ -448,9 +449,10 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					AddModItem("Initial Color", UParticleModuleColor::StaticClass());
 					AddModItem("Color Over Life", UParticleModuleColorOverLife::StaticClass());
 					AddModItem("Initial Size", UParticleModuleSize::StaticClass());
-					AddModItem("Initial Size (Random)", UParticleModuleInitialSize::StaticClass());
 					AddModItem("Size By Life", UParticleModuleSizeByLife::StaticClass());
+					AddModItem("Velocity Over Life", UParticleModuleVelocityOverLife::StaticClass());
 					AddModItem("Initial Rotation", UParticleModuleRotation::StaticClass());
+					AddModItem("Rotation Rate Over Life", UParticleModuleRotationRateOverLife::StaticClass());
 					AddModItem("SubImage Index", UParticleModuleSubUV::StaticClass());
 					ImGui::EndPopup();
 				}
@@ -497,11 +499,17 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		}
 	};
 
+	UParticleLODLevel* SelectedLOD = (SelectedEmitter && !SelectedEmitter->GetLODLevels().IsEmpty())
+		? SelectedEmitter->GetLODLevels()[0]
+		: nullptr;
+
 	if (SelectedModule)
 	{
 		ImGui::Text("Module: %s", SelectedModule->GetDisplayName());
 		if (ImGui::Checkbox("Enabled", &SelectedModule->bEnabled))
 		{
+			if (SelectedLOD)
+				SelectedLOD->MarkBuildDirty();
 			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 				PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
 		}
@@ -509,9 +517,7 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 
 		if (auto* MeshType = Cast<UParticleModuleTypeDataMesh>(SelectedModule))
 		{
-			UParticleLODLevel* OwnerLOD = (SelectedEmitter && !SelectedEmitter->GetLODLevels().IsEmpty())
-				? SelectedEmitter->GetLODLevels()[0]
-				: nullptr;
+			UParticleLODLevel* OwnerLOD = SelectedLOD;
 			if (!OwnerLOD && EditingSystem)
 			{
 				for (UParticleEmitter* E : EditingSystem->GetEmitters())
@@ -532,10 +538,7 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			ImGui::Checkbox("Looping", &Req->bLooping);
 			ImGui::Checkbox("Use Local Space", &Req->bUseLocalSpace);
 
-			UParticleLODLevel* OwnerLOD = (SelectedEmitter && !SelectedEmitter->GetLODLevels().IsEmpty())
-				? SelectedEmitter->GetLODLevels()[0]
-				: nullptr;
-			const bool bIsMeshEmitter = OwnerLOD && Cast<UParticleModuleTypeDataMesh>(OwnerLOD->TypeDataModule) != nullptr;
+			const bool bIsMeshEmitter = SelectedLOD && Cast<UParticleModuleTypeDataMesh>(SelectedLOD->TypeDataModule) != nullptr;
 			UMaterial* FallbackMaterial = (!Req->Material && !bIsMeshEmitter)
 				? UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial")
 				: nullptr;
@@ -564,95 +567,71 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 				ImGui::PopID();
 			}
 		}
-		else if (auto* Life = Cast<UParticleModuleLifetime>(SelectedModule))
+		else if (UParticleModuleLifetime* Life = Cast<UParticleModuleLifetime>(SelectedModule))
 		{
-			ImGui::DragFloat("Min", &Life->Min, 0.05f, 0.01f, 60.0f);
-			ImGui::DragFloat("Max", &Life->Max, 0.05f, 0.01f, 60.0f);
+			DrawDistributionFloat("Lifetime", Life->Lifetime, Life, 1.0f, 0.05f, 0.01f, 60.0f);
 		}
-		else if (auto* Loc = Cast<UParticleModuleLocation>(SelectedModule))
+		else if (UParticleModuleLocation* Loc = Cast<UParticleModuleLocation>(SelectedModule))
 		{
-			char ParamBuf[128] = {};
-			strncpy_s(ParamBuf, Loc->ParameterName.c_str(), _TRUNCATE);
-			if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
-				Loc->ParameterName = ParamBuf;
-			ImGui::DragFloat3("Min", &Loc->Min.X, 0.05f);
-			ImGui::DragFloat3("Max", &Loc->Max.X, 0.05f);
+			DrawDistributionVector("Start Location", Loc->StartLocation, Loc, FVector::ZeroVector, false, 0.05f);
 		}
-		else if (auto* Vel = Cast<UParticleModuleVelocity>(SelectedModule))
+		else if (UParticleModuleVelocity* Vel = Cast<UParticleModuleVelocity>(SelectedModule))
 		{
-			char ParamBuf[128] = {};
-			strncpy_s(ParamBuf, Vel->ParameterName.c_str(), _TRUNCATE);
-			if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
-				Vel->ParameterName = ParamBuf;
-			ImGui::DragFloat3("Min", &Vel->Min.X, 0.05f);
-			ImGui::DragFloat3("Max", &Vel->Max.X, 0.05f);
+			DrawDistributionVector("Start Velocity", Vel->StartVelocity, Vel, FVector::ZeroVector, false, 0.05f);
 		}
-		else if (auto* Col = Cast<UParticleModuleColor>(SelectedModule))
+		else if (UParticleModuleColor* Col = Cast<UParticleModuleColor>(SelectedModule))
 		{
-			char ParamBuf[128] = {};
-			strncpy_s(ParamBuf, Col->ParameterName.c_str(), _TRUNCATE);
-			if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
-				Col->ParameterName = ParamBuf;
-			float S[4] = { Col->Start.R / 255.0f, Col->Start.G / 255.0f, Col->Start.B / 255.0f, Col->Start.A / 255.0f };
-			float E[4] = { Col->End.R / 255.0f, Col->End.G / 255.0f, Col->End.B / 255.0f, Col->End.A / 255.0f };
-			if (ImGui::ColorEdit4("Start Color", S))
-				Col->Start = FColor(static_cast<uint8>(S[0] * 255.0f), static_cast<uint8>(S[1] * 255.0f), static_cast<uint8>(S[2] * 255.0f), static_cast<uint8>(S[3] * 255.0f));
-			if (ImGui::ColorEdit4("End Color", E))
-				Col->End = FColor(static_cast<uint8>(E[0] * 255.0f), static_cast<uint8>(E[1] * 255.0f), static_cast<uint8>(E[2] * 255.0f), static_cast<uint8>(E[3] * 255.0f));
+			DrawDistributionVector("Start Color", Col->StartColor, Col, FVector::OneVector, true, 0.01f);
+			DrawDistributionFloat("Start Alpha", Col->StartAlpha, Col, 1.0f, 0.01f, 0.0f, 1.0f);
 		}
-		else if (auto* ColOverLife = Cast<UParticleModuleColorOverLife>(SelectedModule))
+		else if (UParticleModuleColorOverLife* ColOverLife = Cast<UParticleModuleColorOverLife>(SelectedModule))
 		{
-			char ParamBuf[128] = {};
-			strncpy_s(ParamBuf, ColOverLife->ParameterName.c_str(), _TRUNCATE);
-			if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
-				ColOverLife->ParameterName = ParamBuf;
-			ImGui::Checkbox("Use Fade In/Out", &ColOverLife->bUseFadeInOut);
+			DrawDistributionVector("Color Over Life", ColOverLife->ColorScale, ColOverLife, FVector::OneVector, true, 0.01f);
+			bool bFadeChanged = ImGui::Checkbox("Use Fade In/Out", &ColOverLife->bUseFadeInOut);
 			if (ColOverLife->bUseFadeInOut)
 			{
-				ImGui::SliderFloat("Fade In End", &ColOverLife->FadeInEnd, 0.0f, 1.0f);
-				ImGui::SliderFloat("Fade Out Start", &ColOverLife->FadeOutStart, 0.0f, 1.0f);
-			}
-		}
-		else if (auto* Sz = Cast<UParticleModuleSize>(SelectedModule))
-		{
-			ImGui::DragFloat3("Start Size", &Sz->Start.X, 0.05f, 0.0f, 100.0f);
-			ImGui::DragFloat3("End Size", &Sz->End.X, 0.05f, 0.0f, 100.0f);
-		}
-		else if (auto* InitSz = Cast<UParticleModuleInitialSize>(SelectedModule))
-		{
-			ImGui::Checkbox("Uniform Scale", &InitSz->bUniformScale);
-			if (InitSz->bUniformScale)
-			{
-				if (ImGui::DragFloat("Min Size", &InitSz->MinSize.X, 0.05f, 0.0f, 100.0f))
-				{
-					InitSz->MinSize.Y = InitSz->MinSize.X;
-					InitSz->MinSize.Z = InitSz->MinSize.X;
-				}
-				if (ImGui::DragFloat("Max Size", &InitSz->MaxSize.X, 0.05f, 0.0f, 100.0f))
-				{
-					InitSz->MaxSize.Y = InitSz->MaxSize.X;
-					InitSz->MaxSize.Z = InitSz->MaxSize.X;
-				}
+				bFadeChanged |= ImGui::SliderFloat("Fade In End", &ColOverLife->FadeInEnd, 0.0f, 1.0f);
+				bFadeChanged |= ImGui::SliderFloat("Fade Out Start", &ColOverLife->FadeOutStart, 0.0f, 1.0f);
 			}
 			else
 			{
-				ImGui::DragFloat3("Min Size", &InitSz->MinSize.X, 0.05f, 0.0f, 100.0f);
-				ImGui::DragFloat3("Max Size", &InitSz->MaxSize.X, 0.05f, 0.0f, 100.0f);
+				DrawDistributionFloat("Alpha Over Life", ColOverLife->AlphaScale, ColOverLife, 1.0f, 0.01f, 0.0f, 1.0f);
 			}
+			if (bFadeChanged && SelectedLOD)
+				SelectedLOD->MarkBuildDirty();
 		}
-		else if (auto* Rot = Cast<UParticleModuleRotation>(SelectedModule))
+		else if (UParticleModuleSize* Sz = Cast<UParticleModuleSize>(SelectedModule))
 		{
-			ImGui::DragFloat("Min", &Rot->Min, 0.05f);
-			ImGui::DragFloat("Max", &Rot->Max, 0.05f);
-			ImGui::DragFloat("Rate Min", &Rot->RateMin, 0.05f);
-			ImGui::DragFloat("Rate Max", &Rot->RateMax, 0.05f);
+			DrawDistributionVector("Start Size", Sz->StartSize, Sz, FVector::OneVector, false, 0.05f);
 		}
-		else if (auto* Sub = Cast<UParticleModuleSubUV>(SelectedModule))
+		else if (UParticleModuleSizeByLife* SzLife = Cast<UParticleModuleSizeByLife>(SelectedModule))
 		{
-			ImGui::DragInt("Horizontal", &Sub->SubImagesHorizontal, 1.0f, 1, 64);
-			ImGui::DragInt("Vertical", &Sub->SubImagesVertical, 1.0f, 1, 64);
-			ImGui::Checkbox("Linear Over Life", &Sub->bUseLinearOverLife);
-			ImGui::DragFloat("Play Rate", &Sub->PlayRate, 0.05f, 0.0f, 20.0f);
+			DrawDistributionVector("Size Scale", SzLife->LifeScale, SzLife, FVector::OneVector, false, 0.05f);
+		}
+		else if (UParticleModuleVelocityOverLife* VelLife = Cast<UParticleModuleVelocityOverLife>(SelectedModule))
+		{
+			DrawDistributionVector("Velocity Scale", VelLife->VelocityScale, VelLife, FVector::OneVector, false, 0.05f);
+		}
+		else if (UParticleModuleRotation* Rot = Cast<UParticleModuleRotation>(SelectedModule))
+		{
+			DrawDistributionFloat("Start Rotation", Rot->StartRotation, Rot, 0.0f, 0.05f, -360.0f, 360.0f);
+			DrawDistributionFloat("Rotation Rate", Rot->StartRotationRate, Rot, 0.0f, 0.05f, -360.0f, 360.0f);
+		}
+		else if (UParticleModuleRotationRateOverLife* RotLife = Cast<UParticleModuleRotationRateOverLife>(SelectedModule))
+		{
+			DrawDistributionFloat("Rotation Rate Scale", RotLife->RotationRateScale, RotLife, 1.0f, 0.05f, -10.0f, 10.0f);
+		}
+		else if (UParticleModuleSubUV* Sub = Cast<UParticleModuleSubUV>(SelectedModule))
+		{
+			bool bSubChanged = false;
+			bSubChanged |= ImGui::DragInt("Horizontal", &Sub->SubImagesHorizontal, 1.0f, 1, 64);
+			bSubChanged |= ImGui::DragInt("Vertical", &Sub->SubImagesVertical, 1.0f, 1, 64);
+			bSubChanged |= ImGui::Checkbox("Linear Over Life", &Sub->bUseLinearOverLife);
+			bSubChanged |= ImGui::DragFloat("Play Rate", &Sub->PlayRate, 0.05f, 0.0f, 20.0f);
+			if (!Sub->bUseLinearOverLife)
+				DrawDistributionFloat("SubImage Index", Sub->SubImageIndex, Sub, 0.0f, 0.1f, 0.0f, 256.0f);
+			if (bSubChanged && SelectedLOD)
+				SelectedLOD->MarkBuildDirty();
 		}
 	}
 	else if (SelectedEmitter)
@@ -685,6 +664,208 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 	ImGui::EndChild();
 }
 
+void FParticleSystemEditorPanel::MarkSelectedLODBuildDirty()
+{
+	if (SelectedEmitter && !SelectedEmitter->GetLODLevels().IsEmpty() && SelectedEmitter->GetLODLevels()[0])
+		SelectedEmitter->GetLODLevels()[0]->MarkBuildDirty();
+}
+
+// 스칼라 분포 속성을 모드별로 편집하는 공용 위젯
+void FParticleSystemEditorPanel::DrawDistributionFloat(
+	const char* Label,
+	UDistributionFloat*& InOutDist,
+	UObject* Outer,
+	float DefaultValue,
+	float DragSpeed,
+	float MinVal,
+	float MaxVal)
+{
+	bool bChanged = false;
+	ImGui::PushID(Label);
+	ImGui::TextUnformatted(Label);
+	int ModeIdx = InOutDist ? InOutDist->GetModeIndex() : 0;
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(EditorUIScale::Px(130.0f));
+	if (ImGui::Combo("##DistMode", &ModeIdx, "Constant\0Uniform\0Constant Curve\0Uniform Curve\0Parameter\0"))
+	{
+		InOutDist = ConvertFloatDistributionMode(Outer, InOutDist, ModeIdx);
+		bChanged = true;
+	}
+	if (!InOutDist)
+	{
+		InOutDist = CreateFloatDistributionByMode(Outer, ModeIdx, DefaultValue);
+		bChanged = true;
+	}
+	if (UDistributionFloatConstant* C = Cast<UDistributionFloatConstant>(InOutDist))
+	{
+		if (ImGui::DragFloat("Value", &C->Constant, DragSpeed, MinVal, MaxVal))
+		{
+			C->InvalidateLookupTable();
+			bChanged = true;
+		}
+	}
+	else if (UDistributionFloatUniform* U = Cast<UDistributionFloatUniform>(InOutDist))
+	{
+		if (ImGui::DragFloat("Min", &U->Min, DragSpeed, MinVal, MaxVal))
+		{
+			U->InvalidateLookupTable();
+			bChanged = true;
+		}
+		if (ImGui::DragFloat("Max", &U->Max, DragSpeed, MinVal, MaxVal))
+		{
+			U->InvalidateLookupTable();
+			bChanged = true;
+		}
+	}
+	else if (Cast<UDistributionFloatConstantCurve>(InOutDist) || Cast<UDistributionFloatUniformCurve>(InOutDist))
+	{
+		ImGui::TextDisabled("Edit curve in Curve Editor.");
+	}
+	else if (UDistributionFloatParticleParameter* P = Cast<UDistributionFloatParticleParameter>(InOutDist))
+	{
+		char ParamBuf[128] = {};
+		strncpy_s(ParamBuf, P->ParameterName.c_str(), _TRUNCATE);
+		if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
+		{
+			P->ParameterName = ParamBuf;
+			bChanged = true;
+		}
+		if (ImGui::DragFloat("Default", &P->Constant, DragSpeed, MinVal, MaxVal))
+		{
+			P->InvalidateLookupTable();
+			bChanged = true;
+		}
+	}
+	if (bChanged)
+		MarkSelectedLODBuildDirty();
+	ImGui::Separator();
+	ImGui::PopID();
+}
+
+// 벡터 또는 색상 분포 속성을 모드별로 편집하는 공용 위젯
+void FParticleSystemEditorPanel::DrawDistributionVector(
+	const char* Label,
+	UDistributionVector*& InOutDist,
+	UObject* Outer,
+	const FVector& DefaultValue,
+	bool bAsColor,
+	float DragSpeed)
+{
+	bool bChanged = false;
+	ImGui::PushID(Label);
+	ImGui::TextUnformatted(Label);
+	int ModeIdx = InOutDist ? InOutDist->GetModeIndex() : 0;
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(EditorUIScale::Px(130.0f));
+	if (ImGui::Combo("##DistMode", &ModeIdx, "Constant\0Uniform\0Constant Curve\0Uniform Curve\0Parameter\0"))
+	{
+		InOutDist = ConvertVectorDistributionMode(Outer, InOutDist, ModeIdx);
+		bChanged = true;
+	}
+	if (!InOutDist)
+	{
+		InOutDist = CreateVectorDistributionByMode(Outer, ModeIdx, DefaultValue);
+		bChanged = true;
+	}
+	if (UDistributionVectorConstant* C = Cast<UDistributionVectorConstant>(InOutDist))
+	{
+		const bool bEdited = bAsColor
+			? ImGui::ColorEdit3("Value", &C->Constant.X)
+			: ImGui::DragFloat3("Value", &C->Constant.X, DragSpeed);
+		if (bEdited)
+		{
+			C->InvalidateLookupTable();
+			bChanged = true;
+		}
+	}
+	else if (UDistributionVectorUniform* U = Cast<UDistributionVectorUniform>(InOutDist))
+	{
+		if (ImGui::Checkbox("Lock Axes", &U->bLockAxes))
+		{
+			if (U->bLockAxes)
+			{
+				U->Min.Y = U->Min.X;
+				U->Min.Z = U->Min.X;
+				U->Max.Y = U->Max.X;
+				U->Max.Z = U->Max.X;
+			}
+			U->InvalidateLookupTable();
+			bChanged = true;
+		}
+		if (U->bLockAxes && !bAsColor)
+		{
+			if (ImGui::DragFloat("Min", &U->Min.X, DragSpeed))
+			{
+				U->Min.Y = U->Min.X;
+				U->Min.Z = U->Min.X;
+				U->InvalidateLookupTable();
+				bChanged = true;
+			}
+			if (ImGui::DragFloat("Max", &U->Max.X, DragSpeed))
+			{
+				U->Max.Y = U->Max.X;
+				U->Max.Z = U->Max.X;
+				U->InvalidateLookupTable();
+				bChanged = true;
+			}
+		}
+		else
+		{
+			const bool bMinEdited = bAsColor
+				? ImGui::ColorEdit3("Min", &U->Min.X)
+				: ImGui::DragFloat3("Min", &U->Min.X, DragSpeed);
+			if (bMinEdited)
+			{
+				U->InvalidateLookupTable();
+				bChanged = true;
+			}
+			const bool bMaxEdited = bAsColor
+				? ImGui::ColorEdit3("Max", &U->Max.X)
+				: ImGui::DragFloat3("Max", &U->Max.X, DragSpeed);
+			if (bMaxEdited)
+			{
+				U->InvalidateLookupTable();
+				bChanged = true;
+			}
+		}
+	}
+	else if (UDistributionVectorUniformCurve* UC = Cast<UDistributionVectorUniformCurve>(InOutDist))
+	{
+		if (ImGui::Checkbox("Lock Axes", &UC->bLockAxes))
+		{
+			UC->InvalidateLookupTable();
+			bChanged = true;
+		}
+		ImGui::TextDisabled("Edit curves in Curve Editor.");
+	}
+	else if (Cast<UDistributionVectorConstantCurve>(InOutDist))
+	{
+		ImGui::TextDisabled("Edit curves in Curve Editor.");
+	}
+	else if (UDistributionVectorParticleParameter* P = Cast<UDistributionVectorParticleParameter>(InOutDist))
+	{
+		char ParamBuf[128] = {};
+		strncpy_s(ParamBuf, P->ParameterName.c_str(), _TRUNCATE);
+		if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
+		{
+			P->ParameterName = ParamBuf;
+			bChanged = true;
+		}
+		const bool bEdited = bAsColor
+			? ImGui::ColorEdit3("Default", &P->Constant.X)
+			: ImGui::DragFloat3("Default", &P->Constant.X, DragSpeed);
+		if (bEdited)
+		{
+			P->InvalidateLookupTable();
+			bChanged = true;
+		}
+	}
+	if (bChanged)
+		MarkSelectedLODBuildDirty();
+	ImGui::Separator();
+	ImGui::PopID();
+}
+
 void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Height)
 {
 	if (ImGui::BeginChild("ParticleCurveEditor", ImVec2(Width, Height), ImGuiChildFlags_Borders))
@@ -697,11 +878,12 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 		{
 			ImGui::TextUnformatted("Curve Editor");
 			ImGui::Separator();
-			ImGui::TextDisabled("Select a module with curves (SizeByLife, ColorOverLife, SubUV).");
+			ImGui::TextDisabled("Select a module with curve distributions.");
 			ImGui::EndChild();
 			return;
 		}
 
+		bool bCurveChanged = false;
 		SelectedCurveTrackIndex = std::clamp(SelectedCurveTrackIndex, 0, static_cast<int32>(Tracks.Num()) - 1);
 		for (int32 Index = 0; Index < static_cast<int32>(Tracks.Num()); ++Index)
 		{
@@ -723,7 +905,10 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 		{
 			ImGui::SameLine();
 			if (ImGui::SmallButton("+ Add Key"))
+			{
 				SelectedCurveKeyId = ActiveCurve->AddKey(0.5f, ActiveCurve->GetFloatValue(0.5f));
+				bCurveChanged = true;
+			}
 
 			const FFloatCurveKey* SelectedKey = SelectedCurveKeyId >= 0 ? ActiveCurve->FindKey(SelectedCurveKeyId) : nullptr;
 			if (!SelectedKey && !ActiveCurve->GetKeys().IsEmpty())
@@ -742,17 +927,17 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(EditorUIScale::Px(68.0f));
 				if (ImGui::DragFloat("T", &KeyTime, 0.01f, 0.0f, 1.0f))
-					ActiveCurve->SetKeyTime(SelectedKey->KeyId, KeyTime);
+					bCurveChanged |= ActiveCurve->SetKeyTime(SelectedKey->KeyId, KeyTime);
 
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(EditorUIScale::Px(68.0f));
 				if (ImGui::DragFloat("V", &KeyValue, 0.02f))
-					ActiveCurve->SetKeyValue(SelectedKey->KeyId, KeyValue);
+					bCurveChanged |= ActiveCurve->SetKeyValue(SelectedKey->KeyId, KeyValue);
 
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(EditorUIScale::Px(82.0f));
 				if (ImGui::Combo("##Mode", &ModeIdx, "Constant\0Linear\0Cubic\0"))
-					ActiveCurve->SetKeyInterpMode(SelectedKey->KeyId, static_cast<ECurveInterpMode>(ModeIdx));
+					bCurveChanged |= ActiveCurve->SetKeyInterpMode(SelectedKey->KeyId, static_cast<ECurveInterpMode>(ModeIdx));
 
 				if (SelectedKey->InterpMode == ECurveInterpMode::Cubic)
 				{
@@ -763,13 +948,13 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 					ImGui::SetNextItemWidth(EditorUIScale::Px(56.0f));
 					bTanChanged |= ImGui::DragFloat("Out", &LeaveT, 0.05f);
 					if (bTanChanged)
-						ActiveCurve->SetKeyTangents(SelectedKey->KeyId, ArriveT, LeaveT);
+						bCurveChanged |= ActiveCurve->SetKeyTangents(SelectedKey->KeyId, ArriveT, LeaveT);
 				}
 
 				ImGui::SameLine();
 				if (ImGui::SmallButton("Remove"))
 				{
-					ActiveCurve->RemoveKey(SelectedKey->KeyId);
+					bCurveChanged |= ActiveCurve->RemoveKey(SelectedKey->KeyId);
 					SelectedCurveKeyId = -1;
 				}
 			}
@@ -817,8 +1002,8 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 					if (ImPlot::DragPoint(Key.KeyId, &KX, &KY, PtCol, bSelectedKey ? 6.0f : 4.5f, 0, &bClicked))
 					{
 						SelectedCurveKeyId = Key.KeyId;
-						ActiveCurve->SetKeyTime(Key.KeyId, std::clamp(static_cast<float>(KX), 0.0f, 1.0f));
-						ActiveCurve->SetKeyValue(Key.KeyId, static_cast<float>(KY));
+						bCurveChanged |= ActiveCurve->SetKeyTime(Key.KeyId, std::clamp(static_cast<float>(KX), 0.0f, 1.0f));
+						bCurveChanged |= ActiveCurve->SetKeyValue(Key.KeyId, static_cast<float>(KY));
 					}
 					else if (bClicked)
 					{
@@ -830,9 +1015,17 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 				{
 					const ImPlotPoint Pt = ImPlot::GetPlotMousePos();
 					SelectedCurveKeyId = ActiveCurve->AddKey(std::clamp(static_cast<float>(Pt.x), 0.0f, 1.0f), static_cast<float>(Pt.y));
+					bCurveChanged = true;
 				}
 			}
 			ImPlot::EndPlot();
+		}
+
+		if (bCurveChanged)
+		{
+			if (SelectedModule)
+				SelectedModule->InvalidateDistributions();
+			MarkSelectedLODBuildDirty();
 		}
 	}
 	ImGui::EndChild();

@@ -273,7 +273,6 @@ void FDynamicGpuSpriteEmitterData::GetDynamicMeshElementsForView(const FParticle
 	GpuBatch.SpawnCount = SimParams.SpawnCount;
 	GpuBatch.PendingSpawnBytes = std::move(PendingSpawnBytes);
 	GpuBatch.SimParams = SimParams;
-	GpuBatch.CurveLUT = CurveLUT;
 	GpuBatch.DrawParams = DrawParams;
 	Collector.AddGpuParticleBatch(std::move(GpuBatch));
 

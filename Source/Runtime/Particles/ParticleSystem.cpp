@@ -6,162 +6,369 @@
 #include <algorithm>
 #include <cmath>
 
-FColor FParticleInstanceParameters::GetColor(const FString& Name, const FColor& Default) const
+namespace
 {
-	if (Name.empty()) return Default;
-	const FColor* Found = ColorParams.Find(Name);
-	return Found ? *Found : Default;
+	uint8 NormalizedFloatToByte(float V)
+	{
+		return static_cast<uint8>(std::clamp(V, 0.0f, 1.0f) * 255.0f);
+	}
+
+	const FString& ExtractVectorParamName(const UDistributionVector* Dist)
+	{
+		static const FString EmptyName;
+		if (const UDistributionVectorParticleParameter* Param = Cast<UDistributionVectorParticleParameter>(Dist))
+			return Param->ParameterName;
+		return EmptyName;
+	}
+
+	void CompileVectorToAtlasChannel(const UDistributionVector* Dist, FGpuDistributionBuildChannel& OutChannel)
+	{
+		if (!Dist)
+		{
+			OutChannel.Mode = 0;
+			return;
+		}
+		if (!Dist->UsesCurveAtlas())
+		{
+			const FVector Val = Dist->GetValue(0.0f, nullptr, nullptr);
+			OutChannel.Mode = 1;
+			OutChannel.ConstantValue = FVector4(Val.X, Val.Y, Val.Z, 1.0f);
+			OutChannel.ValueScale = OutChannel.ConstantValue;
+			OutChannel.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+			return;
+		}
+		TArray<FVector> VecSamples;
+		Dist->SampleCurveVectors(FParticleCurveTexture::CurveSampleWidth, VecSamples);
+		TArray<FVector4> Samples;
+		Samples.SetNum(VecSamples.Num());
+		for (int32 i = 0; i < VecSamples.Num(); ++i)
+			Samples[i] = FVector4(VecSamples[i].X, VecSamples[i].Y, VecSamples[i].Z, 1.0f);
+		OutChannel.AtlasHandle = FParticleCurveTexture::Get().AllocateCurve(Samples);
+		OutChannel.Mode = OutChannel.AtlasHandle.IsValid() ? 2 : 0;
+		OutChannel.ValueScale = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+		OutChannel.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+	}
+
+	void CompileFloatToAtlasChannel(const UDistributionFloat* Dist, FGpuDistributionBuildChannel& OutChannel)
+	{
+		if (!Dist)
+		{
+			OutChannel.Mode = 0;
+			return;
+		}
+		if (!Dist->UsesCurveAtlas())
+		{
+			const float Val = Dist->GetValue(0.0f, nullptr, nullptr);
+			OutChannel.Mode = 1;
+			OutChannel.ConstantValue = FVector4(Val, Val, Val, Val);
+			OutChannel.ValueScale = OutChannel.ConstantValue;
+			OutChannel.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+			return;
+		}
+		TArray<float> FloatSamples;
+		Dist->SampleCurveValues(FParticleCurveTexture::CurveSampleWidth, FloatSamples);
+		TArray<FVector4> Samples;
+		Samples.SetNum(FloatSamples.Num());
+		for (int32 i = 0; i < FloatSamples.Num(); ++i)
+			Samples[i] = FVector4(FloatSamples[i], FloatSamples[i], FloatSamples[i], FloatSamples[i]);
+		OutChannel.AtlasHandle = FParticleCurveTexture::Get().AllocateCurve(Samples);
+		OutChannel.Mode = OutChannel.AtlasHandle.IsValid() ? 2 : 0;
+		OutChannel.ValueScale = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+		OutChannel.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+	}
 }
 
-FVector FParticleInstanceParameters::GetVector(const FString& Name, const FVector& Default) const
+FParticleEmitterBuildInfo::~FParticleEmitterBuildInfo()
 {
-	if (Name.empty()) return Default;
-	const FVector* Found = VectorParams.Find(Name);
-	return Found ? *Found : Default;
+	ReleaseAtlasHandles();
 }
 
-float FParticleInstanceParameters::GetFloat(const FString& Name, float Default) const
+void FParticleEmitterBuildInfo::ReleaseAtlasHandles()
 {
-	if (Name.empty()) return Default;
-	const float* Found = FloatParams.Find(Name);
-	return Found ? *Found : Default;
+	if (FParticleCurveTexture::IsInitialized())
+	{
+		FParticleCurveTexture& Atlas = FParticleCurveTexture::Get();
+		Atlas.FreeCurve(SizeScale.AtlasHandle);
+		Atlas.FreeCurve(ColorOverLife.AtlasHandle);
+		Atlas.FreeCurve(SubUV.AtlasHandle);
+		Atlas.FreeCurve(VelocityScale.AtlasHandle);
+		Atlas.FreeCurve(RotationRateScale.AtlasHandle);
+	}
+	else
+	{
+		SizeScale.AtlasHandle.Invalidate();
+		ColorOverLife.AtlasHandle.Invalidate();
+		SubUV.AtlasHandle.Invalidate();
+		VelocityScale.AtlasHandle.Invalidate();
+		RotationRateScale.AtlasHandle.Invalidate();
+	}
 }
 
-float FParticleRandom::Range(float Min, float Max)
+void FParticleEmitterBuildInfo::Reset()
 {
-	if (!std::isfinite(Min) || !std::isfinite(Max)) return 0.0f;
-	if (Min > Max) std::swap(Min, Max);
-	State ^= State << 13;
-	State ^= State >> 17;
-	State ^= State << 5;
-	return Min + (Max - Min) * (State / 4294967295.0f);
+	ReleaseAtlasHandles();
+	*this = FParticleEmitterBuildInfo{};
+}
+
+UParticleModuleLifetime::UParticleModuleLifetime()
+{
+	UDistributionFloatUniform* Dist = NewObject<UDistributionFloatUniform>(this);
+	Dist->Min = 1.0f;
+	Dist->Max = 1.0f;
+	Lifetime = Dist;
 }
 
 void UParticleModuleLifetime::Spawn(FBaseParticle& Particle, FParticleRandom& Random) const
 {
-	Particle.Lifetime = std::max(0.001f, Random.Range(Min, Max));
+	const float Val = Lifetime ? Lifetime->GetValue(0.0f, Random.InstanceParams, &Random) : 1.0f;
+	Particle.Lifetime = std::max(0.001f, Val);
+}
+
+void UParticleModuleLifetime::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (Lifetime)
+		Lifetime->CollectCurves("Lifetime", FColor(255, 190, 90, 255), OutCurves);
+}
+
+void UParticleModuleLifetime::InvalidateDistributions() const
+{
+	if (Lifetime) Lifetime->InvalidateLookupTable();
+}
+
+void UParticleModuleLifetime::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	if (!Lifetime)
+		return;
+	float MinL = 1.0f;
+	float MaxL = 1.0f;
+	Lifetime->GetOutRange(MinL, MaxL);
+	OutBuildInfo.MaxLifetime = std::max(0.05f, MaxL);
+}
+
+UParticleModuleLocation::UParticleModuleLocation()
+{
+	UDistributionVectorUniform* Dist = NewObject<UDistributionVectorUniform>(this);
+	Dist->Min = FVector::ZeroVector;
+	Dist->Max = FVector::ZeroVector;
+	StartLocation = Dist;
 }
 
 void UParticleModuleLocation::Spawn(FBaseParticle& Particle, FParticleRandom& Random) const
 {
-	if (!ParameterName.empty() && Random.InstanceParams)
-	{
-		if (const FVector* Override = Random.InstanceParams->VectorParams.Find(ParameterName))
-		{
-			Particle.Location += *Override;
-			return;
-		}
-	}
-	Particle.Location += FVector(Random.Range(Min.X, Max.X), Random.Range(Min.Y, Max.Y), Random.Range(Min.Z, Max.Z));
+	if (!StartLocation)
+		return;
+	Particle.Location += StartLocation->GetValue(0.0f, Random.InstanceParams, &Random);
+}
+
+void UParticleModuleLocation::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (StartLocation)
+		StartLocation->CollectCurves("Location", FColor(120, 220, 255, 255), OutCurves);
+}
+
+void UParticleModuleLocation::InvalidateDistributions() const
+{
+	if (StartLocation) StartLocation->InvalidateLookupTable();
+}
+
+void UParticleModuleLocation::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	if (!StartLocation)
+		return;
+	FVector ModMin = FVector::ZeroVector;
+	FVector ModMax = FVector::ZeroVector;
+	StartLocation->GetOutRange(ModMin, ModMax);
+	OutBuildInfo.SpawnLocationMin = FVector(
+		std::min(OutBuildInfo.SpawnLocationMin.X, ModMin.X),
+		std::min(OutBuildInfo.SpawnLocationMin.Y, ModMin.Y),
+		std::min(OutBuildInfo.SpawnLocationMin.Z, ModMin.Z));
+	OutBuildInfo.SpawnLocationMax = FVector(
+		std::max(OutBuildInfo.SpawnLocationMax.X, ModMax.X),
+		std::max(OutBuildInfo.SpawnLocationMax.Y, ModMax.Y),
+		std::max(OutBuildInfo.SpawnLocationMax.Z, ModMax.Z));
+}
+
+UParticleModuleVelocity::UParticleModuleVelocity()
+{
+	UDistributionVectorUniform* Dist = NewObject<UDistributionVectorUniform>(this);
+	Dist->Min = FVector::ZeroVector;
+	Dist->Max = FVector::ZeroVector;
+	StartVelocity = Dist;
 }
 
 void UParticleModuleVelocity::Spawn(FBaseParticle& Particle, FParticleRandom& Random) const
 {
-	if (!ParameterName.empty() && Random.InstanceParams)
-	{
-		if (const FVector* Override = Random.InstanceParams->VectorParams.Find(ParameterName))
-		{
-			Particle.Velocity += *Override;
-			Particle.BaseVelocity = Particle.Velocity;
-			return;
-		}
-	}
-	Particle.Velocity += FVector(Random.Range(Min.X, Max.X), Random.Range(Min.Y, Max.Y), Random.Range(Min.Z, Max.Z));
+	if (!StartVelocity)
+		return;
+	Particle.Velocity += StartVelocity->GetValue(0.0f, Random.InstanceParams, &Random);
 	Particle.BaseVelocity = Particle.Velocity;
+}
+
+void UParticleModuleVelocity::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (StartVelocity)
+		StartVelocity->CollectCurves("Velocity", FColor(140, 255, 160, 255), OutCurves);
+}
+
+void UParticleModuleVelocity::InvalidateDistributions() const
+{
+	if (StartVelocity) StartVelocity->InvalidateLookupTable();
+}
+
+void UParticleModuleVelocity::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	if (!StartVelocity)
+		return;
+	FVector VMin = FVector::ZeroVector;
+	FVector VMax = FVector::ZeroVector;
+	StartVelocity->GetOutRange(VMin, VMax);
+	OutBuildInfo.MaxVelocity.X = std::max({ OutBuildInfo.MaxVelocity.X, std::abs(VMin.X), std::abs(VMax.X) });
+	OutBuildInfo.MaxVelocity.Y = std::max({ OutBuildInfo.MaxVelocity.Y, std::abs(VMin.Y), std::abs(VMax.Y) });
+	OutBuildInfo.MaxVelocity.Z = std::max({ OutBuildInfo.MaxVelocity.Z, std::abs(VMin.Z), std::abs(VMax.Z) });
+}
+
+UParticleModuleColor::UParticleModuleColor()
+{
+	UDistributionVectorConstant* ColorDist = NewObject<UDistributionVectorConstant>(this);
+	ColorDist->Constant = FVector::OneVector;
+	StartColor = ColorDist;
+
+	UDistributionFloatConstant* AlphaDist = NewObject<UDistributionFloatConstant>(this);
+	AlphaDist->Constant = 1.0f;
+	StartAlpha = AlphaDist;
 }
 
 void UParticleModuleColor::Spawn(FBaseParticle& Particle, FParticleRandom& Random) const
 {
-	if (!ParameterName.empty() && Random.InstanceParams)
+	const FString& ParamName = ExtractVectorParamName(StartColor);
+	if (!ParamName.empty() && Random.InstanceParams)
 	{
-		Particle.Color = Random.InstanceParams->GetColor(ParameterName, Start);
+		if (const FColor* Override = Random.InstanceParams->ColorParams.Find(ParamName))
+		{
+			Particle.Color = *Override;
+			Particle.BaseAlpha = Particle.Color.A;
+			return;
+		}
+	}
+	const FVector RGB = StartColor ? StartColor->GetValue(0.0f, Random.InstanceParams, &Random) : FVector::OneVector;
+	const float Alpha = StartAlpha ? StartAlpha->GetValue(0.0f, Random.InstanceParams, &Random) : 1.0f;
+	Particle.Color = FColor(
+		NormalizedFloatToByte(RGB.X),
+		NormalizedFloatToByte(RGB.Y),
+		NormalizedFloatToByte(RGB.Z),
+		NormalizedFloatToByte(Alpha));
+	Particle.BaseAlpha = Particle.Color.A;
+}
+
+void UParticleModuleColor::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (StartColor) StartColor->CollectCurves("Color", FColor(255, 180, 180, 255), OutCurves);
+	if (StartAlpha) StartAlpha->CollectCurves("Alpha", FColor(220, 220, 220, 255), OutCurves);
+}
+
+void UParticleModuleColor::InvalidateDistributions() const
+{
+	if (StartColor) StartColor->InvalidateLookupTable();
+	if (StartAlpha) StartAlpha->InvalidateLookupTable();
+}
+
+void UParticleModuleColor::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	const FVector RGB = StartColor ? StartColor->GetValue(0.0f, nullptr, nullptr) : FVector::OneVector;
+	const float Alpha = StartAlpha ? StartAlpha->GetValue(0.0f, nullptr, nullptr) : 1.0f;
+	OutBuildInfo.InitialColorStart = FVector4(RGB.X, RGB.Y, RGB.Z, Alpha);
+	const FString& ParamName = ExtractVectorParamName(StartColor);
+	if (!ParamName.empty())
+		OutBuildInfo.ColorParameterName = ParamName;
+}
+
+UParticleModuleSize::UParticleModuleSize()
+{
+	UDistributionVectorConstant* Dist = NewObject<UDistributionVectorConstant>(this);
+	Dist->Constant = FVector::OneVector;
+	StartSize = Dist;
+}
+
+void UParticleModuleSize::Spawn(FBaseParticle& Particle, FParticleRandom& Random) const
+{
+	const FVector Val = StartSize ? StartSize->GetValue(0.0f, Random.InstanceParams, &Random) : FVector::OneVector;
+	Particle.BaseSize = Val;
+	Particle.Size = Val;
+}
+
+void UParticleModuleSize::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (StartSize)
+		StartSize->CollectCurves("StartSize", FColor(180, 220, 255, 255), OutCurves);
+}
+
+void UParticleModuleSize::InvalidateDistributions() const
+{
+	if (StartSize) StartSize->InvalidateLookupTable();
+}
+
+void UParticleModuleSize::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	if (!StartSize)
 		return;
-	}
-	Particle.Color = Start;
-}
-
-void UParticleModuleColor::Update(FBaseParticle& Particle, float, uint32) const
-{
-	const float T = std::clamp(Particle.RelativeTime, 0.0f, 1.0f);
-	const auto Lerp = [T](uint8 A, uint8 B) { return static_cast<uint8>(A + (B - A) * T); };
-	Particle.Color = FColor(Lerp(Start.R, End.R), Lerp(Start.G, End.G), Lerp(Start.B, End.B), Lerp(Start.A, End.A));
-}
-
-void UParticleModuleSize::Spawn(FBaseParticle& Particle, FParticleRandom&) const
-{
-	Particle.BaseSize = Start;
-	Particle.Size = Start;
-}
-
-void UParticleModuleSize::Update(FBaseParticle& Particle, float, uint32) const
-{
-	const float T = std::clamp(Particle.RelativeTime, 0.0f, 1.0f);
-	Particle.Size = Start + (End - Start) * T;
-}
-
-void UParticleModuleInitialSize::Spawn(FBaseParticle& Particle, FParticleRandom& Random) const
-{
-	if (bUniformScale)
-	{
-		const float Scale = Random.Range(MinSize.X, MaxSize.X);
-		Particle.BaseSize = FVector(Scale, Scale, Scale);
-	}
-	else
-	{
-		Particle.BaseSize = FVector(
-			Random.Range(MinSize.X, MaxSize.X),
-			Random.Range(MinSize.Y, MaxSize.Y),
-			Random.Range(MinSize.Z, MaxSize.Z));
-	}
-	Particle.Size = Particle.BaseSize;
+	FVector SMin = FVector::OneVector;
+	FVector SMax = FVector::OneVector;
+	StartSize->GetOutRange(SMin, SMax);
+	OutBuildInfo.MaxStartSize.X = std::max({ OutBuildInfo.MaxStartSize.X, std::abs(SMin.X), std::abs(SMax.X) });
+	OutBuildInfo.MaxStartSize.Y = std::max({ OutBuildInfo.MaxStartSize.Y, std::abs(SMin.Y), std::abs(SMax.Y) });
+	OutBuildInfo.MaxStartSize.Z = std::max({ OutBuildInfo.MaxStartSize.Z, std::abs(SMin.Z), std::abs(SMax.Z) });
 }
 
 UParticleModuleSizeByLife::UParticleModuleSizeByLife()
 {
-	ScaleX = NewObject<UCurveFloat>(this);
-	ScaleY = NewObject<UCurveFloat>(this);
-	ScaleZ = NewObject<UCurveFloat>(this);
-	ScaleX->AddKey(0.0f, 1.0f);
-	ScaleX->AddKey(1.0f, 1.0f);
-	ScaleY->AddKey(0.0f, 1.0f);
-	ScaleY->AddKey(1.0f, 1.0f);
-	ScaleZ->AddKey(0.0f, 1.0f);
-	ScaleZ->AddKey(1.0f, 1.0f);
+	LifeScale = NewObject<UDistributionVectorConstantCurve>(this);
 }
 
-void UParticleModuleSizeByLife::Update(FBaseParticle& Particle, float, uint32) const
+void UParticleModuleSizeByLife::Update(FBaseParticle& Particle, float, uint32, const FParticleInstanceParameters* InstanceParams) const
 {
+	if (!LifeScale)
+		return;
 	const float T = std::clamp(Particle.RelativeTime, 0.0f, 1.0f);
-	const float SX = ScaleX ? ScaleX->GetFloatValue(T) : 1.0f;
-	const float SY = ScaleY ? ScaleY->GetFloatValue(T) : 1.0f;
-	const float SZ = ScaleZ ? ScaleZ->GetFloatValue(T) : 1.0f;
-	Particle.Size = FVector(Particle.BaseSize.X * SX, Particle.BaseSize.Y * SY, Particle.BaseSize.Z * SZ);
+	const FVector Scale = LifeScale->GetValue(T, InstanceParams, nullptr);
+	Particle.Size = FVector(Particle.BaseSize.X * Scale.X, Particle.BaseSize.Y * Scale.Y, Particle.BaseSize.Z * Scale.Z);
 }
 
 void UParticleModuleSizeByLife::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
 {
-	if (ScaleX) OutCurves.Add({ "Scale X", ScaleX, FColor(255, 80, 80, 255) });
-	if (ScaleY) OutCurves.Add({ "Scale Y", ScaleY, FColor(80, 255, 80, 255) });
-	if (ScaleZ) OutCurves.Add({ "Scale Z", ScaleZ, FColor(80, 140, 255, 255) });
+	if (LifeScale)
+		LifeScale->CollectCurves("Scale", FColor(255, 80, 80, 255), OutCurves);
+}
+
+void UParticleModuleSizeByLife::InvalidateDistributions() const
+{
+	if (LifeScale) LifeScale->InvalidateLookupTable();
+}
+
+void UParticleModuleSizeByLife::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	CompileVectorToAtlasChannel(LifeScale, OutBuildInfo.SizeScale);
+	if (LifeScale)
+	{
+		FVector SMin = FVector::OneVector;
+		FVector SMax = FVector::OneVector;
+		LifeScale->GetOutRange(SMin, SMax);
+		OutBuildInfo.MaxLifeScale.X = std::max({ OutBuildInfo.MaxLifeScale.X, std::abs(SMin.X), std::abs(SMax.X) });
+		OutBuildInfo.MaxLifeScale.Y = std::max({ OutBuildInfo.MaxLifeScale.Y, std::abs(SMin.Y), std::abs(SMax.Y) });
+		OutBuildInfo.MaxLifeScale.Z = std::max({ OutBuildInfo.MaxLifeScale.Z, std::abs(SMin.Z), std::abs(SMax.Z) });
+	}
 }
 
 UParticleModuleColorOverLife::UParticleModuleColorOverLife()
 {
-	ColorR = NewObject<UCurveFloat>(this);
-	ColorG = NewObject<UCurveFloat>(this);
-	ColorB = NewObject<UCurveFloat>(this);
-	Alpha = NewObject<UCurveFloat>(this);
-	ColorR->AddKey(0.0f, 1.0f);
-	ColorR->AddKey(1.0f, 1.0f);
-	ColorG->AddKey(0.0f, 1.0f);
-	ColorG->AddKey(1.0f, 1.0f);
-	ColorB->AddKey(0.0f, 1.0f);
-	ColorB->AddKey(1.0f, 1.0f);
-	Alpha->AddKey(0.0f, 1.0f);
-	Alpha->AddKey(1.0f, 0.0f);
+	ColorScale = NewObject<UDistributionVectorConstantCurve>(this);
+	UDistributionFloatConstantCurve* AlphaCurve = NewObject<UDistributionFloatConstantCurve>(this);
+	AlphaCurve->Curve->Reset();
+	AlphaCurve->Curve->AddKey(0.0f, 1.0f);
+	AlphaCurve->Curve->AddKey(1.0f, 0.0f);
+	AlphaScale = AlphaCurve;
 }
 
-float UParticleModuleColorOverLife::EvaluateAlphaScale(float RelativeTime) const
+float UParticleModuleColorOverLife::EvaluateAlphaScale(float RelativeTime, const FParticleInstanceParameters* InstanceParams) const
 {
 	const float T = std::clamp(RelativeTime, 0.0f, 1.0f);
 	if (bUseFadeInOut)
@@ -174,46 +381,129 @@ float UParticleModuleColorOverLife::EvaluateAlphaScale(float RelativeTime) const
 			return std::clamp(1.0f - (T - OutStart) / (1.0f - OutStart), 0.0f, 1.0f);
 		return 1.0f;
 	}
-	return Alpha ? std::clamp(Alpha->GetFloatValue(T), 0.0f, 1.0f) : 1.0f;
+	return AlphaScale ? std::clamp(AlphaScale->GetValue(T, InstanceParams, nullptr), 0.0f, 1.0f) : 1.0f;
 }
 
-void UParticleModuleColorOverLife::Update(FBaseParticle& Particle, float, uint32) const
+void UParticleModuleColorOverLife::Update(FBaseParticle& Particle, float, uint32, const FParticleInstanceParameters* InstanceParams) const
 {
 	const float T = std::clamp(Particle.RelativeTime, 0.0f, 1.0f);
-	const auto ToByte = [](float V) -> uint8
+	const FString& ParamName = ExtractVectorParamName(ColorScale);
+	FVector RGB = FVector::OneVector;
+	bool bHasOverride = false;
+	if (!ParamName.empty() && InstanceParams)
 	{
-		return static_cast<uint8>(std::clamp(V, 0.0f, 1.0f) * 255.0f);
-	};
-	const float R = ColorR ? ColorR->GetFloatValue(T) : 1.0f;
-	const float G = ColorG ? ColorG->GetFloatValue(T) : 1.0f;
-	const float B = ColorB ? ColorB->GetFloatValue(T) : 1.0f;
-	const float AlphaScale = EvaluateAlphaScale(T);
-	const uint8 FinalAlpha = static_cast<uint8>(std::lround(static_cast<float>(Particle.BaseAlpha) * AlphaScale));
-	Particle.Color = FColor(ToByte(R), ToByte(G), ToByte(B), FinalAlpha);
+		if (const FColor* Override = InstanceParams->ColorParams.Find(ParamName))
+		{
+			RGB = FVector(Override->R / 255.0f, Override->G / 255.0f, Override->B / 255.0f);
+			bHasOverride = true;
+		}
+	}
+	if (!bHasOverride && ColorScale)
+		RGB = ColorScale->GetValue(T, InstanceParams, nullptr);
+
+	const float Alpha = EvaluateAlphaScale(T, InstanceParams);
+	const uint8 FinalAlpha = static_cast<uint8>(std::lround(static_cast<float>(Particle.BaseAlpha) * Alpha));
+	Particle.Color = FColor(NormalizedFloatToByte(RGB.X), NormalizedFloatToByte(RGB.Y), NormalizedFloatToByte(RGB.Z), FinalAlpha);
 }
 
 void UParticleModuleColorOverLife::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
 {
-	if (ColorR) OutCurves.Add({ "Color R", ColorR, FColor(255, 80, 80, 255) });
-	if (ColorG) OutCurves.Add({ "Color G", ColorG, FColor(80, 255, 80, 255) });
-	if (ColorB) OutCurves.Add({ "Color B", ColorB, FColor(80, 140, 255, 255) });
-	if (Alpha) OutCurves.Add({ "Alpha", Alpha, FColor(220, 220, 220, 255) });
+	if (ColorScale)
+		ColorScale->CollectCurves("Color", FColor(255, 80, 80, 255), OutCurves);
+	if (AlphaScale && !bUseFadeInOut)
+		AlphaScale->CollectCurves("Alpha", FColor(220, 220, 220, 255), OutCurves);
+}
+
+void UParticleModuleColorOverLife::InvalidateDistributions() const
+{
+	if (ColorScale) ColorScale->InvalidateLookupTable();
+	if (AlphaScale) AlphaScale->InvalidateLookupTable();
+}
+
+void UParticleModuleColorOverLife::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	const FString& ParamName = ExtractVectorParamName(ColorScale);
+	if (!ParamName.empty())
+		OutBuildInfo.ColorParameterName = ParamName;
+
+	const bool bNeedCurveAtlas = bUseFadeInOut
+		|| (ColorScale && ColorScale->UsesCurveAtlas())
+		|| (AlphaScale && AlphaScale->UsesCurveAtlas());
+
+	if (!bNeedCurveAtlas)
+	{
+		const FVector RGB = ColorScale ? ColorScale->GetValue(0.0f, nullptr, nullptr) : FVector::OneVector;
+		const float A = EvaluateAlphaScale(0.0f, nullptr);
+		OutBuildInfo.ColorOverLife.Mode = 1;
+		OutBuildInfo.ColorOverLife.ConstantValue = FVector4(RGB.X, RGB.Y, RGB.Z, A);
+		OutBuildInfo.ColorOverLife.ValueScale = OutBuildInfo.ColorOverLife.ConstantValue;
+		OutBuildInfo.ColorOverLife.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+		return;
+	}
+
+	const uint32 Count = FParticleCurveTexture::CurveSampleWidth;
+	TArray<FVector> ColorSamples;
+	if (ColorScale)
+		ColorScale->SampleCurveVectors(Count, ColorSamples);
+	else
+		ColorSamples.Init(FVector::OneVector, Count);
+
+	TArray<FVector4> Samples;
+	Samples.SetNum(Count);
+	for (uint32 i = 0; i < Count; ++i)
+	{
+		const float T = Count > 1 ? static_cast<float>(i) / static_cast<float>(Count - 1) : 0.0f;
+		const FVector& C = ColorSamples[i];
+		Samples[i] = FVector4(C.X, C.Y, C.Z, EvaluateAlphaScale(T, nullptr));
+	}
+	OutBuildInfo.ColorOverLife.AtlasHandle = FParticleCurveTexture::Get().AllocateCurve(Samples);
+	OutBuildInfo.ColorOverLife.Mode = OutBuildInfo.ColorOverLife.AtlasHandle.IsValid() ? 2 : 0;
+	OutBuildInfo.ColorOverLife.ValueScale = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	OutBuildInfo.ColorOverLife.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+}
+
+UParticleModuleRotation::UParticleModuleRotation()
+{
+	UDistributionFloatUniform* RotDist = NewObject<UDistributionFloatUniform>(this);
+	RotDist->Min = 0.0f;
+	RotDist->Max = 0.0f;
+	StartRotation = RotDist;
+
+	UDistributionFloatUniform* RateDist = NewObject<UDistributionFloatUniform>(this);
+	RateDist->Min = 0.0f;
+	RateDist->Max = 0.0f;
+	StartRotationRate = RateDist;
 }
 
 void UParticleModuleRotation::Spawn(FBaseParticle& Particle, FParticleRandom& Random) const
 {
-	Particle.Rotation = Random.Range(Min, Max);
-	Particle.RotationRate = Random.Range(RateMin, RateMax);
+	Particle.Rotation = StartRotation ? StartRotation->GetValue(0.0f, Random.InstanceParams, &Random) : 0.0f;
+	Particle.RotationRate = StartRotationRate ? StartRotationRate->GetValue(0.0f, Random.InstanceParams, &Random) : 0.0f;
+	Particle.BaseRotationRate = Particle.RotationRate;
+}
+
+void UParticleModuleRotation::InvalidateDistributions() const
+{
+	if (StartRotation) StartRotation->InvalidateLookupTable();
+	if (StartRotationRate) StartRotationRate->InvalidateLookupTable();
+}
+
+void UParticleModuleRotation::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (StartRotation) StartRotation->CollectCurves("Rotation", FColor(200, 160, 255, 255), OutCurves);
+	if (StartRotationRate) StartRotationRate->CollectCurves("RotationRate", FColor(160, 220, 255, 255), OutCurves);
 }
 
 UParticleModuleSubUV::UParticleModuleSubUV()
 {
-	SubImageIndex = NewObject<UCurveFloat>(this);
-	SubImageIndex->AddKey(0.0f, 0.0f);
-	SubImageIndex->AddKey(1.0f, 0.0f);
+	UDistributionFloatConstantCurve* CurveDist = NewObject<UDistributionFloatConstantCurve>(this);
+	CurveDist->Curve->Reset();
+	CurveDist->Curve->AddKey(0.0f, 0.0f);
+	CurveDist->Curve->AddKey(1.0f, 0.0f);
+	SubImageIndex = CurveDist;
 }
 
-void UParticleModuleSubUV::Update(FBaseParticle& Particle, float, uint32 Offset) const
+void UParticleModuleSubUV::Update(FBaseParticle& Particle, float, uint32 Offset, const FParticleInstanceParameters* InstanceParams) const
 {
 	if (Offset == 0) return;
 	const int32 Cols = std::max(1, SubImagesHorizontal);
@@ -222,16 +512,99 @@ void UParticleModuleSubUV::Update(FBaseParticle& Particle, float, uint32 Offset)
 	const float T = std::clamp(Particle.RelativeTime, 0.0f, 0.9999f);
 	const float Rate = std::max(0.0f, PlayRate);
 	const float ScaledT = T * Rate;
+	const float CurveT = Rate > 1.0f ? std::fmod(ScaledT, 1.0f) : std::clamp(ScaledT, 0.0f, 1.0f);
 	const float RawIndex = bUseLinearOverLife
 		? (Rate > 1.0f ? std::fmod(ScaledT * static_cast<float>(TotalFrames), static_cast<float>(TotalFrames)) : (ScaledT * static_cast<float>(TotalFrames)))
-		: (SubImageIndex ? SubImageIndex->GetFloatValue(Rate > 1.0f ? std::fmod(ScaledT, 1.0f) : std::clamp(ScaledT, 0.0f, 1.0f)) : 0.0f);
+		: (SubImageIndex ? SubImageIndex->GetValue(CurveT, InstanceParams, nullptr) : 0.0f);
 	FSubUVPayload& Payload = *reinterpret_cast<FSubUVPayload*>(reinterpret_cast<uint8*>(&Particle) + Offset);
 	Payload.ImageIndex = std::floor(std::clamp(RawIndex, 0.0f, static_cast<float>(TotalFrames - 1)));
 }
 
 void UParticleModuleSubUV::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
 {
-	if (SubImageIndex) OutCurves.Add({ "SubImage Index", SubImageIndex, FColor(255, 200, 80, 255) });
+	if (SubImageIndex && !bUseLinearOverLife)
+		SubImageIndex->CollectCurves("SubImage Index", FColor(255, 200, 80, 255), OutCurves);
+}
+
+void UParticleModuleSubUV::InvalidateDistributions() const
+{
+	if (SubImageIndex) SubImageIndex->InvalidateLookupTable();
+}
+
+void UParticleModuleSubUV::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	OutBuildInfo.bHasSubUV = true;
+	OutBuildInfo.SubUVCols = static_cast<float>(std::max(1, SubImagesHorizontal));
+	OutBuildInfo.SubUVRows = static_cast<float>(std::max(1, SubImagesVertical));
+	OutBuildInfo.bSubUVLinear = bUseLinearOverLife;
+	OutBuildInfo.SubUVPlayRate = std::max(0.0f, PlayRate);
+	if (!bUseLinearOverLife)
+		CompileFloatToAtlasChannel(SubImageIndex, OutBuildInfo.SubUV);
+}
+
+UParticleModuleVelocityOverLife::UParticleModuleVelocityOverLife()
+{
+	VelocityScale = NewObject<UDistributionVectorConstantCurve>(this);
+}
+
+void UParticleModuleVelocityOverLife::Update(FBaseParticle& Particle, float, uint32, const FParticleInstanceParameters* InstanceParams) const
+{
+	if (!VelocityScale)
+		return;
+	const float T = std::clamp(Particle.RelativeTime, 0.0f, 1.0f);
+	const FVector Scale = VelocityScale->GetValue(T, InstanceParams, nullptr);
+	Particle.Velocity = FVector(Particle.BaseVelocity.X * Scale.X, Particle.BaseVelocity.Y * Scale.Y, Particle.BaseVelocity.Z * Scale.Z);
+}
+
+void UParticleModuleVelocityOverLife::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (VelocityScale)
+		VelocityScale->CollectCurves("VelScale", FColor(120, 255, 180, 255), OutCurves);
+}
+
+void UParticleModuleVelocityOverLife::InvalidateDistributions() const
+{
+	if (VelocityScale) VelocityScale->InvalidateLookupTable();
+}
+
+void UParticleModuleVelocityOverLife::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	CompileVectorToAtlasChannel(VelocityScale, OutBuildInfo.VelocityScale);
+}
+
+UParticleModuleRotationRateOverLife::UParticleModuleRotationRateOverLife()
+{
+	RotationRateScale = NewObject<UDistributionFloatConstantCurve>(this);
+}
+
+void UParticleModuleRotationRateOverLife::Update(FBaseParticle& Particle, float, uint32, const FParticleInstanceParameters* InstanceParams) const
+{
+	if (!RotationRateScale)
+		return;
+	const float T = std::clamp(Particle.RelativeTime, 0.0f, 1.0f);
+	const float Scale = RotationRateScale->GetValue(T, InstanceParams, nullptr);
+	Particle.RotationRate = Particle.BaseRotationRate * Scale;
+}
+
+void UParticleModuleRotationRateOverLife::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (RotationRateScale)
+		RotationRateScale->CollectCurves("RotRateScale", FColor(180, 180, 255, 255), OutCurves);
+}
+
+void UParticleModuleRotationRateOverLife::InvalidateDistributions() const
+{
+	if (RotationRateScale) RotationRateScale->InvalidateLookupTable();
+}
+
+void UParticleModuleRotationRateOverLife::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	CompileFloatToAtlasChannel(RotationRateScale, OutBuildInfo.RotationRateScale);
+}
+
+UParticleLODLevel::~UParticleLODLevel()
+{
+	BuildInfo.ReleaseAtlasHandles();
 }
 
 UParticleModuleRequired* UParticleLODLevel::GetOrCreateRequired()
@@ -251,6 +624,7 @@ UParticleModuleTypeDataBase* UParticleLODLevel::SetTypeData(UClass* TypeDataClas
 	if (!TypeDataClass || !TypeDataClass->Constructor ||
 		!TypeDataClass->IsChildOf(UParticleModuleTypeDataBase::StaticClass())) return nullptr;
 	TypeDataModule = NewObject<UParticleModuleTypeDataBase>(this, TypeDataClass);
+	MarkBuildDirty();
 	return TypeDataModule;
 }
 
@@ -260,6 +634,34 @@ UParticleModuleTypeDataBase* UParticleLODLevel::GetOrCreateTypeData()
 	return TypeDataModule;
 }
 
+void UParticleLODLevel::MarkBuildDirty()
+{
+	bBuildDirty = true;
+}
+
+const FParticleEmitterBuildInfo& UParticleLODLevel::EnsureBuilt()
+{
+	if (!bBuildDirty)
+		return BuildInfo;
+
+	BuildInfo.Reset();
+	SpawnModules.Reset();
+	UpdateModules.Reset();
+
+	for (UParticleModule* Module : Modules)
+	{
+		if (!Module || !Module->bEnabled) continue;
+		if (Module->RunsOnSpawn())
+			SpawnModules.Add(Module);
+		if (Module->RunsOnUpdate())
+			UpdateModules.Add(Module);
+		Module->CompileModules(BuildInfo);
+	}
+
+	bBuildDirty = false;
+	return BuildInfo;
+}
+
 UParticleModule* UParticleLODLevel::AddModule(UClass* ModuleClass)
 {
 	if (!ModuleClass || !ModuleClass->Constructor || !ModuleClass->IsChildOf(UParticleModule::StaticClass()) ||
@@ -267,18 +669,23 @@ UParticleModule* UParticleLODLevel::AddModule(UClass* ModuleClass)
 		ModuleClass->IsChildOf(UParticleModuleSpawn::StaticClass()) ||
 		ModuleClass->IsChildOf(UParticleModuleTypeDataBase::StaticClass())) return nullptr;
 	UParticleModule* Module = NewObject<UParticleModule>(this, ModuleClass);
-	if (Module) Modules.Add(Module);
+	if (Module)
+	{
+		Modules.Add(Module);
+		MarkBuildDirty();
+	}
 	return Module;
 }
 
 bool UParticleLODLevel::RemoveModule(UParticleModule* Module)
 {
 	if (!Module) return false;
-	for (uint32 Index = 0; Index < Modules.Num(); ++Index)
+	for (int32 Index = 0; Index < Modules.Num(); ++Index)
 	{
 		if (Modules[Index] == Module)
 		{
-			Modules.RemoveAt(Index);
+			Modules.RemoveAt(static_cast<uint32>(Index));
+			MarkBuildDirty();
 			return true;
 		}
 	}
@@ -293,6 +700,7 @@ bool UParticleLODLevel::MoveModule(int32 FromIndex, int32 ToIndex)
 	UParticleModule* Moved = Modules[FromIndex];
 	Modules.RemoveAt(FromIndex);
 	Modules.Insert(Moved, ToIndex);
+	MarkBuildDirty();
 	return true;
 }
 
@@ -312,16 +720,8 @@ void UParticleEmitter::CacheEmitterModuleInfo()
 	for (UParticleLODLevel* LOD : LODLevels)
 	{
 		if (!LOD) continue;
-		LOD->SpawnModules.Reset();
-		LOD->UpdateModules.Reset();
-		for (UParticleModule* Module : LOD->Modules)
-		{
-			if (!Module || !Module->bEnabled) continue;
-			if (Module->RunsOnSpawn())
-				LOD->SpawnModules.Add(Module);
-			if (Module->RunsOnUpdate())
-				LOD->UpdateModules.Add(Module);
-		}
+		LOD->MarkBuildDirty();
+		LOD->EnsureBuilt();
 	}
 }
 
@@ -335,11 +735,11 @@ UParticleEmitter* UParticleSystem::AddEmitter()
 bool UParticleSystem::RemoveEmitter(UParticleEmitter* Emitter)
 {
 	if (!Emitter) return false;
-	for (uint32 Index = 0; Index < Emitters.Num(); ++Index)
+	for (int32 Index = 0; Index < Emitters.Num(); ++Index)
 	{
 		if (Emitters[Index] == Emitter)
 		{
-			Emitters.RemoveAt(Index);
+			Emitters.RemoveAt(static_cast<uint32>(Index));
 			return true;
 		}
 	}
@@ -354,5 +754,12 @@ bool UParticleSystem::SaveToFile(const FString& Path)
 UParticleSystem* UParticleSystem::LoadFromFile(const FString& Path, UObject* Outer)
 {
 	UParticleSystem* System = NewObject<UParticleSystem>(Outer);
-	return FJsonArchive::LoadObject(System, Path) ? System : nullptr;
+	if (!FJsonArchive::LoadObject(System, Path))
+		return nullptr;
+	for (UParticleEmitter* Emitter : System->GetEmitters())
+	{
+		if (Emitter)
+			Emitter->CacheEmitterModuleInfo();
+	}
+	return System;
 }
