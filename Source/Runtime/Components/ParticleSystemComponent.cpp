@@ -885,7 +885,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			GpuData->AtlasParams = FVector4(
 				SubUVMod ? static_cast<float>(std::max(1, SubUVMod->SubImagesVertical)) : 1.0f,
 				SubUVMod ? static_cast<float>(std::max(1, SubUVMod->SubImagesHorizontal)) : 1.0f,
-				0.0f,
+				1.0f,
 				SubUVMod ? 1.0f : 0.0f);
 			Data.DynamicEmitters.Add(std::move(GpuData));
 			continue;
@@ -970,7 +970,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			ParticleData.Constants.Alpha = Particle.Color.A / 255.0f;
 			ParticleData.Constants.Tint = FVector4(Particle.Color.R / 255.0f, Particle.Color.G / 255.0f,
 				Particle.Color.B / 255.0f, 1.0f);
-			ParticleData.Constants.DecodeSRGB = 0.0f;
+			ParticleData.Constants.DecodeSRGB = 1.0f;
 			if (!Data.bFixedBounds)
 			{
 				float Radius = 0.5f * std::sqrt(ParticleData.Width * ParticleData.Width + ParticleData.Height * ParticleData.Height);

@@ -36,8 +36,6 @@ struct FSceneOverlayCallbacks
 
 struct FScenePassCallbacks // 기본 도형 다 그려진 후 그려져야 될 목록들
 {
-	std::function<bool()> HeightFog;
-	std::function<FConstantBuffer*(bool)> TranslucentFogConstants;
 	std::function<void()> SceneText;
 	std::function<void()> DepthVisualization;
 	std::function<void()> CascadeVisualization;

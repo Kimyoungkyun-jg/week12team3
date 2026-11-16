@@ -157,7 +157,7 @@ void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 		PDI->DrawMesh(Batch);
 	};
 
-	if (RenderState && RenderState->LODCount > 0) // RenderState ¥¬ ƒƒ∆˜≥Õ∆Æ∞° ∏∏µÁ FMeshRenderState
+	if (RenderState && RenderState->LODCount > 0) // RenderState Îäî Ïª¥Ìè¨ÎÑåÌä∏Í∞Ä ÎßåÎì† FMeshRenderState
 	{
 		for (uint32 LOD = 0; LOD < RenderState->LODCount; ++LOD)
 		{
@@ -174,7 +174,7 @@ void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 	}
 
 	const uint32 NumMeshLODs = StaticMesh->GetLODCount();
-	for (uint32 LOD = 0; LOD < NumMeshLODs; ++LOD) // StaticMesh ø°º¬ ø¯∫ª¿« MeshData.SectionsøÕ ±‚∫ª ∏”∆º∏ÆæÛ¿ª ¡˜¡¢ º¯»∏
+	for (uint32 LOD = 0; LOD < NumMeshLODs; ++LOD) // StaticMesh ÏóêÏÖã ÏõêÎ≥∏Ïùò MeshData.SectionsÏôÄ Í∏∞Î≥∏ Î®∏Ìã∞Î¶¨ÏñºÏùÑ ÏßÅÏ†ë ÏàúÌöå
 	{
 		FVertexBuffer* VB = StaticMesh->GetVertexBuffer(LOD);
 		FIndexBuffer* IB = StaticMesh->GetIndexBuffer(LOD);
@@ -443,6 +443,7 @@ void FBillboardSceneProxy::GetDynamicMeshElements(const FViewContext& ViewContex
 		Param.RowSize = static_cast<float>(RowSize);
 		Param.ColSize = static_cast<float>(ColSize);
 		Param.Alpha = P.Alpha;
+		Param.DecodeSRGB = 1.0f;
 
 		FMeshBatch Batch{};
 		Batch.VertexFactory.Type = EVertexFactoryType::Local;

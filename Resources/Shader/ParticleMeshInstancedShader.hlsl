@@ -60,7 +60,9 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
 	float4 color = input.tintAndAlpha;
 	if (hasTexture > 0.5f)
 	{
-		color *= AtlasTexture.Sample(AtlasSampler, input.uv);
+		float4 tex = AtlasTexture.Sample(AtlasSampler, input.uv);
+		tex.rgb = SRGBToLinear(tex.rgb);
+		color *= tex;
 	}
 	float normalLen = length(input.worldNormal);
 	if (normalLen > 0.0001f)

@@ -52,6 +52,8 @@ void FParticleSystemEditorPanel::CreateDefaultSystem()
 	if (!Emitter) return;
 	UParticleLODLevel* LOD = Emitter->AddLODLevel();
 	if (!LOD) return;
+	// 시작 시 실제 렌더되는 기본 파티클 머티리얼을 디테일 UI에도 반영한다
+	LOD->GetOrCreateRequired()->Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");
 	LOD->AddModule(UParticleModuleLifetime::StaticClass());
 	LOD->AddModule(UParticleModuleSize::StaticClass());
 	LOD->AddModule(UParticleModuleVelocity::StaticClass());
@@ -162,7 +164,9 @@ void FParticleSystemEditorPanel::RenderMenuBar()
 		{
 			if (UParticleEmitter* Emitter = EditingSystem->AddEmitter())
 			{
-				Emitter->AddLODLevel();
+				UParticleLODLevel* NewLOD = Emitter->AddLODLevel();
+				if (NewLOD)
+					NewLOD->GetOrCreateRequired()->Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");
 				if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 					PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
 			}
@@ -363,8 +367,11 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 							NewMeshType->Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Cube");
 						LOD->GetOrCreateRequired()->Material = nullptr;
 					}
-					if (bWasTypeDataSelected)
-						SelectedModule = NewTypeData;
+					if (bWasTypeDataSelected || Cast<UParticleModuleTypeDataMesh>(NewTypeData))
+					{
+						SelectedEmitter = Emitter;
+						SelectedModule = nullptr;
+					}
 					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 						PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
 				}
@@ -399,7 +406,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					return bDeleteRequested;
 				};
 
-				DrawModuleRow(LOD->GetOrCreateTypeData(), ImVec4(0.32f, 0.45f, 0.30f, 0.65f), false);
+				// 타입 데이터는 상단 드롭다운과 중복되므로 모듈 목록에서는 숨긴다
 				DrawModuleRow(LOD->GetOrCreateRequired(), ImVec4(0.55f, 0.50f, 0.20f, 0.65f), false);
 				DrawModuleRow(LOD->GetOrCreateSpawn(), ImVec4(0.60f, 0.25f, 0.25f, 0.65f), false);
 
@@ -525,7 +532,14 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			ImGui::Checkbox("Looping", &Req->bLooping);
 			ImGui::Checkbox("Use Local Space", &Req->bUseLocalSpace);
 
-			if (FContentDrawerPanel::DrawMaterialPicker("Material", Req->Material, "(Default)"))
+			UParticleLODLevel* OwnerLOD = (SelectedEmitter && !SelectedEmitter->GetLODLevels().IsEmpty())
+				? SelectedEmitter->GetLODLevels()[0]
+				: nullptr;
+			const bool bIsMeshEmitter = OwnerLOD && Cast<UParticleModuleTypeDataMesh>(OwnerLOD->TypeDataModule) != nullptr;
+			UMaterial* FallbackMaterial = (!Req->Material && !bIsMeshEmitter)
+				? UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial")
+				: nullptr;
+			if (FContentDrawerPanel::DrawMaterialPicker("Material", Req->Material, "(Default)", FallbackMaterial))
 			{
 				if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 					PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();

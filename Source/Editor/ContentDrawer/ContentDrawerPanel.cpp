@@ -40,6 +40,7 @@ FString SkeletonKeyFromPath(const std::filesystem::path& Path);
 #include "Render/Swapchain.h"
 #include "Render/SkyboxRenderer.h"
 #include <cctype>
+#include <cmath>
 
 FContentDrawerPanel* FContentDrawerPanel::ActiveInstance = nullptr;
 
@@ -1095,6 +1096,7 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 	bool bChanged = false;
 	const float InlineThumbSize = EditorUIScale::Px(64.0f);
 	const UMaterial* DisplayBase = HighlightBase ? HighlightBase : (InOutMaterial ? InOutMaterial->GetBaseAsset() : nullptr);
+	UMaterial* PreviewMaterial = InOutMaterial ? InOutMaterial : const_cast<UMaterial*>(DisplayBase);
 	const FString PreviewText =
 		(InOutMaterial && !InOutMaterial->GetPath().empty()) ? InOutMaterial->GetPath() :
 		DisplayBase ? DisplayBase->GetPath() :
@@ -1103,7 +1105,7 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 
 	ImGui::PushID(Label);
 
-	if (ID3D11ShaderResourceView* InlineSRV = GetMaterialThumbnailSRV(InOutMaterial))
+	if (ID3D11ShaderResourceView* InlineSRV = GetMaterialThumbnailSRV(PreviewMaterial))
 	{
 		ImGui::Image(reinterpret_cast<ImTextureID>(InlineSRV), ImVec2(InlineThumbSize, InlineThumbSize));
 		if (ImGui::IsItemHovered())
@@ -1120,7 +1122,8 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 	ImGui::BeginGroup();
 	ImGui::TextUnformatted(Label);
 	ImGui::SetNextItemWidth(-1.0f);
-	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Appearing);
+	// 콤보 팝업의 자동 리사이즈와 가용 영역 계산이 매 프레임 순환하지 않도록 크기를 고정한다
+	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Always);
 	ImGui::SetNextWindowSizeConstraints(
 		ImVec2(EditorUIScale::Px(420.0f), EditorUIScale::Px(220.0f)),
 		ImVec2(EditorUIScale::Px(760.0f), EditorUIScale::Px(460.0f)));
@@ -1128,10 +1131,10 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 	if (ImGui::BeginCombo("##MaterialPicker", PreviewText.c_str()))
 	{
 		const ImVec2 Avail = ImGui::GetContentRegionAvail();
-		const float PreviewPaneWidth = EditorUIScale::Px(176.0f);
+		const float PreviewPaneWidth = std::floor(EditorUIScale::Px(176.0f));
 		const float Spacing = ImGui::GetStyle().ItemSpacing.x;
-		const float ListPaneWidth = std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing);
-		const float PaneHeight = std::max(EditorUIScale::Px(180.0f), Avail.y);
+		const float ListPaneWidth = std::floor(std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing));
+		const float PaneHeight = std::floor(std::max(EditorUIScale::Px(120.0f), Avail.y));
 
 		// 왼쪽 목록 창
 		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.45f, 0.30f, 0.38f, 1.00f));
@@ -1172,13 +1175,14 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 		ImGui::SameLine();
 
 		// 오른쪽 선택 썸네일 창
-		if (ImGui::BeginChild("##MaterialThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
+		if (ImGui::BeginChild("##MaterialThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders,
+			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 		{
 			const float LargeThumbSize = EditorUIScale::Px(136.0f);
 			const float PadX = std::max(0.0f, (ImGui::GetContentRegionAvail().x - LargeThumbSize) * 0.5f);
 			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + PadX);
 
-			if (ID3D11ShaderResourceView* ThumbSRV = GetMaterialThumbnailSRV(InOutMaterial))
+			if (ID3D11ShaderResourceView* ThumbSRV = GetMaterialThumbnailSRV(PreviewMaterial))
 			{
 				ImGui::Image(reinterpret_cast<ImTextureID>(ThumbSRV), ImVec2(LargeThumbSize, LargeThumbSize));
 			}
@@ -1189,8 +1193,8 @@ bool FContentDrawerPanel::DrawMaterialPicker(
 				ImGui::EndDisabled();
 			}
 
-			const FString CurrentLabel = InOutMaterial
-				? (!InOutMaterial->GetPath().empty() ? InOutMaterial->GetPath() : PreviewText)
+			const FString CurrentLabel = PreviewMaterial
+				? (!PreviewMaterial->GetPath().empty() ? PreviewMaterial->GetPath() : PreviewText)
 				: FString(NullLabel);
 			ImGui::Separator();
 			ImGui::TextWrapped("%s", CurrentLabel.c_str());
@@ -1234,7 +1238,8 @@ bool FContentDrawerPanel::DrawStaticMeshPicker(
 	ImGui::BeginGroup();
 	ImGui::TextUnformatted(Label);
 	ImGui::SetNextItemWidth(-1.0f);
-	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Appearing);
+	// 콤보 팝업의 자동 리사이즈와 가용 영역 계산이 매 프레임 순환하지 않도록 크기를 고정한다
+	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Always);
 	ImGui::SetNextWindowSizeConstraints(
 		ImVec2(EditorUIScale::Px(420.0f), EditorUIScale::Px(220.0f)),
 		ImVec2(EditorUIScale::Px(760.0f), EditorUIScale::Px(460.0f)));
@@ -1242,10 +1247,10 @@ bool FContentDrawerPanel::DrawStaticMeshPicker(
 	if (ImGui::BeginCombo("##StaticMeshPicker", PreviewText.c_str()))
 	{
 		const ImVec2 Avail = ImGui::GetContentRegionAvail();
-		const float PreviewPaneWidth = EditorUIScale::Px(176.0f);
+		const float PreviewPaneWidth = std::floor(EditorUIScale::Px(176.0f));
 		const float Spacing = ImGui::GetStyle().ItemSpacing.x;
-		const float ListPaneWidth = std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing);
-		const float PaneHeight = std::max(EditorUIScale::Px(180.0f), Avail.y);
+		const float ListPaneWidth = std::floor(std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing));
+		const float PaneHeight = std::floor(std::max(EditorUIScale::Px(120.0f), Avail.y));
 
 		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.45f, 0.30f, 0.38f, 1.00f));
 		if (ImGui::BeginChild("##MeshListPane", ImVec2(ListPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
@@ -1284,7 +1289,8 @@ bool FContentDrawerPanel::DrawStaticMeshPicker(
 
 		ImGui::SameLine();
 
-		if (ImGui::BeginChild("##MeshThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
+		if (ImGui::BeginChild("##MeshThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders,
+			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 		{
 			const float LargeThumbSize = EditorUIScale::Px(136.0f);
 			const float PadX = std::max(0.0f, (ImGui::GetContentRegionAvail().x - LargeThumbSize) * 0.5f);
