@@ -1018,6 +1018,7 @@ FTexture2D* FContentDrawerPanel::GetOrCreateSkeletalMeshThumbnail(const FString&
 	return nullptr;
 }
 
+
 FTexture2D* FContentDrawerPanel::RenderSkeletalMeshThumbnail(const FString& FbxPath)
 {
 	if (FbxPath.empty())
@@ -1037,9 +1038,93 @@ FTexture2D* FContentDrawerPanel::RenderSkeletalMeshThumbnail(const FString& FbxP
 		ThumbnailCache.erase(It);
 	}
 
-	PendingSkeletalMeshThumbnailPaths.insert(FbxPath);
+	InitThumbnailStudio();
+
+	if (!ThumbnailActor || !ThumbnailWorld)
+	{
+		ThumbnailCache[FbxPath] = nullptr;
+		return nullptr;
+	}
+
+	USkeletalMesh* Mesh = UAssetManager::LoadFbxSkeletalMesh(FbxPath);
+
+	if (!Mesh)
+	{
+		ThumbnailCache[FbxPath] = nullptr;
+		return nullptr;
+	}
+
+	USkeletalMeshComponent* MeshComp = ThumbnailActor->GetSkeletalMeshComponent();
+
+	if (!MeshComp)
+	{
+		ThumbnailCache[FbxPath] = nullptr;
+		return nullptr;
+	}
+
+	if (MaterialThumbnailActor && MaterialThumbnailActor->GetStaticMeshComponent())
+	{
+		MaterialThumbnailActor->GetStaticMeshComponent()->SetVisibility(false);
+	}
+
+	MeshComp->SetVisibility(true);
+	MeshComp->SetSkeletalMesh(Mesh);
+
+	const FBox Bounds = MeshComp->CalcBounds();
+	const FVector Extent = Bounds.Max - Bounds.Min;
+	const FVector Center = (Bounds.Min + Bounds.Max) * 0.5f;
+
+	const float HalfDim = std::max(Extent.Z * 0.5f, std::max(Extent.X, Extent.Y) * 0.5f);
+	const float HalfFov = FMath::DegreesToRadians(ThumbnailClient.GetViewFOV()) * 0.5f;
+	const float Distance = (HalfDim / std::max(0.2f, std::sin(HalfFov))) * 0.8f;
+
+	ThumbnailClient.SetViewRotation(FRotator(10.0f, 165.0f, 0.0f));
+	const FVector TargetPos = Center + FVector(0.0f, 0.0f, Extent.Z * 0.04f);
+	ThumbnailClient.SetViewLocation(TargetPos - ThumbnailClient.GetViewForward() * Distance);
+
+	if (UEditorEngine* EdEngine = Cast<UEditorEngine>(GEngine))
+	{
+		EdEngine->RenderPreviewViewport(&ThumbnailClient, ThumbnailWorld, nullptr, ThumbnailSkybox.get(), false);
+
+		FEngineLoop& Loop = GEngine->GetEngineLoop();
+
+		if (FSwapchain* SC = Loop.GetSwapchain())
+		{
+			if (FWindow* Win = Loop.GetMainWindow())
+			{
+				RenderCommand::BindRenderPassNoClear(SC->GetBackbuffer(), nullptr, Win->GetWidth(), Win->GetHeight());
+			}
+		}
+	}
+
+	FTexture2D* RenderedTarget = ThumbnailClient.GetColorTarget();
+
+	if (!RenderedTarget)
+	{
+		ThumbnailCache[FbxPath] = nullptr;
+		return nullptr;
+	}
+
+	FTextureDesc Desc{};
+	Desc.Width = RenderedTarget->GetWidth();
+	Desc.Height = RenderedTarget->GetHeight();
+	Desc.Format = RenderedTarget->GetTextureFormat();
+	Desc.Usage = ETextureUsage::Default;
+	Desc.BindFlags = ETextureBindFlags::ShaderResource;
+
+	TUniquePtr<FTexture2D> CachedTex = RenderCommand::CreateTexture2D(Desc);
+
+	if (CachedTex)
+	{
+		RenderCommand::CopyTexture(CachedTex.get(), RenderedTarget);
+		ThumbnailCache[FbxPath] = std::move(CachedTex);
+		return ThumbnailCache[FbxPath].get();
+	}
+
+	ThumbnailCache[FbxPath] = nullptr;
 	return nullptr;
 }
+
 
 FTexture2D* FContentDrawerPanel::RenderStaticMeshThumbnail(
 	const FString& CacheKey,
