@@ -230,6 +230,34 @@ namespace
 		}
 	}
 
+	// 파티클 머티리얼의 텍스처 유무와 기본 색상을 픽셀 셰이더 상수 버퍼로 전달한다
+	void AppendParticleMaterialBindings(const UMaterial* Material, FMeshDrawCommand& Cmd)
+	{
+		UTexture2D* AtlasTex = (Material && !Material->Textures.IsEmpty()) ? Material->Textures[0] : nullptr;
+		const bool bHasTexture = AtlasTex && AtlasTex->GetResource() && AtlasTex->GetResource()->GetSRV();
+
+		struct FParticleMaterialConstants
+		{
+			FVector4 BaseColor;
+			float HasTexture = 0.0f;
+			float Pad[3] = {};
+		};
+
+		FMeshDrawConstantBuffer MaterialCB{};
+		MaterialCB.Slot = 2;
+		MaterialCB.Stages = EShaderBindFlagBits::Pixel;
+		FParticleMaterialConstants Constants{
+			Material ? Material->BaseColor : FVector4(1.0f, 1.0f, 1.0f, 1.0f),
+			bHasTexture ? 1.0f : 0.0f,
+			{ 0.0f, 0.0f, 0.0f }
+		};
+		std::memcpy(MaterialCB.Data.data(), &Constants, sizeof(Constants));
+		MaterialCB.DataSize = sizeof(Constants);
+
+		Cmd.ShaderResources.Add({ 0, EShaderBindFlagBits::Pixel, bHasTexture ? AtlasTex : nullptr, nullptr });
+		Cmd.ConstantBuffers.Add(MaterialCB);
+	}
+
 	void BuildParticleInstancedCommands(const FMeshBatch& Batch, const FMeshElementCollector* Collector,
 		uint64 SortKey, TArray<FMeshDrawCommand>& OutCommands)
 	{
@@ -248,8 +276,6 @@ namespace
 		FPipelineState* PSO = FRenderResourceManager::GetPSO(PSOType);
 		if (!PSO || !PSO->Shader || !PSO->Shader->VertexShader || !PSO->Shader->PixelShader)
 			return;
-
-		UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
 
 		for (const FMeshBatchElement& Element : Batch.Elements)
 		{
@@ -282,7 +308,7 @@ namespace
 			Cmd.InstanceCount = Element.InstanceCount;
 			Cmd.Sampler = Batch.Material->SamplerState;
 			Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
-			Cmd.ShaderResources.Add({ 0, EShaderBindFlagBits::Pixel, AtlasTex, nullptr });
+			AppendParticleMaterialBindings(Batch.Material, Cmd);
 			Cmd.ShaderResources.Add({ 1, EShaderBindFlagBits::Vertex, nullptr, InstanceBuffer });
 			Cmd.ConstantBuffers.Add(BatchCB);
 			Cmd.Material = Batch.Material;
@@ -313,8 +339,6 @@ namespace
 		if (!PSO || !PSO->Shader || !PSO->Shader->VertexShader || !PSO->Shader->PixelShader)
 			return;
 
-		UTexture2D* AtlasTex = !Batch.Material->Textures.IsEmpty() ? Batch.Material->Textures[0] : nullptr;
-
 		for (const FMeshBatchElement& Element : Batch.Elements)
 		{
 			if (Element.InstanceCount == 0)
@@ -340,7 +364,7 @@ namespace
 			Cmd.InstanceCount = Element.InstanceCount;
 			Cmd.Sampler = Batch.Material->SamplerState;
 			Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
-			Cmd.ShaderResources.Add({ 0, EShaderBindFlagBits::Pixel, AtlasTex, nullptr });
+			AppendParticleMaterialBindings(Batch.Material, Cmd);
 			Cmd.ShaderResources.Add({ 1, EShaderBindFlagBits::Vertex, nullptr, Res->ParticleBuffer.get() });
 			Cmd.ConstantBuffers.Add(DrawCB);
 			Cmd.Material = Batch.Material;
@@ -586,7 +610,16 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 	if (!VB)
 		return true;
 
-	const EPSOType PSOType = Batch.OverridePSOType != EPSOType::Count ? Batch.OverridePSOType : Batch.Material->PSOType;
+	const bool bIsStaticMaterialPSO =
+		Batch.Material->PSOType == EPSOType::StaticMesh_Opaque ||
+		Batch.Material->PSOType == EPSOType::StaticMesh_Translucent ||
+		Batch.Material->PSOType == EPSOType::StaticMesh_Wireframe;
+	// 빌보드나 파티클 머티리얼을 썸네일 등 정적 메시로 그릴 때는 정적 반투명 셰이더로 폴백한다
+	const bool bStaticMeshFallback =
+		Batch.OverridePSOType == EPSOType::Count && !Batch.MaterialParamData && !bIsStaticMaterialPSO;
+	const EPSOType PSOType = bStaticMeshFallback
+		? EPSOType::StaticMesh_Translucent
+		: (Batch.OverridePSOType != EPSOType::Count ? Batch.OverridePSOType : Batch.Material->PSOType);
 	FPipelineState* Pipeline = FRenderResourceManager::GetPSO(PSOType);
 	if (!Pipeline)
 		return false;
@@ -607,9 +640,7 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 	FMeshDrawConstantBuffer MaterialCB{};
 	MaterialCB.Slot = 1;
 	MaterialCB.Stages = EShaderBindFlagBits::Pixel;
-	if (Batch.Material->PSOType == EPSOType::StaticMesh_Opaque ||
-		Batch.Material->PSOType == EPSOType::StaticMesh_Translucent ||
-		Batch.Material->PSOType == EPSOType::StaticMesh_Wireframe)
+	if (bIsStaticMaterialPSO || bStaticMeshFallback)
 	{
 		const FStaticMeshMaterialParams Params = MakeStaticMaterial(*Batch.Material);
 		std::memcpy(MaterialCB.Data.data(), &Params, sizeof(Params));

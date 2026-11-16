@@ -157,7 +157,7 @@ FBillboardProxyData UBillboardComponent::BuildBillboardProxyData() const
 
 	FSubUVConstants CurrentIconParams = IconParams;
 	CurrentIconParams.Tint = TintSource ? TintSource->GetLightColor().ToVector4() : FVector4(1, 1, 1, 1);
-	CurrentIconParams.DecodeSRGB = 0.0f;
+	CurrentIconParams.DecodeSRGB = 1.0f;
 	static_assert(sizeof(Data.IconParams) == sizeof(CurrentIconParams), "FBillboardSubUVConstants must match FSubUVConstants");
 	std::memcpy(&Data.IconParams, &CurrentIconParams, sizeof(Data.IconParams));
 	return Data;

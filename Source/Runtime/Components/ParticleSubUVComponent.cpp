@@ -260,7 +260,7 @@ void UParticleSubUVComponent::BeginViewSubmission()
         Value.AtlasColSize = static_cast<float>(ColSize);
         Value.AtlasRowSize = static_cast<float>(RowSize);
         Value.Alpha = Particle.Alpha;
-		Value.DecodeSRGB = 0.0f;
+		Value.DecodeSRGB = 1.0f;
         Constants.Add(Value);
     }
 }
