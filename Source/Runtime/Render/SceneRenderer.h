@@ -124,7 +124,7 @@ private:
 	void BuildProjectedDecalMeshDrawLists();
 
 	// ---------- 데칼 DBuffer (Forward/Deferred 공용, 언리얼 DBuffer 방식) ----------
-	// 깊이 프리패스 → DBuffer 패스 → 본 패스(ForwardOpaque 또는 GBuffer)가 t14~t16으로 읽는다.
+	// 깊이 프리패스, DBuffer 패스, 본 패스 순으로 이어진다.
 	struct FDecalPassSetup
 	{
 		FRenderGraphTextureRef Lit{};

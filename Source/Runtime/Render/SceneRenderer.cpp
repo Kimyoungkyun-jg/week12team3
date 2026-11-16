@@ -293,7 +293,9 @@ void FSceneRenderer::BuildVisiblePassCommands(const FScene& Scene, EMeshPass Pas
 		Vis.StateBucketId = DynCmd.StateBucketId;
 		Vis.SortKey = DynCmd.SortKey;
 		Vis.bForceWireframe = bApplyWireframe && !DynCmd.bIsParticle;
-		Vis.bOccludedByGpu = DynCmd.bOccludedByGpu;
+		Vis.bOccludedByGpu = (DynCmd.Proxy && DynCmd.Proxy->PackedIndex >= 0 &&
+			static_cast<uint32>(DynCmd.Proxy->PackedIndex) < static_cast<uint32>(RenderData.PrimitiveOccludedMap.Num()))
+			&& (RenderData.PrimitiveOccludedMap[static_cast<uint32>(DynCmd.Proxy->PackedIndex)] != 0);
 		if (bApplyUnlit)
 			Vis.ShaderOverride = ResolveUnlitShaderOverride(DynCmd, Options);
 		OutCommands.Add(Vis);

@@ -71,7 +71,6 @@ namespace
 	DECLARE_CYCLE_STAT("World Tick", STAT_WorldTick);
 	DECLARE_CYCLE_STAT("Editor Tick", STAT_EditorTick);
 	DECLARE_CYCLE_STAT("Capture World", STAT_CaptureWorld);
-	DECLARE_CYCLE_STAT("Build Render Queue", STAT_BuildRenderQueue);
 	DECLARE_CYCLE_STAT("ImGui", STAT_ImGui);
 }
 

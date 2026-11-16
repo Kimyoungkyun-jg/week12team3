@@ -94,7 +94,6 @@ void FStaticMeshSceneProxy::SetStaticMeshData(const FStaticMeshProxyData& Data)
 
 	ApplyBaseRenderState(Data.BaseState);
 	RenderState = Data.RenderState;
-	bEditorIcon = Data.bEditorIcon;
 
 	if (StaticMesh)
 		LocalLODSphere = StaticMesh->GetLocalLODSphere();
@@ -158,7 +157,7 @@ void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 		PDI->DrawMesh(Batch);
 	};
 
-	if (RenderState && RenderState->LODCount > 0)
+	if (RenderState && RenderState->LODCount > 0) // RenderState 는 컴포넌트가 만든 FMeshRenderState
 	{
 		for (uint32 LOD = 0; LOD < RenderState->LODCount; ++LOD)
 		{
@@ -175,7 +174,7 @@ void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 	}
 
 	const uint32 NumMeshLODs = StaticMesh->GetLODCount();
-	for (uint32 LOD = 0; LOD < NumMeshLODs; ++LOD)
+	for (uint32 LOD = 0; LOD < NumMeshLODs; ++LOD) // StaticMesh 에셋 원본의 MeshData.Sections와 기본 머티리얼을 직접 순회
 	{
 		FVertexBuffer* VB = StaticMesh->GetVertexBuffer(LOD);
 		FIndexBuffer* IB = StaticMesh->GetIndexBuffer(LOD);
@@ -191,16 +190,6 @@ void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 				Section.StartIndex, Section.IndexCount);
 		}
 	}
-}
-
-FVertexBuffer* FStaticMeshSceneProxy::GetVertexBuffer(uint8 LOD) const
-{
-	return StaticMesh ? StaticMesh->GetVertexBuffer(LOD) : nullptr;
-}
-
-FIndexBuffer* FStaticMeshSceneProxy::GetIndexBuffer(uint8 LOD) const
-{
-	return StaticMesh ? StaticMesh->GetIndexBuffer(LOD) : nullptr;
 }
 
 // ---------------- FSkeletalMeshSceneProxy ----------------
@@ -346,25 +335,6 @@ void FSkeletalMeshSceneProxy::GetDynamicMeshElements(const FViewContext& ViewCon
 	}
 }
 
-FVertexBuffer* FSkeletalMeshSceneProxy::GetVertexBuffer(uint8 LOD) const
-{
-	if (!SkeletalMesh)
-		return nullptr;
-	if (static_cast<ESkinningMode>(AppliedMode) == ESkinningMode::CPU && LOD == 0 && CPUSkinnedVertexBuffer)
-		return CPUSkinnedVertexBuffer;
-	return SkeletalMesh->GetVertexBuffer(LOD);
-}
-
-FIndexBuffer* FSkeletalMeshSceneProxy::GetIndexBuffer(uint8 LOD) const
-{
-	return SkeletalMesh ? SkeletalMesh->GetIndexBuffer(LOD) : nullptr;
-}
-
-bool FSkeletalMeshSceneProxy::IsComputeSkinned() const
-{
-	return static_cast<ESkinningMode>(AppliedMode) == ESkinningMode::Compute;
-}
-
 // ---------------- FBillboardSceneProxy ----------------
 
 FBillboardSceneProxy::FBillboardSceneProxy(const FBillboardProxyData& InitialData, const FPrimitiveTransformData& InitialTransform)
@@ -493,14 +463,4 @@ void FBillboardSceneProxy::GetDynamicMeshElements(const FViewContext& ViewContex
 		Batch.Elements.Add(Element);
 		Collector.AddMesh(std::move(Batch));
 	}
-}
-
-FVertexBuffer* FBillboardSceneProxy::GetVertexBuffer(uint8 LOD) const
-{
-	return QuadMesh ? QuadMesh->GetVertexBuffer(LOD) : nullptr;
-}
-
-FIndexBuffer* FBillboardSceneProxy::GetIndexBuffer(uint8 LOD) const
-{
-	return QuadMesh ? QuadMesh->GetIndexBuffer(LOD) : nullptr;
 }

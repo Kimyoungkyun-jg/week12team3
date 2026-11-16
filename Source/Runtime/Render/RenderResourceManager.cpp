@@ -100,10 +100,7 @@ void FRenderResourceManager::InitPipelineStates()
 		State->StencilRef =
 			Type == EPSOType::Outline_Mask ? StencilBits::Outline : 0;
 	}
-	// Shadow 배치가 참조하는 VS 전용 프로그램은 리소스 매니저가 소유한다.
 	FShaderProgram* DepthProgram = GetShaderProgram("Resources/Shader/DepthPrepass.hlsl");
-	if (DepthProgram && DepthProgram->VertexShader)
-		ShaderProgramMap["ShadowDepth"] = MakeUnique<FShaderProgram>(DepthProgram->VertexShader, nullptr);
 	const FString ShadowPath = "Resources/Shader/ShadowDepth.hlsl";
 	if (auto* Base = ShaderProgramMap.Find(ShadowPath))
 	{
@@ -204,12 +201,6 @@ void FRenderResourceManager::InitPipelineStates()
 			ShaderProgramMap["DepthPrepass#Uber#GPU"] = MakeUnique<FShaderProgram>(SkinVSProg->VertexShader, DepthProgram->PixelShader);
 		}
 	}
-}
-
-FShaderProgram* FRenderResourceManager::GetShadowDepthShaderProgram()
-{
-	if (auto* Found = Get().ShaderProgramMap.Find("ShadowDepth")) return Found->get();
-	return nullptr;
 }
 
 FShaderProgram* FRenderResourceManager::GetGPUSkinningShadowDepthShaderProgram()

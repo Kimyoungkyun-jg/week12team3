@@ -36,19 +36,17 @@ void FScene::AddPrimitive(UPrimitiveComponent* Component)
 	MarkRenderStateDirty(Proxy);
 
 	PrimitiveSceneProxies.Add(Proxy);
-	PrimitiveBounds.Add(FAABB{});
-	PrimitiveFlags.Add(0);
 	ProxyCachedCommands.AddDefaulted_GetRef();
 	GPUScenePrimitives.AddDefaulted_GetRef();
 	GPUSceneDirtyMask.Add(0);
 	UpdateGPUScenePrimitiveEntry(Index, Proxy);
-	if (Proxy->HasStaticRelevance())
+	if (Proxy->HasStaticRelevance()) // 해당 SceneProxy가 정적 렌더링 경로를 사용하는지 판단
 		MarkStaticCacheDirty(Proxy);
 
 	if (UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Component))
-		ParticleComponents.Add(ParticleComp);
+		ParticleComponents.Add(ParticleComp); // Particle System의 LOD를 카메라 거리에 따라 갱신하기 위해서 따로 보관
 
-	bElementListChanged = true;
+	bElementListChanged = true; // Scene에 등록된 Primitive 목록이 변경되었으니, BVH를 다시 구축해야 한다고 표시
 }
 
 void FScene::RemovePrimitive(UPrimitiveComponent* Component)
@@ -73,8 +71,6 @@ void FScene::RemovePrimitive(UPrimitiveComponent* Component)
 	}
 
 	PrimitiveSceneProxies.RemoveAtSwap(Index);
-	PrimitiveBounds.RemoveAtSwap(Index);
-	PrimitiveFlags.RemoveAtSwap(Index);
 	ProxyCachedCommands.RemoveAtSwap(Index);
 	GPUScenePrimitives.RemoveAtSwap(Index);
 	GPUSceneDirtyMask.RemoveAtSwap(Index);
@@ -131,8 +127,6 @@ void FScene::RemoveAllPrimitives()
 	}
 	PrimitiveProxyComponents.Empty();
 	PrimitiveSceneProxies.Reset();
-	PrimitiveBounds.Reset();
-	PrimitiveFlags.Reset();
 	ProxyCachedCommands.Reset();
 	GPUScenePrimitives.Reset();
 	GPUSceneDirtyIndices.Reset();
@@ -347,11 +341,12 @@ void FScene::RebuildProxyStaticCache(FPrimitiveSceneProxy* Proxy, const FSceneRe
 	if (PDI.Batches.IsEmpty())
 		return;
 
-	const FBasePassMeshProcessor BaseProcessor;
-	const FDepthPassMeshProcessor DepthProcessor;
-	const FWorldNormalPassMeshProcessor WorldNormalProcessor;
-	const FTranslucencyPassMeshProcessor TranslucencyProcessor;
-	const FShadowDepthMeshProcessor ShadowProcessor;
+	
+	const FBasePassMeshProcessor BaseProcessor;					// 불투명 기본 라이팅 패스 커맨드 생성
+	const FDepthPassMeshProcessor DepthProcessor;				// 깊이 프리패스 커맨드 생성
+	const FWorldNormalPassMeshProcessor WorldNormalProcessor;	// 월드 노멀 뷰 모드 패스 커맨드 생성
+	const FTranslucencyPassMeshProcessor TranslucencyProcessor; // 반투명 패스 커맨드 생성
+	const FShadowDepthMeshProcessor ShadowProcessor;			// 그림자 깊이 패스 커맨드 생성
 
 	FSceneRenderOptions BuildOptions = Options;
 	BuildOptions.bUnlit = false;
@@ -360,7 +355,7 @@ void FScene::RebuildProxyStaticCache(FPrimitiveSceneProxy* Proxy, const FSceneRe
 	{
 		TArray<FMeshDrawCommand> Built;
 		if (!Processor.AddMeshBatch(Batch, BuildOptions, nullptr, Built))
-			return;
+			return;  // 해당 패스를 빌드하는 데 필요한 GPU PSO나 셰이더를 찾지 못한 실패 상황
 		TArray<FCachedMeshDrawEntry>& List = CachedDrawLists[static_cast<size_t>(Pass)];
 		for (FMeshDrawCommand& Cmd : Built)
 		{
@@ -502,8 +497,6 @@ void FScene::UpdateAllTransforms()
 		if (UPrimitiveComponent* Component = FindPrimitiveComponent(Proxy))
 			Component->PushRenderStateToProxy();
 		const uint32 Index = static_cast<uint32>(Proxy->PackedIndex);
-		PrimitiveBounds[Index] = Proxy->GetBounds();
-		PrimitiveFlags[Index] = Proxy->IsVisible() ? 1 : 0;
 		UpdateGPUScenePrimitiveEntry(Index, Proxy);
 		if (Proxy->HasStaticRelevance())
 			MarkStaticCacheDirty(Proxy);
@@ -523,8 +516,6 @@ void FScene::UpdateAllTransforms()
 			RecordShadowInvalidation(Proxy->GetBounds());
 		}
 		const uint32 Index = static_cast<uint32>(Proxy->PackedIndex);
-		PrimitiveBounds[Index] = Proxy->GetBounds();
-		PrimitiveFlags[Index] = Proxy->IsVisible() ? 1 : 0;
 		UpdateGPUScenePrimitiveEntry(Index, Proxy);
 		Proxy->bQueuedForUpdate = false;
 	}

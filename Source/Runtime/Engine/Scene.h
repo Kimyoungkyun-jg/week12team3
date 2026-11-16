@@ -48,7 +48,6 @@ public:
 
 	void RemoveAllLights();
 
-	const class FAmbientLightSceneProxy* GetActiveAmbientLight(bool bGameView) const { return nullptr; }
 	FAmbientLightRenderData GetSkyAmbientLight(bool bGameView) const;
 	void PrepareSkyLight(const FSkyLightRenderData& SkyLight);
 	const FSkyLightEnvironment* FindSkyLightEnvironment(const FString& SourcePath) const;
@@ -85,8 +84,6 @@ public:
 	TArray<FPrimitiveSceneProxy*> DirtyProxies;
 	TArray<FPrimitiveSceneProxy*> RenderStateDirtyProxies;
 	TArray<FPrimitiveSceneProxy*> StaticCacheDirtyProxies;
-	TArray<FAABB> PrimitiveBounds;
-	TArray<uint8> PrimitiveFlags;
 
 	// 컬링 결과로 프록시를 바로 내보내 컴포넌트를 역참조하지 않는다.
 	TBVH<FPrimitiveSceneProxy*> BVH{

@@ -9,8 +9,8 @@ struct FPerObjectConstants
 {
 	FMatrix World;
 	FMatrix NormalMatrix;
-	// x: bReceiveShadow (GBuffer가 NormalRoughness.w 부호로 넘긴다)
-	// y: bReceiveDecal
+	// x: 그림자 수신 여부
+	// y: 데칼 수신 여부
 	FVector4 ShadowFlags; 
 };
 

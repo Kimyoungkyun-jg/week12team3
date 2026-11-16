@@ -59,8 +59,7 @@ namespace
 		{
 			const FMeshDrawConstantBuffer& A = Prev->ConstantBuffers[i];
 			const FMeshDrawConstantBuffer& B = Next.ConstantBuffers[i];
-			if (A.Slot != B.Slot || A.Stages != B.Stages ||
-				A.bBindViewMatrix != B.bBindViewMatrix || A.DataSize != B.DataSize)
+			if (A.Slot != B.Slot || A.Stages != B.Stages || A.DataSize != B.DataSize)
 				return false;
 			if (A.DataSize > 0 && std::memcmp(A.Data.data(), B.Data.data(), A.DataSize) != 0)
 				return false;
@@ -286,8 +285,6 @@ void FRenderer::SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> C
 		{
 			for (const FMeshDrawConstantBuffer& CB : Cmd.ConstantBuffers)
 			{
-				if (CB.bBindViewMatrix)
-					continue;
 				if (CB.DataSize > 0 && CB.Slot < MaxCommandSlotCBs && CommandSlotCBs[CB.Slot])
 				{
 					FConstantBuffer* TargetCB = CommandSlotCBs[CB.Slot].get();

@@ -46,7 +46,6 @@ FStaticMeshProxyData UStaticMeshComponent::BuildProxyData() const
 	FStaticMeshProxyData Data;
 	Data.BaseState = BuildBaseRenderState();
 	Data.StaticMesh = StaticMesh;
-	Data.bEditorIcon = bEditorIcon;
 	if (StaticMesh)
 	{
 		const int32 SlotCount = GetNumMaterials();

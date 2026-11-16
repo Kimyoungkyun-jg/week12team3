@@ -17,7 +17,6 @@
 
 class FPrimitiveSceneProxy;
 inline constexpr uint32 InvalidPrimitiveId = ~0u;
-inline constexpr uint32 InvalidObjectSlot = ~0u;
 
 struct FParticleInstanceData
 {
@@ -250,8 +249,6 @@ struct FMeshBatchElement
 	uint32 InstanceCount = 0;
 	uint32 StartInstance = 0;
 	uint32 PrimitiveId = InvalidPrimitiveId;
-	uint32 ObjectSlot = InvalidObjectSlot;
-	bool bOccludedByGpu = false;
 	bool bReceiveShadow = true;
 	bool bReceiveDecal = true;
 };

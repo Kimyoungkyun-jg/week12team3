@@ -100,7 +100,7 @@ void UBillboardComponent::Serialize(json& Handle, bool bIsLoading)
 	}
 }
 
-// 판정용 Billboard 행렬. 렌더(SubmitToRenderQueue)와 같은 FViewContext::BuildBillboardMatrix로 만들어
+// 판정용 Billboard 행렬. 렌더와 같은 FViewContext::BuildBillboardMatrix 로 만들어
 // 화면에 보이는 면과 Raycast에 맞는 면이 같도록 한다.
 void UBillboardComponent::GetWorldTransformedMatrix(FMatrix* OutWorldMatrix) const
 {

@@ -149,7 +149,7 @@ namespace
 	}
 
 	void BuildForwardUberCommands(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
-		const FMeshElementCollector* Collector, bool bWorldNormal, TArray<FMeshDrawCommand>& OutCommands)
+		const FMeshElementCollector* Collector, bool bWorldNormal, TArray<FMeshDrawCommand>& OutCommands) // 정적과 동적 경로가 함께 쓰는 공용 변환기
 	{
 		if (!Batch.Material)
 			return;
@@ -200,7 +200,6 @@ namespace
 			Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
 			Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
 			Cmd.bIsParticle = Batch.bIsParticle;
-			Cmd.bOccludedByGpu = Element.bOccludedByGpu;
 			Cmd.bReceiveDecal = Element.bReceiveDecal;
 			Cmd.ObjectKey = Element.Proxy ? static_cast<const void*>(Element.Proxy) : static_cast<const void*>(&Element);
 			Cmd.Proxy = Element.Proxy;
@@ -266,11 +265,6 @@ namespace
 				uint32 Pad[3] = {};
 			};
 
-			FMeshDrawConstantBuffer ViewCB{};
-			ViewCB.Slot = 0;
-			ViewCB.Stages = EShaderBindFlagBits::Vertex;
-			ViewCB.bBindViewMatrix = true;
-
 			FMeshDrawConstantBuffer BatchCB{};
 			BatchCB.Slot = 1;
 			BatchCB.Stages = EShaderBindFlagBits::Vertex;
@@ -290,7 +284,6 @@ namespace
 			Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
 			Cmd.ShaderResources.Add({ 0, EShaderBindFlagBits::Pixel, AtlasTex, nullptr });
 			Cmd.ShaderResources.Add({ 1, EShaderBindFlagBits::Vertex, nullptr, InstanceBuffer });
-			Cmd.ConstantBuffers.Add(ViewCB);
 			Cmd.ConstantBuffers.Add(BatchCB);
 			Cmd.Material = Batch.Material;
 			Cmd.bUsesGPUScene = false;
@@ -330,11 +323,6 @@ namespace
 			if (!IB)
 				continue;
 
-			FMeshDrawConstantBuffer ViewCB{};
-			ViewCB.Slot = 0;
-			ViewCB.Stages = EShaderBindFlagBits::Vertex;
-			ViewCB.bBindViewMatrix = true;
-
 			FMeshDrawConstantBuffer DrawCB{};
 			DrawCB.Slot = 1;
 			DrawCB.Stages = EShaderBindFlagBits::Vertex;
@@ -354,7 +342,6 @@ namespace
 			Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
 			Cmd.ShaderResources.Add({ 0, EShaderBindFlagBits::Pixel, AtlasTex, nullptr });
 			Cmd.ShaderResources.Add({ 1, EShaderBindFlagBits::Vertex, nullptr, Res->ParticleBuffer.get() });
-			Cmd.ConstantBuffers.Add(ViewCB);
 			Cmd.ConstantBuffers.Add(DrawCB);
 			Cmd.Material = Batch.Material;
 			Cmd.bUsesGPUScene = false;
@@ -385,8 +372,7 @@ namespace
 			return false;
 		for (int32 i = 0; i < A.Num(); ++i)
 		{
-			if (A[i].Slot != B[i].Slot || A[i].Stages != B[i].Stages ||
-				A[i].bBindViewMatrix != B[i].bBindViewMatrix || A[i].DataSize != B[i].DataSize)
+			if (A[i].Slot != B[i].Slot || A[i].Stages != B[i].Stages || A[i].DataSize != B[i].DataSize)
 				return false;
 			if (A[i].DataSize > 0 && std::memcmp(A[i].Data.data(), B[i].Data.data(), A[i].DataSize) != 0)
 				return false;
@@ -428,7 +414,6 @@ uint32 ComputeMeshCommandStateBucket(const FMeshDrawCommand& Command)
 		HashCombine(Seed, CB.Slot);
 		HashCombine(Seed, static_cast<uint64>(CB.Stages));
 		HashCombine(Seed, CB.DataSize);
-		HashCombine(Seed, static_cast<uint64>(CB.bBindViewMatrix ? 1 : 0));
 		if (CB.DataSize > 0)
 			HashBytes(Seed, CB.Data.data(), CB.DataSize);
 	}
@@ -534,7 +519,6 @@ bool FDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FScene
 		Cmd.bUsesGPUScene = (Element.InstanceCount == 0);
 		Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
 		Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
-		Cmd.bOccludedByGpu = Element.bOccludedByGpu;
 		Cmd.bReceiveDecal = Element.bReceiveDecal;
 		Cmd.ObjectKey = Element.Proxy ? static_cast<const void*>(Element.Proxy) : static_cast<const void*>(&Element);
 		Cmd.Proxy = Element.Proxy;
@@ -620,11 +604,6 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 			return false;
 	}
 
-	FMeshDrawConstantBuffer ViewCB{};
-	ViewCB.Slot = 0;
-	ViewCB.Stages = EShaderBindFlagBits::Vertex | (bUsesGPUSceneShader ? EShaderBindFlagBits::Pixel : EShaderBindFlagBits::None);
-	ViewCB.bBindViewMatrix = true;
-
 	FMeshDrawConstantBuffer MaterialCB{};
 	MaterialCB.Slot = 1;
 	MaterialCB.Stages = EShaderBindFlagBits::Pixel;
@@ -664,7 +643,6 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 		Cmd.Sampler = Batch.Material->SamplerState;
 		Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
 		Cmd.ShaderResources = Resources;
-		Cmd.ConstantBuffers.Add(ViewCB);
 		if (MaterialCB.DataSize > 0)
 			Cmd.ConstantBuffers.Add(MaterialCB);
 
@@ -689,7 +667,6 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 		Cmd.bSkeletalMesh = (Batch.VertexFactory.Type == EVertexFactoryType::GPUSkin) || (Batch.VertexFactory.SkinningMatricesBuffer != nullptr);
 		Cmd.bComputeSkinned = Batch.VertexFactory.bComputeSkinned;
 		Cmd.bIsParticle = Batch.bIsParticle;
-		Cmd.bOccludedByGpu = Element.bOccludedByGpu;
 		Cmd.bReceiveDecal = Element.bReceiveDecal;
 		Cmd.ObjectKey = Element.Proxy ? static_cast<const void*>(Element.Proxy) : static_cast<const void*>(&Element);
 		Cmd.Proxy = Element.Proxy;

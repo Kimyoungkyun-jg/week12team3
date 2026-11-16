@@ -65,7 +65,6 @@ public:
 	static void DrawIndexed(uint32 IndexCount, uint32 StartIndexLocation = 0, int32 BaseVertexLocation = 0);
 	static void DrawIndexedInstanced(uint32 IndexCountPerInstance, uint32 InstanceCount,
 		uint32 StartIndexLocation = 0, int32 BaseVertexLocation = 0, uint32 StartInstanceLocation = 0);
-	static void DrawInstance(uint32 IndexCount, uint32 StartIndexLocation = 0, int32 BaseVertexLocation = 0);
 
 	template <typename T>
 	static void UpdateBufferData(FBuffer* InBuffer, T* Data)

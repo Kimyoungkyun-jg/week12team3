@@ -33,7 +33,6 @@ public:
 
 	void UploadViewConstants(const FMatrix& ViewProjection, const FMatrix& ViewMatrix,
 		const FMatrix& ProjectionMatrix, float TotalTime = 0.0f);
-	FConstantBuffer* GetViewConstantBuffer() const { return ViewCB.get(); }
 
 	void SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> Commands,
 		const FStructuredBuffer* GPUSceneBuffer = nullptr,

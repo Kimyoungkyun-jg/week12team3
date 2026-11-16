@@ -40,7 +40,6 @@ struct FMeshDrawConstantBuffer
 	EShaderBindFlagBits Stages = EShaderBindFlagBits::Vertex;
 	std::array<uint8, 256> Data{};
 	uint32 DataSize = 0;
-	bool bBindViewMatrix = false;
 };
 
 // 패스 프로세서가 생성하는 단일 GPU 드로우 명령
@@ -71,7 +70,6 @@ struct FMeshDrawCommand
 	bool bSkeletalMesh = false;
 	bool bComputeSkinned = false;
 	bool bIsParticle = false;
-	bool bOccludedByGpu = false;
 	bool bReceiveDecal = true;
 	bool bOverrideStencilRef = false;
 	uint32 StencilRef = 0;

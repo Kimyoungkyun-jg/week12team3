@@ -58,7 +58,6 @@ struct FStaticMeshProxyData
 	FPrimitiveRenderStateData BaseState;
 	UStaticMesh* StaticMesh = nullptr;
 	TSharedPtr<const FMeshRenderState> RenderState;
-	bool bEditorIcon = false;
 };
 
 // SkeletalMesh 프록시 상태 스냅샷
@@ -135,16 +134,10 @@ public:
 	}
 
 	virtual UStaticMesh* GetMesh() const { return nullptr; }
-	virtual UStaticMesh* GetStaticMesh() const { return GetMesh(); }
-	virtual USkeletalMesh* GetSkeletalMesh() const { return nullptr; }
 	virtual const FMeshRenderState* GetRenderState() const { return nullptr; }
 	virtual uint32 GetLODCount() const { return 0; }
 	virtual const FCachedMeshLOD& GetLOD(uint32 LODIndex) const;
 	virtual const FCachedMeshSection& GetSection(uint32 SectionIndex) const;
-	virtual FVertexBuffer* GetVertexBuffer(uint8 LOD = 0) const { return nullptr; }
-	virtual FIndexBuffer* GetIndexBuffer(uint8 LOD = 0) const { return nullptr; }
-	virtual bool IsComputeSkinned() const { return false; }
-	virtual FStructuredBuffer* GetSkinningMatricesBuffer() const { return nullptr; }
 	virtual const class FParticleSceneProxy* AsParticleSceneProxy() const { return nullptr; }
 
 	FScene* Scene = nullptr;
@@ -190,13 +183,10 @@ public:
 	virtual UStaticMesh* GetMesh() const override { return StaticMesh; }
 	virtual const FMeshRenderState* GetRenderState() const override { return RenderState.get(); }
 	virtual uint32 GetLODCount() const override { return RenderState ? RenderState->LODCount : 0u; }
-	virtual FVertexBuffer* GetVertexBuffer(uint8 LOD = 0) const override;
-	virtual FIndexBuffer* GetIndexBuffer(uint8 LOD = 0) const override;
 
 private:
 	UStaticMesh* StaticMesh = nullptr;
 	TSharedPtr<const FMeshRenderState> RenderState;
-	bool bEditorIcon = false;
 };
 
 class FSkeletalMeshSceneProxy : public FPrimitiveSceneProxy
@@ -212,13 +202,8 @@ public:
 	virtual void OnMeshDestroyed() override;
 	virtual void GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const override;
 
-	virtual USkeletalMesh* GetSkeletalMesh() const override { return SkeletalMesh; }
 	virtual const FMeshRenderState* GetRenderState() const override { return RenderState.get(); }
 	virtual uint32 GetLODCount() const override { return RenderState ? RenderState->LODCount : 0u; }
-	virtual FVertexBuffer* GetVertexBuffer(uint8 LOD = 0) const override;
-	virtual FIndexBuffer* GetIndexBuffer(uint8 LOD = 0) const override;
-	virtual bool IsComputeSkinned() const override;
-	virtual FStructuredBuffer* GetSkinningMatricesBuffer() const override { return SkinningMatricesBuffer; }
 
 private:
 	USkeletalMesh* SkeletalMesh = nullptr;
@@ -238,9 +223,6 @@ public:
 	void SetBillboardData(const FBillboardProxyData& Data);
 
 	virtual void GetDynamicMeshElements(const FViewContext& ViewContext, FMeshElementCollector& Collector, uint32 LODIndex) const override;
-
-	virtual FVertexBuffer* GetVertexBuffer(uint8 LOD = 0) const override;
-	virtual FIndexBuffer* GetIndexBuffer(uint8 LOD = 0) const override;
 
 private:
 	UStaticMesh* QuadMesh = nullptr;
