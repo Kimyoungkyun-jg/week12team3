@@ -260,7 +260,6 @@ void FContentDrawerPanel::OnRender()
 			if (ImGui::MenuItem("Create Material"))
 			{
 				strcpy_s(NewAssetName, "NewMaterial");
-				bNewMaterialParticleSprite = false;
 				bOpenCreateMaterial = true;
 			}
 			if (ImGui::MenuItem("Create AnimMontage") && OnOpenAsset)

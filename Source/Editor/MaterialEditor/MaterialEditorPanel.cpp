@@ -303,7 +303,7 @@ void FMaterialEditorPanel::Release()
 	Asset = nullptr;
 }
 
-void FMaterialEditorPanel::NewMaterial(const FString& InPath, bool bParticleSprite)
+void FMaterialEditorPanel::NewMaterial(const FString& InPath)
 {
 	if (bDirty && Asset && !Asset->IsRetired())
 	{
