@@ -27,6 +27,10 @@ cbuffer subuv : register(b1)
 Texture2D AtlasTexture : register(t0);
 SamplerState AtlasSampler : register(s0);
 
+#ifdef MATERIAL_GRAPH
+#include MATERIAL_GRAPH_INCLUDE
+#endif
+
 struct VS_INPUT
 {
     float3 position : POSITION;
@@ -60,8 +64,28 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
     float2 cellStartOffsetUV = (float2(atlasCol, atlasRow) * cellSize);
     cellUV += cellStartOffsetUV;
 
-    float4 color = AtlasTexture.Sample(AtlasSampler, cellUV);
+    float4 color = AtlasTexture.Sample(ColorSampler, cellUV);
     color.a *= ParticleAlpha;
+
+#ifdef MATERIAL_GRAPH
+    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(cellUV);
+
+#ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
+    color *= GraphOutput.BaseColor;
+#endif
+
+    float3 GraphEmissive = float3(0, 0, 0);
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_COLOR
+    GraphEmissive = GraphOutput.EmissiveColor;
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR
+    GraphEmissive *= GraphOutput.EmissiveFactor;
+#endif
+
+    color.rgb += GraphEmissive;
+#endif
     if (DecodeSRGB > 0.5f)
     {
         // 텍스처와 Tint를 각각 선형으로 바꾼 뒤 곱한다. 알파는 색이 아니므로 그대로.

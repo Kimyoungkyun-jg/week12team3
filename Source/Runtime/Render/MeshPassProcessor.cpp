@@ -84,7 +84,6 @@ namespace
 	}
 
 	bool HasMaterialGraphOutput(const UMaterial& Material);
-	void BuildMaterialGraphParameterData(FMeshDrawBatch& Batch, const UMaterial& Material, const FMaterialRenderProxy& Proxy);
 
 	bool BuildBatch(FMeshDrawBatch& Batch, UStaticMesh* Mesh, uint8 LOD,
 		UMaterialInterface* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options,
@@ -101,6 +100,12 @@ namespace
 		const UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
 		if (!BaseMaterial)
 		{
+			return false;
+		}
+
+		if (!BaseMaterial->HasUsage(EMaterialUsage::SkeletalMesh))
+		{
+			HTR_LOG(Warning, "[Material] {} is missing Skeletal Mesh usage.", BaseMaterial->GetPath());
 			return false;
 		}
 		Batch.VertexBuffer = Mesh->GetVertexBuffer(LOD);
@@ -160,10 +165,10 @@ namespace
 			}
 			Batch.Pipeline = *Pipeline;
 
-			if (Pass == EMeshPassType::GBuffer && bHasGraph)
+			if (Pass == EMeshPassType::GBuffer && BaseMaterial->HasGraphOutput())
 			{
 				FString GraphError;
-				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, true, EReflectionModel::Lambert, false, false, GraphError);
+				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, EPSOType::SkeletalMesh_GBuffer, EReflectionModel::Lambert, false, bGPUSkinning, GraphError);
 
 				if (GraphShader)
 				{
@@ -208,7 +213,7 @@ namespace
 				Batch.Textures.Add({ Texture, EShaderBindFlagBits::Pixel });
 			}
 
-			BuildMaterialGraphParameterData(Batch, *BaseMaterial, MaterialProxy);
+			BuildMaterialGraphParameterData(*BaseMaterial, MaterialProxy, Batch.GraphParameterData.data(), Batch.GraphParameterDataSize);
 		}
 		else
 		{
@@ -262,6 +267,12 @@ namespace
 		{
 			return false;
 		}
+
+		if (!BaseMaterial->HasUsage(EMaterialUsage::StaticMesh))
+		{
+			HTR_LOG(Warning, "[Material] {} is missing Static Mesh usage.", BaseMaterial->GetPath());
+			return false;
+		}
 		Batch.VertexBuffer = Mesh->GetVertexBuffer(LOD);
 		Batch.IndexBuffer = Mesh->GetIndexBuffer(LOD);
 		if (!Batch.VertexBuffer || !Batch.IndexBuffer) return false;
@@ -273,7 +284,22 @@ namespace
 			FPipelineState* Base = FRenderResourceManager::GetPSO(bWorldNormal
 				? EPSOType::StaticMesh_WorldNormal : EPSOType::StaticMesh_Forward);
 			FShaderProgram* Shader = bWorldNormal ? FRenderResourceManager::GetWorldNormalShaderProgram(bGPUSkinning)
-				: GetMaterialForwardShader(*BaseMaterial, Options, bGPUSkinning);
+												  : GetMaterialForwardShader(*BaseMaterial, Options, bGPUSkinning);
+
+			if (!bWorldNormal && BaseMaterial->HasGraphOutput())
+			{
+				FString GraphError;
+				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, EPSOType::StaticMesh_Forward, Options.ReflectionModel, Options.bUnlit, bGPUSkinning, GraphError);
+
+				if (GraphShader)
+				{
+					Shader = GraphShader;
+				}
+				else
+				{
+					HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
+				}
+			}
 			if (!Base || !Shader || !Shader->VertexShader || !Shader->PixelShader) return false;
 			Batch.Pipeline = *Base;
 			Batch.Pipeline.Shader = Shader;
@@ -294,7 +320,9 @@ namespace
 		{
 			EPSOType Type = MaterialProxy.PSOType;
 			if (Pass == EMeshPassType::GBuffer && Type == EPSOType::StaticMesh_Opaque)
-				Type = EPSOType::StaticMesh_GBuffer;
+			{
+				Type = EPSOType::SkeletalMesh_GBuffer;
+			}
 			else if (View.bIsWireframe && Type == EPSOType::StaticMesh_Opaque)
 				Type = EPSOType::StaticMesh_Wireframe;
 			FPipelineState* Pipeline = FRenderResourceManager::GetPSO(Type);
@@ -322,21 +350,57 @@ namespace
 			}
 		}
 		Batch.Sampler = MaterialProxy.SamplerState;
-		Batch.Textures.Reserve(MaterialProxy.Textures.Num());
-		for (int32 Index = 0; Index < MaterialProxy.Textures.Num(); ++Index)
+
+		if (BaseMaterial->HasGraphOutput() && Batch.Pipeline.Shader)
 		{
-			// Forward 조명은 t8 이상을 전역 리소스에 사용한다.
-			if (bUsesUberShader && Index >= 8) break;
-			UTexture2D* Texture = MaterialProxy.Textures[Index];
-			EShaderBindFlagBits Stages = EShaderBindFlagBits::Pixel;
-			if (bUsesUberShader && Index == 1)
-				Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
-			if (bUsesUberShader && Index == 0 &&
-				(!Texture || !Texture->GetResource() || !Texture->GetResource()->GetSRV()))
-				Texture = nullptr;
-			if (bUsesUberShader && Index == 1 && GetNormalEncoding(Texture) <= 0.5f)
-				Texture = nullptr;
-			Batch.Textures.Add({ Texture, Stages });
+			for (int32 Index = 0; Index < 2; ++Index)
+			{
+				UTexture2D* Texture = MaterialProxy.Textures.IsValidIndex(Index) ? MaterialProxy.Textures[Index] : nullptr;
+				const EShaderBindFlagBits Stages = Index == 1 && bUsesUberShader
+					? EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel
+					: EShaderBindFlagBits::Pixel;
+
+				Batch.Textures.Add({ Texture, Stages });
+			}
+
+			for (UTexture2D* Texture : MaterialProxy.GraphTextures)
+			{
+				Batch.Textures.Add({ Texture, EShaderBindFlagBits::Pixel });
+			}
+
+			BuildMaterialGraphParameterData(*BaseMaterial, MaterialProxy, Batch.GraphParameterData.data(), Batch.GraphParameterDataSize);
+		}
+		else
+		{
+			Batch.Textures.Reserve(MaterialProxy.Textures.Num());
+
+			for (int32 Index = 0; Index < MaterialProxy.Textures.Num(); ++Index)
+			{
+				if (bUsesUberShader && Index >= 8)
+				{
+					break;
+				}
+
+				UTexture2D* Texture = MaterialProxy.Textures[Index];
+				EShaderBindFlagBits Stages = EShaderBindFlagBits::Pixel;
+
+				if (bUsesUberShader && Index == 1)
+				{
+					Stages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
+				}
+
+				if (bUsesUberShader && Index == 0 && (!Texture || !Texture->GetResource() || !Texture->GetResource()->GetSRV()))
+				{
+					Texture = nullptr;
+				}
+
+				if (bUsesUberShader && Index == 1 && GetNormalEncoding(Texture) <= 0.5f)
+				{
+					Texture = nullptr;
+				}
+
+				Batch.Textures.Add({ Texture, Stages });
+			}
 		}
 		return true;
 	}
@@ -413,8 +477,11 @@ namespace
 		return false;
 	}
 
-	void BuildMaterialGraphParameterData(FMeshDrawBatch& Batch, const UMaterial& Material, const FMaterialRenderProxy& Proxy)
+	void BuildMaterialGraphParameterData(const UMaterial& Material, const FMaterialRenderProxy& Proxy, uint8* OutData, uint32& OutSize)
 	{
+		const uint32 BufferSize = sizeof(FVector4) * MaxMaterialGraphParameters;
+		std::memset(OutData, 0, BufferSize);
+
 		int32 ParameterIndex = 0;
 
 		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
@@ -449,11 +516,11 @@ namespace
 				break;
 			}
 
-			std::memcpy(Batch.GraphParameterData.data() + ParameterIndex * sizeof(FVector4), &Value, sizeof(FVector4));
+			std::memcpy(OutData + ParameterIndex * sizeof(FVector4), &Value, sizeof(FVector4));
 			++ParameterIndex;
 		}
 
-		Batch.GraphParameterDataSize = sizeof(Batch.GraphParameterData);
+		OutSize = BufferSize;
 	}
 }
 
@@ -615,4 +682,3 @@ bool FMeshPassProcessor::Build(const TArray<FPrimitiveSceneProxy*>& ShadowMeshes
 
 	return true;
 }
-

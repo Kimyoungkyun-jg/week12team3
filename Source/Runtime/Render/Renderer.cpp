@@ -71,12 +71,24 @@ void FRenderer::BindBatch(const FMeshDrawBatch& Batch)
 	if (Batch.GraphParameterDataSize)
 	{
 		RenderCommand::UpdateBufferData(GraphMaterialCB.get(), Batch.GraphParameterData.data(), Batch.GraphParameterDataSize);
-		RenderCommand::BindConstantBuffer(3, GraphMaterialCB.get(), EShaderBindFlagBits::Pixel);
+		RenderCommand::BindConstantBuffer(4, GraphMaterialCB.get(), EShaderBindFlagBits::Pixel);
 	}
 	else
 	{
-		RenderCommand::BindConstantBuffer(3, nullptr, EShaderBindFlagBits::Pixel);
+		RenderCommand::BindConstantBuffer(4, nullptr, EShaderBindFlagBits::Pixel);
 	}
+}
+
+void FRenderer::BindGraphMaterialParameters(const void* Data, uint32 Size)
+{
+	if (!Data || Size == 0)
+	{
+		RenderCommand::BindConstantBuffer(4, nullptr, EShaderBindFlagBits::Pixel);
+		return;
+	}
+
+	RenderCommand::UpdateBufferData(GraphMaterialCB.get(), Data, Size);
+	RenderCommand::BindConstantBuffer(4, GraphMaterialCB.get(), EShaderBindFlagBits::Pixel);
 }
 
 void FRenderer::BindObject(const FMeshDrawBatch& Batch, const FMeshDrawBatch::FItem& Item)

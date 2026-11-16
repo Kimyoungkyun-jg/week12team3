@@ -525,10 +525,31 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			ImGui::Checkbox("Looping", &Req->bLooping);
 			ImGui::Checkbox("Use Local Space", &Req->bUseLocalSpace);
 
-			if (FContentDrawerPanel::DrawMaterialPicker("Material", Req->Material, "(Default)"))
+			UParticleLODLevel* OwnerLOD = (SelectedEmitter && !SelectedEmitter->GetLODLevels().IsEmpty())
+				? SelectedEmitter->GetLODLevels()[0]
+				: nullptr;
+
+			if (!OwnerLOD && EditingSystem)
+			{
+				for (UParticleEmitter* E : EditingSystem->GetEmitters())
+				{
+					if (E && !E->GetLODLevels().IsEmpty() && E->GetLODLevels()[0] && E->GetLODLevels()[0]->RequiredModule == Req)
+					{
+						OwnerLOD = E->GetLODLevels()[0];
+						break;
+					}
+				}
+			}
+
+			const bool bMeshEmitter = OwnerLOD && Cast<UParticleModuleTypeDataMesh>(OwnerLOD->TypeDataModule);
+			const uint32 RequiredUsageFlag = static_cast<uint32>(bMeshEmitter ? EMaterialUsage::ParticleMesh : EMaterialUsage::ParticleSprite);
+
+			if (FContentDrawerPanel::DrawMaterialPicker("Material", Req->Material, "(Default)", nullptr, RequiredUsageFlag))
 			{
 				if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+				{
 					PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
+				}
 			}
 		}
 		else if (auto* Spawn = Cast<UParticleModuleSpawn>(SelectedModule))

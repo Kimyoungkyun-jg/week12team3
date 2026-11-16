@@ -39,6 +39,7 @@ enum class EPSOType : uint8
 	Particle_MeshTranslucent,
 	Particle_MeshAdditive,
 	Particle_Sprite,
+	SkeletalMesh_GBuffer,
 	Count
 };
 class UMaterial;
@@ -64,10 +65,11 @@ public:
 
 	static FPipelineState* GetPSO(const EPSOType& InType);
 	static FShaderProgram* GetForwardShaderProgram(EReflectionModel Reflection, EShadingModel Shading, bool bGPUSkinning = false, bool bUnlit = false);
-	static FShaderProgram* GetMaterialGraphShaderProgram(const UMaterial& Material, bool bDeferred, EReflectionModel Reflection, bool bUnlit, bool bGPUSkinning, FString& OutError);
+	static FShaderProgram* GetMaterialGraphShaderProgram(const UMaterial& Material, EPSOType TargetPSO, EReflectionModel Reflection, bool bUnlit, bool bGPUSkinning, FString& OutError);
 	static FShaderProgram* GetWorldNormalShaderProgram(bool bGPUSkinning);
 	static FShaderProgram* GetTranslucentShaderProgram(bool bGPUSkinning);
 	static FShaderProgram* GetShadowDepthShaderProgram();
+	static FShaderProgram* GetSkeletalMeshGBufferShaderProgram(bool bGPUSkinning);
 	static FShaderProgram* GetGPUSkinningShadowDepthShaderProgram();
 	static FComputeShader* GetComputeShader(const FString& InPath, const FString& EntryPoint);
 private:

@@ -16,6 +16,10 @@ struct FSceneView;
 struct FSceneRenderData;
 class FScene;
 struct FLightRenderParameters;
+class UMaterial;
+struct FMaterialRenderProxy;
+
+void BuildMaterialGraphParameterData(const UMaterial& Material, const FMaterialRenderProxy& Proxy, uint8* OutData, uint32& OutSize);
 
 // 한 패스에서 함께 바인딩할 GPU 상태. UObject 메시/재질 포인터는 보관하지 않는다.
 struct FMeshDrawBatch

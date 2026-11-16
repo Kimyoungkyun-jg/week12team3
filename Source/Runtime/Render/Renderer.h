@@ -58,7 +58,8 @@ public:
 	FProjectedDecalRenderer* GetProjectedDecal() const { return ProjectedDecal.get(); }
 
 	FConstantBuffer* GetToneMapConstants() const { return ToneMapConstants.get(); }
-	
+	void BindGraphMaterialParameters(const void* Data, uint32 Size);
+
 private:
 	void EnsurePerObjectSlotCapacity(uint32 SlotCount);
 	void BindBatch(const FMeshDrawBatch& Batch);

@@ -1329,6 +1329,7 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 			uint32 Pad[3] = {};
 		};
 		EPSOType BoundPSOType = EPSOType::Count;
+		FShaderProgram* BoundShader = nullptr;
 		bool bCommonBound = false;
 
 		for (const FParticleInstancedBatch& Batch : RenderData.ParticleBatches)
@@ -1347,7 +1348,43 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 				else TargetPSO = EPSOType::Particle_MeshTranslucent;
 			}
 			FPipelineState* PSO = FRenderResourceManager::GetPSO(TargetPSO);
-			if (!PSO || !PSO->Shader || !PSO->Shader->VertexShader || !PSO->Shader->PixelShader) continue;
+			if (!PSO || !PSO->Shader || !PSO->Shader->VertexShader || !PSO->Shader->PixelShader)
+			{
+				continue;
+			}
+
+			FMaterialRenderProxy MaterialProxy{};
+			Batch.Material->GetRenderProxy(MaterialProxy);
+
+			const UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
+			if (!BaseMaterial)
+			{
+				continue;
+			}
+
+			const EMaterialUsage RequiredUsage = Batch.bIsMesh ? EMaterialUsage::ParticleMesh : EMaterialUsage::ParticleSprite;
+			if (!BaseMaterial->HasUsage(RequiredUsage))
+			{
+				HTR_LOG(Warning, "[Material] {} is missing particle usage.", BaseMaterial->GetPath());
+				continue;
+			}
+
+			FShaderProgram* TargetShader = PSO->Shader;
+
+			if (BaseMaterial->HasGraphOutput())
+			{
+				FString GraphError;
+				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, TargetPSO, EReflectionModel::Lambert, true, false, GraphError);
+
+				if (GraphShader)
+				{
+					TargetShader = GraphShader;
+				}
+				else
+				{
+					HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
+				}
+			}
 
 			if (!bCommonBound)
 			{
@@ -1356,10 +1393,13 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 				RenderCommand::BindShaderResource(1, RenderData.ParticleInstanceBuffer.get(), EShaderBindFlagBits::Vertex);
 				bCommonBound = true;
 			}
-			if (BoundPSOType != TargetPSO)
+			if (BoundPSOType != TargetPSO || BoundShader != TargetShader)
 			{
-				RenderCommand::BindPipelineState(*PSO);
+				FPipelineState MaterialPipeline = *PSO;
+				MaterialPipeline.Shader = TargetShader;
+				RenderCommand::BindPipelineState(MaterialPipeline);
 				BoundPSOType = TargetPSO;
+				BoundShader = TargetShader;
 			}
 
 			FParticleBatchConstants BatchConst{ Batch.StartInstance, { 0, 0, 0 } };
@@ -1367,7 +1407,23 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 			RenderCommand::BindConstantBuffer(1, RenderData.ParticleBatchCB.get(), EShaderBindFlagBits::Vertex);
 			RenderCommand::BindMesh(Batch.Mesh, 0);
 
-			RenderCommand::BindSamplerState(0, Batch.Material->GetSamplerState(), EShaderBindFlagBits::Pixel);
+			RenderCommand::BindShaderResource(0, MaterialProxy.Textures.IsValidIndex(0) ? MaterialProxy.Textures[0] : nullptr, EShaderBindFlagBits::Pixel);
+
+			for (int32 TextureIndex = 0; TextureIndex < MaterialProxy.GraphTextures.Num(); ++TextureIndex)
+			{
+				RenderCommand::BindShaderResource(2 + TextureIndex, MaterialProxy.GraphTextures[TextureIndex], EShaderBindFlagBits::Pixel);
+			}
+
+			std::array<uint8, sizeof(FVector4) * MaxMaterialGraphParameters> GraphParameterData{};
+			uint32 GraphParameterDataSize = 0;
+
+			if (BaseMaterial->HasGraphOutput())
+			{
+				BuildMaterialGraphParameterData(*BaseMaterial, MaterialProxy, GraphParameterData.data(), GraphParameterDataSize);
+			}
+
+			Renderer->BindGraphMaterialParameters(GraphParameterDataSize > 0 ? GraphParameterData.data() : nullptr, GraphParameterDataSize);
+			RenderCommand::BindSamplerState(0, MaterialProxy.SamplerState, EShaderBindFlagBits::Pixel);
 
 			const uint32 DrawIndexCount = Batch.IndexCount > 0 ? Batch.IndexCount : IndexBuffer->GetIndexCount();
 			RenderCommand::DrawIndexedInstanced(DrawIndexCount, Batch.InstanceCount, Batch.StartIndex, 0, 0);

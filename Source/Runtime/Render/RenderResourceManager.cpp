@@ -173,7 +173,7 @@ namespace
 		OutSource += "    float EmissiveFactor;\n";
 		OutSource += "};\n";
 
-		OutSource += "cbuffer MaterialGraphParameters : register(b3)\n";
+		OutSource += "cbuffer MaterialGraphParameters : register(b4)\n";
 		OutSource += "{\n";
 		OutSource += "    float4 GraphParameterValues[16];\n";
 		OutSource += "};\n";
@@ -489,7 +489,8 @@ constexpr FPipelineTableEntry PipelineTable[] =
 	{ EPSOType::Particle_MeshOpaque, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default },
 	{ EPSOType::Particle_MeshTranslucent, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
 	{ EPSOType::Particle_MeshAdditive, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Additive, EDepthStencilState::ReadOnly },
-	{ EPSOType::Particle_Sprite, "Resources/Shader/ParticleSpriteShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly }
+	{ EPSOType::Particle_Sprite, "Resources/Shader/ParticleSpriteShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
+	{ EPSOType::SkeletalMesh_GBuffer, "Resources/Shader/SkeletalMeshGBufferShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default }
 };
 
 static_assert(sizeof(PipelineTable) / sizeof(PipelineTable[0]) == static_cast<size_t>(EPSOType::Count));
@@ -610,6 +611,16 @@ FShaderProgram* FRenderResourceManager::GetShadowDepthShaderProgram()
 	return nullptr;
 }
 
+FShaderProgram* FRenderResourceManager::GetSkeletalMeshGBufferShaderProgram(bool bGPUSkinning)
+{
+	const FString Key = FString("Resources/Shader/SkeletalMeshGBufferShader.hlsl") + (bGPUSkinning ? "#GPU" : "");
+	if (auto* Found = Get().ShaderProgramMap.Find(Key))
+	{
+		return Found->get();
+	}
+	return nullptr;
+}
+
 FShaderProgram* FRenderResourceManager::GetGPUSkinningShadowDepthShaderProgram()
 {
 	if (auto* Found = Get().ShaderProgramMap.Find("Resources/Shader/ShadowDepth.hlsl#GPU")) return Found->get();
@@ -627,7 +638,7 @@ FShaderProgram* FRenderResourceManager::GetForwardShaderProgram(EReflectionModel
 	return nullptr;
 }
 
-FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMaterial& Material, bool bDeferred, EReflectionModel Reflection, bool bUnlit, bool bGPUSkinning, FString& OutError)
+FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMaterial& Material, EPSOType TargetPSO, EReflectionModel Reflection, bool bUnlit, bool bGPUSkinning, FString& OutError)
 {
 	FString GeneratedSource;
 
@@ -639,13 +650,64 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 	const FString Hash = GetMaterialGraphHash(GeneratedSource);
 	const FString AssetId = GetMaterialGraphAssetId(Material);
 
-	const FString ShaderPath = bDeferred
-		? FString("Resources/Shader/StaticMeshGBufferShader.hlsl")
-		: FString("Resources/Shader/UberLit.hlsl");
+	FString ShaderPath;
+	FShaderProgram* BaseProgram = nullptr;
 
-	FShaderProgram* BaseProgram = bDeferred
-		? GetShaderProgram(ShaderPath)
-		: GetForwardShaderProgram(Reflection, EShadingModel::Phong, bGPUSkinning, bUnlit);
+	switch (TargetPSO)
+	{
+	case EPSOType::StaticMesh_Forward:
+		ShaderPath = "Resources/Shader/UberLit.hlsl";
+		BaseProgram = GetForwardShaderProgram(Reflection, EShadingModel::Phong, bGPUSkinning, bUnlit);
+		break;
+
+	case EPSOType::StaticMesh_GBuffer:
+		ShaderPath = "Resources/Shader/StaticMeshGBufferShader.hlsl";
+		BaseProgram = GetShaderProgram(ShaderPath);
+		break;
+
+	case EPSOType::StaticMesh_Translucent:
+		ShaderPath = "Resources/Shader/StaticMeshTranslucentShader.hlsl";
+		BaseProgram = GetTranslucentShaderProgram(bGPUSkinning);
+		break;
+
+	case EPSOType::Particle_AlphaBlend:
+	case EPSOType::Particle_Additive:
+		ShaderPath = "Resources/Shader/ParticleSubUVShader.hlsl";
+		break;
+
+	case EPSOType::Particle_Sprite:
+		ShaderPath = "Resources/Shader/ParticleSpriteShader.hlsl";
+		break;
+
+	case EPSOType::Particle_Instanced:
+		ShaderPath = "Resources/Shader/ParticleInstancedShader.hlsl";
+		break;
+
+	case EPSOType::Particle_GpuInstanced:
+		ShaderPath = "Resources/Shader/ParticleGpuInstancedShader.hlsl";
+		break;
+
+	case EPSOType::Particle_MeshOpaque:
+	case EPSOType::Particle_MeshTranslucent:
+	case EPSOType::Particle_MeshAdditive:
+		ShaderPath = "Resources/Shader/ParticleMeshInstancedShader.hlsl";
+		break;
+
+	case EPSOType::SkeletalMesh_GBuffer:
+		ShaderPath = "Resources/Shader/SkeletalMeshGBufferShader.hlsl";
+		BaseProgram = GetSkeletalMeshGBufferShaderProgram(bGPUSkinning);
+		break;
+
+	default:
+		OutError = "Unsupported Material Graph PSO.";
+		return nullptr;
+	}
+
+	if (!BaseProgram)
+	{
+		FPipelineState* Pipeline = GetPSO(TargetPSO);
+		BaseProgram = Pipeline ? Pipeline->Shader : nullptr;
+	}
 
 	if (!BaseProgram || !BaseProgram->VertexShader)
 	{
@@ -653,7 +715,7 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 		return nullptr;
 	}
 
-	FString Key = ShaderPath + "#MaterialGraph_" + Hash + (bDeferred ? "#Deferred" : "#Forward");
+	FString Key = ShaderPath + "#MaterialGraph_" + Hash + "#PSO_" + std::to_string(static_cast<uint8>(TargetPSO));
 
 	if (!bDeferred)
 	{
@@ -699,7 +761,7 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 	D3D_SHADER_MACRO Defines[5]{};
 	int32 DefineCount = 0;
 
-	if (!bDeferred)
+	if (TargetPSO == EPSOType::StaticMesh_Forward)
 	{
 		Defines[DefineCount++] = { bUnlit ? "VIEW_MODE_UNLIT" : "SHADING_MODEL_PHONG", "1" };
 

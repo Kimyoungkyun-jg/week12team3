@@ -23,6 +23,10 @@ StructuredBuffer<FParticleInstanceData> ParticleInstances : register(t1);
 Texture2D AtlasTexture : register(t0);
 SamplerState AtlasSampler : register(s0);
 
+#ifdef MATERIAL_GRAPH
+#include MATERIAL_GRAPH_INCLUDE
+#endif
+
 struct VS_INPUT
 {
 	float3 position : POSITION;
@@ -57,11 +61,19 @@ PS_INPUT mainVS(VS_INPUT input)
 float4 mainPS(PS_INPUT input) : SV_TARGET
 {
 	float hasTexture = input.extraParams.x;
-	float4 color = input.tintAndAlpha;
-	if (hasTexture > 0.5f)
-	{
-		color *= AtlasTexture.Sample(AtlasSampler, input.uv);
-	}
+    float4 color = input.tintAndAlpha;
+    if (hasTexture > 0.5f)
+    {
+        color *= AtlasTexture.Sample(ColorSampler, input.uv);
+    }
+
+#ifdef MATERIAL_GRAPH
+	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(input.uv);
+
+#ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
+	color *= GraphOutput.BaseColor;
+#endif
+#endif
 	float normalLen = length(input.worldNormal);
 	if (normalLen > 0.0001f)
 	{
@@ -70,5 +82,18 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
 		float shade = 0.75f + 0.25f * saturate(dot(n, lightDir) * 0.5f + 0.5f);
 		color.rgb *= shade;
 	}
+#ifdef MATERIAL_GRAPH
+	float3 GraphEmissive = float3(0, 0, 0);
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_COLOR
+	GraphEmissive = GraphOutput.EmissiveColor;
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR
+	GraphEmissive *= GraphOutput.EmissiveFactor;
+#endif
+
+	color.rgb += GraphEmissive;
+#endif
 	return color;
 }
