@@ -232,6 +232,7 @@ project "HitoriEditor"
 
 	dependson { "HitoriHeaderTool" }
 	prebuildcommands { HeaderTool .. ' Editor "' .. GeneratedDir .. '/Editor" "%{wks.location}/Source/Editor"' }
+	postbuildcommands { "{COPYFILE} %[%{wks.location}/Setup/PublishCrash.ps1] %[%{wks.location}/Build/Bin/" .. outputdir .. "/PublishCrash.ps1]" }
 
 	includedirs
 	{

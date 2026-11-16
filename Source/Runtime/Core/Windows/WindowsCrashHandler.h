@@ -2,5 +2,5 @@
 
 namespace WindowsCrashHandler
 {
-	void Install();
+void Install(const std::filesystem::path& ExecutablePath);
 }

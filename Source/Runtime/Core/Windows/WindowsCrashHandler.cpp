@@ -11,6 +11,8 @@
 namespace
 {
 	std::filesystem::path DumpPath;
+	std::wstring PowerShellPath;
+	std::wstring PublishCommandLine;
 	volatile LONG DumpStarted = 0;
 
 	void LogDumpError(const wchar_t* Operation, DWORD Error)
@@ -56,6 +58,25 @@ namespace
 
 		if (Written)
 		{
+			if (!PublishCommandLine.empty())
+			{
+				STARTUPINFOW StartupInfo{};
+				StartupInfo.cb = sizeof(StartupInfo);
+
+				PROCESS_INFORMATION ProcessInfo{};
+				if (CreateProcessW(
+						PowerShellPath.c_str(), PublishCommandLine.data(),
+						nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+						nullptr, nullptr, &StartupInfo, &ProcessInfo))
+				{
+					CloseHandle(ProcessInfo.hThread);
+					CloseHandle(ProcessInfo.hProcess);
+				}
+				else
+				{
+					LogDumpError(L"CreateProcessW (PublishCrash)", GetLastError());
+				}
+			}
 			OutputDebugStringW(L"[Hitori] Minidump written to:\n");
 			OutputDebugStringW(DumpPath.c_str());
 			OutputDebugStringW(L"\n");
@@ -70,10 +91,11 @@ namespace
 	}
 }
 
-void WindowsCrashHandler::Install()
+void WindowsCrashHandler::Install(const std::filesystem::path& ExecutablePath)
 {
 	std::error_code Error;
 	const auto CrashDir = std::filesystem::current_path(Error) / L"Saved" / L"Crashes";
+
 	if (Error)
 	{
 		OutputDebugStringW(L"[Hitori] Could not resolve the crash directory.\n");
@@ -97,5 +119,28 @@ void WindowsCrashHandler::Install()
 		unsigned(Time.wMilliseconds), GetCurrentProcessId());
 
 	DumpPath = CrashDir / FileName;
+
+	const auto ScriptPath = ExecutablePath.parent_path() / L"PublishCrash.ps1";
+
+	auto PdbPath = ExecutablePath;
+	PdbPath.replace_extension(L".pdb");
+
+	wchar_t SystemDirectory[MAX_PATH]{};
+	const UINT Length = GetSystemDirectoryW(SystemDirectory, MAX_PATH);
+
+	if (!ExecutablePath.empty() && Length > 0 && Length < MAX_PATH)
+	{
+		PowerShellPath = (std::filesystem::path(SystemDirectory) /
+			L"WindowsPowerShell\\v1.0\\powershell.exe")
+							 .wstring();
+
+		PublishCommandLine =
+			L"\"" + PowerShellPath +
+			L"\" -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File \"" +
+			ScriptPath.wstring() +
+			L"\" -DumpPath \"" + DumpPath.wstring() +
+			L"\" -PdbPath \"" + PdbPath.wstring() + L"\"";
+	}
+
 	SetUnhandledExceptionFilter(&HandleUnhandledException);
 }
