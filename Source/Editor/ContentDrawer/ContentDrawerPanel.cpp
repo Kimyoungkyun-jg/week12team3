@@ -33,6 +33,7 @@ FString SkeletonKeyFromPath(const std::filesystem::path& Path);
 #include "Render/SkeletalMesh.h"
 #include "Render/Mesh.h"
 #include "Render/Material.h"
+#include "Render/Texture2D.h"
 #include "Render/RenderCommand.h"
 #include "Math/MathUtility.h"
 #include "Components/LightComponent.h"
@@ -1556,6 +1557,122 @@ bool FContentDrawerPanel::DrawStaticMeshPicker(
 
 			ImGui::Separator();
 			ImGui::TextWrapped("%s", PreviewText.c_str());
+		}
+		ImGui::EndChild();
+
+		ImGui::EndCombo();
+	}
+
+	ImGui::EndGroup();
+	ImGui::PopID();
+	return bChanged;
+}
+
+bool FContentDrawerPanel::DrawTexturePicker(
+	const char* Label,
+	UTexture2D*& InOutTexture,
+	const char* NullLabel)
+{
+	bool bChanged = false;
+	const float InlineThumbSize = EditorUIScale::Px(64.0f);
+	const FString PreviewText =
+		(InOutTexture && !InOutTexture->GetPath().empty()) ? InOutTexture->GetPath() : FString(NullLabel);
+
+	ID3D11ShaderResourceView* SelectedSRV =
+		(InOutTexture && InOutTexture->GetResource()) ? InOutTexture->GetResource()->GetSRV() : nullptr;
+
+	ImGui::PushID(Label);
+
+	if (SelectedSRV)
+	{
+		ImGui::Image(reinterpret_cast<ImTextureID>(SelectedSRV), ImVec2(InlineThumbSize, InlineThumbSize));
+		if (ImGui::IsItemHovered())
+			ImGui::SetTooltip("%s", PreviewText.c_str());
+	}
+	else
+	{
+		ImGui::BeginDisabled(true);
+		ImGui::Button(NullLabel, ImVec2(InlineThumbSize, InlineThumbSize));
+		ImGui::EndDisabled();
+	}
+
+	ImGui::SameLine();
+	ImGui::BeginGroup();
+	ImGui::TextUnformatted(Label);
+	ImGui::SetNextItemWidth(-1.0f);
+	// 콤보 팝업의 자동 리사이즈와 가용 영역 계산이 매 프레임 순환하지 않도록 크기를 고정한다
+	ImGui::SetNextWindowSize(ImVec2(EditorUIScale::Px(500.0f), EditorUIScale::Px(260.0f)), ImGuiCond_Always);
+	ImGui::SetNextWindowSizeConstraints(
+		ImVec2(EditorUIScale::Px(420.0f), EditorUIScale::Px(220.0f)),
+		ImVec2(EditorUIScale::Px(760.0f), EditorUIScale::Px(460.0f)));
+
+	if (ImGui::BeginCombo("##TexturePicker", PreviewText.c_str()))
+	{
+		const ImVec2 Avail = ImGui::GetContentRegionAvail();
+		const float PreviewPaneWidth = std::floor(EditorUIScale::Px(176.0f));
+		const float Spacing = ImGui::GetStyle().ItemSpacing.x;
+		const float ListPaneWidth = std::floor(std::max(EditorUIScale::Px(200.0f), Avail.x - PreviewPaneWidth - Spacing));
+		const float PaneHeight = std::floor(std::max(EditorUIScale::Px(120.0f), Avail.y));
+
+		ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.45f, 0.30f, 0.38f, 1.00f));
+		if (ImGui::BeginChild("##TextureListPane", ImVec2(ListPaneWidth, PaneHeight), ImGuiChildFlags_Borders))
+		{
+			if (ImGui::Selectable(NullLabel, InOutTexture == nullptr, ImGuiSelectableFlags_NoAutoClosePopups))
+			{
+				InOutTexture = nullptr;
+				bChanged = true;
+			}
+			if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+				ImGui::CloseCurrentPopup();
+
+			const TArray<UTexture2D*> Candidates = EditorSort::CollectSorted<UTexture2D>(
+				TObjectIterator<UTexture2D>(),
+				[](const UTexture2D* Tex) { return Tex->GetPath(); },
+				[](const UTexture2D* Tex) { return !Tex->IsRetired() && !Tex->GetPath().empty(); });
+
+			for (UTexture2D* Candidate : Candidates)
+			{
+				const bool bSelected = (Candidate == InOutTexture);
+				ImGui::PushID(Candidate);
+				if (ImGui::Selectable(Candidate->GetPath().c_str(), bSelected, ImGuiSelectableFlags_NoAutoClosePopups))
+				{
+					InOutTexture = Candidate;
+					bChanged = true;
+				}
+				if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+					ImGui::CloseCurrentPopup();
+				if (bSelected && ImGui::IsWindowAppearing())
+					ImGui::SetScrollHereY();
+				ImGui::PopID();
+			}
+		}
+		ImGui::EndChild();
+		ImGui::PopStyleColor();
+
+		ImGui::SameLine();
+
+		if (ImGui::BeginChild("##TextureThumbPane", ImVec2(PreviewPaneWidth, PaneHeight), ImGuiChildFlags_Borders,
+			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+		{
+			const float LargeThumbSize = EditorUIScale::Px(136.0f);
+			const float PadX = std::max(0.0f, (ImGui::GetContentRegionAvail().x - LargeThumbSize) * 0.5f);
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + PadX);
+
+			if (SelectedSRV)
+			{
+				ImGui::Image(reinterpret_cast<ImTextureID>(SelectedSRV), ImVec2(LargeThumbSize, LargeThumbSize));
+			}
+			else
+			{
+				ImGui::BeginDisabled(true);
+				ImGui::Button(NullLabel, ImVec2(LargeThumbSize, LargeThumbSize));
+				ImGui::EndDisabled();
+			}
+
+			ImGui::Separator();
+			ImGui::TextWrapped("%s", PreviewText.c_str());
+			if (InOutTexture)
+				ImGui::TextDisabled("%u x %u", InOutTexture->GetWidth(), InOutTexture->GetHeight());
 		}
 		ImGui::EndChild();
 

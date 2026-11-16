@@ -16,6 +16,7 @@ class AStaticMeshActor;
 class UMaterial;
 class UMaterialInterface;
 class UStaticMesh;
+class UTexture2D;
 
 class FContentDrawerPanel : public IEditorPanel
 {
@@ -36,6 +37,10 @@ public:
 		const char* Label,
 		UStaticMesh*& InOutMesh,
 		const char* NullLabel = "(None)");
+	static bool DrawTexturePicker(
+		const char* Label,
+		UTexture2D*& InOutTexture,
+		const char* NullLabel = "None");
 	static void InvalidateMaterialThumbnail(const FString& Path);
 
 	// .widget 파일을 더블클릭하면 불린다 (UI 에디터가 연다).

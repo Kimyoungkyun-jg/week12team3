@@ -6,6 +6,8 @@
 namespace
 {
 	constexpr uint32 CurveLookupSampleCount = 128;
+	bool bOptimizeParticleLookupTables = true;
+	float ParticleLookupOptimizeErrorThreshold = 0.05f;
 
 	UCurveFloat* CreateFlatCurve(UObject* Outer, float Value)
 	{
@@ -25,6 +27,164 @@ namespace
 		if (Random)
 			return Random->Range(A, B);
 		return (A + B) * 0.5f;
+	}
+
+	float ComputeVector4Distance(const FVector4& A, const FVector4& B, uint32 ActiveComponents)
+	{
+		const float DX = A.X - B.X;
+		float SumSq = DX * DX;
+		if (ActiveComponents >= 2)
+		{
+			const float DY = A.Y - B.Y;
+			SumSq += DY * DY;
+		}
+		if (ActiveComponents >= 3)
+		{
+			const float DZ = A.Z - B.Z;
+			SumSq += DZ * DZ;
+		}
+		if (ActiveComponents >= 4)
+		{
+			const float DW = A.W - B.W;
+			SumSq += DW * DW;
+		}
+		return std::sqrt(SumSq);
+	}
+
+	FVector4 SampleVector4Array(const TArray<FVector4>& Samples, float NormalizedT)
+	{
+		const uint32 Count = static_cast<uint32>(Samples.Num());
+		if (Count == 0)
+			return FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+		if (Count == 1)
+			return Samples[0];
+
+		const float ClampedT = std::clamp(NormalizedT, 0.0f, 1.0f);
+		const float Scaled = ClampedT * static_cast<float>(Count - 1);
+		const uint32 Idx0 = std::clamp(static_cast<uint32>(Scaled), 0u, Count - 1u);
+		const uint32 Idx1 = std::min(Idx0 + 1u, Count - 1u);
+		const float Frac = Scaled - static_cast<float>(Idx0);
+		const FVector4& A = Samples[Idx0];
+		const FVector4& B = Samples[Idx1];
+		return FVector4(
+			A.X + (B.X - A.X) * Frac,
+			A.Y + (B.Y - A.Y) * Frac,
+			A.Z + (B.Z - A.Z) * Frac,
+			A.W + (B.W - A.W) * Frac);
+	}
+
+	void SampleLookupEntryPair(
+		const FParticleDistributionLookupTable& Table,
+		float NormalizedT,
+		TArray<float>& OutEntry)
+	{
+		OutEntry.SetNum(Table.EntryStride);
+		if (Table.EntryStride == 0 || Table.EntryCount == 0 || Table.Values.IsEmpty())
+		{
+			for (uint32 i = 0; i < Table.EntryStride; ++i)
+				OutEntry[i] = 0.0f;
+			return;
+		}
+
+		const float ClampedT = std::clamp(NormalizedT, 0.0f, 1.0f);
+		const float Scaled = std::clamp(
+			ClampedT * Table.TimeScale + Table.TimeBias,
+			0.0f,
+			static_cast<float>(Table.EntryCount - 1));
+		const uint32 Idx0 = static_cast<uint32>(Scaled);
+		const uint32 Idx1 = std::min(Idx0 + 1u, Table.EntryCount - 1u);
+		const float Frac = Scaled - static_cast<float>(Idx0);
+		const uint32 Base0 = Idx0 * Table.EntryStride;
+		const uint32 Base1 = Idx1 * Table.EntryStride;
+		for (uint32 i = 0; i < Table.EntryStride; ++i)
+			OutEntry[i] = Table.Values[Base0 + i] + (Table.Values[Base1 + i] - Table.Values[Base0 + i]) * Frac;
+	}
+
+	void ResampleLookupTable(
+		const FParticleDistributionLookupTable& Source,
+		uint32 SampleCount,
+		FParticleDistributionLookupTable& OutTable)
+	{
+		OutTable.Op = Source.Op;
+		OutTable.EntryCount = SampleCount;
+		OutTable.EntryStride = Source.EntryStride;
+		OutTable.SubEntryStride = Source.SubEntryStride;
+		OutTable.TimeScale = SampleCount > 1 ? static_cast<float>(SampleCount - 1) : 0.0f;
+		OutTable.TimeBias = 0.0f;
+		OutTable.Values.SetNum(SampleCount * Source.EntryStride);
+
+		TArray<float> Sampled;
+		for (uint32 i = 0; i < SampleCount; ++i)
+		{
+			const float T = SampleCount > 1 ? static_cast<float>(i) / static_cast<float>(SampleCount - 1) : 0.0f;
+			SampleLookupEntryPair(Source, T, Sampled);
+			const uint32 Base = i * Source.EntryStride;
+			for (uint32 k = 0; k < Source.EntryStride; ++k)
+				OutTable.Values[Base + k] = Sampled[k];
+		}
+	}
+
+	float ComputeLookupTableError(
+		const FParticleDistributionLookupTable& Candidate,
+		const FParticleDistributionLookupTable& Reference)
+	{
+		const uint32 CheckCount = std::max(Candidate.EntryCount, Reference.EntryCount);
+		if (CheckCount == 0 || Reference.EntryStride == 0)
+			return 0.0f;
+
+		const uint32 VecComponents = (Reference.SubEntryStride > 0 && Reference.SubEntryStride <= Reference.EntryStride)
+			? Reference.SubEntryStride
+			: Reference.EntryStride;
+		const bool bHasSecondSub = Reference.EntryStride >= VecComponents * 2u;
+
+		TArray<float> ValCand;
+		TArray<float> ValRef;
+		float MaxError = 0.0f;
+		for (uint32 i = 0; i < CheckCount; ++i)
+		{
+			const float T = CheckCount > 1 ? static_cast<float>(i) / static_cast<float>(CheckCount - 1) : 0.0f;
+			SampleLookupEntryPair(Candidate, T, ValCand);
+			SampleLookupEntryPair(Reference, T, ValRef);
+
+			float SumSq0 = 0.0f;
+			for (uint32 c = 0; c < VecComponents; ++c)
+			{
+				const float D = ValCand[c] - ValRef[c];
+				SumSq0 += D * D;
+			}
+			MaxError = std::max(MaxError, std::sqrt(SumSq0));
+
+			if (bHasSecondSub)
+			{
+				float SumSq1 = 0.0f;
+				for (uint32 c = 0; c < VecComponents; ++c)
+				{
+					const float D = ValCand[VecComponents + c] - ValRef[VecComponents + c];
+					SumSq1 += D * D;
+				}
+				MaxError = std::max(MaxError, std::sqrt(SumSq1));
+			}
+		}
+		return MaxError;
+	}
+
+	void OptimizeLookupTable(FParticleDistributionLookupTable& InOutTable, float ErrorThreshold)
+	{
+		if (InOutTable.EntryCount <= 1 || InOutTable.EntryStride == 0)
+			return;
+
+		const FParticleDistributionLookupTable Original = InOutTable;
+		const uint32 MaxCount = Original.EntryCount;
+		FParticleDistributionLookupTable Candidate;
+		for (uint32 SampleCount = 1; SampleCount < MaxCount; SampleCount <<= 1)
+		{
+			ResampleLookupTable(Original, SampleCount, Candidate);
+			if (ComputeLookupTableError(Candidate, Original) < ErrorThreshold)
+			{
+				InOutTable = std::move(Candidate);
+				return;
+			}
+		}
 	}
 }
 
@@ -174,6 +334,8 @@ const FParticleDistributionLookupTable& UDistributionFloat::EnsureLookupTable() 
 	{
 		LookupTable = FParticleDistributionLookupTable{};
 		BuildLookupTable(LookupTable);
+		if (bOptimizeParticleLookupTables && LookupTable.EntryCount > 1)
+			OptimizeLookupTable(LookupTable, ParticleLookupOptimizeErrorThreshold);
 		bLookupDirty = false;
 	}
 	return LookupTable;
@@ -420,6 +582,8 @@ const FParticleDistributionLookupTable& UDistributionVector::EnsureLookupTable()
 	{
 		LookupTable = FParticleDistributionLookupTable{};
 		BuildLookupTable(LookupTable);
+		if (bOptimizeParticleLookupTables && LookupTable.EntryCount > 1)
+			OptimizeLookupTable(LookupTable, ParticleLookupOptimizeErrorThreshold);
 		bLookupDirty = false;
 	}
 	return LookupTable;
@@ -813,4 +977,66 @@ UDistributionVector* ConvertVectorDistributionMode(UObject* Outer, UDistribution
 	}
 	Next->InvalidateLookupTable();
 	return Next;
+}
+
+bool IsParticleLookupOptimizationEnabled()
+{
+	return bOptimizeParticleLookupTables;
+}
+
+void SetParticleLookupOptimizationEnabled(bool bEnable)
+{
+	bOptimizeParticleLookupTables = bEnable;
+}
+
+float GetParticleLookupOptimizeErrorThreshold()
+{
+	return ParticleLookupOptimizeErrorThreshold;
+}
+
+void SetParticleLookupOptimizeErrorThreshold(float ErrorThreshold)
+{
+	if (std::isfinite(ErrorThreshold))
+		ParticleLookupOptimizeErrorThreshold = std::clamp(ErrorThreshold, 0.0001f, 1.0f);
+}
+
+void OptimizeCurveAtlasSamples(
+	const TArray<FVector4>& FullSamples,
+	uint32 ActiveComponents,
+	TArray<FVector4>& OutSamples)
+{
+	const uint32 FullCount = static_cast<uint32>(FullSamples.Num());
+	if (!bOptimizeParticleLookupTables || FullCount <= 1)
+	{
+		OutSamples = FullSamples;
+		return;
+	}
+
+	const uint32 CompCount = std::clamp<uint32>(ActiveComponents, 1u, 4u);
+	TArray<FVector4> Candidate;
+	for (uint32 SampleCount = 1; SampleCount < FullCount; SampleCount <<= 1)
+	{
+		Candidate.SetNum(SampleCount);
+		for (uint32 k = 0; k < SampleCount; ++k)
+		{
+			const float T = SampleCount > 1 ? static_cast<float>(k) / static_cast<float>(SampleCount - 1) : 0.0f;
+			Candidate[k] = SampleVector4Array(FullSamples, T);
+		}
+
+		float MaxError = 0.0f;
+		for (uint32 i = 0; i < FullCount; ++i)
+		{
+			const float T = FullCount > 1 ? static_cast<float>(i) / static_cast<float>(FullCount - 1) : 0.0f;
+			const FVector4 Approx = SampleVector4Array(Candidate, T);
+			MaxError = std::max(MaxError, ComputeVector4Distance(Approx, FullSamples[i], CompCount));
+		}
+
+		if (MaxError < ParticleLookupOptimizeErrorThreshold)
+		{
+			OutSamples = std::move(Candidate);
+			return;
+		}
+	}
+
+	OutSamples = FullSamples;
 }

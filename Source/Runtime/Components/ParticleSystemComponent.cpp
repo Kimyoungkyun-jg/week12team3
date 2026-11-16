@@ -691,7 +691,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 				for (const FGpuParticle& Spawn : Emitter.PendingGpuSpawns)
 				{
 					ExpandParticleBox(Emitter.GpuTrailBoundsCurr, Emitter.bHasGpuTrailBoundsCurr,
-						Spawn.Position - SpawnPad, Spawn.Position + SpawnPad);
+						Spawn.Position - SpawnPad, Spawn.Position + SpawnPad); // 이전에 남긴 파티클 궤적(Trail) 범위를 누적 기록
 				}
 			}
 

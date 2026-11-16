@@ -1176,33 +1176,10 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 	case EMaterialExpressionType::TextureSample:
 	{
 		UTexture2D* Current = Selected->TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Selected->TexturePath);
-		const FString CurrentName = Current ? Current->GetPath() : FString("None");
-
-		if (ImGui::BeginCombo("Texture", CurrentName.c_str()))
+		if (FContentDrawerPanel::DrawTexturePicker("Texture", Current, "None"))
 		{
-			if (ImGui::Selectable("None", Current == nullptr))
-			{
-				Selected->TexturePath.clear();
-				MarkMaterialChanged();
-			}
-
-			for (TObjectIterator<UTexture2D> It; It; ++It)
-			{
-				UTexture2D* Texture = *It;
-
-				if (!Texture || Texture->IsRetired() || Texture->GetPath().empty())
-				{
-					continue;
-				}
-
-				if (ImGui::Selectable(Texture->GetPath().c_str(), Current == Texture))
-				{
-					Selected->TexturePath = Texture->GetPath();
-					MarkMaterialChanged();
-				}
-			}
-
-			ImGui::EndCombo();
+			Selected->TexturePath = Current ? Current->GetPath() : FString();
+			MarkMaterialChanged();
 		}
 		break;
 	}
@@ -1254,8 +1231,14 @@ void FMaterialEditorPanel::DrawPreview()
 void FMaterialEditorPanel::DrawMaterialGraph(UMaterial& Material)
 {
 	const ImVec2 Available = ImGui::GetContentRegionAvail();
+	const float DpiScale = std::max(0.01f, EditorUIScale::Px(1.0f));
+	const float SplitterSize = EditorUIScale::Px(6.0f);
 	const float PaletteWidth = EditorUIScale::Px(190.0f);
-	const float DetailsWidth = EditorUIScale::Px(280.0f);
+	const float MinCanvasWidth = EditorUIScale::Px(180.0f);
+	const float MinDetailsWidth = EditorUIScale::Px(200.0f);
+	const float MaxDetailsWidth = std::max(MinDetailsWidth, Available.x - PaletteWidth - MinCanvasWidth - SplitterSize);
+	const float DetailsWidth = std::clamp(EditorUIScale::Px(RightPanelWidth), MinDetailsWidth, MaxDetailsWidth);
+	const float CanvasWidth = std::max(1.0f, Available.x - PaletteWidth - DetailsWidth - SplitterSize);
 
 	ImGui::BeginChild("MaterialPalette", { PaletteWidth, Available.y }, ImGuiChildFlags_Borders);
 	DrawMaterialGraphPalette(Material);
@@ -1263,19 +1246,74 @@ void FMaterialEditorPanel::DrawMaterialGraph(UMaterial& Material)
 
 	ImGui::SameLine(0, 0);
 
-	ImGui::BeginChild("MaterialGraphCanvas", { std::max(1.0f, Available.x - PaletteWidth - DetailsWidth), Available.y }, ImGuiChildFlags_Borders);
+	ImGui::BeginChild("MaterialGraphCanvas", { CanvasWidth, Available.y }, ImGuiChildFlags_Borders);
 	DrawMaterialGraphCanvas(Material);
 	ImGui::EndChild();
 
 	ImGui::SameLine(0, 0);
 
+	// 오른쪽 프리뷰와 디테일 영역 폭을 드래그로 조절한다
+	ImGui::InvisibleButton("##MaterialRightSplitter", ImVec2(SplitterSize, Available.y));
+	const bool bHorizSplitterActive = ImGui::IsItemActive();
+	const bool bHorizSplitterHovered = ImGui::IsItemHovered();
+	if (bHorizSplitterHovered || bHorizSplitterActive)
+	{
+		ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+	}
+	if (bHorizSplitterActive)
+	{
+		RightPanelWidth = std::clamp(
+			(DetailsWidth - ImGui::GetIO().MouseDelta.x) / DpiScale,
+			MinDetailsWidth / DpiScale,
+			MaxDetailsWidth / DpiScale);
+	}
+	{
+		const ImVec2 MinPos = ImGui::GetItemRectMin();
+		const ImVec2 MaxPos = ImGui::GetItemRectMax();
+		const ImU32 SplitCol = (bHorizSplitterActive || bHorizSplitterHovered)
+			? IM_COL32(190, 120, 155, 255)
+			: IM_COL32(70, 70, 76, 180);
+		ImGui::GetWindowDrawList()->AddRectFilled(MinPos, MaxPos, SplitCol);
+	}
+
+	ImGui::SameLine(0, 0);
+
 	ImGui::BeginChild("MaterialRightPanel", { DetailsWidth, Available.y }, ImGuiChildFlags_Borders);
 
-	const float PreviewHeight = Available.y * 0.45f;
+	const ImVec2 RightAvail = ImGui::GetContentRegionAvail();
+	const float MinPaneH = EditorUIScale::Px(80.0f);
+	const float UsableH = std::max(MinPaneH * 2.0f, RightAvail.y - SplitterSize);
+	const float PreviewHeight = std::clamp(UsableH * PreviewSplitRatio, MinPaneH, std::max(MinPaneH, UsableH - MinPaneH));
 
 	ImGui::BeginChild("MaterialPreview", { 0.0f, PreviewHeight }, ImGuiChildFlags_Borders);
 	DrawPreview();
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 	ImGui::EndChild();
+
+	// 프리뷰와 노드 디테일 높이 비율을 드래그로 조절한다
+	ImGui::InvisibleButton("##MaterialPreviewSplitter", ImVec2(-1.0f, SplitterSize));
+	const bool bVertSplitterActive = ImGui::IsItemActive();
+	const bool bVertSplitterHovered = ImGui::IsItemHovered();
+	if (bVertSplitterHovered || bVertSplitterActive)
+	{
+		ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+	}
+	if (bVertSplitterActive)
+	{
+		PreviewSplitRatio = std::clamp(
+			(PreviewHeight + ImGui::GetIO().MouseDelta.y) / std::max(1.0f, UsableH),
+			0.15f,
+			0.85f);
+	}
+	{
+		const ImVec2 MinPos = ImGui::GetItemRectMin();
+		const ImVec2 MaxPos = ImGui::GetItemRectMax();
+		const ImU32 SplitCol = (bVertSplitterActive || bVertSplitterHovered)
+			? IM_COL32(190, 120, 155, 255)
+			: IM_COL32(70, 70, 76, 180);
+		ImGui::GetWindowDrawList()->AddRectFilled(MinPos, MaxPos, SplitCol);
+	}
+	ImGui::PopStyleVar();
 
 	ImGui::BeginChild("MaterialNodeDetails", { 0.0f, 0.0f }, ImGuiChildFlags_Borders);
 	DrawMaterialGraphDetails(Material);
@@ -1408,6 +1446,13 @@ void FMaterialEditorPanel::OnRender()
 	}
 	else if (UMaterialInstance* Instance = Cast<UMaterialInstance>(Asset))
 	{
+		const ImVec2 InstanceAvail = ImGui::GetContentRegionAvail();
+		const float SplitterSize = EditorUIScale::Px(6.0f);
+		const float MinPaneH = EditorUIScale::Px(90.0f);
+		const float UsableH = std::max(MinPaneH * 2.0f, InstanceAvail.y - SplitterSize);
+		const float DetailsHeight = std::clamp(UsableH * (1.0f - PreviewSplitRatio), MinPaneH, std::max(MinPaneH, UsableH - MinPaneH));
+
+		ImGui::BeginChild("MaterialInstanceDetails", { 0.0f, DetailsHeight }, ImGuiChildFlags_Borders);
 		ImGui::TextUnformatted("Material Instance");
 		ImGui::Text("Parent: %s", Instance->GetParent() ? Instance->GetParent()->GetPath().c_str() : "None");
 
@@ -1548,7 +1593,36 @@ void FMaterialEditorPanel::OnRender()
 			}
 		}
 
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+		ImGui::EndChild();
+
+		ImGui::InvisibleButton("##InstancePreviewSplitter", ImVec2(-1.0f, SplitterSize));
+		const bool bInstSplitterActive = ImGui::IsItemActive();
+		const bool bInstSplitterHovered = ImGui::IsItemHovered();
+		if (bInstSplitterHovered || bInstSplitterActive)
+		{
+			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+		}
+		if (bInstSplitterActive)
+		{
+			PreviewSplitRatio = std::clamp(
+				1.0f - (DetailsHeight + ImGui::GetIO().MouseDelta.y) / std::max(1.0f, UsableH),
+				0.15f,
+				0.85f);
+		}
+		{
+			const ImVec2 MinPos = ImGui::GetItemRectMin();
+			const ImVec2 MaxPos = ImGui::GetItemRectMax();
+			const ImU32 SplitCol = (bInstSplitterActive || bInstSplitterHovered)
+				? IM_COL32(190, 120, 155, 255)
+				: IM_COL32(70, 70, 76, 180);
+			ImGui::GetWindowDrawList()->AddRectFilled(MinPos, MaxPos, SplitCol);
+		}
+		ImGui::PopStyleVar();
+
+		ImGui::BeginChild("MaterialInstancePreview", { 0.0f, 0.0f }, ImGuiChildFlags_Borders);
 		DrawPreview();
+		ImGui::EndChild();
 	}
 
 	if (bMaterialThumbnailDirty && !ImGui::IsMouseDown(ImGuiMouseButton_Left))

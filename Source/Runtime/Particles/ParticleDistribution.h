@@ -2,6 +2,7 @@
 
 #include "UObject/Object.h"
 #include "Math/Vector.h"
+#include "Math/Vector4.h"
 #include "Math/Color.h"
 #include "Containers/Array.h"
 #include "Containers/Map.h"
@@ -326,3 +327,13 @@ UDistributionFloat* CreateFloatDistributionByMode(UObject* Outer, int32 ModeInde
 UDistributionVector* CreateVectorDistributionByMode(UObject* Outer, int32 ModeIndex, const FVector& InitialValue);
 UDistributionFloat* ConvertFloatDistributionMode(UObject* Outer, UDistributionFloat* Current, int32 NewModeIndex);
 UDistributionVector* ConvertVectorDistributionMode(UObject* Outer, UDistributionVector* Current, int32 NewModeIndex);
+
+// 전역 룩업 테이블 최적화 설정과 샘플 축소 유틸리티
+bool IsParticleLookupOptimizationEnabled();
+void SetParticleLookupOptimizationEnabled(bool bEnable);
+float GetParticleLookupOptimizeErrorThreshold();
+void SetParticleLookupOptimizeErrorThreshold(float ErrorThreshold);
+void OptimizeCurveAtlasSamples(
+	const TArray<FVector4>& FullSamples,
+	uint32 ActiveComponents,
+	TArray<FVector4>& OutSamples);

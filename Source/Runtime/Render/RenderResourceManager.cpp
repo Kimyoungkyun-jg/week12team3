@@ -4,6 +4,7 @@
 #include "RenderCommand.h"
 
 #include "RenderUtil.h"
+#include "Render/ParticleCurveTexture.h"
 #include "Render/Material.h"
 #include "Render/MaterialRenderProxy.h"
 #include "Asset/AssetManager.h"

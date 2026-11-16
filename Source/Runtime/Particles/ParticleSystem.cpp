@@ -39,11 +39,22 @@ namespace
 		}
 		TArray<FVector> VecSamples;
 		Dist->SampleCurveVectors(FParticleCurveTexture::CurveSampleWidth, VecSamples);
-		TArray<FVector4> Samples;
-		Samples.SetNum(VecSamples.Num());
+		TArray<FVector4> RawSamples;
+		RawSamples.SetNum(VecSamples.Num());
 		for (int32 i = 0; i < VecSamples.Num(); ++i)
-			Samples[i] = FVector4(VecSamples[i].X, VecSamples[i].Y, VecSamples[i].Z, 1.0f);
-		OutChannel.AtlasHandle = FParticleCurveTexture::Get().AllocateCurve(Samples);
+			RawSamples[i] = FVector4(VecSamples[i].X, VecSamples[i].Y, VecSamples[i].Z, 1.0f);
+		TArray<FVector4> OptimizedSamples;
+		OptimizeCurveAtlasSamples(RawSamples, 3, OptimizedSamples);
+		if (OptimizedSamples.Num() <= 1)
+		{
+			const FVector4 ConstVal = OptimizedSamples.IsEmpty() ? FVector4(1.0f, 1.0f, 1.0f, 1.0f) : OptimizedSamples[0];
+			OutChannel.Mode = 1;
+			OutChannel.ConstantValue = ConstVal;
+			OutChannel.ValueScale = ConstVal;
+			OutChannel.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+			return;
+		}
+		OutChannel.AtlasHandle = FParticleCurveTexture::Get().AllocateCurve(OptimizedSamples);
 		OutChannel.Mode = OutChannel.AtlasHandle.IsValid() ? 2 : 0;
 		OutChannel.ValueScale = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
 		OutChannel.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -67,11 +78,22 @@ namespace
 		}
 		TArray<float> FloatSamples;
 		Dist->SampleCurveValues(FParticleCurveTexture::CurveSampleWidth, FloatSamples);
-		TArray<FVector4> Samples;
-		Samples.SetNum(FloatSamples.Num());
+		TArray<FVector4> RawSamples;
+		RawSamples.SetNum(FloatSamples.Num());
 		for (int32 i = 0; i < FloatSamples.Num(); ++i)
-			Samples[i] = FVector4(FloatSamples[i], FloatSamples[i], FloatSamples[i], FloatSamples[i]);
-		OutChannel.AtlasHandle = FParticleCurveTexture::Get().AllocateCurve(Samples);
+			RawSamples[i] = FVector4(FloatSamples[i], FloatSamples[i], FloatSamples[i], FloatSamples[i]);
+		TArray<FVector4> OptimizedSamples;
+		OptimizeCurveAtlasSamples(RawSamples, 1, OptimizedSamples);
+		if (OptimizedSamples.Num() <= 1)
+		{
+			const FVector4 ConstVal = OptimizedSamples.IsEmpty() ? FVector4(1.0f, 1.0f, 1.0f, 1.0f) : OptimizedSamples[0];
+			OutChannel.Mode = 1;
+			OutChannel.ConstantValue = ConstVal;
+			OutChannel.ValueScale = ConstVal;
+			OutChannel.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+			return;
+		}
+		OutChannel.AtlasHandle = FParticleCurveTexture::Get().AllocateCurve(OptimizedSamples);
 		OutChannel.Mode = OutChannel.AtlasHandle.IsValid() ? 2 : 0;
 		OutChannel.ValueScale = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
 		OutChannel.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -448,15 +470,26 @@ void UParticleModuleColorOverLife::CompileModules(FParticleEmitterBuildInfo& Out
 	else
 		ColorSamples.Init(FVector::OneVector, Count);
 
-	TArray<FVector4> Samples;
-	Samples.SetNum(Count);
+	TArray<FVector4> RawSamples;
+	RawSamples.SetNum(Count);
 	for (uint32 i = 0; i < Count; ++i)
 	{
 		const float T = Count > 1 ? static_cast<float>(i) / static_cast<float>(Count - 1) : 0.0f;
 		const FVector& C = ColorSamples[i];
-		Samples[i] = FVector4(C.X, C.Y, C.Z, EvaluateAlphaScale(T, nullptr));
+		RawSamples[i] = FVector4(C.X, C.Y, C.Z, EvaluateAlphaScale(T, nullptr));
 	}
-	OutBuildInfo.ColorOverLife.AtlasHandle = FParticleCurveTexture::Get().AllocateCurve(Samples);
+	TArray<FVector4> OptimizedSamples;
+	OptimizeCurveAtlasSamples(RawSamples, 4, OptimizedSamples);
+	if (OptimizedSamples.Num() <= 1)
+	{
+		const FVector4 ConstVal = OptimizedSamples.IsEmpty() ? FVector4(1.0f, 1.0f, 1.0f, 1.0f) : OptimizedSamples[0];
+		OutBuildInfo.ColorOverLife.Mode = 1;
+		OutBuildInfo.ColorOverLife.ConstantValue = ConstVal;
+		OutBuildInfo.ColorOverLife.ValueScale = ConstVal;
+		OutBuildInfo.ColorOverLife.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+		return;
+	}
+	OutBuildInfo.ColorOverLife.AtlasHandle = FParticleCurveTexture::Get().AllocateCurve(OptimizedSamples);
 	OutBuildInfo.ColorOverLife.Mode = OutBuildInfo.ColorOverLife.AtlasHandle.IsValid() ? 2 : 0;
 	OutBuildInfo.ColorOverLife.ValueScale = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
 	OutBuildInfo.ColorOverLife.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);

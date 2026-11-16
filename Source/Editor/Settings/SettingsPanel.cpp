@@ -16,6 +16,9 @@
 #include "Editor/EditorUI/EditorSort.h"
 #include "UObject/UObjectIterator.h"
 #include "UObject/UObjectHash.h"
+#include "Particles/ParticleDistribution.h"
+#include "Particles/ParticleSystem.h"
+#include "Render/ParticleCurveTexture.h"
 
 namespace
 {
@@ -45,6 +48,7 @@ FSettingsPanel::~FSettingsPanel()
 bool FSettingsPanel::Init()
 {
 	LoadSettings();
+	ApplyParticleSettings();
 	return true;
 }
 
@@ -129,6 +133,10 @@ void FSettingsPanel::OnRender()
 
 	//////////////////////////////////////////////////////////
 	DrawShadowMapSettings();
+	//////////////////////////////////////////////////////////
+
+	//////////////////////////////////////////////////////////
+	DrawParticleSettings();
 	//////////////////////////////////////////////////////////
 
 	//////////////////////////////////////////////////////////
@@ -267,6 +275,11 @@ bool FSettingsPanel::SaveSettings() const
 	File << "DirectionalShadowMapSizeLevel=" << Settings.DirectionalShadowMapSizeLevel << '\n';
 	File << "PointShadowMapSizeLevel=" << Settings.PointShadowMapSizeLevel << '\n';
 	File << "SpotShadowMapSizeLevel=" << Settings.SpotShadowMapSizeLevel << '\n';
+	File << "\n";
+
+	File << "[Particles]\n";
+	File << "OptimizeLookupTable=" << (Settings.bOptimizeParticleLookupTable ? 1 : 0) << '\n';
+	File << "LookupErrorThreshold=" << Settings.ParticleLookupErrorThreshold << '\n';
 
     File.close();
 	return true;
@@ -469,6 +482,16 @@ bool FSettingsPanel::LoadSettings()
 				{
 					Settings.SpotShadowMapSizeLevel = std::stoi(ValueStr);
 				}
+				else if (Key == "OptimizeLookupTable")
+				{
+					Settings.bOptimizeParticleLookupTable = std::stoi(ValueStr) != 0;
+				}
+				else if (Key == "LookupErrorThreshold")
+				{
+					const float Parsed = std::stof(ValueStr);
+					if (std::isfinite(Parsed))
+						Settings.ParticleLookupErrorThreshold = FMath::Clamp(Parsed, 0.0001f, 1.0f);
+				}
 			}
 		}
 	}
@@ -510,7 +533,9 @@ bool FSettingsPanel::LoadSettings()
 	Settings.DirectionalShadowMapSizeLevel = FMath::Clamp(Settings.DirectionalShadowMapSizeLevel, 0, 4);
 	Settings.PointShadowMapSizeLevel = FMath::Clamp(Settings.PointShadowMapSizeLevel, 0, 4);
 	Settings.SpotShadowMapSizeLevel = FMath::Clamp(Settings.SpotShadowMapSizeLevel, 0, 4);
+	Settings.ParticleLookupErrorThreshold = FMath::Clamp(Settings.ParticleLookupErrorThreshold, 0.0001f, 1.0f);
 	ApplyViewportSettings();
+	ApplyParticleSettings();
 	return true;
 }
 
@@ -611,5 +636,61 @@ void FSettingsPanel::DrawShadowMapSettings()
 	ImGui::SetNextItemWidth(EditorUIScale::Px(200.0f));
 	if (ImGui::Combo("Shadow Filter", &PcfModeIndex, PcfModes, IM_ARRAYSIZE(PcfModes)))
 		Settings.PcfMode = static_cast<EPcfMode>(PcfModeIndex);
+}
+
+void FSettingsPanel::DrawParticleSettings()
+{
+	ImGui::Dummy(ImVec2(0.0f, EditorUIScale::Px(SectionGap)));
+	ImGui::SeparatorText("Particles");
+
+	bool bChanged = ImGui::Checkbox("Optimize Lookup Table", &Settings.bOptimizeParticleLookupTable);
+
+	ImGui::BeginDisabled(!Settings.bOptimizeParticleLookupTable);
+	ImGui::SetNextItemWidth(EditorUIScale::Px(200.0f));
+	bChanged |= ImGui::SliderFloat(
+		"Error Threshold",
+		&Settings.ParticleLookupErrorThreshold,
+		0.001f,
+		0.25f,
+		"%.4f",
+		ImGuiSliderFlags_AlwaysClamp);
+	ImGui::EndDisabled();
+
+	if (bChanged)
+		ApplyParticleSettings();
+
+	const FParticleCurveTexture& CurveAtlas = FParticleCurveTexture::Get();
+	const uint32 UsedTexels = CurveAtlas.GetUsedTexels();
+	const uint32 TotalTexels = std::max(1u, CurveAtlas.GetTotalTexels());
+	const float UsageRatio = static_cast<float>(UsedTexels) / static_cast<float>(TotalTexels);
+	ImGui::ProgressBar(UsageRatio, ImVec2(EditorUIScale::Px(200.0f), 0.0f));
+	ImGui::TextDisabled(
+		"Curve Atlas: %u / %u texels (%.2f%%), %u curves",
+		UsedTexels,
+		TotalTexels,
+		UsageRatio * 100.0f,
+		CurveAtlas.GetActiveCurveCount());
+}
+
+void FSettingsPanel::ApplyParticleSettings() const
+{
+	SetParticleLookupOptimizationEnabled(Settings.bOptimizeParticleLookupTable);
+	SetParticleLookupOptimizeErrorThreshold(Settings.ParticleLookupErrorThreshold);
+
+	for (TObjectIterator<UDistributionFloat> It; It; ++It)
+	{
+		if (*It)
+			It->InvalidateLookupTable();
+	}
+	for (TObjectIterator<UDistributionVector> It; It; ++It)
+	{
+		if (*It)
+			It->InvalidateLookupTable();
+	}
+	for (TObjectIterator<UParticleLODLevel> It; It; ++It)
+	{
+		if (*It)
+			It->MarkBuildDirty();
+	}
 }
 
