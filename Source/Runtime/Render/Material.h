@@ -19,6 +19,53 @@ enum class EMaterialParamLayout
 	ParticleSprite
 };
 
+enum class EMaterialExpressionType : uint8
+{
+	Constant,
+	Constant2Vector,
+	Constant3Vector,
+	Constant4Vector,
+	ScalarParameter,
+	VectorParameter,
+	TextureSample,
+	TextureCoordinate,
+	Add,
+	Multiply,
+	Lerp,
+	OneMinus,
+	MaterialOutput
+};
+
+enum class EMaterialValueType : uint8
+{
+	Scalar,
+	Vector2,
+	Vector3,
+	Vector4,
+	Texture2D
+};
+
+struct FMaterialExpressionNode
+{
+	int32 Id = 0;
+	EMaterialExpressionType Type = EMaterialExpressionType::Constant;
+	FVector2 Position = FVector2(0.0f, 0.0f);
+	float ScalarValue = 0.0f;
+	FVector4 VectorValue = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+	FString ParameterName;
+	FString ParameterGroup = "Default";
+	FString TexturePath;
+	int32 CoordinateIndex = 0;
+};
+
+struct FMaterialExpressionConnection
+{
+	int32 OutputNodeId = 0;
+	int32 OutputPin = 0;
+	int32 InputNodeId = 0;
+	int32 InputPin = 0;
+};
+
 struct FStaticMeshMaterialParams
 {
 	FVector4 BaseColor;
@@ -44,6 +91,11 @@ public:
 	EMaterialParamLayout ParamLayout = EMaterialParamLayout::None;
 	FShaderProgram* Shader = nullptr;
 	TArray<UTexture2D*> Textures;
+	TArray<FMaterialExpressionNode> ExpressionNodes;
+	TArray<FMaterialExpressionConnection> ExpressionConnections;
+	int32 OutputNodeId = 0;
+
+	void EnsureDefaultGraph();
 	TUniquePtr<FConstantBuffer> ParamBuffer;
 	EPSOType PSOType = EPSOType::StaticMesh_Opaque;
 	EBlendState BlendState = EBlendState::Opaque;

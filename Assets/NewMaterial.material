@@ -13,9 +13,9 @@
             "Y": 0.0,
             "Z": 0.0
         },
-        "EmissiveFactor": 1.0,
+        "EmissiveFactor": 0.0,
         "FlipNormalY": false,
-        "OverrideShadingModel": false,
+        "OverrideShadingModel": true,
         "PSOType": 0,
         "Properties": {},
         "SamplerState": "LinearClamp",
@@ -29,7 +29,7 @@
         "SpecularFactor": 1.0,
         "Textures": [
             "Assets/Textures/Decals/hitori.png",
-            "FlatNormalTexture"
+            ""
         ],
         "UVScrollSpeed": [
             0.0,
