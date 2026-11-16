@@ -77,9 +77,14 @@ namespace
 	{
 		FSceneRenderOptions Effective = Options;
 		if (!Options.bUnlit && !Options.bOverrideMaterialLighting && Material.bOverrideShadingModel)
+		{
 			Effective.SetLegacyLightingModel(Material.ShadingModel);
+		}
 		return FRenderResourceManager::GetForwardShaderProgram(Effective.ReflectionModel, Effective.ShadingModel, bGPUSkinning, Effective.bUnlit);
 	}
+
+	bool HasMaterialGraphOutput(const UMaterial& Material);
+	void BuildMaterialGraphParameterData(FMeshDrawBatch& Batch, const UMaterial& Material, const FMaterialRenderProxy& Proxy);
 
 	bool BuildBatch(FMeshDrawBatch& Batch, UStaticMesh* Mesh, uint8 LOD,
 		UMaterialInterface* Material, EMeshPassType Pass, const FSceneView& View, const FSceneRenderOptions& Options,
@@ -102,13 +107,14 @@ namespace
 		Batch.IndexBuffer = Mesh->GetIndexBuffer(LOD);
 		if (!Batch.VertexBuffer || !Batch.IndexBuffer) return false;
 		const bool bUsesUberShader = Pass == EMeshPassType::Forward || Pass == EMeshPassType::WorldNormal;
+		const bool bHasGraph = HasMaterialGraphOutput(*BaseMaterial);
+
 		if (bUsesUberShader)
 		{
 			const bool bWorldNormal = Pass == EMeshPassType::WorldNormal;
 			FPipelineState* Base = FRenderResourceManager::GetPSO(bWorldNormal
 				? EPSOType::StaticMesh_WorldNormal : EPSOType::StaticMesh_Forward);
 			FShaderProgram* Shader = bWorldNormal ? (Base ? Base->Shader : nullptr) : GetMaterialForwardShader(*BaseMaterial, Options);
-			const bool bHasGraph = HasMaterialGraphOutput(*BaseMaterial);
 
 			if (!bWorldNormal && bHasGraph)
 			{
