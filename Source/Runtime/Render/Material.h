@@ -42,7 +42,8 @@ enum class EMaterialValueType : uint8
 	Vector2,
 	Vector3,
 	Vector4,
-	Texture2D
+	Texture2D,
+	Unknown
 };
 
 struct FMaterialExpressionNode
@@ -96,6 +97,17 @@ public:
 	int32 OutputNodeId = 0;
 
 	void EnsureDefaultGraph();
+
+	int32 GetExpressionInputPinCount(EMaterialExpressionType Type) const;
+	int32 GetExpressionOutputPinCount(EMaterialExpressionType Type) const;
+	const char* GetExpressionInputPinName(EMaterialExpressionType Type, int32 PinIndex) const;
+	const char* GetExpressionOutputPinName(EMaterialExpressionType Type, int32 PinIndex) const;
+
+	EMaterialValueType GetExpressionOutputType(int32 NodeId, int32 OutputPin = 0) const;
+
+	bool ConnectExpressionPins(int32 OutputNodeId, int32 OutputPin, int32 InputNodeId, int32 InputPin, FString& OutError);
+	bool ValidateExpressionGraph(FString& OutError) const;
+
 	TUniquePtr<FConstantBuffer> ParamBuffer;
 	EPSOType PSOType = EPSOType::StaticMesh_Opaque;
 	EBlendState BlendState = EBlendState::Opaque;

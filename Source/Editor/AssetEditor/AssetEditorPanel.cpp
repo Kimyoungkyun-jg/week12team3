@@ -148,81 +148,6 @@ void FAssetEditorPanel::Release()
 	Asset = nullptr;
 }
 
-
-void FAssetEditorPanel::NewMaterial(const FString& InPath, bool bParticleSprite)
-{
-	if (bDirty && Asset && !Asset->IsRetired())
-	{
-		SaveMaterial();
-		if (bDirty) return;
-	}
-
-	Release();
-	bDirty = false;
-	Path = InPath;
-	Status.clear();
-
-	UMaterial* Template = UAssetManager::GetAssetByPath<UMaterial>(bParticleSprite ? "ParticleSpriteMaterial" : "DefaultMaterial");
-	if (!Template)
-	{
-		Status = "Material template not found.";
-		SetOpen(true);
-		return;
-	}
-
-	UMaterial* New = NewObject<UMaterial>();
-	if (!New)
-	{
-		Status = "Failed to create Material.";
-		SetOpen(true);
-		return;
-	}
-
-	New->CopySettingsFrom(*Template);
-	Asset = New;
-	bDirty = true;
-	SaveMaterial();
-	if (Status == "Saved") OpenAsset(InPath);
-	else SetOpen(true);
-}
-
-void FAssetEditorPanel::NewMaterialInstance(const FString& InPath, const FString& ParentPath)
-{
-	if (bDirty && Asset && !Asset->IsRetired())
-	{
-		SaveMaterial();
-		if (bDirty) return;
-	}
-
-	Release();
-	bDirty = false;
-	Path = InPath;
-	Status.clear();
-
-	UMaterialInterface* Parent = UAssetManager::LoadMaterialAsset(ParentPath);
-	if (!Parent)
-	{
-		Status = "Parent Material not found.";
-		SetOpen(true);
-		return;
-	}
-
-	UMaterialInstanceConstant* New = NewObject<UMaterialInstanceConstant>();
-	if (!New)
-	{
-		Status = "Failed to create Material Instance.";
-		SetOpen(true);
-		return;
-	}
-
-	New->SetParent(Parent);
-	Asset = New;
-	bDirty = true;
-	SaveMaterial();
-	if (Status == "Saved") OpenAsset(InPath);
-	else SetOpen(true);
-}
-
 void FAssetEditorPanel::SaveIfDirty()
 {
 	if (IsOpen() && bDirty) SaveMaterial();
@@ -232,7 +157,6 @@ void FAssetEditorPanel::OpenAsset(const FString& InPath)
 {
 	FString Error;
 	auto* Loaded = UAssetManager::GetAssetByPath<URenderAsset>(InPath);
-	if (!Loaded && FbxPath::FromString(InPath).extension() == ".material") Loaded = UAssetManager::LoadMaterialAsset(InPath);
 	if (!Loaded && FbxPath::FromString(InPath).extension() == ".fbxbin") Loaded = FFbxAssetLoader::LoadAsset(InPath, Error);
 	if (!Loaded) { HTR_LOG(Warning, "Cannot preview asset {}: {}", InPath, Error); return; }
 	if (bDirty && Asset && Path != InPath)

@@ -18,8 +18,6 @@ public:
 	const char* GetPanelName() const override { return "Asset Editor"; }
 	bool IsRootPanel() const override { return true; }
 	void OpenAsset(const FString& Path);
-	void NewMaterial(const FString& InPath, bool bParticleSprite);
-	void NewMaterialInstance(const FString& InPath, const FString& ParentPath);
 	void RenderPreview(UEditorEngine* Engine);
 	void Release();
 	void SaveIfDirty();
