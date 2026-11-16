@@ -42,6 +42,14 @@ struct FParticleCollisionPayload
 	bool bInitialized = false;
 };
 
+struct FParticleEventCollideData
+{
+	FVector Location;
+	FVector Normal;
+	FVector Velocity;
+	UPrimitiveComponent* Component = nullptr;
+};
+
 struct FParticleTickContext
 {
 	UWorld* World = nullptr;
@@ -401,6 +409,12 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float CollisionRadius = 1.0f;
+
+	UPROPERTY(EditAnywhere)
+	bool bGenerateEvents = true;
+
+	UPROPERTY(EditAnywhere)
+	int32 EventFrequency = 1;
 };
 
 UCLASS()

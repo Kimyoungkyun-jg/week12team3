@@ -1220,6 +1220,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	{
 		for (FParticleEmitterInstance& Instance : EmitterInstances)
 			Instance.LastGpuDeltaTime = 0.0f;
+		CollisionEvents.Reset();
 		return;
 	}
 	const FVector Origin = GetWorldLocation();
@@ -1228,6 +1229,11 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	Context.ComponentToWorld = GetWorldMatrix();
 	Context.Component = this;
 	for (FParticleEmitterInstance& Instance : EmitterInstances) Instance.Tick(ScaledDeltaTime, Origin, Context);
+	if (CollisionEvents.Num() > 0)
+	{
+		HTR_LOG(Warning, "[Col] events={}", CollisionEvents.Num());
+	}
+	CollisionEvents.Reset();
 	MarkRenderStateDirty();
 	if (HasCompleted())
 	{

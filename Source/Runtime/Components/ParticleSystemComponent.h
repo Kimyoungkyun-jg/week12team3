@@ -130,6 +130,7 @@ public:
 	bool bAutoDestroy = false;
 	UPROPERTY(EditAnywhere)
 	float CustomTimeDilation = 1.0f;
+	TArray<FParticleEventCollideData> CollisionEvents;
 
 private:
 	void LoadTemplateIfNeeded();
