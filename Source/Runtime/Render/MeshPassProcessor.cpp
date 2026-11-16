@@ -143,7 +143,7 @@ namespace
 
 	void FinalizeCommandKeys(FMeshDrawCommand& Cmd, uint16 MaterialSortID, uint16 MeshSortID, uint8 LODIndex, uint64 OverrideSortKey = 0)
 	{
-		Cmd.StateBucketId = ComputeMeshCommandStateBucket(Cmd);
+		Cmd.StateBucketId = ComputeMeshCommandStateBucket(Cmd); // 불투명 패스 정렬 시 같은 GPU 상태를 쓰는 드로우 커맨드들이 배열에서 나란히 붙게 만듭니다
 		Cmd.SortKey = OverrideSortKey != 0 ? OverrideSortKey
 			: MakeOpaqueSortKey(Cmd.StateBucketId, MaterialSortID, MeshSortID, LODIndex);
 	}
@@ -381,7 +381,7 @@ namespace
 	}
 }
 
-uint32 ComputeMeshCommandStateBucket(const FMeshDrawCommand& Command)
+uint32 ComputeMeshCommandStateBucket(const FMeshDrawCommand& Command) // FMeshDrawCommand 하나가 쓰는 GPU 파이프라인·메시·리소스·상수 버퍼 상태를 uint32 해시값(StateBucketId) 하나로 계산하는 함수
 {
 	uint32 Seed = 2166136261u;
 	HashCombine(Seed, reinterpret_cast<uintptr_t>(Command.Pipeline.Shader));
@@ -420,15 +420,15 @@ uint32 ComputeMeshCommandStateBucket(const FMeshDrawCommand& Command)
 	return Seed;
 }
 
-uint64 MakeOpaqueSortKey(uint32 StateBucketId, uint16 MaterialSortID, uint16 MeshSortID, uint8 LODIndex)
+uint64 MakeOpaqueSortKey(uint32 StateBucketId, uint16 MaterialSortID, uint16 MeshSortID, uint8 LODIndex) // 불투명 드로우 커맨드 정렬에 쓰는 다중 기준을 하나의 uint64(64비트 정수) 키로 비트 패킹(Bit Packing)하는 함수
 {
-	return (static_cast<uint64>(StateBucketId) << 32)
-		| (static_cast<uint64>(MaterialSortID & 0x3FFFu) << 18)
-		| (static_cast<uint64>(MeshSortID & 0xFFFFu) << 2)
-		| static_cast<uint64>(LODIndex & 0x3u);
+	return (static_cast<uint64>(StateBucketId) << 32)			// 1순위: GPU 상태(셰이더·PSO·VB/IB·리소스·재질 CB)가 완전히 같은 커맨드끼리 묶음
+		| (static_cast<uint64>(MaterialSortID & 0x3FFFu) << 18) // 2순위: 같은 상태 버킷 내에서 같은 머티리얼끼리 모음 (최대 16,384종 구분)
+		| (static_cast<uint64>(MeshSortID & 0xFFFFu) << 2)		// 3순위: 같은 머티리얼 내에서 같은 메시끼리 모음
+		| static_cast<uint64>(LODIndex & 0x3u);					// 4순위: 같은 메시 내에서 LOD 0~3 순서로 정렬
 }
 
-uint64 MakeTranslucentSortKey(float CameraDistanceSq)
+uint64 MakeTranslucentSortKey(float CameraDistanceSq) // 멀리 있는 것부터 가까운 순서(Back-to-Front)"로 오름차순 커맨드 정렬
 {
 	const uint64 DistanceBits = static_cast<uint64>(std::bit_cast<uint32>(CameraDistanceSq));
 	return (1ull << 63) | (~DistanceBits & 0xFFFFFFFFull);

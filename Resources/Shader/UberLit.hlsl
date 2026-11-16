@@ -130,9 +130,6 @@ struct VS_OUT
 struct FUberOutput
 {
     float4 LitColor : SV_Target0;
-#if !VIEW_MODE_WORLD_NORMAL
-    float4 NormalRoughness : SV_Target1;
-#endif
 };
 
 // 광원의 그림자 (1 = 빛 받음). 채널이 없거나 이 물체의 bReceiveShadow가 꺼져 있으면 1.
@@ -533,7 +530,6 @@ FUberOutput Uber_PS(VS_OUT Input)
 	}
 
 	Output.LitColor = float4(FinalColor, WorldUVParams.w > 0.5f ? 1.0f : SurfaceColor.a * BaseColor.a);
-	Output.NormalRoughness = float4(ShadingNormal, 0.8f);
 #endif
 	return Output;
 }

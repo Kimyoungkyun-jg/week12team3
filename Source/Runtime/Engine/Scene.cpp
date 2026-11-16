@@ -407,6 +407,7 @@ void FScene::FlushStaticCaches(const FSceneRenderOptions& Options)
 		}
 	}
 
+	// 변경된 Proxy가 없다면 아무것도 하지 않음
 	if (StaticCacheDirtyProxies.IsEmpty())
 		return;
 

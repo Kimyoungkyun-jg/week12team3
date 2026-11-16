@@ -402,7 +402,7 @@ public:
 		return DynamicIndexBuffer.Allocate(IndexCount);
 	}
 
-	void AddGpuParticleBatch(FGpuParticleBatch&& Batch)
+	void AddGpuParticleBatch(FGpuParticleBatch&& Batch) // GPU Particle 생성·이동·수명 등의 시뮬레이션
 	{
 		GpuParticleBatches.Add(std::move(Batch));
 	}

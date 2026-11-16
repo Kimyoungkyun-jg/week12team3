@@ -110,8 +110,8 @@ private:
 	TMap<FLightSceneProxy*, ULightComponent*> LightProxyComponents;
 	TMap<FPrimitiveSceneProxy*, UPrimitiveComponent*> PrimitiveProxyComponents;
 
-	std::array<TArray<FCachedMeshDrawEntry>, static_cast<size_t>(EMeshPass::Num)> CachedDrawLists;
-	TArray<TArray<FCachedCommandSlotRef>> ProxyCachedCommands;
+	std::array<TArray<FCachedMeshDrawEntry>, static_cast<size_t>(EMeshPass::Num)> CachedDrawLists; // 5개 패스(EMeshPass)별 정적 드로우 커맨드 배열들을 담아둔 고정 크기 배열
+	TArray<TArray<FCachedCommandSlotRef>> ProxyCachedCommands; // 특정 프록시(PrimitiveIndex)가 만든 캐시 커맨드들이 5개 CachedDrawLists 중 어느 패스의 몇 번째 칸({ Pass, CommandIndex })에 들어가 있는지 기록한 역추적(역인덱스) 목차
 
 	TArray<FPrimitiveSceneData> GPUScenePrimitives;
 	TArray<uint32> GPUSceneDirtyIndices;

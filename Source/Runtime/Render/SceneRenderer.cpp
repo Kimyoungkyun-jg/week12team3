@@ -249,15 +249,15 @@ void FSceneRenderer::BuildVisiblePassCommands(const FScene& Scene, EMeshPass Pas
 	bool bWireframe, TArray<FVisibleMeshDrawCommand>& OutCommands) const
 {
 	OutCommands.Reset();
-	const auto& CachedList = Scene.GetCachedDrawList(Pass);
-	const auto& DynamicList = RenderData.DynamicPassCommands[static_cast<size_t>(Pass)];
+	const TArray<FCachedMeshDrawEntry>& CachedList = Scene.GetCachedDrawList(Pass);
+	const TArray<FMeshDrawCommand>& DynamicList = RenderData.DynamicPassCommands[static_cast<size_t>(Pass)];
 	OutCommands.Reserve(CachedList.Num() + DynamicList.Num());
 
 	const uint32 NumPrimitives = static_cast<uint32>(RenderData.PrimitiveVisibilityMap.Num());
 	const bool bApplyWireframe = bWireframe && (Pass == EMeshPass::BasePass);
 	const bool bApplyUnlit = Options.bUnlit && (Pass == EMeshPass::BasePass);
 
-	for (const FCachedMeshDrawEntry& Entry : CachedList)
+	for (const FCachedMeshDrawEntry& Entry : CachedList) // 캐시된 정적 데이터를 FVisibleMeshDrawCommand로 만듦
 	{
 		const uint32 PrimIdx = Entry.PrimitiveIndex;
 		if (PrimIdx >= NumPrimitives || !RenderData.PrimitiveVisibilityMap[PrimIdx])
@@ -285,7 +285,7 @@ void FSceneRenderer::BuildVisiblePassCommands(const FScene& Scene, EMeshPass Pas
 		OutCommands.Add(Vis);
 	}
 
-	for (const FMeshDrawCommand& DynCmd : DynamicList)
+	for (const FMeshDrawCommand& DynCmd : DynamicList) // 이번 프레임에 저장된 동적 데이터를 FVisibleMeshDrawCommand로 만듦
 	{
 		FVisibleMeshDrawCommand Vis{};
 		Vis.Command = &DynCmd;
@@ -302,7 +302,7 @@ void FSceneRenderer::BuildVisiblePassCommands(const FScene& Scene, EMeshPass Pas
 	}
 
 	std::stable_sort(OutCommands.begin(), OutCommands.end(),
-		[](const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B) { return A.SortKey < B.SortKey; });
+		[](const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B) { return A.SortKey < B.SortKey; });  // 불투명 패스 (같은 material 끼리) , 반 투명 패스 (머터리얼 
 }
 
 void FSceneRenderer::DrawBasePassMeshes(FRenderer* Renderer, const TArray<FVisibleMeshDrawCommand>& Commands)
@@ -1289,15 +1289,15 @@ void FSceneRenderer::GatherViewVisibilityAndDynamicElements(FScene& Scene, FScen
 			}
 		}
 
-		Collector.CommitGpuResources();
-		Data.GPUSceneBuffer = Scene.SyncGPUScene(Data.DynamicPrimitiveData);
+		Collector.CommitGpuResources(); // CPU에 모은 동적 데이터를 GPU에 처음이자 한 번에 올리는 지점
+		Data.GPUSceneBuffer = Scene.SyncGPUScene(Data.DynamicPrimitiveData); // CPU에 있는 모든 오브젝트의 변환/플래그 데이터(FPrimitiveSceneData)를 GPU의 t17 버퍼(GPUSceneBuffer)와 최신 상태로 맞춘 뒤, 그 GPU 버퍼 포인터를 렌더 데이터에 받아둔다
 
 		const FBasePassMeshProcessor BaseProcessor;
 		const FDepthPassMeshProcessor DepthProcessor;
 		const FTranslucencyPassMeshProcessor TranslucencyProcessor;
 		const FShadowDepthMeshProcessor ShadowProcessor;
 
-		for (const FMeshBatch& Batch : Collector.GetMeshBatches())
+		for (const FMeshBatch& Batch : Collector.GetMeshBatches()) // 이번 프레임 GetDynamicMeshElements에서 수집한 동적 요소들(스켈레탈 메시·파티클·빌보드)을 패스별 FMeshDrawCommand로 변환해서 한 프레임용 임시 배열(Data.DynamicPassCommands)에 모아둔다
 		{
 			BaseProcessor.AddMeshBatch(Batch, Options, &Collector, Data.DynamicPassCommands[static_cast<size_t>(EMeshPass::BasePass)]);
 			DepthProcessor.AddMeshBatch(Batch, Options, &Collector, Data.DynamicPassCommands[static_cast<size_t>(EMeshPass::DepthPass)]);

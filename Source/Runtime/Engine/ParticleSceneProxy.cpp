@@ -58,7 +58,7 @@ void FDynamicSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSce
 		const FVector Delta = Sprites[Index].Location - View.CameraPosition;
 		Sorted.Add({ Index, Delta.Dot(Delta) });
 	}
-	std::sort(Sorted.begin(), Sorted.end(), [](const FSortedParticleIndex& A, const FSortedParticleIndex& B)
+	std::sort(Sorted.begin(), Sorted.end(), [](const FSortedParticleIndex& A, const FSortedParticleIndex& B) // 파티클 알갱이들을 거리 순으로 정렬 Back -> Front
 	{
 		return A.DistanceSq > B.DistanceSq;
 	});
@@ -74,7 +74,7 @@ void FDynamicSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSce
 		}
 
 		int32 RunEnd = RunStart + 1;
-		while (RunEnd < Count)
+		while (RunEnd < Count) // 연속된 Particle 중에서 같은 Material을 사용하는 Particle을 하나의 그룹으로 묶음
 		{
 			const FParticleRenderData& Next = Sprites[Sorted[RunEnd].Index];
 			UMaterial* NextMat = Next.Material ? Next.Material : DefaultMaterial;
@@ -84,7 +84,7 @@ void FDynamicSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSce
 		}
 
 		const uint32 RunCount = static_cast<uint32>(RunEnd - RunStart);
-		FParticleInstanceData* Dest = nullptr;
+		FParticleInstanceData* Dest = nullptr; // 이번에 렌더링할 파티클 그룹의 인스턴스 데이터가 저장될 메모리 시작 주소
 		const uint32 StartInstance = Collector.AllocateParticleInstances(RunCount, Dest);
 		if (!Dest)
 			break;

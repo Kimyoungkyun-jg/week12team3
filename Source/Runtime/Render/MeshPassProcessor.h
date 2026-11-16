@@ -42,7 +42,7 @@ struct FMeshDrawConstantBuffer
 	uint32 DataSize = 0;
 };
 
-// 패스 프로세서가 생성하는 단일 GPU 드로우 명령
+// 패스 프로세서가 생성하는 최종 GPU 드로우 명령
 struct FMeshDrawCommand
 {
 	FPipelineState Pipeline;
