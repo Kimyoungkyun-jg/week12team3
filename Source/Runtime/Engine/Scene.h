@@ -120,6 +120,7 @@ private:
 	uint32 GPUSceneBufferCapacity = 0;
 
 	bool bHasCachedOptions = false;
+	uint64 CachedMaterialRevision = 0;
 	EReflectionModel CachedReflectionModel = EReflectionModel::BlinnPhong;
 	EShadingModel CachedShadingModel = EShadingModel::Phong;
 	bool bCachedOverrideMaterialLighting = false;

@@ -303,7 +303,7 @@ void FSceneRenderer::BuildVisiblePassCommands(const FScene& Scene, EMeshPass Pas
 	}
 
 	std::stable_sort(OutCommands.begin(), OutCommands.end(),
-		[](const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B) { return A.SortKey < B.SortKey; });  // 불투명 패스 (같은 material 끼리) , 반 투명 패스 (머터리얼 
+		[](const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B) { return A.SortKey < B.SortKey; });  // 불투명 패스 (같은 material 끼리) , 반 투명 패스 (머터리얼
 }
 
 void FSceneRenderer::DrawBasePassMeshes(FRenderer* Renderer, const TArray<FVisibleMeshDrawCommand>& Commands)
@@ -1260,9 +1260,9 @@ void FSceneRenderer::GatherViewVisibilityAndDynamicElements(FScene& Scene, FScen
 			if (Batch.bIsParticle)
 				continue;
 			const bool bUsesGPUSceneMaterial = !Batch.Material ||
-				Batch.Material->PSOType == EPSOType::StaticMesh_Opaque ||
-				Batch.Material->PSOType == EPSOType::StaticMesh_Translucent ||
-				Batch.Material->PSOType == EPSOType::StaticMesh_Wireframe;
+				Batch.Material->GetPSOType() == EPSOType::StaticMesh_Opaque ||
+				Batch.Material->GetPSOType() == EPSOType::StaticMesh_Translucent ||
+				Batch.Material->GetPSOType() == EPSOType::StaticMesh_Wireframe;
 			if (!bUsesGPUSceneMaterial)
 				continue;
 

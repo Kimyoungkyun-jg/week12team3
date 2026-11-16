@@ -320,6 +320,7 @@ void FRenderer::SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> C
 
 	const TArray<FMeshDrawShaderResource> EmptyResources{};
 	UnbindUnusedResources(EmptyResources, BoundResources);
+	RenderCommand::BindConstantBuffer(4, nullptr, EShaderBindFlagBits::Pixel);
 	if (bBoundGPUScene)
 	{
 		RenderCommand::UnbindShaderResources(17, 1, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
@@ -470,6 +471,7 @@ FOcclusionMeasureResult FRenderer::MeasureDrawVisibility(std::span<const FVisibl
 	RenderCommand::SetDepthStencilState(EDepthStencilState::Default);
 	const TArray<FMeshDrawShaderResource> EmptyResources{};
 	UnbindUnusedResources(EmptyResources, BoundResources);
+	RenderCommand::BindConstantBuffer(4, nullptr, EShaderBindFlagBits::Pixel);
 	RenderCommand::UnbindShaderResources(17, 1, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 	RenderCommand::UnbindShaderResources(18, 1, EShaderBindFlagBits::Vertex);
 	RenderCommand::BindConstantBuffer(5, nullptr, EShaderBindFlagBits::Vertex);

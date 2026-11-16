@@ -131,7 +131,7 @@ void FStaticMeshSceneProxy::DrawStaticElements(FStaticPrimitiveDrawInterface* PD
 
 	const uint32 PrimIdx = static_cast<uint32>(PackedIndex);
 	auto EmitStaticSection = [&](uint8 ClampedLOD, FVertexBuffer* VB, FIndexBuffer* IB,
-		UMaterial* SectionMat, uint32 StartIndex, uint32 IndexCount)
+		UMaterialInterface* SectionMat, uint32 StartIndex, uint32 IndexCount)
 	{
 		if (!VB || !IB || !SectionMat)
 			return;
@@ -283,7 +283,7 @@ void FSkeletalMeshSceneProxy::GetDynamicMeshElements(const FViewContext& ViewCon
 	const FVector Delta = Bounds.Center - ViewContext.CameraPosition;
 	const float DistanceSq = Delta.Dot(Delta);
 
-	auto EmitSectionBatch = [&](UMaterial* SectionMat, uint32 StartIndex, uint32 IndexCount)
+	auto EmitSectionBatch = [&](UMaterialInterface* SectionMat, uint32 StartIndex, uint32 IndexCount)
 	{
 		if (!SectionMat)
 			return;

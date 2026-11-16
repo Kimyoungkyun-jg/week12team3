@@ -49,7 +49,7 @@ FStaticMeshProxyData UStaticMeshComponent::BuildProxyData() const
 	if (StaticMesh)
 	{
 		const int32 SlotCount = GetNumMaterials();
-		std::vector<UMaterial*> ResolvedMaterials(SlotCount);
+		std::vector<UMaterialInterface*> ResolvedMaterials(SlotCount);
 		for (int32 i = 0; i < SlotCount; ++i)
 			ResolvedMaterials[i] = GetMaterial(i);
 		Data.RenderState = StaticMesh->GetRenderState(ResolvedMaterials);
@@ -80,7 +80,7 @@ FString UStaticMeshComponent::GetMaterialSlotName(int32 SlotIndex) const
 	return StaticMesh->GetMeshData().MaterialSlots[SlotIndex].Name;
 }
 
-UMaterial* UStaticMeshComponent::GetDefaultMaterial(int32 SlotIndex) const
+UMaterialInterface* UStaticMeshComponent::GetDefaultMaterial(int32 SlotIndex) const
 {
 	return StaticMesh ? StaticMesh->GetMaterial(static_cast<uint32>(SlotIndex)) : nullptr;
 }

@@ -388,14 +388,16 @@ void FScene::UpdateGPUScenePrimitiveEntry(uint32 PrimitiveIndex, const FPrimitiv
 
 void FScene::FlushStaticCaches(const FSceneRenderOptions& Options)
 {
+	const uint64 MaterialRevision = UMaterialInterface::GetRenderDataRevision();
 	const bool bOptionsChanged = !bHasCachedOptions ||
 		CachedReflectionModel != Options.ReflectionModel ||
 		CachedShadingModel != Options.ShadingModel ||
 		bCachedOverrideMaterialLighting != Options.bOverrideMaterialLighting;
 
-	if (bOptionsChanged)
+	if (bOptionsChanged || CachedMaterialRevision != MaterialRevision)
 	{
 		bHasCachedOptions = true;
+		CachedMaterialRevision = MaterialRevision;
 		CachedReflectionModel = Options.ReflectionModel;
 		CachedShadingModel = Options.ShadingModel;
 		bCachedOverrideMaterialLighting = Options.bOverrideMaterialLighting;

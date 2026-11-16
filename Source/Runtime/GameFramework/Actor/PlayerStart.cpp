@@ -5,6 +5,8 @@
 #include "Components/BillboardComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Asset/AssetManager.h"
+#include "Render/Material.h"
+#include "Render/MaterialInstance.h"
 
 APlayerStart::APlayerStart()
 {
@@ -32,8 +34,13 @@ APlayerStart::APlayerStart()
 	UTexture2D* Icon = UAssetManager::Get().LoadTexture(ResourcePaths::PlayerStartIcon);
 	if (Base && Icon)
 	{
-		UMaterial* IconMaterial = UMaterial::CreateInstance(Base);
-		IconMaterial->Textures[0] = Icon;
+		UMaterialInstanceDynamic* IconMaterial = UMaterial::CreateDynamicInstance(Base);
+		if (!IconMaterial)
+		{
+			return;
+		}
+
+		IconMaterial->SetTexture0Override(Icon);
 		BillboardComponent->SetMaterial(0, IconMaterial);
 	}
 

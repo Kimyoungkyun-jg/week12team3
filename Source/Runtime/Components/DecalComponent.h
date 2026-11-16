@@ -43,12 +43,12 @@ public:
 		SortOrder = InSortOrder;
 	}
 
-	UMaterial* GetDecalMaterial() const
+	UMaterialInterface* GetDecalMaterial() const
 	{
 		return DecalMaterial;
 	}
 
-	void SetDecalMaterial(UMaterial* InMaterial)
+	void SetDecalMaterial(UMaterialInterface* InMaterial)
 	{
 		DecalMaterial = InMaterial;
 	}
@@ -90,7 +90,7 @@ private:
 	UPROPERTY(EditAnywhere)
 	int32 SortOrder = 0;
 
-	UMaterial* DecalMaterial = nullptr;
+	UMaterialInterface* DecalMaterial = nullptr;
 
 	UPROPERTY(EditAnywhere)
 	bool bUnlit = false;

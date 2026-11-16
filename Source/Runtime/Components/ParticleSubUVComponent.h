@@ -72,7 +72,7 @@ private:
 	int32 ParticleCount = 0;
 	bool bPlayOnce = false;
 	// 텍스처를 교체할 때만 생성하는 이 컴포넌트 전용 머티리얼.
-	UMaterial* TextureMaterialInstance = nullptr;
+	UMaterialInstanceDynamic* TextureMaterialInstance = nullptr;
 
 	float MinLifeTime = 6.0f;           // 수명 최소값(초)
 	float MaxLifeTime = 8.0f;          // 수명 최대값(초)

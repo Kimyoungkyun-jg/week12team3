@@ -59,6 +59,10 @@ Texture2D ColorTexture : register(t0);
 Texture2D NormalTexture : register(t1);
 SamplerState ColorSampler : register(s0);
 
+#ifdef MATERIAL_GRAPH
+#include MATERIAL_GRAPH_INCLUDE
+#endif
+
 // 데칼 DBuffer (UberLit.hlsl과 같은 슬롯). 데칼이 없는 뷰는 묶지 않으며, 비어 있는 슬롯은 0을 읽어 효과가 없다.
 Texture2D<float4> DBufferLit : register(t14);
 Texture2D<float4> DBufferUnlit : register(t15);
@@ -110,11 +114,20 @@ GBUFFER_OUTPUT mainPS(PS_INPUT Input)
 
     float3 ProjectedT, ProjectedB;
     float2 UV = ResolveMaterialUV(Input.UV, Input.WorldPos, Input.WorldNormal,
-        Input.LocalPos, Input.LocalNormal, World, UVTiling, UVOffset, WorldUVTileSize,
-        WorldUVParams.x > 0.5f, ProjectedT, ProjectedB);
+    Input.LocalPos, Input.LocalNormal, World, UVTiling, UVOffset, WorldUVTileSize,
+    WorldUVParams.x > 0.5f, ProjectedT, ProjectedB);
+
+#ifdef MATERIAL_GRAPH
+    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV);
+#endif
+
     float4 TextureColor = ColorTexture.Sample(ColorSampler, UV);
     // 색 텍스처는 UNORM으로 읽히므로 sRGB 값을 선형 조명 공간으로 변환한다.
+#ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
+    float3 LinearAlbedo = GraphOutput.BaseColor.rgb;
+#else
     float3 LinearAlbedo = pow(max(TextureColor.rgb, 0.0f), 2.2f) * BaseColor.rgb;
+#endif
     float3 Normal = normalize(Input.WorldNormal);
     if (TextureFlags.x > 0.5f)
     {
@@ -145,8 +158,27 @@ GBUFFER_OUTPUT mainPS(PS_INPUT Input)
     // bReceiveShadow가 꺼진 물체는 w를 음수(-Roughness - 1)로 저장한다. Deferred 조명이 그림자 마스크를 무시한다.
     const float Roughness = 0.8f;
     Output.NormalRoughness = float4(Normal, Input.ReceiveShadow > 0.5f ? Roughness : -Roughness - 1.0f);
-    Output.EmissiveModel = float4(Emissive.rgb, WorldUVParams.z > 0.5f ? WorldUVParams.w + 1.0f : 0.0f);
-    Output.Specular = SpecularColorShininess;
+    float3 GraphEmissive = Emissive.rgb;
+    float4 GraphSpecular = SpecularColorShininess;
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_COLOR
+    GraphEmissive = GraphOutput.EmissiveColor;
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR
+    GraphEmissive *= GraphOutput.EmissiveFactor;
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_SPECULAR_COLOR
+    GraphSpecular.rgb = GraphOutput.SpecularColor;
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_SHININESS
+    GraphSpecular.a = GraphOutput.Shininess;
+#endif
+
+    Output.EmissiveModel = float4(GraphEmissive, WorldUVParams.z > 0.5f ? WorldUVParams.w + 1.0f : 0.0f);
+    Output.Specular = GraphSpecular;
 
     // Unlit 데칼: Forward는 조명 결과를 FinalColor * (1 - a) + rgb로 덮는다.
     // 조명은 Albedo·Specular에 선형이므로 둘을 (1 - a)배 하고 rgb를 Emissive로 더하면 같은 결과가 된다.

@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "Engine/ParticleSceneProxy.h"
 #include "Asset/AssetManager.h"
+#include "Render/MaterialRenderProxy.h"
 #include "Render/MeshBatch.h"
 #include <algorithm>
 #include <cmath>
@@ -29,18 +30,18 @@ namespace
 		return World;
 	}
 
-	EPSOType ResolveMeshParticlePSO(const UMaterial& EntryMat)
+	EPSOType ResolveMeshParticlePSO(const UMaterialInterface& EntryMat)
 	{
-		if (EntryMat.BlendState == EBlendState::Opaque)
+		if (EntryMat.GetBlendState() == EBlendState::Opaque)
 			return EPSOType::Particle_MeshOpaque;
-		if (EntryMat.BlendState == EBlendState::Additive)
+		if (EntryMat.GetBlendState() == EBlendState::Additive)
 			return EPSOType::Particle_MeshAdditive;
 		return EPSOType::Particle_MeshTranslucent;
 	}
 }
 
 void FDynamicSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
-	UMaterial* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
+	UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
 {
 	if (Sprites.IsEmpty() || !QuadMesh)
 		return;
@@ -66,7 +67,7 @@ void FDynamicSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSce
 	for (int32 RunStart = 0; RunStart < Count;)
 	{
 		const FParticleRenderData& First = Sprites[Sorted[RunStart].Index];
-		UMaterial* EntryMat = First.Material ? First.Material : DefaultMaterial;
+		UMaterialInterface* EntryMat = First.Material ? First.Material : DefaultMaterial;
 		if (!EntryMat)
 		{
 			++RunStart;
@@ -77,7 +78,7 @@ void FDynamicSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSce
 		while (RunEnd < Count) // 연속된 Particle 중에서 같은 Material을 사용하는 Particle을 하나의 그룹으로 묶음
 		{
 			const FParticleRenderData& Next = Sprites[Sorted[RunEnd].Index];
-			UMaterial* NextMat = Next.Material ? Next.Material : DefaultMaterial;
+			UMaterialInterface* NextMat = Next.Material ? Next.Material : DefaultMaterial;
 			if (NextMat != EntryMat)
 				break;
 			++RunEnd;
@@ -132,7 +133,7 @@ void FDynamicSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSce
 }
 
 void FDynamicMeshEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
-	UMaterial* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
+	UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
 {
 	if (!Mesh || Particles.IsEmpty())
 		return;
@@ -170,7 +171,7 @@ void FDynamicMeshEmitterData::GetDynamicMeshElementsForView(const FParticleScene
 			continue;
 
 		const uint32 SlotIndex = bHasSections ? MeshData.Sections[SecIdx].MaterialSlotIndex : 0;
-		UMaterial* EntryMat = MaterialOverride ? MaterialOverride : Mesh->GetMaterial(SlotIndex);
+		UMaterialInterface* EntryMat = MaterialOverride ? MaterialOverride : Mesh->GetMaterial(SlotIndex);
 		if (!EntryMat)
 			continue;
 
@@ -180,8 +181,10 @@ void FDynamicMeshEmitterData::GetDynamicMeshElementsForView(const FParticleScene
 		if (!Dest)
 			continue;
 
-		const FVector4& BaseCol = EntryMat->BaseColor;
-		const bool bHasTex = !EntryMat->Textures.IsEmpty() && EntryMat->Textures[0] != nullptr;
+		FMaterialRenderProxy MaterialProxy{};
+		EntryMat->GetRenderProxy(MaterialProxy);
+		const FVector4& BaseCol = MaterialProxy.BaseColor;
+		const bool bHasTex = MaterialProxy.Textures.IsValidIndex(0) && MaterialProxy.Textures[0] != nullptr;
 
 		for (int32 SortedIdx = 0; SortedIdx < Count; ++SortedIdx)
 		{
@@ -235,12 +238,12 @@ void FDynamicMeshEmitterData::GetDynamicMeshElementsForView(const FParticleScene
 }
 
 void FDynamicGpuSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
-	UMaterial* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
+	UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
 {
 	if (!QuadMesh || !GpuResources || MaxParticles == 0)
 		return;
 
-	UMaterial* EntryMat = Material ? Material : DefaultMaterial;
+	UMaterialInterface* EntryMat = Material ? Material : DefaultMaterial;
 	FVertexBuffer* QuadVB = QuadMesh->GetVertexBuffer(0);
 	FIndexBuffer* QuadIB = QuadMesh->GetIndexBuffer(0);
 	if (!EntryMat || !QuadVB || !QuadIB)

@@ -9,6 +9,8 @@
 #include "Render/RenderCommand.h"
 
 #include "Render/RenderResourceManager.h"
+#include "Render/MaterialInstance.h"
+#include "Serialization/JsonArchive.h"
 
 #include "Asset/ObjImporter/ObjImporter.h"
 #include "Asset/FbxImporter/FbxAssetImporter.h"
@@ -90,11 +92,12 @@ namespace
 		// MaterialSlots를 실제 UMaterial로 변환
 		for (const FStaticMaterialSlot& Slot : Mesh->MeshData.MaterialSlots)
 		{
-			UMaterial* Material = UMaterial::CreateInstance(DefaultMaterial);
+			UMaterial* Material = NewObject<UMaterial>();
 			if (!Material)
 			{
 				return nullptr;
 			}
+			Material->CopySettingsFrom(*DefaultMaterial);
 			Material->BaseColor = Slot.BaseColor;
 			Material->ApplyImportedProperties(Slot);
 			if (Material->BaseColor.W < 1.0f)
@@ -160,6 +163,8 @@ void UAssetManager::Init(const FAssetLoadProgress& OnProgress)
 	Get().CreateDefaultMeshes();
 	Get().CreateBillboardMaterial();
 	Get().CreateParticleMaterial();
+	Get().CreateParticleSpriteMaterial();
+	Get().LoadDeferredAssets();
 	Get().CreateEditorArrowMaterial();
 	Get().CreateBoneWeightHeatmapMaterial();
 }
@@ -191,10 +196,12 @@ void UAssetManager::ScanAssets(const fs::path& AssetRoot, const FAssetLoadProgre
 		// 키와 경로는 UTF-8이다. generic_string()은 ANSI 코드페이지로 바꾸므로 한글·이모지 이름에서 깨지거나 예외가 난다.
 		FString Key = FbxPath::ToString(fs::relative(Files[i], AssetRoot));
 		FString Path = FbxPath::ToString(Files[i]);
-		AssetPathMap.Add(Key, Path);
-		LoadAsset(Key, Path);
-
 		const FString Extension = GetAssetExtension(Path);
+		AssetPathMap.Add(Key, Path);
+		if (Extension != ".material")
+		{
+			LoadAsset(Key, Path);
+		}
 		if (Extension == ".fbx") FbxFiles.Add(Path);
 		else if (Extension == ".fbxbin")
 		{
@@ -264,6 +271,10 @@ void UAssetManager::LoadAsset(const FString& Key, const FString& Path) {
 	}
 	if (Extension == ".obj") {
 		LoadObjStaticMesh(Path);
+	}
+	if (Extension == ".material")
+	{
+		LoadMaterialAsset(Key);
 	}
 	if (Extension == ".blendspace") {
 		LoadBlendSpace(Key);
@@ -382,7 +393,6 @@ void UAssetManager::CreateDefaultMaterial() {
 	DefaultMat->Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/UberLit.hlsl");
 	DefaultMat->Textures.Add(GetAssetByPath<UTexture2D>("WhiteTexture"));
 	DefaultMat->Textures.Add(GetAssetByPath<UTexture2D>("FlatNormalTexture"));
-	DefaultMat->ParamLayout = EMaterialParamLayout::StaticMesh;
 	DefaultMat->ParamBuffer = RenderCommand::CreateConstantBuffer(sizeof(FStaticMeshMaterialParams));
 	RegisterAsset("DefaultMaterial", DefaultMat);
 }
@@ -395,7 +405,6 @@ void UAssetManager::CreateBillboardMaterial()
 	BillboardMat->BlendState = EBlendState::AlphaBlend;
 	BillboardMat->DepthStencilState = EDepthStencilState::ReadOnly;
 	BillboardMat->SamplerState = ESamplerState::LinearClamp;
-	BillboardMat->ParamLayout = EMaterialParamLayout::ParticleSubUV;
 	RegisterAsset("BillboardMaterial", BillboardMat);
 }
 
@@ -407,14 +416,39 @@ void UAssetManager::CreateParticleMaterial()
 	ParticleMat->Textures.Add(LoadTexture(ResourcePaths::DefaultParticleTexture));
 	ParticleMat->BlendState = EBlendState::AlphaBlend;
 	ParticleMat->DepthStencilState = EDepthStencilState::ReadOnly;
-	ParticleMat->ParamLayout = EMaterialParamLayout::ParticleSubUV;
 	ParticleMat->ParamBuffer = RenderCommand::CreateConstantBuffer(256);
+	ParticleMat->UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleSprite);
 	RegisterAsset("SubUVMaterial", ParticleMat);
 }
 
+void UAssetManager::CreateParticleSpriteMaterial()
+{
+	UMaterial* ParticleSpriteMat = NewObject<UMaterial>();
+	ParticleSpriteMat->PSOType = EPSOType::Particle_Sprite;
+	ParticleSpriteMat->Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/ParticleSpriteShader.hlsl");
+	ParticleSpriteMat->Textures.Add(GetAssetByPath<UTexture2D>("WhiteTexture"));
+	ParticleSpriteMat->BlendState = EBlendState::AlphaBlend;
+	ParticleSpriteMat->DepthStencilState = EDepthStencilState::ReadOnly;
+	ParticleSpriteMat->SamplerState = ESamplerState::LinearClamp;
+	ParticleSpriteMat->ParamBuffer = RenderCommand::CreateConstantBuffer(256);
+	ParticleSpriteMat->UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleSprite);
+	RegisterAsset("ParticleSpriteMaterial", ParticleSpriteMat);
+}
+
 void UAssetManager::CreateEditorArrowMaterial() {
-	UMaterial* BaseMaterial{ GetAssetByPath<UMaterial>("DefaultMaterial") };
-	UMaterial* ArrowMaterial{ UMaterial::CreateInstance(BaseMaterial) };
+	UMaterial* BaseMaterial = GetAssetByPath<UMaterial>("DefaultMaterial");
+	if (!BaseMaterial)
+	{
+		return;
+	}
+
+	UMaterial* ArrowMaterial = NewObject<UMaterial>();
+	if (!ArrowMaterial)
+	{
+		return;
+	}
+
+	ArrowMaterial->CopySettingsFrom(*BaseMaterial);
 	ArrowMaterial->Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/EditorArrowShader.hlsl");
 	ArrowMaterial->BaseColor = FVector4{ 1.0f, 1.0f, 1.0f, 1.0f };
 	RegisterAsset("EditorArrowMaterial", ArrowMaterial);
@@ -424,12 +458,166 @@ void UAssetManager::CreateEditorArrowMaterial() {
 // BaseColor가 흰색이라 히트 색이 그대로 나온다. 조명은 Viewer가 Unlit 뷰 모드로 끈다.
 void UAssetManager::CreateBoneWeightHeatmapMaterial()
 {
-	UMaterial* HeatmapMaterial{ UMaterial::CreateInstance(GetAssetByPath<UMaterial>("DefaultMaterial")) };
-	if (!HeatmapMaterial) return;
+	UMaterial* BaseMaterial = GetAssetByPath<UMaterial>("DefaultMaterial");
+	if (!BaseMaterial)
+	{
+		return;
+	}
+
+	UMaterial* HeatmapMaterial = NewObject<UMaterial>();
+	if (!HeatmapMaterial)
+	{
+		return;
+	}
+
+	HeatmapMaterial->CopySettingsFrom(*BaseMaterial);
 	HeatmapMaterial->Textures.Empty();
 	HeatmapMaterial->BaseColor = FVector4{ 1.0f, 1.0f, 1.0f, 1.0f };
 	HeatmapMaterial->EmissiveColor = FVector{ 0.0f, 0.0f, 0.0f };
 	RegisterAsset("BoneWeightHeatmapMaterial", HeatmapMaterial);
+}
+
+UMaterialInterface* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
+{
+	if (UMaterialInterface* Cached = GetAssetByPath<UMaterialInterface>(AssetPath))
+	{
+		return Cached;
+	}
+
+	const FString Key = AssetPath.rfind("Assets/", 0) == 0 ? AssetPath.substr(7) : AssetPath;
+	if (FbxPath::FromString(Key).extension() != ".material")
+	{
+		return nullptr;
+	}
+
+	static std::set<FString> LoadingMaterials;
+	if (!LoadingMaterials.insert(Key).second)
+	{
+		return nullptr;
+	}
+
+	const fs::path File = ContentPaths::AssetRoot / FbxPath::FromString(Key);
+	std::ifstream Input(File);
+	if (!Input)
+	{
+		LoadingMaterials.erase(Key);
+		return nullptr;
+	}
+
+	const json Root = json::parse(Input, nullptr, false);
+	if (!Root.is_object() || !Root.contains("Class") || !Root["Class"].is_string() || !Root.contains("Object") || !Root["Object"].is_object())
+	{
+		HTR_LOG(Warning, "Invalid Material asset structure: {}", Key);
+		LoadingMaterials.erase(Key);
+		return nullptr;
+	}
+
+	const FString ClassName = Root["Class"].get<FString>();
+	UMaterialInterface* Material = nullptr;
+	if (ClassName == UMaterialInstanceConstant::StaticClass()->Name || ClassName == "UMaterialInstance")
+	{
+		Material = NewObject<UMaterialInstanceConstant>();
+	}
+	else if (ClassName == UMaterial::StaticClass()->Name)
+	{
+		Material = NewObject<UMaterial>();
+	}
+
+	const FString LegacyClassName = ClassName == "UMaterialInstance" ? "UMaterialInstance" : "";
+	if (!Material || !FJsonArchive::LoadObject(Material, FbxPath::ToString(File), LegacyClassName))
+	{
+		if (Material)
+		{
+			delete Material;
+		}
+		LoadingMaterials.erase(Key);
+		return nullptr;
+	}
+
+	if (UMaterial* BaseMaterial = Cast<UMaterial>(Material))
+	{
+		UMaterial* Template = nullptr;
+		if (BaseMaterial->PSOType == EPSOType::Particle_Sprite)
+		{
+			Template = GetAssetByPath<UMaterial>("ParticleSpriteMaterial");
+		}
+		else if (BaseMaterial->PSOType == EPSOType::Particle_AlphaBlend || BaseMaterial->PSOType == EPSOType::Particle_Additive)
+		{
+			Template = GetAssetByPath<UMaterial>("SubUVMaterial");
+		}
+		else
+		{
+			Template = GetAssetByPath<UMaterial>("DefaultMaterial");
+		}
+
+		if (!Template)
+		{
+			delete BaseMaterial;
+			LoadingMaterials.erase(Key);
+			return nullptr;
+		}
+
+		BaseMaterial->InitializeRenderResources(*Template);
+		if (BaseMaterial->PSOType == EPSOType::StaticMesh_Opaque || BaseMaterial->PSOType == EPSOType::StaticMesh_Translucent)
+		{
+			BaseMaterial->SetBlendState(BaseMaterial->BlendState);
+		}
+	}
+
+	Get().RegisterAsset(Key, Material);
+	LoadingMaterials.erase(Key);
+	return Material;
+}
+
+bool UAssetManager::SaveMaterialAsset(const FString& AssetPath, UMaterialInterface& Material)
+{
+	const FString Key = AssetPath.rfind("Assets/", 0) == 0 ? AssetPath.substr(7) : AssetPath;
+	if (FbxPath::FromString(Key).extension() != ".material")
+	{
+		return false;
+	}
+
+	if (UMaterialInstance* Instance = Cast<UMaterialInstance>(&Material))
+	{
+		if (Instance->IsDynamicInstance() || !Instance->GetParent() || Instance->GetParent()->GetPath().empty())
+		{
+			return false;
+		}
+	}
+
+	const fs::path File = ContentPaths::AssetRoot / FbxPath::FromString(Key);
+	fs::path Temp = File;
+	Temp += L".editing";
+	std::error_code Ec;
+	fs::create_directories(File.parent_path(), Ec);
+	if (Ec)
+	{
+		return false;
+	}
+
+	if (!FJsonArchive::SaveObject(&Material, FbxPath::ToString(Temp)))
+	{
+		return false;
+	}
+	if (!MoveFileExW(Temp.c_str(), File.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+	{
+		fs::remove(Temp, Ec);
+		return false;
+	}
+
+	Get().RegisterAsset(Key, &Material);
+	return true;
+}
+
+void UAssetManager::LoadDeferredAssets()
+{
+	for (const auto& [Key, Path] : AssetPathMap)
+	{
+		if (GetAssetExtension(Path) == ".material")
+		{
+			LoadMaterialAsset(Key);
+		}
+	}
 }
 
 void UAssetManager::Shutdown()

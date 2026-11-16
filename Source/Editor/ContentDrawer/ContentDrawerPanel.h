@@ -14,6 +14,7 @@ namespace fs = std::filesystem;
 
 class AStaticMeshActor;
 class UMaterial;
+class UMaterialInterface;
 class UStaticMesh;
 
 class FContentDrawerPanel : public IEditorPanel
@@ -28,12 +29,8 @@ public:
 	void RenderFolderTree(const fs::path& Path, fs::path& SelectedPath);
 	void Release();
 	void RequestThumbnailRefresh() { bRefreshThumbnails = true; AnimSequenceDisplayNames.clear(); }
-	static ID3D11ShaderResourceView* GetMaterialThumbnailSRV(UMaterial* Material);
-	static bool DrawMaterialPicker(
-		const char* Label,
-		UMaterial*& InOutMaterial,
-		const char* NullLabel = "(Default)",
-		const UMaterial* HighlightBase = nullptr);
+	static ID3D11ShaderResourceView* GetMaterialThumbnailSRV(UMaterialInterface* Material);
+	static bool DrawMaterialPicker(const char* Label, UMaterialInterface*& InOutMaterial, const char* NullLabel = "(Default)", const UMaterial* HighlightBase = nullptr, uint32 RequiredUsageFlag = 0);
 	static ID3D11ShaderResourceView* GetStaticMeshThumbnailSRV(UStaticMesh* Mesh);
 	static bool DrawStaticMeshPicker(
 		const char* Label,
@@ -46,6 +43,8 @@ public:
 	void SetCreateWidgetCallback(std::function<void(const FString&)> InCallback) { OnCreateWidget = std::move(InCallback); }
 	void SetCreateAnimGraphCallback(std::function<void(const FString&, const FString&)> InCallback) { OnCreateAnimGraph = std::move(InCallback); }
 	void SetOpenAnimGraphCallback(std::function<void(const FString&)> InCallback) { OnOpenAnimGraph = std::move(InCallback); }
+	void SetCreateMaterialCallback(std::function<void(const FString&)> InCallback) { OnCreateMaterial = std::move(InCallback); }
+	void SetCreateMaterialInstanceCallback(std::function<void(const FString&, const FString&)> InCallback) { OnCreateMaterialInstance = std::move(InCallback); }
 	void SetCreateBlendSpaceCallback(std::function<void(const FString&, bool)> InCallback) { OnCreateBlendSpace = std::move(InCallback); }
 	void SetOpenBlendSpaceCallback(std::function<void(const FString&)> InCallback) { OnOpenBlendSpace = std::move(InCallback); }
 
@@ -79,6 +78,8 @@ private:
 	std::function<void(const FString&)> OnCreateWidget;
 	std::function<void(const FString&, const FString&)> OnCreateAnimGraph;   // (대상 경로, 스켈레톤 키)
 	std::function<void(const FString&)> OnOpenAnimGraph;
+	std::function<void(const FString&)> OnCreateMaterial;
+	std::function<void(const FString&, const FString&)> OnCreateMaterialInstance;
 	std::function<void(const FString&, bool)> OnCreateBlendSpace;
 	std::function<void(const FString&)> OnOpenBlendSpace;
 	std::function<void(const FString&)> OnOpenSkeletalMesh;
@@ -86,6 +87,9 @@ private:
 	char SearchText[256] = "";
 	bool bOpenCreateWidget = false;
 	bool bOpenCreateAnimGraph = false;
+	bool bOpenCreateMaterial = false;
+	bool bOpenCreateMaterialInstance = false;
+	FString PendingMaterialInstanceParent;
 	FString NewAnimGraphSkeleton;          // 생성 모달에서 선택된 스켈레톤 키 (Assets 기준 상대 경로)
 	TArray<FString> SkeletonKeys;          // 모달을 열 때 Assets에서 수집한 SKEL_*.fbxbin
 	bool bOpenCreateBlendSpace = false;
@@ -102,7 +106,16 @@ private:
 	const FString FileIconPath = EditorResourcePaths::FileIcon;
 	
 	std::unordered_map<FString, TUniquePtr<FTexture2D>> ThumbnailCache;
+
+	std::set<FString> PendingMaterialThumbnailPaths;
+	std::set<FString> PendingStaticMeshThumbnailPaths;
+	std::set<FString> PendingSkeletalMeshThumbnailPaths;
+
+	std::unordered_map<FString, UMaterialInterface*> PendingTransientMaterialThumbnails;
+	std::unordered_map<FString, UStaticMesh*> PendingTransientStaticMeshThumbnails;
+
 	std::unordered_map<FString, FString> AnimSequenceDisplayNames;
+
 	UWorld* ThumbnailWorld = nullptr;
 	ASkeletalMeshActor* ThumbnailActor = nullptr;
 	AStaticMeshActor* MaterialThumbnailActor = nullptr;
@@ -113,7 +126,8 @@ private:
 	static FContentDrawerPanel* ActiveInstance;
 	void InitThumbnailStudio();
 	FTexture2D* GetOrCreateSkeletalMeshThumbnail(const FString& FbxPath);
-	FTexture2D* GetOrCreateMaterialThumbnail(UMaterial* Material);
+	FTexture2D* RenderSkeletalMeshThumbnail(const FString& FbxPath);
+	FTexture2D* GetOrCreateMaterialThumbnail(UMaterialInterface* Material);
 	FTexture2D* GetOrCreateStaticMeshThumbnail(UStaticMesh* Mesh);
-	FTexture2D* RenderStaticMeshThumbnail(const FString& CacheKey, UStaticMesh* Mesh, UMaterial* OverrideMaterial);
+	FTexture2D* RenderStaticMeshThumbnail(const FString& CacheKey, UStaticMesh* Mesh, UMaterialInterface* OverrideMaterial);
 };

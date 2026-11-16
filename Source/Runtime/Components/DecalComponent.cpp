@@ -8,6 +8,7 @@
 #include "Render/Material.h"
 #include "Render/Texture2D.h"
 #include "Render/NormalMapUtils.h"
+#include "Render/MaterialRenderProxy.h"
 #include "UObject/UObjectIterator.h"
 #include "GameFramework/Actor.h"
 
@@ -54,11 +55,15 @@ bool UDecalComponent::TryGetRenderData(
 	if (!bDecalEnabled || !DecalMaterial)
 		return false;
 
-	if (DecalMaterial->Textures.IsEmpty())
-		return false;
+	FMaterialRenderProxy MaterialProxy{};
+	DecalMaterial->GetRenderProxy(MaterialProxy);
 
-	UTexture2D* TextureAsset =
-		DecalMaterial->Textures[0];
+	if (MaterialProxy.Textures.IsEmpty())
+	{
+		return false;
+	}
+
+	UTexture2D* TextureAsset = MaterialProxy.Textures[0];
 
 	FTexture2D* Texture =
 		TextureAsset ? TextureAsset->GetResource() : nullptr;
@@ -66,7 +71,7 @@ bool UDecalComponent::TryGetRenderData(
 		return false;
 
 	const FVector4& MaterialColor =
-		DecalMaterial->BaseColor;
+		MaterialProxy.BaseColor;
 
 	if (!std::isfinite(MaterialColor.X) ||
 		!std::isfinite(MaterialColor.Y) ||
@@ -111,8 +116,8 @@ bool UDecalComponent::TryGetRenderData(
 	Data.ColorTexture = Texture;
 
 	UTexture2D* NormalAsset =
-		DecalMaterial->Textures.Num() > 1
-		? DecalMaterial->Textures[1]
+		MaterialProxy.Textures.Num() > 1
+		? MaterialProxy.Textures[1]
 		: nullptr;
 
 	FTexture2D* NormalResource =
@@ -136,9 +141,9 @@ bool UDecalComponent::TryGetRenderData(
 		? std::clamp(NormalOpacity, 0.0f, 1.0f)
 		: 0.0f;
 
-	Data.bFlipNormalY = DecalMaterial->bFlipNormalY;
+	Data.bFlipNormalY = MaterialProxy.bFlipNormalY;
 
-	Data.Sampler = DecalMaterial->SamplerState;
+	Data.Sampler = MaterialProxy.SamplerState;
 
 	// 일반 색상 샘플링에 비교 샘플러는 사용하지 않는다.
 	if (Data.Sampler == ESamplerState::ShadowComparison)

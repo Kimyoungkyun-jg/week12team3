@@ -126,7 +126,7 @@ public:
 	UPROPERTY(EditAnywhere)
 	bool bUseLocalSpace = false;
 	UPROPERTY(EditAnywhere)
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 };
 
 USTRUCT()
