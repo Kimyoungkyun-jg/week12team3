@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <set>
 
 namespace
 {
@@ -127,6 +128,42 @@ namespace
 			Value[3] = Display[3];
 		}
 		return true;
+	}
+
+	float DistanceSquaredToSegment(const ImVec2& Point, const ImVec2& Start, const ImVec2& End)
+	{
+		const float DX = End.x - Start.x;
+		const float DY = End.y - Start.y;
+		const float LengthSquared = DX * DX + DY * DY;
+		const float T = LengthSquared > 0.0f ? std::clamp(((Point.x - Start.x) * DX + (Point.y - Start.y) * DY) / LengthSquared, 0.0f, 1.0f) : 0.0f;
+		const float ClosestX = Start.x + DX * T;
+		const float ClosestY = Start.y + DY * T;
+		const float DiffX = Point.x - ClosestX;
+		const float DiffY = Point.y - ClosestY;
+		return DiffX * DiffX + DiffY * DiffY;
+	}
+
+	bool IsPointNearBezier(const ImVec2& Point, const ImVec2& Start, const ImVec2& Control1, const ImVec2& Control2, const ImVec2& End, float Radius)
+	{
+		ImVec2 Previous = Start;
+
+		for (int32 Step = 1; Step <= 24; ++Step)
+		{
+			const float T = static_cast<float>(Step) / 24.0f;
+			const float U = 1.0f - T;
+			const ImVec2 Current(
+				U * U * U * Start.x + 3.0f * U * U * T * Control1.x + 3.0f * U * T * T * Control2.x + T * T * T * End.x,
+				U * U * U * Start.y + 3.0f * U * U * T * Control1.y + 3.0f * U * T * T * Control2.y + T * T * T * End.y);
+
+			if (DistanceSquaredToSegment(Point, Previous, Current) <= Radius * Radius)
+			{
+				return true;
+			}
+
+			Previous = Current;
+		}
+
+		return false;
 	}
 }
 
@@ -568,6 +605,8 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 		return FindMaterialNode(Material, Id);
 	};
 
+	bool bHandledClick = false;
+
 	for (const FMaterialExpressionConnection& Connection : Material.ExpressionConnections)
 	{
 		const FMaterialExpressionNode* Output = FindNodePosition(Connection.OutputNodeId);
@@ -586,12 +625,32 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 
 		const ImVec2 A = GetMaterialOutputPinPosition(OutputMin, OutputSize, Scale);
 		const ImVec2 B = GetMaterialInputPinPosition(InputMin, Connection.InputPin, Scale);
+		const ImVec2 Control1(A.x + 70.0f * Scale, A.y);
+		const ImVec2 Control2(B.x - 70.0f * Scale, B.y);
 
-		Draw->AddBezierCubic(A, { A.x + 70.0f * Scale, A.y }, { B.x - 70.0f * Scale, B.y }, B,
-			IM_COL32(180, 190, 205, 255), 2.0f);
+		const bool bSelectedConnection =
+			SelectedConnectionOutputNodeId == Connection.OutputNodeId &&
+			SelectedConnectionOutputPin == Connection.OutputPin &&
+			SelectedConnectionInputNodeId == Connection.InputNodeId &&
+			SelectedConnectionInputPin == Connection.InputPin;
+
+		Draw->AddBezierCubic(A, Control1, Control2, B,
+			bSelectedConnection ? IM_COL32(255, 190, 90, 255) : IM_COL32(180, 190, 205, 255),
+			bSelectedConnection ? 3.0f : 2.0f);
+
+		if (bHovered && !bHandledClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+			IsPointNearBezier(Mouse, A, Control1, Control2, B, EditorUIScale::Px(8.0f)))
+		{
+			SelectedConnectionOutputNodeId = Connection.OutputNodeId;
+			SelectedConnectionOutputPin = Connection.OutputPin;
+			SelectedConnectionInputNodeId = Connection.InputNodeId;
+			SelectedConnectionInputPin = Connection.InputPin;
+
+			SelectedNodeId = 0;
+			DraggingNodeId = 0;
+			bHandledClick = true;
+		}
 	}
-
-	bool bHandledClick = false;
 
 	for (FMaterialExpressionNode& Node : Material.ExpressionNodes)
 	{
@@ -628,6 +687,12 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 
 				if (Material.ConnectExpressionPins(PendingOutputNodeId, PendingOutputPin, Node.Id, Pin, Error))
 				{
+					SelectedConnectionOutputNodeId = PendingOutputNodeId;
+					SelectedConnectionOutputPin = PendingOutputPin;
+					SelectedConnectionInputNodeId = Node.Id;
+					SelectedConnectionInputPin = Pin;
+					SelectedNodeId = 0;
+
 					bDirty = true;
 					Status = "Connected.";
 				}
@@ -664,6 +729,12 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 		{
 			SelectedNodeId = Node.Id;
 			DraggingNodeId = Node.Id;
+
+			SelectedConnectionOutputNodeId = 0;
+			SelectedConnectionOutputPin = 0;
+			SelectedConnectionInputNodeId = 0;
+			SelectedConnectionInputPin = 0;
+
 			bHandledClick = true;
 		}
 
@@ -718,28 +789,54 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 		PendingOutputNodeId = 0;
 	}
 
-	if (bHovered && ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete) && SelectedNodeId != Material.OutputNodeId)
+	if (bHovered && ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_Delete))
 	{
-		for (int32 Index = Material.ExpressionConnections.Num() - 1; Index >= 0; --Index)
+		if (SelectedConnectionOutputNodeId != 0)
 		{
-			const auto& Connection = Material.ExpressionConnections[Index];
-
-			if (Connection.OutputNodeId == SelectedNodeId || Connection.InputNodeId == SelectedNodeId)
+			for (int32 Index = Material.ExpressionConnections.Num() - 1; Index >= 0; --Index)
 			{
-				Material.ExpressionConnections.RemoveAt(Index);
-			}
-		}
+				const FMaterialExpressionConnection& Connection = Material.ExpressionConnections[Index];
 
-		for (int32 Index = Material.ExpressionNodes.Num() - 1; Index >= 0; --Index)
+				if (Connection.OutputNodeId == SelectedConnectionOutputNodeId &&
+					Connection.OutputPin == SelectedConnectionOutputPin &&
+					Connection.InputNodeId == SelectedConnectionInputNodeId &&
+					Connection.InputPin == SelectedConnectionInputPin)
+				{
+					Material.ExpressionConnections.RemoveAt(Index);
+					break;
+				}
+			}
+
+			SelectedConnectionOutputNodeId = 0;
+			SelectedConnectionOutputPin = 0;
+			SelectedConnectionInputNodeId = 0;
+			SelectedConnectionInputPin = 0;
+
+			bDirty = true;
+		}
+		else if (SelectedNodeId != 0 && SelectedNodeId != Material.OutputNodeId)
 		{
-			if (Material.ExpressionNodes[Index].Id == SelectedNodeId)
+			for (int32 Index = Material.ExpressionConnections.Num() - 1; Index >= 0; --Index)
 			{
-				Material.ExpressionNodes.RemoveAt(Index);
-			}
-		}
+				const FMaterialExpressionConnection& Connection = Material.ExpressionConnections[Index];
 
-		SelectedNodeId = 0;
-		bDirty = true;
+				if (Connection.OutputNodeId == SelectedNodeId || Connection.InputNodeId == SelectedNodeId)
+				{
+					Material.ExpressionConnections.RemoveAt(Index);
+				}
+			}
+
+			for (int32 Index = Material.ExpressionNodes.Num() - 1; Index >= 0; --Index)
+			{
+				if (Material.ExpressionNodes[Index].Id == SelectedNodeId)
+				{
+					Material.ExpressionNodes.RemoveAt(Index);
+				}
+			}
+
+			SelectedNodeId = 0;
+			bDirty = true;
+		}
 	}
 
 	if (ImGui::BeginDragDropTarget())
@@ -868,6 +965,19 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 			Selected->ParameterGroup = Group;
 			bDirty = true;
 		}
+
+		if (Selected->Type == EMaterialExpressionType::ScalarParameter)
+		{
+			if (ImGui::DragFloat("Default Value", &Selected->ScalarValue, 0.01f))
+			{
+				bDirty = true;
+			}
+		}
+		else if (EditMaterialColor("Default Value", &Selected->VectorValue.X, true))
+		{
+			bDirty = true;
+		}
+
 		break;
 	}
 
@@ -1071,6 +1181,112 @@ void FMaterialEditorPanel::OnRender()
 		}
 
 		ImGui::EndDisabled();
+
+		UMaterial* ParentMaterial = Instance->GetBaseMaterial();
+
+		if (ParentMaterial)
+		{
+			ImGui::Separator();
+			ImGui::TextUnformatted("Parameters");
+
+			std::set<FString> DrawnGroups;
+
+			for (const FMaterialExpressionNode& ParameterNode : ParentMaterial->ExpressionNodes)
+			{
+				if (ParameterNode.Type != EMaterialExpressionType::ScalarParameter &&
+					ParameterNode.Type != EMaterialExpressionType::VectorParameter)
+				{
+					continue;
+				}
+
+				const FString GroupName = ParameterNode.ParameterGroup.empty() ? FString("Default") : ParameterNode.ParameterGroup;
+
+				if (!DrawnGroups.insert(GroupName).second)
+				{
+					continue;
+				}
+
+				if (!ImGui::TreeNodeEx(GroupName.c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					continue;
+				}
+
+				for (const FMaterialExpressionNode& Node : ParentMaterial->ExpressionNodes)
+				{
+					if (Node.ParameterGroup != ParameterNode.ParameterGroup ||
+						(Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter))
+					{
+						continue;
+					}
+
+					const FName ParameterName(Node.ParameterName);
+					const FMaterialParameterOverride* Existing = Instance->GetParameterOverride(ParameterName);
+					const bool bScalar = Node.Type == EMaterialExpressionType::ScalarParameter;
+
+					bool bOverride = Existing && Existing->Type == (bScalar ? EMaterialParameterType::Scalar : EMaterialParameterType::Vector);
+
+					ImGui::PushID(Node.ParameterName.c_str());
+
+					ImGui::TextUnformatted(Node.ParameterName.c_str());
+					ImGui::SameLine();
+
+					if (ImGui::Checkbox("Override", &bOverride))
+					{
+						if (bOverride)
+						{
+							if (bScalar)
+							{
+								Instance->SetScalarParameterValue(ParameterName, Node.ScalarValue);
+							}
+							else
+							{
+								Instance->SetVectorParameterValue(ParameterName, Node.VectorValue);
+							}
+						}
+						else
+						{
+							Instance->ClearParameterOverride(ParameterName);
+						}
+
+						bDirty = true;
+					}
+
+					const FMaterialParameterOverride* CurrentOverride = Instance->GetParameterOverride(ParameterName);
+
+					ImGui::BeginDisabled(!bOverride);
+
+					if (bScalar)
+					{
+						float Value = CurrentOverride && CurrentOverride->Type == EMaterialParameterType::Scalar
+							? CurrentOverride->ScalarValue
+							: Node.ScalarValue;
+
+						if (ImGui::DragFloat("Value", &Value, 0.01f))
+						{
+							Instance->SetScalarParameterValue(ParameterName, Value);
+							bDirty = true;
+						}
+					}
+					else
+					{
+						FVector4 Value = CurrentOverride && CurrentOverride->Type == EMaterialParameterType::Vector
+							? CurrentOverride->VectorValue
+							: Node.VectorValue;
+
+						if (EditMaterialColor("Value", &Value.X, true))
+						{
+							Instance->SetVectorParameterValue(ParameterName, Value);
+							bDirty = true;
+						}
+					}
+
+					ImGui::EndDisabled();
+					ImGui::PopID();
+				}
+
+				ImGui::TreePop();
+			}
+		}
 
 		DrawPreview();
 	}

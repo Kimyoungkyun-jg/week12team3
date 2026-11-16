@@ -67,6 +67,11 @@ private:
 	int32 PendingOutputNodeId = 0;
 	int32 PendingOutputPin = 0;
 
+	int32 SelectedConnectionOutputNodeId = 0;
+	int32 SelectedConnectionOutputPin = 0;
+	int32 SelectedConnectionInputNodeId = 0;
+	int32 SelectedConnectionInputPin = 0;
+
 	bool bDraggingConnection = false;
 	bool bVisible = false;
 	bool bFocused = false;
