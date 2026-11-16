@@ -103,9 +103,9 @@ namespace
 			return false;
 		}
 
-		if (!BaseMaterial->HasUsage(EMaterialUsage::SkeletalMesh))
+		if (!BaseMaterial->HasUsage(EMaterialUsage::StaticMesh))
 		{
-			HTR_LOG(Warning, "[Material] {} is missing Skeletal Mesh usage.", BaseMaterial->GetPath());
+			HTR_LOG(Warning, "[Material] {} is missing Static Mesh usage.", BaseMaterial->GetPath());
 			return false;
 		}
 		Batch.VertexBuffer = Mesh->GetVertexBuffer(LOD);
@@ -124,7 +124,7 @@ namespace
 			if (!bWorldNormal && bHasGraph)
 			{
 				FString GraphError;
-				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, false, Options.ReflectionModel, Options.bUnlit, false, GraphError);
+				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, EPSOType::StaticMesh_Forward, Options.ReflectionModel, Options.bUnlit, false, GraphError);
 
 				if (GraphShader)
 				{
@@ -168,7 +168,7 @@ namespace
 			if (Pass == EMeshPassType::GBuffer && BaseMaterial->HasGraphOutput())
 			{
 				FString GraphError;
-				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, EPSOType::SkeletalMesh_GBuffer, EReflectionModel::Lambert, false, bGPUSkinning, GraphError);
+				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, EPSOType::StaticMesh_GBuffer, EReflectionModel::Lambert, false, false, GraphError);
 
 				if (GraphShader)
 				{
@@ -268,9 +268,9 @@ namespace
 			return false;
 		}
 
-		if (!BaseMaterial->HasUsage(EMaterialUsage::StaticMesh))
+		if (!BaseMaterial->HasUsage(EMaterialUsage::SkeletalMesh))
 		{
-			HTR_LOG(Warning, "[Material] {} is missing Static Mesh usage.", BaseMaterial->GetPath());
+			HTR_LOG(Warning, "[Material] {} is missing Skeletal Mesh usage.", BaseMaterial->GetPath());
 			return false;
 		}
 		Batch.VertexBuffer = Mesh->GetVertexBuffer(LOD);
@@ -328,10 +328,30 @@ namespace
 			FPipelineState* Pipeline = FRenderResourceManager::GetPSO(Type);
 			if (!Pipeline) return false;
 			Batch.Pipeline = *Pipeline;
+
+			if (Pass == EMeshPassType::GBuffer && BaseMaterial->HasGraphOutput())
+			{
+				FString GraphError;
+				FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, EPSOType::SkeletalMesh_GBuffer, EReflectionModel::Lambert, false, bGPUSkinning, GraphError);
+
+				if (GraphShader)
+				{
+					Batch.Pipeline.Shader = GraphShader;
+				}
+				else
+				{
+					HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
+					return false;
+				}
+			}
+
 			if (bGPUSkinning && Type == EPSOType::StaticMesh_Translucent)
 			{
 				Batch.Pipeline.Shader = FRenderResourceManager::GetTranslucentShaderProgram(true);
-				if (!Batch.Pipeline.Shader) return false;
+				if (!Batch.Pipeline.Shader)
+				{
+					return false;
+				}
 			}
 			Batch.bForceWireframe = Pass == EMeshPassType::GBuffer && View.bIsWireframe;
             Batch.ObjectStages = EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel;
@@ -476,52 +496,52 @@ namespace
 
 		return false;
 	}
+}
 
-	void BuildMaterialGraphParameterData(const UMaterial& Material, const FMaterialRenderProxy& Proxy, uint8* OutData, uint32& OutSize)
+void BuildMaterialGraphParameterData(const UMaterial& Material, const FMaterialRenderProxy& Proxy, uint8* OutData, uint32& OutSize)
+{
+	const uint32 BufferSize = sizeof(FVector4) * MaxMaterialGraphParameters;
+	std::memset(OutData, 0, BufferSize);
+
+	int32 ParameterIndex = 0;
+
+	for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
 	{
-		const uint32 BufferSize = sizeof(FVector4) * MaxMaterialGraphParameters;
-		std::memset(OutData, 0, BufferSize);
-
-		int32 ParameterIndex = 0;
-
-		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
+		if (Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter)
 		{
-			if (Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter)
+			continue;
+		}
+
+		FVector4 Value = Node.Type == EMaterialExpressionType::ScalarParameter
+			? FVector4(Node.ScalarValue, 0.0f, 0.0f, 0.0f)
+			: Node.VectorValue;
+
+		const FName Name(Node.ParameterName);
+
+		for (const FMaterialParameterOverride& Override : Proxy.ParameterOverrides)
+		{
+			if (Override.ParameterName != Name)
 			{
 				continue;
 			}
 
-			FVector4 Value = Node.Type == EMaterialExpressionType::ScalarParameter
-				? FVector4(Node.ScalarValue, 0.0f, 0.0f, 0.0f)
-				: Node.VectorValue;
-
-			const FName Name(Node.ParameterName);
-
-			for (const FMaterialParameterOverride& Override : Proxy.ParameterOverrides)
+			if (Node.Type == EMaterialExpressionType::ScalarParameter && Override.Type == EMaterialParameterType::Scalar)
 			{
-				if (Override.ParameterName != Name)
-				{
-					continue;
-				}
-
-				if (Node.Type == EMaterialExpressionType::ScalarParameter && Override.Type == EMaterialParameterType::Scalar)
-				{
-					Value.X = Override.ScalarValue;
-				}
-				else if (Node.Type == EMaterialExpressionType::VectorParameter && Override.Type == EMaterialParameterType::Vector)
-				{
-					Value = Override.VectorValue;
-				}
-
-				break;
+				Value.X = Override.ScalarValue;
+			}
+			else if (Node.Type == EMaterialExpressionType::VectorParameter && Override.Type == EMaterialParameterType::Vector)
+			{
+				Value = Override.VectorValue;
 			}
 
-			std::memcpy(OutData + ParameterIndex * sizeof(FVector4), &Value, sizeof(FVector4));
-			++ParameterIndex;
+			break;
 		}
 
-		OutSize = BufferSize;
+		std::memcpy(OutData + ParameterIndex * sizeof(FVector4), &Value, sizeof(FVector4));
+		++ParameterIndex;
 	}
+
+	OutSize = BufferSize;
 }
 
 bool FMeshPassProcessor::Build(const FSceneView& View, const FRenderQueue& Queue,
@@ -626,6 +646,21 @@ bool FMeshPassProcessor::Build(const TArray<FPrimitiveSceneProxy*>& ShadowMeshes
 
 		FMeshDrawBatch Batch{};
 		Batch.Pipeline = *Pipeline;
+		if (Pass == EMeshPassType::Translucent && Type == EPSOType::StaticMesh_Translucent && BaseMaterial->HasGraphOutput())
+		{
+			FString GraphError;
+			FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, EPSOType::StaticMesh_Translucent, EReflectionModel::Lambert, false, false, GraphError);
+
+			if (GraphShader)
+			{
+				Batch.Pipeline.Shader = GraphShader;
+			}
+			else
+			{
+				HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
+				return false;
+			}
+		}
 		Batch.VertexBuffer = Proxy->GetVertexBuffer(LOD);
 		Batch.IndexBuffer = Proxy->GetIndexBuffer(LOD);
 		if (USkeletalMesh* SkelMesh = Proxy->GetSkeletalMesh())

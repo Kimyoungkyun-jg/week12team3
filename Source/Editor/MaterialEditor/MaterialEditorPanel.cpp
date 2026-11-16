@@ -1329,17 +1329,55 @@ void FMaterialEditorPanel::OnRender()
 			}
 			else
 			{
-				FShaderProgram* DeferredShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*Material, true, EReflectionModel::Lambert, false, false, CompileError);
+				bool bCompiledAny = false;
+				bool bCompileSucceeded = true;
 
-				if (!DeferredShader)
+				auto CompileVariant = [&](EPSOType TargetPSO, bool bGPUSkinning = false)
 				{
-					Status = CompileError;
-				}
-				else
+					bCompiledAny = true;
+
+					FString Error;
+					FShaderProgram* Program = FRenderResourceManager::GetMaterialGraphShaderProgram(*Material, TargetPSO, EReflectionModel::Lambert, false, bGPUSkinning, Error);
+
+					if (!Program)
+					{
+						CompileError = Error;
+						bCompileSucceeded = false;
+					}
+				};
+
+				if (Material->HasUsage(EMaterialUsage::StaticMesh))
 				{
-					FShaderProgram* ForwardShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*Material, false, EReflectionModel::Lambert, false, false, CompileError);
-					Status = ForwardShader ? "Material Graph compiled successfully." : CompileError;
+					CompileVariant(EPSOType::StaticMesh_Forward);
+					CompileVariant(EPSOType::StaticMesh_GBuffer);
 				}
+
+				if (Material->HasUsage(EMaterialUsage::SkeletalMesh))
+				{
+					CompileVariant(EPSOType::StaticMesh_Forward);
+					CompileVariant(EPSOType::StaticMesh_Forward, true);
+					CompileVariant(EPSOType::SkeletalMesh_GBuffer);
+					CompileVariant(EPSOType::SkeletalMesh_GBuffer, true);
+				}
+
+				if (Material->HasUsage(EMaterialUsage::ParticleSprite))
+				{
+					CompileVariant(EPSOType::Particle_Instanced);
+					CompileVariant(EPSOType::Particle_GpuInstanced);
+					CompileVariant(EPSOType::Particle_Sprite);
+					CompileVariant(EPSOType::Particle_AlphaBlend);
+					CompileVariant(EPSOType::Particle_Additive);
+				}
+
+				if (Material->HasUsage(EMaterialUsage::ParticleMesh))
+				{
+					CompileVariant(EPSOType::Particle_MeshOpaque);
+					CompileVariant(EPSOType::Particle_MeshTranslucent);
+					CompileVariant(EPSOType::Particle_MeshAdditive);
+				}
+
+				Status = !bCompiledAny ? "Enable at least one Usage Flag." : bCompileSucceeded ? "Material Graph compiled successfully."
+																							   : CompileError;
 			}
 		}
 	}

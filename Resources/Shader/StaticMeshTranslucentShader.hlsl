@@ -57,7 +57,11 @@ struct PS_INPUT
 };
 
 Texture2D g_txColor : register(t0);
-SamplerState g_Sample : register(s0);
+SamplerState ColorSampler : register(s0);
+
+#ifdef MATERIAL_GRAPH
+#include MATERIAL_GRAPH_INCLUDE
+#endif
 
 float FogTransmittance(float3 Position)
 {
@@ -117,9 +121,31 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
     float2 UV = ResolveMaterialUV(input.uv, input.worldPosition, input.normal,
         input.localPosition, input.localNormal, World, UVTiling, UVOffset, WorldUVTileSize,
         WorldUVParams.x > 0.5f, ProjectedT, ProjectedB);
-    float4 texColor = g_txColor.Sample(g_Sample, UV);
+    float4 texColor = g_txColor.Sample(ColorSampler, UV);
     texColor.rgb = pow(max(texColor.rgb, 0.0f), 2.2f) * BaseColor.rgb + Emissive.rgb;
     texColor.a *= BaseColor.a;
+
+#ifdef MATERIAL_GRAPH
+    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV);
+
+#ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
+    texColor.rgb = GraphOutput.BaseColor.rgb;
+    texColor.a *= GraphOutput.BaseColor.a;
+#endif
+
+    float3 GraphEmissive = float3(0, 0, 0);
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_COLOR
+    GraphEmissive = GraphOutput.EmissiveColor;
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR
+    GraphEmissive *= GraphOutput.EmissiveFactor;
+#endif
+
+    texColor.rgb += GraphEmissive;
+#endif
+
     texColor.a *= FogTransmittance(input.worldPosition);
     return texColor;
 }

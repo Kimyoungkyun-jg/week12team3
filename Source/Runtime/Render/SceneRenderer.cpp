@@ -6,6 +6,7 @@
 #include "Render/SceneViewTargets.h"
 #include "Render/SkyboxRenderer.h"
 #include "Render/RenderResourceManager.h"
+#include "Render/MaterialRenderProxy.h"
 #include "Engine/World.h"
 #include "Engine/ParticleSceneProxy.h"
 #include "Components/ParticleSystemComponent.h"
@@ -267,6 +268,7 @@ void FSceneRenderer::UnbindForwardLighting(FRenderer* Renderer)
 {
 	RenderCommand::UnbindShaderResources(9, 2, EShaderBindFlagBits::Pixel);
 	RenderCommand::BindConstantBuffer(3, nullptr, EShaderBindFlagBits::Pixel);
+	RenderCommand::BindConstantBuffer(4, nullptr, EShaderBindFlagBits::Pixel);
 	RenderCommand::UnbindShaderResources(12, 2, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
 	RenderData.ViewLightResources.GetTiles().ResetPixelState();
 	RenderCommand::UnbindShaderResources(8, 1, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
@@ -1452,10 +1454,10 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 	if (!RenderData.GpuParticleBatches.IsEmpty())
 	{
 		FPipelineState* GpuPSO = FRenderResourceManager::GetPSO(EPSOType::Particle_GpuInstanced);
+
 		if (GpuPSO && GpuPSO->Shader && GpuPSO->Shader->VertexShader && GpuPSO->Shader->PixelShader)
 		{
 			Renderer->UploadViewMatrix(View.ViewProjectionMatrix);
-			RenderCommand::BindPipelineState(*GpuPSO);
 			RenderCommand::BindConstantBuffer(0, Renderer->GetViewConstantBuffer(), EShaderBindFlagBits::Vertex);
 
 			for (const FGpuParticleBatch& Batch : RenderData.GpuParticleBatches)
@@ -1466,13 +1468,58 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 				FIndexBuffer* IndexBuffer = Batch.Mesh->GetIndexBuffer(0);
 				if (!IndexBuffer) continue;
 
+				FMaterialRenderProxy MaterialProxy{};
+				Batch.Material->GetRenderProxy(MaterialProxy);
+
+				const UMaterial* BaseMaterial = MaterialProxy.BaseMaterial;
+				if (!BaseMaterial || !BaseMaterial->HasUsage(EMaterialUsage::ParticleSprite))
+				{
+					continue;
+				}
+
+				FShaderProgram* TargetShader = GpuPSO->Shader;
+
+				if (BaseMaterial->HasGraphOutput())
+				{
+					FString GraphError;
+					FShaderProgram* GraphShader = FRenderResourceManager::GetMaterialGraphShaderProgram(*BaseMaterial, EPSOType::Particle_GpuInstanced, EReflectionModel::Lambert, true, false, GraphError);
+
+					if (!GraphShader)
+					{
+						HTR_LOG(Error, "[MaterialGraph] {}", GraphError);
+						continue;
+					}
+
+					TargetShader = GraphShader;
+				}
+
+				FPipelineState MaterialPipeline = *GpuPSO;
+				MaterialPipeline.Shader = TargetShader;
+				RenderCommand::BindPipelineState(MaterialPipeline);
+
 				RenderCommand::UpdateBufferData(Res->DrawCB.get(), &Batch.DrawParams, sizeof(FGpuParticleDrawParams));
 				RenderCommand::BindConstantBuffer(1, Res->DrawCB.get(), EShaderBindFlagBits::Vertex);
 				RenderCommand::BindShaderResource(1, Res->ParticleBuffer.get(), EShaderBindFlagBits::Vertex);
 				RenderCommand::BindMesh(Batch.Mesh, 0);
 
-				RenderCommand::BindSamplerState(0, Batch.Material->GetSamplerState(), EShaderBindFlagBits::Pixel);
-	
+				RenderCommand::BindShaderResource(0, MaterialProxy.Textures.IsValidIndex(0) ? MaterialProxy.Textures[0] : nullptr, EShaderBindFlagBits::Pixel);
+
+				for (int32 TextureIndex = 0; TextureIndex < MaterialProxy.GraphTextures.Num(); ++TextureIndex)
+				{
+					RenderCommand::BindShaderResource(2 + TextureIndex, MaterialProxy.GraphTextures[TextureIndex], EShaderBindFlagBits::Pixel);
+				}
+
+				std::array<uint8, sizeof(FVector4) * MaxMaterialGraphParameters> GraphParameterData{};
+				uint32 GraphParameterDataSize = 0;
+
+				if (BaseMaterial->HasGraphOutput())
+				{
+					BuildMaterialGraphParameterData(*BaseMaterial, MaterialProxy, GraphParameterData.data(), GraphParameterDataSize);
+				}
+
+				Renderer->BindGraphMaterialParameters(GraphParameterDataSize > 0 ? GraphParameterData.data() : nullptr, GraphParameterDataSize);
+				RenderCommand::BindSamplerState(0, MaterialProxy.SamplerState, EShaderBindFlagBits::Pixel);
+
 				RenderCommand::DrawIndexedInstanced(IndexBuffer->GetIndexCount(), Batch.MaxParticles, 0, 0, 0);
 			}
 

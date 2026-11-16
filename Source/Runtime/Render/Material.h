@@ -112,6 +112,20 @@ public:
 			UsageFlags &= ~Flag;
 		}
 	}
+
+	bool HasGraphOutput() const
+	{
+		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+		{
+			if (Connection.InputNodeId == OutputNodeId)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	FShaderProgram* Shader = nullptr;
 	TArray<UTexture2D*> Textures;
 	TArray<FMaterialExpressionNode> ExpressionNodes;

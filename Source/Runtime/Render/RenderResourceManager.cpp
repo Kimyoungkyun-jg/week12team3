@@ -603,6 +603,28 @@ void FRenderResourceManager::InitPipelineStates()
 			}
 		}
 	}
+
+	const FString SkeletalGBufferPath = "Resources/Shader/SkeletalMeshGBufferShader.hlsl";
+
+	if (auto* Base = ShaderProgramMap.Find(SkeletalGBufferPath))
+	{
+		const D3D_SHADER_MACRO Defines[] = { { "GPU_SKINNING", "1" }, { nullptr, nullptr } };
+
+		FString VSPath;
+		FShaderByteCode Code = RenderUtil::GetOrCompile(SkeletalGBufferPath, "mainVS", EShaderType::Vertex, VSPath, Defines);
+
+		if (Code.IsValid())
+		{
+			auto VS = RenderCommand::CreateVertexShader(Code);
+
+			if (VS && VS->IsValid())
+			{
+				FVertexShader* VSRaw = VS.get();
+				VertexShaderMap[VSPath] = std::move(VS);
+				ShaderProgramMap[SkeletalGBufferPath + "#GPU"] = MakeUnique<FShaderProgram>(VSRaw, (*Base)->PixelShader);
+			}
+		}
+	}
 }
 
 FShaderProgram* FRenderResourceManager::GetShadowDepthShaderProgram()
@@ -717,7 +739,7 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 
 	FString Key = ShaderPath + "#MaterialGraph_" + Hash + "#PSO_" + std::to_string(static_cast<uint8>(TargetPSO));
 
-	if (!bDeferred)
+	if (TargetPSO == EPSOType::StaticMesh_Forward)
 	{
 		Key += "#Reflection_" + std::to_string(static_cast<int32>(Reflection));
 		Key += bUnlit ? "#Unlit" : "#Lit";
