@@ -280,9 +280,14 @@ void UParticleSubUVComponent::PushRenderStateToProxy()
 
 FBillboardProxyData UParticleSubUVComponent::BuildBillboardProxyData() const
 {
+	const UWorld* World = GetWorld();
+	const bool bShowEditorPreview = World->GetWorldType() == EWorldType::Editor 
+								&& IsAutoActivate() 
+								&& !bPlayOnce;
+
 	FBillboardProxyData Data = Super::BuildBillboardProxyData();
 	Data.bSubUVEmitter = true;
-	Data.bActive = IsActive();
+	Data.bActive = IsActive() || bShowEditorPreview;
 	Data.bOpaqueMaterial = UsesOpaqueMaterial();
 	Data.ColSize = ColSize;
 	Data.RowSize = RowSize;
