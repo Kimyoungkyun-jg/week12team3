@@ -79,7 +79,7 @@ struct FParticleEmitterInstance
 	uint32 GetModuleDataOffset(const UParticleModule* Module) const;
 	void Resize(int32 NewMaxActiveParticles);
 	void SetLODLevel(int32 NewLODIndex);
-	void Tick(float DeltaTime, const FVector& Origin);
+	void Tick(float DeltaTime, const FVector& Origin, const FParticleTickContext &Context);
 	void Reset();
 	bool HasCompleted() const;
 	bool IsGpuEmitter() const;

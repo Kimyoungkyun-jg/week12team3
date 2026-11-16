@@ -356,3 +356,11 @@ UParticleSystem* UParticleSystem::LoadFromFile(const FString& Path, UObject* Out
 	UParticleSystem* System = NewObject<UParticleSystem>(Outer);
 	return FJsonArchive::LoadObject(System, Path) ? System : nullptr;
 }
+
+void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, const FParticleTickContext& Context) const
+{
+	if (Offset == 0)
+	{
+		return;
+	}
+}

@@ -11,6 +11,8 @@
 #include "ParticleSystem.generated.h"
 
 class UClass;
+class UWorld;
+class UParticleSystemComponent;
 
 struct FBaseParticle
 {
@@ -30,6 +32,21 @@ struct FBaseParticle
 struct FSubUVPayload
 {
 	float ImageIndex = 0.0f;
+};
+
+struct FParticleCollisionPayload
+{
+	uint16 CollisionCount = 0;
+	float Restitution = 0.0f;
+	float Friction = 0.0f;
+	bool bInitialized = false;
+};
+
+struct FParticleTickContext
+{
+	UWorld* World = nullptr;
+	FMatrix ComponentToWorld;
+	UParticleSystemComponent * Component = nullptr;
 };
 
 enum class EParticleSysParamType : uint8
@@ -358,6 +375,35 @@ public:
 };
 
 UCLASS()
+class UParticleModuleCollision : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	void TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, const FParticleTickContext& Context) const;
+	
+	bool RunsOnUpdate() const override { return true; }
+	uint32 RequiredBytes() const override { return sizeof(FParticleCollisionPayload); }
+	const char* GetDisplayName() const override { return "Collision"; }
+
+public:
+	UPROPERTY(EditAnywhere)
+	float RestitutionMax = 0.5f;
+	UPROPERTY(EditAnywhere)
+	float RestitutionMin = 0.0f;
+
+	UPROPERTY(EditAnywhere)
+	float FrictionMax = 0.5f;
+	UPROPERTY(EditAnywhere)
+	float FrictionMin = 0.2f;
+
+	UPROPERTY(EditAnywhere)
+	int32 MaxCollisions = 10;
+
+	UPROPERTY(EditAnywhere)
+	float CollisionRadius = 1.0f;
+};
+
+UCLASS()
 class UParticleLODLevel : public UObject
 {
 	GENERATED_BODY()
@@ -438,3 +484,4 @@ private:
 	UPROPERTY(Instanced)
 	TArray<UParticleEmitter*> Emitters;
 };
+
