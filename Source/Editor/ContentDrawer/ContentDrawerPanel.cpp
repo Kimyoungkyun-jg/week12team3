@@ -87,6 +87,29 @@ FContentDrawerPanel::~FContentDrawerPanel()
 	Release();
 }
 
+bool FContentDrawerPanel::FocusAsset(const FString& AssetPath)
+{
+	if (!ActiveInstance || AssetPath.empty())
+	{
+		return false;
+	}
+
+	const fs::path TargetPath = FbxPath::FromString(AssetPath);
+	std::error_code Error;
+
+	if (!fs::is_regular_file(TargetPath, Error) || Error)
+	{
+		return false;
+	}
+
+	ActiveInstance->CurrentPath = TargetPath.parent_path();
+	ActiveInstance->SelectedAssetPath = TargetPath;
+	ActiveInstance->SearchText[0] = '\0';
+	ActiveInstance->SetOpen(true);
+
+	return true;
+}
+
 bool FContentDrawerPanel::Init()
 {
 	return true;

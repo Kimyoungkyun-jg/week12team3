@@ -75,7 +75,7 @@ public:
 	void RenderFrame(FEditorViewportClient* ViewClient, const FSceneView& SceneView, const FSceneRenderOptions& RenderOptions, FSceneRenderer& SceneRenderer, UWorld* TargetWorld, const bool bIsPIE);
 	// FBX Viewer용 뷰포트 화면을 렌더링한다.
 	void RenderPreviewViewport(FEditorViewportClient* PreviewClient, UWorld* PreviewWorld, const FGizmo* PreviewGizmo,
-		class FSkyboxRenderer* SkyboxOverride = nullptr, bool bDrawGrid = false, const class UPrimitiveComponent* BoundsComponent = nullptr);
+		class FSkyboxRenderer* SkyboxOverride = nullptr, bool bDrawGrid = false, const class UPrimitiveComponent* BoundsComponent = nullptr, bool bDrawOriginAxis = false);
 	// 게임 뷰포트 화면을 렌더링한다.
 	void RenderGameFrame(FGameViewportClient* GameClient, const FSceneView& SceneView, const FSceneRenderOptions& RenderOptions, FSceneRenderer& SceneRenderer, bool bIsSIEMode = false);
 	// 네 View 결과와 ImGui를 메인 Swapchain 백버퍼에 합성한다. Present는 FEngineLoop가 한다.

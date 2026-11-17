@@ -1753,7 +1753,7 @@ void UEditorEngine::RenderFrame(FEditorViewportClient* ViewClient,
 }
 
 void UEditorEngine::RenderPreviewViewport(FEditorViewportClient* PreviewClient, UWorld* PreviewWorld, const FGizmo* PreviewGizmo,
-	FSkyboxRenderer* SkyboxOverride, bool bDrawGrid, const UPrimitiveComponent* BoundsComponent)
+	FSkyboxRenderer* SkyboxOverride, bool bDrawGrid, const UPrimitiveComponent* BoundsComponent, bool bDrawOriginAxis)
 {
 	if (!PreviewClient || !PreviewWorld || PreviewClient->GetWidth() == 0 || PreviewClient->GetHeight() == 0)
 		return;
@@ -1771,7 +1771,7 @@ void UEditorEngine::RenderPreviewViewport(FEditorViewportClient* PreviewClient, 
 	FSceneViewTargets& Targets = PreviewClient->GetViewTargets();
 	RenderScene(Targets, SceneView, SceneRenderer, PreviewWorld, Options, [this, &SceneView, &Targets, PreviewGizmo, bDrawGrid, PreviewWorld, BoundsComponent](FSceneOverlayCallbacks& Overlays)
 		{
-			Overlays.EditorLines = [this, &SceneView, PreviewWorld, BoundsComponent]
+			Overlays.EditorLines = [this, &SceneView, PreviewWorld, BoundsComponent, bDrawOriginAxis]
 			{
 				LineBatcher->BeginFrame();
 				for (TObjectIterator<USkeletalMeshDebugComponent> It; It; ++It)
@@ -1779,6 +1779,12 @@ void UEditorEngine::RenderPreviewViewport(FEditorViewportClient* PreviewClient, 
 				if (BoundsComponent)
 				{
 					LineBatcher->AddBox(BoundsComponent->CalcBounds(), FVector4(1.0f, 0.85f, 0.15f, 1.0f));
+				}
+				if (bDrawOriginAxis)
+				{
+					LineBatcher->AddLine(FVector::ZeroVector, FVector(100.0f, 0.0f, 0.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f));
+					LineBatcher->AddLine(FVector::ZeroVector, FVector(0.0f, 100.0f, 0.0f), FVector4(0.0f, 1.0f, 0.0f, 1.0f));
+					LineBatcher->AddLine(FVector::ZeroVector, FVector(0.0f, 0.0f, 100.0f), FVector4(0.0f, 0.4f, 1.0f, 1.0f));
 				}
 				LineBatcher->OnRender(SceneView.ViewProjectionMatrix);
 			};
