@@ -1625,7 +1625,7 @@
             "GameModeClassName": "AGameMode",
             "HUDClassName": "",
             "PlayerControllerClassName": "",
-            "PlayerPawnClassName": "ASwordCharacter"
+            "PlayerPawnClassName": "ATestCharacter"
         }
     }
 }

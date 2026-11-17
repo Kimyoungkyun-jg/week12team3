@@ -873,7 +873,8 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 	MaterialCB.Stages = EShaderBindFlagBits::Pixel;
 	if (bIsStaticMaterialPSO || bStaticMeshFallback)
 	{
-		const FStaticMeshMaterialParams Params = MakeStaticMaterial(Material);
+		FStaticMeshMaterialParams Params = MakeStaticMaterial(Material);
+		Params.BaseColor.W *= Batch.ParticleAlpha;
 		std::memcpy(MaterialCB.Data.data(), &Params, sizeof(Params));
 		MaterialCB.DataSize = sizeof(Params);
 	}

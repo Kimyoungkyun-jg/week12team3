@@ -1550,11 +1550,15 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 				{
 					TypeIndex = 4;
 				}
+				else if (TypeData && TypeData->GetEmitterType() == EParticleEmitterType::Afterimage)
+				{
+					TypeIndex = 5;
+				}
 
 				ImGui::SetNextItemWidth(-1.0f);
 
 				ImGui::BeginDisabled(!LOD->OwnsModule(TypeData));
-				if (ImGui::Combo("##EmitterType", &TypeIndex, "Sprite\0GPU Sprite\0Mesh\0Beam\0Ribbon\0"))
+				if (ImGui::Combo("##EmitterType", &TypeIndex, "Sprite\0GPU Sprite\0Mesh\0Beam\0Ribbon\0Afterimage\0"))
 				{
 					UClass* TargetClass = UParticleModuleTypeDataSprite::StaticClass();
 
@@ -1573,6 +1577,10 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					else if (TypeIndex == 4)
 					{
 						TargetClass = UParticleModuleTypeDataRibbon::StaticClass();
+					}
+					else if (TypeIndex == 5)
+					{
+						TargetClass = UParticleModuleTypeDataAfterimage::StaticClass();
 					}
 
 					const bool bWasSelected = SelectedEmitter == Emitter && SelectedModule == TypeData;
@@ -2176,6 +2184,11 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			bChanged |= ImGui::Checkbox("Clip Source Segment", &RibbonType->bClipSourceSegment);
 			if (bChanged) MarkAssetModified();
 		}
+		else if (Cast<UParticleModuleTypeDataAfterimage>(SelectedModule))
+		{
+			DrawSection("AFTERIMAGE");
+			ImGui::TextWrapped("Captures the owning character's skeletal mesh pose and world transform when each particle spawns.");
+		}
 		else if (auto* Req = Cast<UParticleModuleRequired>(SelectedModule))
 		{
 			DrawSection("EMITTER SETTINGS");
@@ -2198,10 +2211,11 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 
 			DrawSection("RENDERING");
 			const bool bMeshEmitter = OwnerLOD && Cast<UParticleModuleTypeDataMesh>(OwnerLOD->EffectiveTypeData);
+			const bool bAfterimageEmitter = OwnerLOD && Cast<UParticleModuleTypeDataAfterimage>(OwnerLOD->EffectiveTypeData);
 			const bool bBeamTrailEmitter = OwnerLOD && (Cast<UParticleModuleTypeDataBeam>(OwnerLOD->EffectiveTypeData) || Cast<UParticleModuleTypeDataRibbon>(OwnerLOD->EffectiveTypeData));
-			const uint32 UsageFlag = static_cast<uint32>(bMeshEmitter ? EMaterialUsage::ParticleMesh : (bBeamTrailEmitter ? EMaterialUsage::ParticleBeamTrail : EMaterialUsage::ParticleSprite));
+			const uint32 UsageFlag = static_cast<uint32>(bAfterimageEmitter ? EMaterialUsage::StaticMesh : (bMeshEmitter ? EMaterialUsage::ParticleMesh : (bBeamTrailEmitter ? EMaterialUsage::ParticleBeamTrail : EMaterialUsage::ParticleSprite)));
 			UMaterial* FallbackMaterial = (!Req->Material && !bMeshEmitter)
-				? UAssetManager::GetAssetByPath<UMaterial>(bBeamTrailEmitter ? "BeamTrailMaterial" : "SubUVMaterial")
+				? UAssetManager::GetAssetByPath<UMaterial>(bAfterimageEmitter ? "Materials/AfterimageMaterial.material" : (bBeamTrailEmitter ? "BeamTrailMaterial" : "SubUVMaterial"))
 				: nullptr;
 			UMaterialInterface* Material = Req->Material;
 			if (FContentDrawerPanel::DrawMaterialPicker("Material", Material, "(Default)", FallbackMaterial, UsageFlag) && bEditable)

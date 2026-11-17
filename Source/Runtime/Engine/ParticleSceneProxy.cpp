@@ -3,6 +3,7 @@
 #include "Asset/AssetManager.h"
 #include "Render/MaterialRenderProxy.h"
 #include "Render/MeshBatch.h"
+#include "Render/SkeletalMesh.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -390,6 +391,61 @@ void FDynamicMeshEmitterData::GetDynamicMeshElementsForView(const FParticleScene
 		Element.bReceiveDecal = false;
 		Batch.Elements.Add(Element);
 		Collector.AddMesh(std::move(Batch));
+	}
+}
+
+void FDynamicAfterimageEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
+	UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
+{
+	UMaterialInterface* EntryMat = Material && Material->GetPSOType() == EPSOType::StaticMesh_Translucent
+		? Material : UAssetManager::GetAssetByPath<UMaterial>("Materials/AfterimageMaterial.material");
+	if (!EntryMat) return;
+
+	for (const FAfterimageRenderParticle& Particle : Particles)
+	{
+		const TSharedPtr<FAfterimageSnapshot>& Snapshot = Particle.Snapshot;
+		if (!Snapshot || !Snapshot->Mesh || Snapshot->SkinningMatrices.IsEmpty() || Particle.Alpha <= 0.0f) continue;
+		if (!Snapshot->MatrixBuffer)
+		{
+			Snapshot->MatrixBuffer = RenderCommand::CreateDynamicStructuredBuffer(
+				static_cast<uint32>(Snapshot->SkinningMatrices.Num()), sizeof(FMatrix));
+			if (Snapshot->MatrixBuffer)
+				RenderCommand::UpdateBufferData(Snapshot->MatrixBuffer.get(), Snapshot->SkinningMatrices.GetData(),
+					static_cast<uint32>(Snapshot->SkinningMatrices.Num() * sizeof(FMatrix)));
+		}
+		if (!Snapshot->MatrixBuffer || !Snapshot->MatrixBuffer->GetSRV()) continue;
+
+		FVertexBuffer* VB = Snapshot->Mesh->GetVertexBuffer(0);
+		FIndexBuffer* IB = Snapshot->Mesh->GetIndexBuffer(0);
+		if (!VB || !IB) continue;
+		const FVector Delta = (Snapshot->WorldBounds.Min + Snapshot->WorldBounds.Max) * 0.5f - View.CameraPosition;
+		const float DistanceSq = Delta.Dot(Delta);
+		const auto& Sections = Snapshot->Mesh->MeshData.Sections;
+		const int32 SectionCount = Sections.IsEmpty() ? 1 : static_cast<int32>(Sections.Num());
+		for (int32 SectionIndex = 0; SectionIndex < SectionCount; ++SectionIndex)
+		{
+			FMeshBatch Batch{};
+			Batch.VertexFactory.Type = EVertexFactoryType::GPUSkin;
+			Batch.VertexFactory.VertexBuffer = VB;
+			Batch.VertexFactory.SkinningMatricesBuffer = Snapshot->MatrixBuffer.get();
+			Batch.Material = EntryMat;
+			Batch.OverridePSOType = EPSOType::StaticMesh_Translucent;
+			Batch.MeshSortID = Snapshot->Mesh->SortID;
+			Batch.CameraDistanceSq = DistanceSq;
+			Batch.ParticleAlpha = Particle.Alpha;
+			Batch.bCastShadow = false;
+
+			FMeshBatchElement Element{};
+			Element.Proxy = Proxy;
+			Element.IndexBuffer = IB;
+			Element.WorldMatrix = &Snapshot->World;
+			Element.FirstIndex = Sections.IsEmpty() ? 0 : Sections[SectionIndex].StartIndex;
+			Element.IndexCount = Sections.IsEmpty() ? IB->GetIndexCount() : Sections[SectionIndex].IndexCount;
+			Element.bReceiveShadow = false;
+			Element.bReceiveDecal = false;
+			Batch.Elements.Add(Element);
+			Collector.AddMesh(std::move(Batch));
+		}
 	}
 }
 

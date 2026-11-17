@@ -1,0 +1,73 @@
+{
+  "Class": "UMaterial",
+  "Object": {
+    "BaseColor": {
+      "W": 0.55,
+      "X": 0.18,
+      "Y": 0.72,
+      "Z": 1.0
+    },
+    "BlendState": "AlphaBlend",
+    "EmissiveColor": {
+      "X": 0.0,
+      "Y": 0.0,
+      "Z": 0.0
+    },
+    "EmissiveFactor": 1.0,
+    "ExpressionConnections": [],
+    "ExpressionNodes": [
+      {
+        "CoordinateIndex": 0,
+        "Id": 1,
+        "ParameterGroup": "Default",
+        "ParameterName": "",
+        "Position": [
+          650.0,
+          150.0
+        ],
+        "ScalarValue": 0.0,
+        "TexturePath": "",
+        "Type": 12,
+        "VectorValue": {
+          "W": 0.0,
+          "X": 0.0,
+          "Y": 0.0,
+          "Z": 0.0
+        }
+      }
+    ],
+    "FlipNormalY": false,
+    "OutputNodeId": 1,
+    "OverrideShadingModel": true,
+    "PSOType": 1,
+    "Properties": {},
+    "SamplerState": "LinearClamp",
+    "ShadingModel": 2,
+    "Shininess": 32.0,
+    "SpecularColor": {
+      "X": 1.0,
+      "Y": 1.0,
+      "Z": 1.0
+    },
+    "SpecularFactor": 1.0,
+    "Textures": [
+      "WhiteTexture",
+      "FlatNormalTexture"
+    ],
+    "UVScrollSpeed": [
+      0.0,
+      0.0
+    ],
+    "UVTiling": [
+      1.0,
+      1.0
+    ],
+    "UsageFlags": 3,
+    "WorldUVLocalSpace": false,
+    "WorldUVTileSize": [
+      0.0,
+      0.0
+    ]
+  },
+  "Version": 1
+}

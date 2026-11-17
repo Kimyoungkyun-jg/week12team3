@@ -266,6 +266,7 @@ struct FMeshBatch
 	uint16 MeshSortID = 0;
 	uint8 LODIndex = 0;
 	bool bIsParticle = false;
+	float ParticleAlpha = 1.0f;
 	bool bCastShadow = true;
 	TArray<FMeshBatchElement> Elements;
 

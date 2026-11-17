@@ -5,6 +5,9 @@
 #include "Engine/ParticleSceneProxy.h"
 #include "Render/SceneRenderData.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/Character.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Render/SkeletalMesh.h"
 #include "UObject/Casts.h"
 #include <json.hpp>
 #include <algorithm>
@@ -638,6 +641,7 @@ FParticleEmitterInstance::FParticleEmitterInstance(const FParticleEmitterInstanc
 	, Random(Other.Random)
 	, InstanceParameters(Other.InstanceParameters)
 	, PendingGpuSpawns(Other.PendingGpuSpawns)
+	, AfterimageSnapshots(Other.AfterimageSnapshots)
 	, GpuWriteCursor(0)
 	, LastGpuDeltaTime(Other.LastGpuDeltaTime)
 	, bGpuResetRequested(true)
@@ -696,6 +700,7 @@ FParticleEmitterInstance::FParticleEmitterInstance(FParticleEmitterInstance&& Ot
 	, InstanceParameters(Other.InstanceParameters)
 	, GpuResources(std::move(Other.GpuResources))
 	, PendingGpuSpawns(std::move(Other.PendingGpuSpawns))
+	, AfterimageSnapshots(std::move(Other.AfterimageSnapshots))
 	, GpuWriteCursor(Other.GpuWriteCursor)
 	, LastGpuDeltaTime(Other.LastGpuDeltaTime)
 	, bGpuResetRequested(Other.bGpuResetRequested)
@@ -748,6 +753,7 @@ FParticleEmitterInstance& FParticleEmitterInstance::operator=(FParticleEmitterIn
 	InstanceParameters = Other.InstanceParameters;
 	GpuResources = std::move(Other.GpuResources);
 	PendingGpuSpawns = std::move(Other.PendingGpuSpawns);
+	AfterimageSnapshots = std::move(Other.AfterimageSnapshots);
 	GpuWriteCursor = Other.GpuWriteCursor;
 	LastGpuDeltaTime = Other.LastGpuDeltaTime;
 	bGpuResetRequested = Other.bGpuResetRequested;
@@ -833,10 +839,16 @@ uint32 FParticleEmitterInstance::GetModuleDataOffset(const UParticleModule* Modu
 void FParticleEmitterInstance::Resize(int32 NewMaxActiveParticles)
 {
 	const int32 ClampedMax = std::clamp(NewMaxActiveParticles, 0, 65535);
-	if (ClampedMax == MaxActiveParticles && (ClampedMax == 0 || (ParticleData && ParticleIndices))) return;
+	if (ClampedMax == MaxActiveParticles && (ClampedMax == 0 || (ParticleData && ParticleIndices)))
+	{
+		if (AfterimageSnapshots.Num() != ClampedMax)
+			AfterimageSnapshots.SetNum(ClampedMax);
+		return;
+	}
 
 	if (ClampedMax == 0)
 	{
+		AfterimageSnapshots.Reset();
 		delete[] ParticleData;
 		delete[] ParticleIndices;
 		ParticleData = nullptr;
@@ -854,6 +866,8 @@ void FParticleEmitterInstance::Resize(int32 NewMaxActiveParticles)
 		NewIndices[Index] = static_cast<uint16>(Index);
 
 	const int32 PreservedCount = std::min(ActiveParticles, ClampedMax);
+	TArray<TSharedPtr<FAfterimageSnapshot>> NewSnapshots;
+	NewSnapshots.SetNum(ClampedMax);
 	if (ParticleData && ParticleIndices && PreservedCount > 0)
 	{
 		// 축소 시에도 활성 파티클을 앞쪽 슬롯에 연속 배치해 인덱스 일관성을 유지한다
@@ -862,6 +876,8 @@ void FParticleEmitterInstance::Resize(int32 NewMaxActiveParticles)
 			const uint8* Src = ParticleData + static_cast<size_t>(ParticleIndices[Index]) * static_cast<size_t>(ParticleStride);
 			uint8* Dst = NewData + static_cast<size_t>(Index) * static_cast<size_t>(ParticleStride);
 			std::memcpy(Dst, Src, static_cast<size_t>(ParticleStride));
+			if (AfterimageSnapshots.IsValidIndex(ParticleIndices[Index]))
+				NewSnapshots[Index] = AfterimageSnapshots[ParticleIndices[Index]];
 		}
 	}
 
@@ -869,6 +885,7 @@ void FParticleEmitterInstance::Resize(int32 NewMaxActiveParticles)
 	delete[] ParticleIndices;
 	ParticleData = NewData;
 	ParticleIndices = NewIndices;
+	AfterimageSnapshots = std::move(NewSnapshots);
 	MaxActiveParticles = ClampedMax;
 	ActiveParticles = PreservedCount;
 }
@@ -876,6 +893,7 @@ void FParticleEmitterInstance::Resize(int32 NewMaxActiveParticles)
 void FParticleEmitterInstance::Initialize(UParticleEmitter* Emitter, uint32 Seed)
 {
 	GpuResources.reset();
+	AfterimageSnapshots.Reset();
 	PendingGpuSpawns.Reset();
 	GpuWriteCursor = 0;
 	LastGpuDeltaTime = 0.0f;
@@ -921,7 +939,8 @@ void FParticleEmitterInstance::Initialize(UParticleEmitter* Emitter, uint32 Seed
 		&& Type != EParticleEmitterType::GpuSprite
 		&& Type != EParticleEmitterType::Mesh
 		&& Type != EParticleEmitterType::Beam
-		&& Type != EParticleEmitterType::Ribbon)
+		&& Type != EParticleEmitterType::Ribbon
+		&& Type != EParticleEmitterType::Afterimage)
 	{
 		Resize(0);
 		return;
@@ -1008,6 +1027,8 @@ void FParticleEmitterInstance::SetLODLevel(int32 NewLODIndex)
 void FParticleEmitterInstance::Reset()
 {
 	ActiveParticles = 0;
+	AfterimageSnapshots.Reset();
+	AfterimageSnapshots.SetNum(MaxActiveParticles);
 	ParticleCounter = 0;
 	EmitterTime = 0.0;
 	SpawnFraction = 0.0f;
@@ -1065,7 +1086,7 @@ bool FParticleEmitterInstance::HasCompleted() const
 	return EmitterTime >= static_cast<double>(Required->EmitterDuration) && ActiveParticles == 0;
 }
 
-void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
+void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, USkeletalMeshComponent* AfterimageSource)
 {
 	if (!CurrentLODLevel || !CurrentLODLevel->bEnabled || !CurrentLODLevel->EffectiveTypeData ||
 		!CurrentLODLevel->EffectiveRequired || !CurrentLODLevel->EffectiveSpawn ||
@@ -1078,11 +1099,12 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 	const EParticleEmitterType EmitterType = CurrentLODLevel->EffectiveTypeData->GetEmitterType();
 	if (EmitterType != EParticleEmitterType::Sprite && EmitterType != EParticleEmitterType::GpuSprite &&
 		EmitterType != EParticleEmitterType::Mesh && EmitterType != EParticleEmitterType::Beam &&
-		EmitterType != EParticleEmitterType::Ribbon) return;
+		EmitterType != EParticleEmitterType::Ribbon && EmitterType != EParticleEmitterType::Afterimage) return;
 	UParticleModuleRequired* Required = CurrentLODLevel->EffectiveRequired;
 	const bool bIsGpu = (EmitterType == EParticleEmitterType::GpuSprite);
 	const bool bIsBeam = (EmitterType == EParticleEmitterType::Beam);
 	const bool bIsRibbon = (EmitterType == EParticleEmitterType::Ribbon);
+	const bool bIsAfterimage = (EmitterType == EParticleEmitterType::Afterimage);
 	const UParticleModuleTypeDataBeam* BeamType = bIsBeam ? Cast<UParticleModuleTypeDataBeam>(CurrentLODLevel->EffectiveTypeData) : nullptr;
 	const UParticleModuleTypeDataRibbon* RibbonType = bIsRibbon ? Cast<UParticleModuleTypeDataRibbon>(CurrentLODLevel->EffectiveTypeData) : nullptr;
 	const UParticleModuleBeamNoise* BeamNoise = bIsBeam ? FindEnabledModule<UParticleModuleBeamNoise>(CurrentLODLevel) : nullptr;
@@ -1119,6 +1141,8 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 			Particle.RelativeTime += DeltaTime / Particle.Lifetime;
 			if (Particle.RelativeTime >= 1.0f)
 			{
+				if (bIsAfterimage && AfterimageSnapshots.IsValidIndex(ParticleIndices[Index]))
+					AfterimageSnapshots[ParticleIndices[Index]].reset();
 				std::swap(ParticleIndices[Index], ParticleIndices[ActiveParticles - 1]);
 				--ActiveParticles;
 				continue;
@@ -1292,6 +1316,9 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 		}
 		return;
 	}
+	if (bIsAfterimage && (!AfterimageSource || !AfterimageSource->GetSkeletalMesh() ||
+		AfterimageSource->GetSkinningMatrices().IsEmpty()))
+		ToSpawn = 0;
 	if (bIsRibbon && ToSpawn > 0 && !bCurrentTrailActive)
 	{
 		++CurrentTrailIndex;
@@ -1337,6 +1364,26 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 			if (Module) Module->Spawn(Particle, Random);
 		Particle.BaseAlpha = Particle.Color.A;
 		Particle.Lifetime = std::max(Particle.Lifetime, 0.001f);
+		if (bIsAfterimage)
+		{
+			if (AfterimageSnapshots.IsValidIndex(SlotIndex))
+			{
+				AfterimageSnapshots[SlotIndex].reset();
+				if (AfterimageSource && AfterimageSource->GetSkeletalMesh())
+				{
+					const TArray<FMatrix>& Matrices = AfterimageSource->GetSkinningMatrices();
+					if (!Matrices.IsEmpty())
+					{
+						auto Snapshot = MakeShared<FAfterimageSnapshot>();
+						Snapshot->Mesh = AfterimageSource->GetSkeletalMesh();
+						Snapshot->World = AfterimageSource->GetWorldMatrix();
+						Snapshot->SkinningMatrices = Matrices;
+						Snapshot->WorldBounds = Snapshot->Mesh->CalcSkinnedBounds(Matrices).GetWorldAABB(Snapshot->World);
+						AfterimageSnapshots[SlotIndex] = std::move(Snapshot);
+					}
+				}
+			}
+		}
 
 		if (bIsBeam && BeamType && TypeDataOffset > 0)
 		{
@@ -1378,6 +1425,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 UParticleSystemComponent::UParticleSystemComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+	PrimaryComponentTick.TickGroup = ETickingGroup::PostUpdateWork;
 	bCastShadow = false;
 	bReceiveShadow = false;
 	bReceiveDecal = false;
@@ -1425,6 +1473,18 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 		else if (Emitter.ParticleData && Emitter.ParticleIndices)
 		{
 			const EParticleEmitterType EmitterType = LOD->EffectiveTypeData->GetEmitterType();
+			if (EmitterType == EParticleEmitterType::Afterimage)
+			{
+				const FMatrix InvWorld = GetWorldMatrix().Inverse();
+				for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index)
+				{
+					const uint16 Slot = Emitter.ParticleIndices[Index];
+					if (!Emitter.AfterimageSnapshots.IsValidIndex(Slot) || !Emitter.AfterimageSnapshots[Slot]) continue;
+					const FBox LocalBox = Emitter.AfterimageSnapshots[Slot]->WorldBounds.GetWorldAABB(InvWorld);
+					ExpandParticleBox(LocalBounds, bHasBounds, LocalBox.Min, LocalBox.Max);
+				}
+				continue;
+			}
 			const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
 			const FMatrix InvWorld = bLocal ? FMatrix::Identity : GetWorldMatrix().Inverse();
 			if (EmitterType == EParticleEmitterType::Beam)
@@ -1519,6 +1579,31 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 		UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
 		if (!LOD || !LOD->bEnabled || !LOD->EffectiveRequired || !LOD->EffectiveTypeData) continue;
 		const EParticleEmitterType EmitterType = LOD->EffectiveTypeData->GetEmitterType();
+		if (EmitterType == EParticleEmitterType::Afterimage)
+		{
+			auto AfterimageData = MakeUnique<FDynamicAfterimageEmitterData>();
+			AfterimageData->Material = LOD->EffectiveRequired->Material;
+			if (Emitter.ParticleData && Emitter.ParticleIndices)
+			{
+				for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index)
+				{
+					const uint16 Slot = Emitter.ParticleIndices[Index];
+					if (!Emitter.AfterimageSnapshots.IsValidIndex(Slot) || !Emitter.AfterimageSnapshots[Slot]) continue;
+					const FBaseParticle& Particle = *reinterpret_cast<const FBaseParticle*>(
+						Emitter.ParticleData + static_cast<size_t>(Slot) * static_cast<size_t>(Emitter.ParticleStride));
+					const auto& Snapshot = Emitter.AfterimageSnapshots[Slot];
+					AfterimageData->Particles.Add({ Snapshot, (1.0f - Particle.RelativeTime) * (Particle.Color.A / 255.0f) * FadeAlpha });
+					if (!Data.bFixedBounds)
+						ExpandParticleBox(Data.Bounds, bHasBounds, Snapshot->WorldBounds.Min, Snapshot->WorldBounds.Max);
+				}
+			}
+			if (AfterimageData->HasParticles())
+			{
+				bHasWorldSpaceParticles = true;
+				Data.DynamicEmitters.Add(std::move(AfterimageData));
+			}
+			continue;
+		}
 		if (EmitterType == EParticleEmitterType::GpuSprite)
 		{
 			if (Emitter.MaxActiveParticles <= 0) continue;
@@ -2239,7 +2324,14 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	{
 		Instance.EmitterUpAxis = UpAxis;
 		Instance.EmitterWorldToLocal = WorldToLocal;
-		Instance.Tick(ScaledDeltaTime, Origin);
+		USkeletalMeshComponent* Source = nullptr;
+		if (Instance.CurrentLODLevel && Instance.CurrentLODLevel->EffectiveTypeData &&
+			Instance.CurrentLODLevel->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::Afterimage)
+		{
+			if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
+				Source = Character->GetSkeletalMeshComponent();
+		}
+		Instance.Tick(ScaledDeltaTime, Origin, Source);
 	}
 	MarkRenderStateDirty();
 	if (HasCompleted())
