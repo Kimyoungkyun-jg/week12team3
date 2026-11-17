@@ -563,44 +563,6 @@ bool UParticleEmitter::InheritLODModule(int32 TargetIndex, UParticleModule* Modu
 	return true;
 }
 
-bool UParticleEmitter::RemoveLODLevel(int32 Index)
-{
-	if (Index < 0 || Index >= static_cast<int32>(LODLevels.Num()) || LODLevels.Num() <= 1)
-	{
-		return false;
-	}
-
-	LODLevels.RemoveAt(Index);
-
-	for (int32 LODIndex = 0; LODIndex < static_cast<int32>(LODLevels.Num()); ++LODIndex)
-	{
-		LODLevels[LODIndex]->Level = LODIndex;
-	}
-
-	return true;
-}
-
-bool UParticleEmitter::MoveLODLevel(int32 FromIndex, int32 ToIndex)
-{
-	const int32 Count = static_cast<int32>(LODLevels.Num());
-
-	if (FromIndex < 0 || FromIndex >= Count || ToIndex < 0 || ToIndex >= Count || FromIndex == ToIndex)
-	{
-		return false;
-	}
-
-	UParticleLODLevel* Moved = LODLevels[FromIndex];
-	LODLevels.RemoveAt(FromIndex);
-	LODLevels.Insert(Moved, ToIndex);
-
-	for (int32 LODIndex = 0; LODIndex < Count; ++LODIndex)
-	{
-		LODLevels[LODIndex]->Level = LODIndex;
-	}
-
-	return true;
-}
-
 void UParticleEmitter::CacheEmitterModuleInfo()
 {
 	UParticleLODLevel* Previous = nullptr;
