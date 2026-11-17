@@ -9,6 +9,7 @@
 #include "Asset/FbxImporter/FbxPath.h"
 #include "Particles/ParticleSystem.h"
 #include "UObject/Casts.h"
+#include "UObject/UObjectGlobals.h"
 #include "UObject/UObjectIterator.h"
 #include "Components/ParticleSystemComponent.h"
 #include "Components/DirectionalLightComponent.h"
@@ -91,233 +92,6 @@ namespace
 	}
 }
 
-void FParticleSystemEditorPanel::CopyModuleProperties(UParticleModule* Destination, const UParticleModule* Source)
-{
-	if (!Destination || !Source)
-	{
-		return;
-	}
-
-	Destination->bEnabled = Source->bEnabled;
-
-	if (const auto* Src = Cast<UParticleModuleRequired>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleRequired>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		Dst->MaxParticles = Src->MaxParticles;
-		Dst->EmitterDuration = Src->EmitterDuration;
-		Dst->bLooping = Src->bLooping;
-		Dst->bUseLocalSpace = Src->bUseLocalSpace;
-		Dst->Material = Src->Material;
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleSpawn>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleSpawn>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		Dst->Rate = Src->Rate;
-		Dst->Bursts = Src->Bursts;
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleTypeDataMesh>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleTypeDataMesh>(Destination);
-		if (Dst)
-		{
-			Dst->Mesh = Src->Mesh;
-		}
-		return;
-	}
-
-	if (Cast<UParticleModuleTypeDataSprite>(Source) || Cast<UParticleModuleTypeDataGpuSprite>(Source))
-	{
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleLifetime>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleLifetime>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		Dst->Min = Src->Min;
-		Dst->Max = Src->Max;
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleLocation>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleLocation>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		Dst->Min = Src->Min;
-		Dst->Max = Src->Max;
-		Dst->ParameterName = Src->ParameterName;
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleVelocity>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleVelocity>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		Dst->Min = Src->Min;
-		Dst->Max = Src->Max;
-		Dst->ParameterName = Src->ParameterName;
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleColor>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleColor>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		Dst->Start = Src->Start;
-		Dst->End = Src->End;
-		Dst->ParameterName = Src->ParameterName;
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleSize>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleSize>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		Dst->Start = Src->Start;
-		Dst->End = Src->End;
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleInitialSize>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleInitialSize>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		Dst->MinSize = Src->MinSize;
-		Dst->MaxSize = Src->MaxSize;
-		Dst->bUniformScale = Src->bUniformScale;
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleSizeByLife>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleSizeByLife>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		if (Src->ScaleX && Dst->ScaleX)
-		{
-			Dst->ScaleX->ImportFromJson(Src->ScaleX->ExportToJson());
-		}
-		if (Src->ScaleY && Dst->ScaleY)
-		{
-			Dst->ScaleY->ImportFromJson(Src->ScaleY->ExportToJson());
-		}
-		if (Src->ScaleZ && Dst->ScaleZ)
-		{
-			Dst->ScaleZ->ImportFromJson(Src->ScaleZ->ExportToJson());
-		}
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleColorOverLife>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleColorOverLife>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		if (Src->ColorR && Dst->ColorR)
-		{
-			Dst->ColorR->ImportFromJson(Src->ColorR->ExportToJson());
-		}
-		if (Src->ColorG && Dst->ColorG)
-		{
-			Dst->ColorG->ImportFromJson(Src->ColorG->ExportToJson());
-		}
-		if (Src->ColorB && Dst->ColorB)
-		{
-			Dst->ColorB->ImportFromJson(Src->ColorB->ExportToJson());
-		}
-		if (Src->Alpha && Dst->Alpha)
-		{
-			Dst->Alpha->ImportFromJson(Src->Alpha->ExportToJson());
-		}
-
-		Dst->ParameterName = Src->ParameterName;
-		Dst->bUseFadeInOut = Src->bUseFadeInOut;
-		Dst->FadeInEnd = Src->FadeInEnd;
-		Dst->FadeOutStart = Src->FadeOutStart;
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleRotation>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleRotation>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		Dst->Min = Src->Min;
-		Dst->Max = Src->Max;
-		Dst->RateMin = Src->RateMin;
-		Dst->RateMax = Src->RateMax;
-		return;
-	}
-
-	if (const auto* Src = Cast<UParticleModuleSubUV>(Source))
-	{
-		auto* Dst = Cast<UParticleModuleSubUV>(Destination);
-		if (!Dst)
-		{
-			return;
-		}
-
-		Dst->SubImagesHorizontal = Src->SubImagesHorizontal;
-		Dst->SubImagesVertical = Src->SubImagesVertical;
-		Dst->bUseLinearOverLife = Src->bUseLinearOverLife;
-		Dst->PlayRate = Src->PlayRate;
-
-		if (Src->SubImageIndex && Dst->SubImageIndex)
-		{
-			Dst->SubImageIndex->ImportFromJson(Src->SubImageIndex->ExportToJson());
-		}
-
-		return;
-	}
-}
-
 UParticleModule* FParticleSystemEditorPanel::CopyModuleToLOD(UParticleLODLevel* Destination, const UParticleModule* Source)
 {
 	if (!Destination || !Source)
@@ -325,14 +99,15 @@ UParticleModule* FParticleSystemEditorPanel::CopyModuleToLOD(UParticleLODLevel* 
 		return nullptr;
 	}
 
-	UParticleModule* NewModule = Destination->AddModule(Source->GetClass());
-	if (!NewModule)
-	{
-		return nullptr;
-	}
-
-	CopyModuleProperties(NewModule, Source);
-	return NewModule;
+	UParticleModule* Copy = Cast<UParticleModule>(StaticDuplicateObject(Source, Destination));
+	if (!Copy) return nullptr;
+	int32 SlotId = 1;
+	for (const UParticleModule* Existing : Destination->Modules)
+		if (Existing) SlotId = std::max(SlotId, Existing->LODSlotId + 1);
+	Copy->LODSlotId = SlotId;
+	Destination->Modules.Add(Copy);
+	Destination->MarkBuildDirty();
+	return Copy;
 }
 
 void FParticleSystemEditorPanel::ApplyPreviewLOD()
@@ -1767,11 +1542,19 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 				{
 					TypeIndex = 2;
 				}
+				else if (TypeData && TypeData->GetEmitterType() == EParticleEmitterType::Beam)
+				{
+					TypeIndex = 3;
+				}
+				else if (TypeData && TypeData->GetEmitterType() == EParticleEmitterType::Ribbon)
+				{
+					TypeIndex = 4;
+				}
 
 				ImGui::SetNextItemWidth(-1.0f);
 
 				ImGui::BeginDisabled(!LOD->OwnsModule(TypeData));
-				if (ImGui::Combo("##EmitterType", &TypeIndex, "Sprite\0GPU Sprite\0Mesh\0"))
+				if (ImGui::Combo("##EmitterType", &TypeIndex, "Sprite\0GPU Sprite\0Mesh\0Beam\0Ribbon\0"))
 				{
 					UClass* TargetClass = UParticleModuleTypeDataSprite::StaticClass();
 
@@ -1782,6 +1565,14 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					else if (TypeIndex == 2)
 					{
 						TargetClass = UParticleModuleTypeDataMesh::StaticClass();
+					}
+					else if (TypeIndex == 3)
+					{
+						TargetClass = UParticleModuleTypeDataBeam::StaticClass();
+					}
+					else if (TypeIndex == 4)
+					{
+						TargetClass = UParticleModuleTypeDataRibbon::StaticClass();
 					}
 
 					const bool bWasSelected = SelectedEmitter == Emitter && SelectedModule == TypeData;
@@ -2013,10 +1804,15 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 							{ "Initial Rotation", "Particle Initialization", UParticleModuleRotation::StaticClass() },
 							{ "Initial Color", "Appearance", UParticleModuleColor::StaticClass() },
 							{ "Initial Size", "Appearance", UParticleModuleSize::StaticClass() },
-							{ "Initial Size (Random)", "Appearance", UParticleModuleInitialSize::StaticClass() },
 							{ "Color Over Life", "Particle Update", UParticleModuleColorOverLife::StaticClass() },
 							{ "Size By Life", "Particle Update", UParticleModuleSizeByLife::StaticClass() },
-							{ "SubImage Index", "Particle Update", UParticleModuleSubUV::StaticClass() }
+							{ "Velocity Over Life", "Particle Update", UParticleModuleVelocityOverLife::StaticClass() },
+							{ "Rotation Rate Over Life", "Particle Update", UParticleModuleRotationRateOverLife::StaticClass() },
+							{ "SubImage Index", "Particle Update", UParticleModuleSubUV::StaticClass() },
+							{ "Beam Source", "Beam", UParticleModuleBeamSource::StaticClass() },
+							{ "Beam Target", "Beam", UParticleModuleBeamTarget::StaticClass() },
+							{ "Beam Noise", "Beam", UParticleModuleBeamNoise::StaticClass() },
+							{ "Spawn Per Unit", "Ribbon", UParticleModuleSpawnPerUnit::StaticClass() }
 						};
 
 						FString SearchQuery = ModuleSearchText;
@@ -2348,6 +2144,38 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			ImGui::TextDisabled("GPU SPRITE RENDERER");
 			ImGui::TextWrapped("Uses the GPU sprite rendering and simulation path.");
 		}
+		else if (auto* BeamType = Cast<UParticleModuleTypeDataBeam>(SelectedModule))
+		{
+			DrawSection("BEAM");
+			bool bChanged = false;
+			bChanged |= ImGui::Combo("Beam Method", &BeamType->BeamMethod, "Distance\0Target\0");
+			bChanged |= ImGui::DragInt("Max Beam Count", &BeamType->MaxBeamCount, 1.0f, 1, 64);
+			bChanged |= ImGui::DragInt("Segments", &BeamType->Segments, 1.0f, 1, 512);
+			bChanged |= ImGui::DragInt("Sheets", &BeamType->Sheets, 1.0f, 1, 8);
+			bChanged |= ImGui::DragFloat("Distance", &BeamType->Distance, 0.1f, 0.01f, 1000.0f);
+			bChanged |= ImGui::DragFloat("Speed", &BeamType->Speed, 0.5f, 0.0f, 1000.0f);
+			bChanged |= ImGui::DragFloat("Texture Tile", &BeamType->TextureTile, 0.1f, 0.01f, 64.0f);
+			bChanged |= ImGui::DragFloat("Texture Tile Distance", &BeamType->TextureTileDistance, 0.1f, 0.0f, 100.0f);
+			bChanged |= ImGui::Combo("Taper Method", &BeamType->TaperMethod, "None\0Full\0Partial\0");
+			if (bChanged) MarkAssetModified();
+			if (BeamType->TaperMethod != 0)
+			{
+				DrawDistributionFloat("Taper Factor", BeamType->TaperFactor, BeamType, 1.0f, 0.05f, 0.0f, 10.0f);
+				DrawDistributionFloat("Taper Scale", BeamType->TaperScale, BeamType, 1.0f, 0.05f, 0.0f, 10.0f);
+			}
+		}
+		else if (auto* RibbonType = Cast<UParticleModuleTypeDataRibbon>(SelectedModule))
+		{
+			DrawSection("RIBBON");
+			bool bChanged = false;
+			bChanged |= ImGui::DragInt("Max Trail Count", &RibbonType->MaxTrailCount, 1.0f, 1, 64);
+			bChanged |= ImGui::DragInt("Max Particles Per Trail", &RibbonType->MaxParticleInTrailCount, 1.0f, 2, 4096);
+			bChanged |= ImGui::DragInt("Sheets Per Trail", &RibbonType->SheetsPerTrail, 1.0f, 1, 8);
+			bChanged |= ImGui::Combo("Facing Mode", &RibbonType->FacingMode, "Camera\0Source Up\0World Up\0");
+			bChanged |= ImGui::DragFloat("Tiling Distance", &RibbonType->TilingDistance, 0.1f, 0.0f, 100.0f);
+			bChanged |= ImGui::Checkbox("Clip Source Segment", &RibbonType->bClipSourceSegment);
+			if (bChanged) MarkAssetModified();
+		}
 		else if (auto* Req = Cast<UParticleModuleRequired>(SelectedModule))
 		{
 			DrawSection("EMITTER SETTINGS");
@@ -2370,7 +2198,8 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 
 			DrawSection("RENDERING");
 			const bool bMeshEmitter = OwnerLOD && Cast<UParticleModuleTypeDataMesh>(OwnerLOD->EffectiveTypeData);
-			const uint32 UsageFlag = static_cast<uint32>(bMeshEmitter ? EMaterialUsage::ParticleMesh : EMaterialUsage::ParticleSprite);
+			const bool bBeamTrailEmitter = OwnerLOD && (Cast<UParticleModuleTypeDataBeam>(OwnerLOD->EffectiveTypeData) || Cast<UParticleModuleTypeDataRibbon>(OwnerLOD->EffectiveTypeData));
+			const uint32 UsageFlag = static_cast<uint32>(bMeshEmitter ? EMaterialUsage::ParticleMesh : (bBeamTrailEmitter ? EMaterialUsage::ParticleBeamTrail : EMaterialUsage::ParticleSprite));
 			UMaterial* FallbackMaterial = (!Req->Material && !bMeshEmitter)
 				? UAssetManager::GetAssetByPath<UMaterial>(bBeamTrailEmitter ? "BeamTrailMaterial" : "SubUVMaterial")
 				: nullptr;
@@ -2423,193 +2252,145 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		else if (UParticleModuleLifetime* Life = Cast<UParticleModuleLifetime>(SelectedModule))
 		{
 			DrawSection("LIFETIME");
-			if (ImGui::DragFloat("Min", &Life->Min, 0.05f, 0.01f, 60.0f))
-			{
-				MarkAssetModified();
-			}
-			if (ImGui::DragFloat("Max", &Life->Max, 0.05f, 0.01f, 60.0f))
-			{
-				MarkAssetModified();
-			}
+			DrawDistributionFloat("Lifetime", Life->Lifetime, Life, 1.0f, 0.05f, 0.01f, 60.0f);
 		}
 		else if (UParticleModuleLocation* Loc = Cast<UParticleModuleLocation>(SelectedModule))
 		{
 			DrawSection("INITIAL LOCATION");
-			char ParamBuf[128] = {};
-			strncpy_s(ParamBuf, Loc->ParameterName.c_str(), _TRUNCATE);
-			if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
-			{
-				Loc->ParameterName = ParamBuf;
-				MarkAssetModified();
-			}
-			if (ImGui::DragFloat3("Min", &Loc->Min.X, 0.05f))
-			{
-				MarkAssetModified();
-			}
-			if (ImGui::DragFloat3("Max", &Loc->Max.X, 0.05f))
-			{
-				MarkAssetModified();
-			}
+			DrawDistributionVector("Start Location", Loc->StartLocation, Loc, FVector::ZeroVector, false, 0.05f);
 		}
 		else if (UParticleModuleVelocity* Vel = Cast<UParticleModuleVelocity>(SelectedModule))
 		{
 			DrawSection("INITIAL VELOCITY");
-			char ParamBuf[128] = {};
-			strncpy_s(ParamBuf, Vel->ParameterName.c_str(), _TRUNCATE);
-			if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
-			{
-				Vel->ParameterName = ParamBuf;
-				MarkAssetModified();
-			}
-			if (ImGui::DragFloat3("Min", &Vel->Min.X, 0.05f))
-			{
-				MarkAssetModified();
-			}
-			if (ImGui::DragFloat3("Max", &Vel->Max.X, 0.05f))
-			{
-				MarkAssetModified();
-			}
+			DrawDistributionVector("Start Velocity", Vel->StartVelocity, Vel, FVector::ZeroVector, false, 0.05f);
 		}
 		else if (UParticleModuleColor* Col = Cast<UParticleModuleColor>(SelectedModule))
 		{
 			DrawSection("INITIAL COLOR");
-			char ParamBuf[128] = {};
-			strncpy_s(ParamBuf, Col->ParameterName.c_str(), _TRUNCATE);
-			if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
-			{
-				Col->ParameterName = ParamBuf;
-				MarkAssetModified();
-			}
-
-			float S[4] = { Col->Start.R / 255.0f, Col->Start.G / 255.0f, Col->Start.B / 255.0f, Col->Start.A / 255.0f };
-			float E[4] = { Col->End.R / 255.0f, Col->End.G / 255.0f, Col->End.B / 255.0f, Col->End.A / 255.0f };
-
-			if (ImGui::ColorEdit4("Start Color", S))
-			{
-				Col->Start = FColor(static_cast<uint8>(S[0] * 255.0f), static_cast<uint8>(S[1] * 255.0f), static_cast<uint8>(S[2] * 255.0f), static_cast<uint8>(S[3] * 255.0f));
-				MarkAssetModified();
-			}
-
-			if (ImGui::ColorEdit4("End Color", E))
-			{
-				Col->End = FColor(static_cast<uint8>(E[0] * 255.0f), static_cast<uint8>(E[1] * 255.0f), static_cast<uint8>(E[2] * 255.0f), static_cast<uint8>(E[3] * 255.0f));
-				MarkAssetModified();
-			}
+			DrawDistributionVector("Start Color", Col->StartColor, Col, FVector::OneVector, true, 0.01f);
+			DrawDistributionFloat("Start Alpha", Col->StartAlpha, Col, 1.0f, 0.01f, 0.0f, 1.0f);
 		}
 		else if (UParticleModuleColorOverLife* ColOverLife = Cast<UParticleModuleColorOverLife>(SelectedModule))
 		{
 			DrawSection("COLOR OVER LIFE");
-			char ParamBuf[128] = {};
-			strncpy_s(ParamBuf, ColOverLife->ParameterName.c_str(), _TRUNCATE);
-			if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
-			{
-				ColOverLife->ParameterName = ParamBuf;
-				MarkAssetModified();
-			}
-
-			if (ImGui::Checkbox("Use Fade In/Out", &ColOverLife->bUseFadeInOut))
-			{
-				MarkAssetModified();
-			}
-
+			DrawDistributionVector("Color Over Life", ColOverLife->ColorScale, ColOverLife, FVector::OneVector, true, 0.01f);
+			bool bFadeChanged = ImGui::Checkbox("Use Fade In/Out", &ColOverLife->bUseFadeInOut);
 			if (ColOverLife->bUseFadeInOut)
 			{
-				if (ImGui::SliderFloat("Fade In End", &ColOverLife->FadeInEnd, 0.0f, 1.0f))
-				{
-					MarkAssetModified();
-				}
-				if (ImGui::SliderFloat("Fade Out Start", &ColOverLife->FadeOutStart, 0.0f, 1.0f))
-				{
-					MarkAssetModified();
-				}
+				bFadeChanged |= ImGui::SliderFloat("Fade In End", &ColOverLife->FadeInEnd, 0.0f, 1.0f);
+				bFadeChanged |= ImGui::SliderFloat("Fade Out Start", &ColOverLife->FadeOutStart, 0.0f, 1.0f);
 			}
+			else
+				DrawDistributionFloat("Alpha Over Life", ColOverLife->AlphaScale, ColOverLife, 1.0f, 0.01f, 0.0f, 1.0f);
+			if (bFadeChanged) { MarkSelectedLODBuildDirty(); MarkAssetModified(); }
 		}
 		else if (auto* Sz = Cast<UParticleModuleSize>(SelectedModule))
 		{
 			DrawSection("INITIAL SIZE");
-			if (ImGui::DragFloat3("Start Size", &Sz->Start.X, 0.05f, 0.0f, 100.0f))
-			{
-				MarkAssetModified();
-			}
-			if (ImGui::DragFloat3("End Size", &Sz->End.X, 0.05f, 0.0f, 100.0f))
-			{
-				MarkAssetModified();
-			}
+			DrawDistributionVector("Start Size", Sz->StartSize, Sz, FVector::OneVector, false, 0.05f);
 		}
-		else if (auto* InitSz = Cast<UParticleModuleInitialSize>(SelectedModule))
+		else if (auto* SzLife = Cast<UParticleModuleSizeByLife>(SelectedModule))
 		{
-			DrawSection("RANDOM SIZE");
-			if (ImGui::Checkbox("Uniform Scale", &InitSz->bUniformScale))
-			{
-				MarkAssetModified();
-			}
-			if (InitSz->bUniformScale)
-			{
-				if (ImGui::DragFloat("Min Size", &InitSz->MinSize.X, 0.05f, 0.0f, 100.0f))
-				{
-					InitSz->MinSize.Y = InitSz->MinSize.X;
-					InitSz->MinSize.Z = InitSz->MinSize.X;
-					MarkAssetModified();
-				}
-
-				if (ImGui::DragFloat("Max Size", &InitSz->MaxSize.X, 0.05f, 0.0f, 100.0f))
-				{
-					InitSz->MaxSize.Y = InitSz->MaxSize.X;
-					InitSz->MaxSize.Z = InitSz->MaxSize.X;
-					MarkAssetModified();
-				}
-			}
-			else
-			{
-				if (ImGui::DragFloat3("Min Size", &InitSz->MinSize.X, 0.05f, 0.0f, 100.0f))
-				{
-					MarkAssetModified();
-				}
-				if (ImGui::DragFloat3("Max Size", &InitSz->MaxSize.X, 0.05f, 0.0f, 100.0f))
-				{
-					MarkAssetModified();
-				}
-			}
+			DrawSection("SIZE BY LIFE");
+			DrawDistributionVector("Size Scale", SzLife->LifeScale, SzLife, FVector::OneVector, false, 0.05f);
 		}
-		else if (UParticleModuleBeamTarget* DstMod = Cast<UParticleModuleBeamTarget>(SelectedModule))
+		else if (auto* VelLife = Cast<UParticleModuleVelocityOverLife>(SelectedModule))
+		{
+			DrawSection("VELOCITY OVER LIFE");
+			DrawDistributionVector("Velocity Scale", VelLife->VelocityScale, VelLife, FVector::OneVector, false, 0.05f);
+		}
+		else if (auto* Rot = Cast<UParticleModuleRotation>(SelectedModule))
 		{
 			DrawSection("INITIAL ROTATION");
-			if (ImGui::DragFloat("Min", &Rot->Min, 0.05f))
-			{
-				MarkAssetModified();
-			}
-			if (ImGui::DragFloat("Max", &Rot->Max, 0.05f))
-			{
-				MarkAssetModified();
-			}
-			if (ImGui::DragFloat("Rate Min", &Rot->RateMin, 0.05f))
-			{
-				MarkAssetModified();
-			}
-			if (ImGui::DragFloat("Rate Max", &Rot->RateMax, 0.05f))
-			{
-				MarkAssetModified();
-			}
+			DrawDistributionFloat("Start Rotation", Rot->StartRotation, Rot, 0.0f, 0.05f, -360.0f, 360.0f);
+			DrawDistributionFloat("Rotation Rate", Rot->StartRotationRate, Rot, 0.0f, 0.05f, -360.0f, 360.0f);
 		}
-		else if (UParticleModuleBeamNoise* NoiseMod = Cast<UParticleModuleBeamNoise>(SelectedModule))
+		else if (auto* RotLife = Cast<UParticleModuleRotationRateOverLife>(SelectedModule))
+		{
+			DrawSection("ROTATION RATE OVER LIFE");
+			DrawDistributionFloat("Rotation Rate Scale", RotLife->RotationRateScale, RotLife, 1.0f, 0.05f, -10.0f, 10.0f);
+		}
+		else if (auto* Sub = Cast<UParticleModuleSubUV>(SelectedModule))
 		{
 			DrawSection("SUB UV");
-			if (ImGui::DragInt("Horizontal", &Sub->SubImagesHorizontal, 1.0f, 1, 64))
+			bool bChanged = false;
+			bChanged |= ImGui::DragInt("Horizontal", &Sub->SubImagesHorizontal, 1.0f, 1, 64);
+			bChanged |= ImGui::DragInt("Vertical", &Sub->SubImagesVertical, 1.0f, 1, 64);
+			bChanged |= ImGui::Checkbox("Linear Over Life", &Sub->bUseLinearOverLife);
+			bChanged |= ImGui::DragFloat("Play Rate", &Sub->PlayRate, 0.05f, 0.0f, 20.0f);
+			if (!Sub->bUseLinearOverLife)
+				DrawDistributionFloat("SubImage Index", Sub->SubImageIndex, Sub, 0.0f, 0.1f, 0.0f, 256.0f);
+			if (bChanged) { MarkSelectedLODBuildDirty(); MarkAssetModified(); }
+		}
+		else if (auto* SrcMod = Cast<UParticleModuleBeamSource>(SelectedModule))
+		{
+			DrawSection("BEAM SOURCE");
+			bool bChanged = ImGui::Combo("Source Method", &SrcMod->SourceMethod, "Emitter\0User Set\0Parameter\0");
+			if (SrcMod->SourceMethod == 2)
 			{
-				MarkAssetModified();
+				char ParamBuf[128] = {};
+				strncpy_s(ParamBuf, SrcMod->SourceParameterName.c_str(), _TRUNCATE);
+				if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
+				{
+					SrcMod->SourceParameterName = ParamBuf;
+					bChanged = true;
+				}
 			}
-			if (ImGui::DragInt("Vertical", &Sub->SubImagesVertical, 1.0f, 1, 64))
+			if (SrcMod->SourceMethod != 0)
+				DrawDistributionVector("Source", SrcMod->Source, SrcMod, FVector::ZeroVector, false, 0.05f);
+			bChanged |= ImGui::Checkbox("Use Source Tangent", &SrcMod->bUseSourceTangent);
+			if (SrcMod->bUseSourceTangent)
 			{
-				MarkAssetModified();
+				DrawDistributionVector("Source Tangent", SrcMod->SourceTangent, SrcMod, FVector(1.0f, 0.0f, 0.0f), false, 0.05f);
+				DrawDistributionFloat("Source Strength", SrcMod->SourceStrength, SrcMod, 1.0f, 0.05f, 0.0f, 100.0f);
 			}
-			if (ImGui::Checkbox("Linear Over Life", &Sub->bUseLinearOverLife))
+			if (bChanged) MarkAssetModified();
+		}
+		else if (auto* DstMod = Cast<UParticleModuleBeamTarget>(SelectedModule))
+		{
+			DrawSection("BEAM TARGET");
+			bool bChanged = ImGui::Combo("Target Method", &DstMod->TargetMethod, "Emitter\0User Set\0Parameter\0");
+			if (DstMod->TargetMethod == 2)
 			{
-				MarkAssetModified();
+				char ParamBuf[128] = {};
+				strncpy_s(ParamBuf, DstMod->TargetParameterName.c_str(), _TRUNCATE);
+				if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
+				{
+					DstMod->TargetParameterName = ParamBuf;
+					bChanged = true;
+				}
 			}
-			if (ImGui::DragFloat("Play Rate", &Sub->PlayRate, 0.05f, 0.0f, 20.0f))
+			if (DstMod->TargetMethod != 0)
+				DrawDistributionVector("Target", DstMod->Target, DstMod, FVector(3.0f, 0.0f, 0.0f), false, 0.05f);
+			bChanged |= ImGui::Checkbox("Use Target Tangent", &DstMod->bUseTargetTangent);
+			if (DstMod->bUseTargetTangent)
 			{
-				MarkAssetModified();
+				DrawDistributionVector("Target Tangent", DstMod->TargetTangent, DstMod, FVector(-1.0f, 0.0f, 0.0f), false, 0.05f);
+				DrawDistributionFloat("Target Strength", DstMod->TargetStrength, DstMod, 1.0f, 0.05f, 0.0f, 100.0f);
 			}
+			if (bChanged) MarkAssetModified();
+		}
+		else if (auto* NoiseMod = Cast<UParticleModuleBeamNoise>(SelectedModule))
+		{
+			DrawSection("BEAM NOISE");
+			bool bChanged = ImGui::DragInt("Frequency", &NoiseMod->Frequency, 1.0f, 1, 256);
+			DrawDistributionVector("Noise Range", NoiseMod->NoiseRange, NoiseMod, FVector(0.25f, 0.25f, 0.25f), false, 0.02f);
+			bChanged |= ImGui::DragFloat("Noise Lock Time", &NoiseMod->NoiseLockTime, 0.005f, 0.0f, 5.0f);
+			bChanged |= ImGui::Checkbox("Smooth", &NoiseMod->bSmooth);
+			if (!NoiseMod->bSmooth)
+				bChanged |= ImGui::SliderFloat("Noise Tension", &NoiseMod->NoiseTension, 0.0f, 1.0f);
+			bChanged |= ImGui::Checkbox("Lock Endpoints", &NoiseMod->bLockEndpoints);
+			if (bChanged) MarkAssetModified();
+		}
+		else if (auto* UnitMod = Cast<UParticleModuleSpawnPerUnit>(SelectedModule))
+		{
+			DrawSection("SPAWN PER UNIT");
+			bool bChanged = false;
+			bChanged |= ImGui::DragFloat("Spawn Per Unit", &UnitMod->SpawnPerUnit, 0.5f, 0.0f, 500.0f);
+			bChanged |= ImGui::DragFloat("Movement Tolerance", &UnitMod->MovementTolerance, 0.005f, 0.0f, 10.0f);
+			bChanged |= ImGui::DragFloat("Max Frame Distance", &UnitMod->MaxFrameDistance, 0.5f, 0.1f, 1000.0f);
+			bChanged |= ImGui::Checkbox("Ignore Spawn Rate When Moving", &UnitMod->bIgnoreSpawnRateWhenMoving);
+			if (bChanged) MarkAssetModified();
 		}
 		ImGui::EndDisabled();
 	}
@@ -2702,8 +2483,9 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 
 void FParticleSystemEditorPanel::MarkSelectedLODBuildDirty()
 {
-	if (SelectedEmitter && !SelectedEmitter->GetLODLevels().IsEmpty() && SelectedEmitter->GetLODLevels()[0])
-		SelectedEmitter->GetLODLevels()[0]->MarkBuildDirty();
+	if (!SelectedEmitter) return;
+	for (UParticleLODLevel* LOD : SelectedEmitter->GetLODLevels())
+		if (LOD) LOD->MarkBuildDirty();
 }
 
 // 스칼라 분포 속성을 모드별로 편집하는 공용 위젯
@@ -2773,7 +2555,10 @@ void FParticleSystemEditorPanel::DrawDistributionFloat(
 		}
 	}
 	if (bChanged)
+	{
 		MarkSelectedLODBuildDirty();
+		MarkAssetModified();
+	}
 	ImGui::Separator();
 	ImGui::PopID();
 }
@@ -2897,7 +2682,10 @@ void FParticleSystemEditorPanel::DrawDistributionVector(
 		}
 	}
 	if (bChanged)
+	{
 		MarkSelectedLODBuildDirty();
+		MarkAssetModified();
+	}
 	ImGui::Separator();
 	ImGui::PopID();
 }
@@ -2976,12 +2764,6 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 			}
 		}
 
-		if (bCurveChanged)
-		{
-			if (SelectedModule)
-				SelectedModule->InvalidateDistributions();
-			MarkSelectedLODBuildDirty();
-		}
 	}
 
 	ImGui::TextUnformatted("CURVE TRACKS");
@@ -2991,6 +2773,9 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 	{
 		bCurveFitRequested = true;
 	}
+	ImGui::SameLine();
+	if (ImGui::Checkbox("Show All Curves", &bShowAllCurves))
+		bCurveFitRequested = true;
 
 	ImGui::Separator();
 
@@ -3020,6 +2805,7 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 
 	SelectedCurveTrackIndex = ResolvedCurveIndex;
 
+	ImGui::BeginChild("##CurveTrackList", ImVec2(0.0f, std::min(EditorUIScale::Px(140.0f), Height * 0.25f)), ImGuiChildFlags_Borders);
 	for (int32 Index = 0; Index < static_cast<int32>(Tracks.Num()); ++Index)
 	{
 		const FEditorCurveEntry& Entry = Tracks[Index];
@@ -3051,10 +2837,12 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 			SelectedEmitter = Entry.Emitter;
 			SelectedModule = Entry.Module;
 			SelectedCurveKeyId = -1;
+			bCurveFitRequested = true;
 		}
 
 		ImGui::PopID();
 	}
+	ImGui::EndChild();
 
 	FEditorCurveEntry& ActiveEntry = Tracks[SelectedCurveTrackIndex];
 	const UParticleLODLevel* ActiveLOD = GetParticleEditorLOD(ActiveEntry.Emitter, SelectedLODIndex);
@@ -3155,7 +2943,7 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 		}
 	}
 
-	if (ImPlot::BeginPlot("##ParticleCurvePlot", ImVec2(-1.0f, -1.0f)))
+	if (ImPlot::BeginPlot("##ParticleCurvePlot", ImVec2(-1.0f, -1.0f), ImPlotFlags_NoLegend))
 	{
 		ImPlot::SetupAxes("Relative Time", "Value");
 		ImPlot::SetupAxisLimits(ImAxis_X1, -0.05, 1.05, ImPlotCond_Once);
@@ -3164,8 +2952,10 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 		float MaxValue = 1.0f;
 		bool bHasValue = false;
 
-		for (const FEditorCurveEntry& Entry : Tracks)
+		for (int32 TrackIndex = 0; TrackIndex < static_cast<int32>(Tracks.Num()); ++TrackIndex)
 		{
+			if (!bShowAllCurves && TrackIndex != SelectedCurveTrackIndex) continue;
+			const FEditorCurveEntry& Entry = Tracks[TrackIndex];
 			if (!Entry.Track.Curve)
 			{
 				continue;
@@ -3214,6 +3004,7 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 
 		for (int32 TrackIndex = 0; TrackIndex < static_cast<int32>(Tracks.Num()); ++TrackIndex)
 		{
+			if (!bShowAllCurves && TrackIndex != SelectedCurveTrackIndex) continue;
 			const FEditorCurveEntry& Entry = Tracks[TrackIndex];
 
 			if (!Entry.Track.Curve || std::find(HiddenCurveTracks.begin(), HiddenCurveTracks.end(), Entry.Track.Curve) != HiddenCurveTracks.end())

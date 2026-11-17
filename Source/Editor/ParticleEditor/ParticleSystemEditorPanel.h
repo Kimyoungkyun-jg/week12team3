@@ -9,6 +9,8 @@ class UParticleEmitter;
 class UParticleModule;
 class UParticleLODLevel;
 class UCurveFloat;
+class UDistributionFloat;
+class UDistributionVector;
 class AParticleSystemActor;
 class UWorld;
 class FSkyboxRenderer;
@@ -48,7 +50,6 @@ private:
 	bool RemoveLOD(int32 Index);
 	bool MoveLODContent(int32 FromIndex, int32 ToIndex);
 	UParticleModule* CopyModuleToLOD(UParticleLODLevel* Destination, const UParticleModule* Source);
-	void CopyModuleProperties(UParticleModule* Destination, const UParticleModule* Source);
 	void ApplyPreviewLOD();
 	void RenderMenuBar();
 	void RenderToolbar();
@@ -96,6 +97,7 @@ private:
 	int32 SelectedCurveTrackIndex = 0;
 	UCurveFloat* SelectedCurve = nullptr;
 	bool bCurveFitRequested = false;
+	bool bShowAllCurves = false;
 	int32 SelectedCurveKeyId = -1;
 	TArray<UCurveFloat*> HiddenCurveTracks;
 	bool bCopyPreviousLOD = false;

@@ -97,7 +97,8 @@ void USceneComponent::SetHiddenInGame(bool bNewHidden, EVisibilityPropagation Pr
 
 void USceneComponent::SetupAttachment(USceneComponent* InParent, EAttachmentRule Rule)
 {
-	if (InParent == this || AttachParent == InParent) return;
+	if (InParent == this) return;
+	if (AttachParent == InParent) { SetAttachSocketName(""); return; }
 
 	// 순환 체크
 	for (USceneComponent* Parent = InParent; Parent != nullptr; Parent = Parent->AttachParent)
@@ -143,6 +144,28 @@ void USceneComponent::SetupAttachment(USceneComponent* InParent, EAttachmentRule
 	UpdateChildVisibility(this, false, false, false);
 }
 
+void USceneComponent::SetupAttachmentToSocket(USceneComponent* InParent, const FString& InSocketName, EAttachmentRule Rule)
+{
+	if (!InParent || InParent == this) return;
+	const FVector WorldLocation = Rule == EAttachmentRule::KeepWorld ? GetWorldLocation() : FVector();
+	const FQuat WorldRotation = Rule == EAttachmentRule::KeepWorld ? GetWorldRotationQuat() : FQuat();
+	const FVector WorldScale = Rule == EAttachmentRule::KeepWorld ? GetWorldScale3D() : FVector();
+	SetupAttachment(InParent, EAttachmentRule::KeepRelative);
+	if (AttachParent != InParent) return;
+	SetAttachSocketName(InSocketName);
+	if (Rule == EAttachmentRule::KeepWorld)
+		ApplyWorldTRS(WorldLocation, WorldRotation, WorldScale);
+	else if (Rule == EAttachmentRule::SnapToTarget)
+		SetTransform(FTransform::Identity);
+}
+
+void USceneComponent::SetAttachSocketName(const FString& InSocketName)
+{
+	if (AttachSocketName == InSocketName) return;
+	AttachSocketName = InSocketName;
+	MarkTransformDirty();
+}
+
 void USceneComponent::DetachFromParent(EAttachmentRule Rule)
 {
 	if (!AttachParent) return;
@@ -161,6 +184,7 @@ void USceneComponent::DetachFromParent(EAttachmentRule Rule)
 		}
 	}
 	AttachParent = nullptr;
+	AttachSocketName.clear();
 	if (bKeepWorld)
 		ApplyWorldTRS(WorldLocation, WorldRotation, WorldScale);
 	
@@ -173,7 +197,7 @@ FQuat USceneComponent::GetWorldRotationQuat() const
 {
 	if (AttachParent)
 	{
-		return (AttachParent->GetWorldRotationQuat() * Transform.GetOrientation()).Normalized();
+		return (AttachParent->GetSocketWorldRotationQuat(AttachSocketName) * Transform.GetOrientation()).Normalized();
 	}
 
 	return Transform.GetOrientation();
@@ -195,7 +219,7 @@ FVector USceneComponent::GetWorldScale3D() const
 {
 	if (AttachParent)
 	{
-		FVector ParentScale = AttachParent->GetWorldScale3D();
+		FVector ParentScale = AttachParent->GetSocketWorldScale3D(AttachSocketName);
 
 		return FVector(
 			Transform.Scale.X * ParentScale.X,
@@ -215,13 +239,13 @@ FMatrix USceneComponent::GetWorldMatrix() const
 	}
 
 	const FVector WorldLocation = 
-		AttachParent->GetWorldMatrix().TransformPosition(Transform.Location);
+		AttachParent->GetSocketWorldMatrix(AttachSocketName).TransformPosition(Transform.Location);
 
 	const FQuat WorldRotation = 
 		GetWorldRotationQuat();
 
 	const FVector WorldScale =
-		Transform.Scale * AttachParent->GetWorldScale3D();
+		Transform.Scale * AttachParent->GetSocketWorldScale3D(AttachSocketName);
 
 	// Keep the composed rotation as a quaternion: editor arrows have a local 90-degree
 	// pitch, where an Euler round trip makes their world direction unstable.
@@ -263,9 +287,9 @@ void USceneComponent::ApplyWorldTRS(const FVector& Location, const FQuat& Rotati
 {
 	if (AttachParent)
 	{
-		Transform.Location = AttachParent->GetWorldMatrix().Inverse().TransformPosition(Location);
-		Transform.Rotation = RotationFromMatrix((AttachParent->GetWorldRotationQuat().Inverse() * Rotation).Normalized().ToFMatrix());
-		Transform.Scale = DivideScale(Scale, AttachParent->GetWorldScale3D(), Transform.Scale);
+		Transform.Location = AttachParent->GetSocketWorldMatrix(AttachSocketName).Inverse().TransformPosition(Location);
+		Transform.Rotation = RotationFromMatrix((AttachParent->GetSocketWorldRotationQuat(AttachSocketName).Inverse() * Rotation).Normalized().ToFMatrix());
+		Transform.Scale = DivideScale(Scale, AttachParent->GetSocketWorldScale3D(AttachSocketName), Transform.Scale);
 	}
 	else
 	{
@@ -282,7 +306,7 @@ void USceneComponent::SetWorldLocation(FVector NewLocation, bool bSweep)
 
 	if (GetAttachParent() != nullptr)
 	{		
-		NewRelLocation = GetAttachParent()->GetWorldMatrix().Inverse().TransformPosition(NewRelLocation);
+		NewRelLocation = GetAttachParent()->GetSocketWorldMatrix(AttachSocketName).Inverse().TransformPosition(NewRelLocation);
 	}
 
 	SetRelativeLocation(NewRelLocation);
@@ -294,7 +318,7 @@ void USceneComponent::SetWorldRotation(FRotator NewRotation, bool bSweep)
 
 	if (GetAttachParent() != nullptr)
 	{
-		FQuat NewRelQuat = GetAttachParent()->GetWorldRotationQuat().Inverse() * NewRelRotation.Quaternion();
+		FQuat NewRelQuat = GetAttachParent()->GetSocketWorldRotationQuat(AttachSocketName).Inverse() * NewRelRotation.Quaternion();
 		NewRelRotation = NewRelQuat.ToFRotator();
 	}
 
@@ -308,9 +332,9 @@ void USceneComponent::SetWorldLocationAndRotation(FVector NewLocation, FRotator 
 
 	if (GetAttachParent() != nullptr)
 	{
-		NewRelLocation = GetAttachParent()->GetWorldMatrix().Inverse().TransformPosition(NewRelLocation);
+		NewRelLocation = GetAttachParent()->GetSocketWorldMatrix(AttachSocketName).Inverse().TransformPosition(NewRelLocation);
 
-		FQuat NewRelQuat = GetAttachParent()->GetWorldRotationQuat().Inverse() * NewRelRotation.Quaternion();
+		FQuat NewRelQuat = GetAttachParent()->GetSocketWorldRotationQuat(AttachSocketName).Inverse() * NewRelRotation.Quaternion();
 		NewRelRotation = NewRelQuat.ToFRotator();
 	}
 
@@ -319,7 +343,7 @@ void USceneComponent::SetWorldLocationAndRotation(FVector NewLocation, FRotator 
 
 void USceneComponent::SetWorldScale3D(FVector NewScale)
 {
-	SetRelativeScale3D(AttachParent ? DivideScale(NewScale, AttachParent->GetWorldScale3D(), Transform.Scale) : NewScale);
+	SetRelativeScale3D(AttachParent ? DivideScale(NewScale, AttachParent->GetSocketWorldScale3D(AttachSocketName), Transform.Scale) : NewScale);
 }
 
 bool USceneComponent::MoveComponent(const FVector& Delta, const FRotator& NewRotation, bool bSweep, FHitResult* Hit)
