@@ -93,6 +93,15 @@
                         "bActorEnableCollision": true
                     },
                     "RootComponentName": "UStaticMeshComponent"
+                },
+                {
+                    "Class": "AParticleEventManager",
+                    "Components": [],
+                    "Name": "AParticleEventManager_0",
+                    "Properties": {
+                        "bActorEnableCollision": true
+                    },
+                    "RootComponentName": ""
                 }
             ],
             "Properties": {}

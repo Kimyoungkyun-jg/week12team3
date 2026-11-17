@@ -17,15 +17,3 @@ AParticleSystemActor::AParticleSystemActor()
 	LOD->AddModule(UParticleModuleSize::StaticClass());
 	ParticleSystemComponent->SetTemplate(System);
 }
-
-void AParticleSystemActor::BeginPlay()
-{
-	Super::BeginPlay();
-	ParticleSystemComponent->OnParticleCollision.AddDynamic(this, &AParticleSystemActor::HandleCollision);
-}
-
-
-void AParticleSystemActor::HandleCollision(const FParticleEventCollideData& Event)
-{
-	HTR_LOG(Warning, "[Particle Collider] loc=({},{},{})", Event.Location.X, Event.Location.Y, Event.Location.Z);
-}

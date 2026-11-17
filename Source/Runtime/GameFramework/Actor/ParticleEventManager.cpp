@@ -23,6 +23,7 @@ void AParticleEventManager::BeginPlay()
 
 void AParticleEventManager::HandleCollision(const FParticleEventCollideData& Event)
 {
+	HTR_LOG(Warning, "[Manager] event={}", Event.EventName);
 	FParticleCollisionSignature * Listener = Listeners.Find(Event.EventName);
 	if (Listener == nullptr)
 	{
