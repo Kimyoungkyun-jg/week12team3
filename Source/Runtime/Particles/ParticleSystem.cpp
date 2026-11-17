@@ -391,23 +391,23 @@ void UParticleEmitter::EnableModuleInheritance()
 			{
 				return;
 			}
+		}
 
-			for (UParticleLODLevel* LOD : LODLevels)
+		for (UParticleLODLevel* LOD : LODLevels)
+		{
+			LOD->GetOrCreateRequired();
+			LOD->GetOrCreateSpawn();
+			LOD->GetOrCreateTypeData();
+			for (uint32 Index = 0; Index < LOD->Modules.Num(); ++Index)
 			{
-				LOD->GetOrCreateRequired();
-				LOD->GetOrCreateSpawn();
-				LOD->GetOrCreateTypeData();
-				for (uint32 Index = 0; Index < LOD->Modules.Num(); ++Index)
+				if (LOD->Modules[Index])
 				{
-					if (LOD->Modules[Index])
-					{
-						LOD->Modules[Index]->LODSlotId = static_cast<int32>(Index) + 1;
-					}
+					LOD->Modules[Index]->LODSlotId = static_cast<int32>(Index) + 1;
 				}
 			}
 		}
-		bInheritLODModules = true;
 	}
+	bInheritLODModules = true;
 }
 
 UParticleLODLevel* UParticleEmitter::AddLODLevel()
