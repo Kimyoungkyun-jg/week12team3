@@ -374,6 +374,19 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 		return;
 	}
 
+	const bool bSystemSelected = SelectedEmitter == nullptr && SelectedModule == nullptr;
+
+	if (ImGui::Selectable("Particle System", bSystemSelected, ImGuiSelectableFlags_SpanAvailWidth))
+	{
+		SelectedEmitter = nullptr;
+		SelectedModule = nullptr;
+		SelectedLODIndex = 0;
+		SelectedCurveTrackIndex = 0;
+		SelectedCurveKeyId = -1;
+	}
+
+	ImGui::Separator();
+
 	const TArray<UParticleEmitter*>& Emitters = EditingSystem->GetEmitters();
 	UParticleEmitter* EmitterToRemove = nullptr;
 
@@ -803,6 +816,13 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		ImGui::Separator();
 	};
 
+	auto DrawFloatProperty = [](const char* Label, const char* Id, float* Value, float Speed, float Min, float Max)
+	{
+		ImGui::TextUnformatted(Label);
+		ImGui::SetNextItemWidth(-1.0f);
+		ImGui::DragFloat(Id, Value, Speed, Min, Max, "%.3f");
+	};
+
 	auto DrawTypeDataMeshPicker = [&](UParticleLODLevel* LOD, UParticleModuleTypeDataMesh* MeshType)
 	{
 		if (!LOD || !MeshType) return;
@@ -1054,11 +1074,11 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 	else if (EditingSystem)
 	{
 		DrawSection("SYSTEM");
-		ImGui::DragFloat("Update Time FPS", &EditingSystem->UpdateTimeFPS, 1.0f, 1.0f, 240.0f);
-		ImGui::DragFloat("Warmup Time", &EditingSystem->WarmupTime, 0.05f, 0.0f, 60.0f);
-		ImGui::DragFloat("Warmup Tick Rate", &EditingSystem->WarmupTickRate, 0.01f, 0.0f, 1.0f);
-		ImGui::DragFloat("Seconds Before Inactive", &EditingSystem->SecondsBeforeInactive, 0.1f, 0.0f, 60.0f);
-		ImGui::DragFloat("Play Rate", &EditingSystem->PlayRate, 0.05f, 0.0f, 20.0f);
+		DrawFloatProperty("Update Time FPS", "##SystemUpdateTimeFPS", &EditingSystem->UpdateTimeFPS, 1.0f, 1.0f, 240.0f);
+		DrawFloatProperty("Warmup Time", "##SystemWarmupTime", &EditingSystem->WarmupTime, 0.05f, 0.0f, 60.0f);
+		DrawFloatProperty("Warmup Tick Rate", "##SystemWarmupTickRate", &EditingSystem->WarmupTickRate, 0.01f, 0.0f, 1.0f);
+		DrawFloatProperty("Seconds Before Inactive", "##SystemSecondsBeforeInactive", &EditingSystem->SecondsBeforeInactive, 0.1f, 0.0f, 60.0f);
+		DrawFloatProperty("Play Rate", "##SystemPlayRate", &EditingSystem->PlayRate, 0.05f, 0.0f, 20.0f);
 
 		DrawSection("BOUNDS");
 
@@ -1289,7 +1309,7 @@ void FParticleSystemEditorPanel::OnRender()
 	}
 
 	const FString Title = (EditingSystem ? FbxPath::ToString(FbxPath::FromString(AssetPath).filename()) : FString(GetPanelName())) + "###ParticleSystemEditor";
-	bVisible = BeginPanel(Title.c_str(), ImGuiWindowFlags_MenuBar);
+	bVisible = BeginPanel(Title.c_str(), ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
 	if (!bVisible)
 	{
@@ -1325,80 +1345,141 @@ void FParticleSystemEditorPanel::OnRender()
 	const float ActiveSplitterHeight = bCanResizeCurve ? SplitterThickness : 0.0f;
 	const float MainHeight = std::max(0.0f, Available.y - CurveHeight - ActiveSplitterHeight);
 
-	const float EmitterWidth = std::clamp(Available.x * 0.23f, EditorUIScale::Px(200.0f), EditorUIScale::Px(320.0f));
-	const float DetailsWidth = std::clamp(Available.x * 0.24f, EditorUIScale::Px(220.0f), EditorUIScale::Px(340.0f));
+	if (EmitterPanelWidth <= 0.0f)
+	{
+		EmitterPanelWidth = EditorUIScale::Px(250.0f);
+	}
 
-	int32 VisibleColumnCount = 0;
+	if (DetailsPanelWidth <= 0.0f)
+	{
+		DetailsPanelWidth = EditorUIScale::Px(300.0f);
+	}
+
+	const int32 VisibleColumnCount = (bShowEmitters ? 1 : 0) + (bShowViewport ? 1 : 0) + (bShowDetails ? 1 : 0);
+	const int32 SplitterCount = std::max(0, VisibleColumnCount - 1);
+	const float PanelAreaWidth = std::max(1.0f, Available.x - SplitterThickness * SplitterCount);
+
+	const float MinEmitterWidth = EditorUIScale::Px(180.0f);
+	const float MinDetailsWidth = EditorUIScale::Px(220.0f);
+	const float MinViewportWidth = EditorUIScale::Px(220.0f);
+
+	auto ClampPanelWidth = [](float Value, float MinWidth, float MaxWidth)
+	{
+		const float SafeMax = std::max(1.0f, MaxWidth);
+		const float SafeMin = std::min(MinWidth, SafeMax);
+		return std::clamp(Value, SafeMin, SafeMax);
+	};
+
+	float CurrentEmitterWidth = 0.0f;
+	float CurrentViewportWidth = 0.0f;
+	float CurrentDetailsWidth = 0.0f;
+
+	if (bShowEmitters && bShowViewport && bShowDetails)
+	{
+		CurrentEmitterWidth = ClampPanelWidth(EmitterPanelWidth, MinEmitterWidth, PanelAreaWidth - MinViewportWidth - MinDetailsWidth);
+		CurrentDetailsWidth = ClampPanelWidth(DetailsPanelWidth, MinDetailsWidth, PanelAreaWidth - CurrentEmitterWidth - MinViewportWidth);
+		CurrentViewportWidth = std::max(1.0f, PanelAreaWidth - CurrentEmitterWidth - CurrentDetailsWidth);
+	}
+	else if (bShowEmitters && bShowViewport)
+	{
+		CurrentEmitterWidth = ClampPanelWidth(EmitterPanelWidth, MinEmitterWidth, PanelAreaWidth - MinViewportWidth);
+		CurrentViewportWidth = std::max(1.0f, PanelAreaWidth - CurrentEmitterWidth);
+	}
+	else if (bShowViewport && bShowDetails)
+	{
+		CurrentDetailsWidth = ClampPanelWidth(DetailsPanelWidth, MinDetailsWidth, PanelAreaWidth - MinViewportWidth);
+		CurrentViewportWidth = std::max(1.0f, PanelAreaWidth - CurrentDetailsWidth);
+	}
+	else if (bShowEmitters && bShowDetails)
+	{
+		CurrentEmitterWidth = ClampPanelWidth(EmitterPanelWidth, MinEmitterWidth, PanelAreaWidth - MinDetailsWidth);
+		CurrentDetailsWidth = std::max(1.0f, PanelAreaWidth - CurrentEmitterWidth);
+	}
+	else if (bShowEmitters)
+	{
+		CurrentEmitterWidth = PanelAreaWidth;
+	}
+	else if (bShowViewport)
+	{
+		CurrentViewportWidth = PanelAreaWidth;
+	}
+	else if (bShowDetails)
+	{
+		CurrentDetailsWidth = PanelAreaWidth;
+	}
+
+	const float MaxEmitterDragWidth = PanelAreaWidth - (bShowViewport ? MinViewportWidth : (bShowDetails ? MinDetailsWidth : 0.0f)) - (bShowViewport && bShowDetails ? CurrentDetailsWidth : 0.0f);
+	const float MaxDetailsDragWidth = PanelAreaWidth - (bShowViewport ? MinViewportWidth : 0.0f) - (bShowEmitters ? CurrentEmitterWidth : 0.0f);
+
+	auto DrawVerticalSplitter = [&](const char* Id, float* Width, float Direction, float MinWidth, float MaxWidth)
+	{
+		ImGui::InvisibleButton(Id, ImVec2(SplitterThickness, MainHeight));
+
+		const bool bHovered = ImGui::IsItemHovered();
+		const bool bActive = ImGui::IsItemActive();
+
+		if (bHovered || bActive)
+		{
+			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+		}
+
+		if (bActive)
+		{
+			*Width = ClampPanelWidth(*Width + ImGui::GetIO().MouseDelta.x * Direction, MinWidth, MaxWidth);
+		}
+
+		const ImVec2 SplitterMin = ImGui::GetItemRectMin();
+		const float CenterX = SplitterMin.x + SplitterThickness * 0.5f;
+		const ImU32 SplitterColor = ImGui::GetColorU32(bHovered || bActive ? ImGuiCol_SeparatorHovered : ImGuiCol_Separator);
+
+		ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(CenterX - 1.0f, SplitterMin.y), ImVec2(CenterX + 1.0f, SplitterMin.y + MainHeight), SplitterColor);
+	};
+
+	bool bHasPreviousPanel = false;
+
 	if (bShowEmitters)
 	{
-		++VisibleColumnCount;
+		RenderEmittersPanel(CurrentEmitterWidth, MainHeight);
+		bHasPreviousPanel = true;
 	}
+
 	if (bShowViewport)
 	{
-		++VisibleColumnCount;
+		if (bHasPreviousPanel)
+		{
+			ImGui::SameLine(0.0f, 0.0f);
+
+			if (bShowEmitters)
+			{
+				DrawVerticalSplitter("##EmitterPanelSplitter", &EmitterPanelWidth, 1.0f, MinEmitterWidth, MaxEmitterDragWidth);
+			}
+
+			ImGui::SameLine(0.0f, 0.0f);
+		}
+
+		RenderViewportPanel(CurrentViewportWidth, MainHeight);
+		bHasPreviousPanel = true;
 	}
+
 	if (bShowDetails)
 	{
-		++VisibleColumnCount;
-	}
-
-	const bool bEmitterStretch = bShowEmitters && !bShowViewport && !bShowDetails;
-	const bool bDetailsStretch = bShowDetails && !bShowViewport;
-
-	if (VisibleColumnCount > 0 && ImGui::BeginTable("ParticleEditorMain", VisibleColumnCount, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
-	{
-		if (bShowEmitters)
+		if (bHasPreviousPanel)
 		{
-			if (bEmitterStretch)
+			ImGui::SameLine(0.0f, 0.0f);
+
+			if (bShowViewport)
 			{
-				ImGui::TableSetupColumn("Emitters", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+				DrawVerticalSplitter("##DetailsPanelSplitter", &DetailsPanelWidth, -1.0f, MinDetailsWidth, MaxDetailsDragWidth);
 			}
-			else
+			else if (bShowEmitters)
 			{
-				ImGui::TableSetupColumn("Emitters", ImGuiTableColumnFlags_WidthFixed, EmitterWidth);
+				DrawVerticalSplitter("##EmitterDetailsSplitter", &EmitterPanelWidth, 1.0f, MinEmitterWidth, MaxEmitterDragWidth);
 			}
+
+			ImGui::SameLine(0.0f, 0.0f);
 		}
 
-		if (bShowViewport)
-		{
-			ImGui::TableSetupColumn("Preview", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-		}
-
-		if (bShowDetails)
-		{
-			if (bDetailsStretch)
-			{
-				ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-			}
-			else
-			{
-				ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthFixed, DetailsWidth);
-			}
-		}
-
-		ImGui::TableNextRow(ImGuiTableRowFlags_None, MainHeight);
-
-		int32 ColumnIndex = 0;
-
-		if (bShowEmitters)
-		{
-			ImGui::TableSetColumnIndex(ColumnIndex++);
-			RenderEmittersPanel(0.0f, 0.0f);
-		}
-
-		if (bShowViewport)
-		{
-			ImGui::TableSetColumnIndex(ColumnIndex++);
-			RenderViewportPanel(0.0f, 0.0f);
-		}
-
-		if (bShowDetails)
-		{
-			ImGui::TableSetColumnIndex(ColumnIndex++);
-			RenderDetailsPanel(0.0f, 0.0f);
-		}
-
-		ImGui::EndTable();
+		RenderDetailsPanel(CurrentDetailsWidth, MainHeight);
 	}
 
 	if (bCanResizeCurve)

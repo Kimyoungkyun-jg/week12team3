@@ -51,6 +51,8 @@ private:
 	float CameraSpeed = 1.0f;
 	float SimSpeed = 1.0f;
 	float CurvePanelRatio = 0.26f;
+	float EmitterPanelWidth = 0.0f;
+	float DetailsPanelWidth = 0.0f;
 	int32 SelectedLODIndex = 0;
 	int32 SelectedCurveTrackIndex = 0;
 	int32 SelectedCurveKeyId = -1;
