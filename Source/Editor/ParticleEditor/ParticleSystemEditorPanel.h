@@ -48,6 +48,9 @@ private:
 	FEditorViewportClient Client;
 	TUniquePtr<FSkyboxRenderer> Skybox;
 
+	uint32 PendingViewportWidth = 0;
+	uint32 PendingViewportHeight = 0;
+	bool bViewportResizePending = false;
 	float CameraSpeed = 1.0f;
 	float SimSpeed = 1.0f;
 	float CurvePanelRatio = 0.26f;

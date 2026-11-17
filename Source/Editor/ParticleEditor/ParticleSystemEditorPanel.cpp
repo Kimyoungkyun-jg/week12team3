@@ -161,6 +161,16 @@ void FParticleSystemEditorPanel::RenderPreview(UEditorEngine* Engine)
 {
 	if (Engine && IsOpen() && bVisible && PreviewWorld && bShowViewport)
 	{
+		if (bViewportResizePending && PendingViewportWidth > 0 && PendingViewportHeight > 0)
+		{
+			if (Client.GetWidth() != PendingViewportWidth || Client.GetHeight() != PendingViewportHeight)
+			{
+				Client.Resize(PendingViewportWidth, PendingViewportHeight);
+			}
+
+			bViewportResizePending = false;
+		}
+
 		UParticleSystemComponent* PreviewComponent = PreviewActor ? PreviewActor->GetParticleSystemComponent() : nullptr;
 		Engine->RenderPreviewViewport(&Client, PreviewWorld, nullptr, bShowSkybox ? Skybox.get() : nullptr, bShowGrid, bShowBounds ? PreviewComponent : nullptr, bShowOriginAxis);
 	}
@@ -285,9 +295,18 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 			ImagePos, ImVec2(ImagePos.x + Size.x, ImagePos.y + Size.y), BgCol);
 	}
 
-	Client.Resize(static_cast<uint32>(Size.x), static_cast<uint32>(Size.y));
+	PendingViewportWidth = static_cast<uint32>(Size.x);
+	PendingViewportHeight = static_cast<uint32>(Size.y);
+
+	if (!ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+	{
+		bViewportResizePending = true;
+	}
+
 	if (Client.GetColorTarget())
+	{
 		ImGui::Image(Client.GetColorTarget()->GetSRV(), Size);
+	}
 
 	const bool Hovered = ImGui::IsItemHovered();
 	const bool bCaptured = Hovered && ImGui::IsMouseDown(ImGuiMouseButton_Right);
@@ -343,8 +362,8 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 	}
 
 	ImGui::TextUnformatted("EMITTERS");
-	ImGui::SameLine();
-	if (ImGui::SmallButton("+ Add Emitter") && EditingSystem)
+
+	if (ImGui::Button("+ Add Emitter", ImVec2(-1.0f, 0.0f)) && EditingSystem)
 	{
 		if (UParticleEmitter* NewEmitter = EditingSystem->AddEmitter())
 		{
@@ -353,11 +372,13 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 			{
 				NewEmitter->AddLODLevel();
 			}
+
 			SelectedEmitter = NewEmitter;
 			SelectedModule = nullptr;
 			SelectedLODIndex = 0;
 			SelectedCurveTrackIndex = 0;
 			SelectedCurveKeyId = -1;
+
 			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 			{
 				PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
@@ -430,7 +451,9 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 				char LODLabel[32];
 				snprintf(LODLabel, sizeof(LODLabel), "LOD %d", SelectedLODIndex);
 
-				if (ImGui::BeginCombo("LOD Level", LODLabel))
+				ImGui::TextDisabled("LOD LEVEL");
+				ImGui::SetNextItemWidth(-1.0f);
+				if (ImGui::BeginCombo("##EmitterLODLevel", LODLabel))
 				{
 					for (int32 Index = 0; Index < static_cast<int32>(LODLevels.Num()); ++Index)
 					{
@@ -453,7 +476,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 
 			UParticleLODLevel* LOD = LODLevels.IsEmpty() ? nullptr : LODLevels[SelectedLODIndex];
 
-			if (ImGui::SmallButton("Remove Emitter"))
+			if (ImGui::Button("Remove Emitter", ImVec2(-1.0f, 0.0f)))
 			{
 				EmitterToRemove = Emitter;
 			}
@@ -545,12 +568,17 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 
 					ImGui::SameLine();
 
-					const float BadgeWidth = EditorUIScale::Px(88.0f);
-					const float RowWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - BadgeWidth);
+					const float RowWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+					const char* DisplayName = Mod->GetDisplayName();
+					const float TextWidth = std::max(1.0f, RowWidth - EditorUIScale::Px(12.0f));
+
+					const ImVec2 NameSize = ImGui::CalcTextSize(DisplayName, nullptr, false, TextWidth);
+					const ImVec2 StageSize = ImGui::CalcTextSize(Stage, nullptr, false, TextWidth);
+					const float RowHeight = NameSize.y + StageSize.y + EditorUIScale::Px(10.0f);
 
 					const bool bSelected = (SelectedModule == Mod);
 
-					if (ImGui::Selectable(Mod->GetDisplayName(), bSelected, 0, ImVec2(RowWidth, EditorUIScale::Px(28.0f))))
+					if (ImGui::Selectable("##ModuleRow", bSelected, 0, ImVec2(RowWidth, RowHeight)))
 					{
 						if (SelectedModule != Mod)
 						{
@@ -563,44 +591,17 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					}
 
 					const ImVec2 RowMin = ImGui::GetItemRectMin();
+					const ImVec2 TextPosition(RowMin.x + EditorUIScale::Px(6.0f), RowMin.y + EditorUIScale::Px(3.0f));
+
+					ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(), TextPosition, ImGui::GetColorU32(ImGuiCol_Text), DisplayName, nullptr, TextWidth);
+					ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(TextPosition.x, TextPosition.y + NameSize.y + EditorUIScale::Px(2.0f)), ImGui::GetColorU32(ImGuiCol_TextDisabled), Stage, nullptr, TextWidth);
+
 					const ImVec2 RowMax = ImGui::GetItemRectMax();
-
-					if (bRemovable && ImGui::BeginPopupContextItem("ModuleContext"))
-					{
-						if (ImGui::MenuItem("Remove Module"))
-						{
-							ModuleToRemove = Mod;
-						}
-
-						ImGui::EndPopup();
-					}
-
-					if (bRemovable && ImGui::BeginDragDropSource())
-					{
-						UParticleModule* DraggedModule = Mod;
-						ImGui::SetDragDropPayload("PARTICLE_MODULE", &DraggedModule, sizeof(DraggedModule));
-						ImGui::TextUnformatted(Mod->GetDisplayName());
-						ImGui::EndDragDropSource();
-					}
-
-					if (bRemovable && ImGui::BeginDragDropTarget())
-					{
-						if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("PARTICLE_MODULE"))
-						{
-							ModuleToMove = *static_cast<UParticleModule**>(Payload->Data);
-							MoveTargetModule = Mod;
-							bMoveAfterTarget = ImGui::GetIO().MousePos.y > (RowMin.y + RowMax.y) * 0.5f;
-						}
-						ImGui::EndDragDropTarget();
-					}
-
-					ImGui::SameLine();
-					ImGui::TextDisabled("%s", Stage);
 
 					ImGui::PopID();
 				};
 
-				if (ImGui::CollapsingHeader("Emitter Settings", ImGuiTreeNodeFlags_DefaultOpen))
+				if (ImGui::CollapsingHeader("Emitter Setup", ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					DrawModuleRow(LOD->GetOrCreateTypeData(), "RENDER", false);
 					DrawModuleRow(LOD->GetOrCreateRequired(), "SETTINGS", false);
@@ -611,7 +612,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					DrawModuleRow(LOD->GetOrCreateSpawn(), "SPAWN", false);
 				}
 
-				if (ImGui::CollapsingHeader("Particle Modules", ImGuiTreeNodeFlags_DefaultOpen))
+				if (ImGui::CollapsingHeader("Modules", ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					for (UParticleModule* Mod : LOD->Modules)
 					{
@@ -1085,8 +1086,13 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		bool bBoundsChanged = ImGui::Checkbox("Use Fixed Relative Bounds", &EditingSystem->bUseFixedRelativeBoundingBox);
 		if (EditingSystem->bUseFixedRelativeBoundingBox)
 		{
-			bBoundsChanged |= ImGui::DragFloat3("Bounds Min", &EditingSystem->FixedBoundsMin.X, 0.5f);
-			bBoundsChanged |= ImGui::DragFloat3("Bounds Max", &EditingSystem->FixedBoundsMax.X, 0.5f);
+			ImGui::TextUnformatted("Bounds Min");
+			ImGui::SetNextItemWidth(-1.0f);
+			bBoundsChanged |= ImGui::DragFloat3("##SystemBoundsMin", &EditingSystem->FixedBoundsMin.X, 0.5f);
+
+			ImGui::TextUnformatted("Bounds Max");
+			ImGui::SetNextItemWidth(-1.0f);
+			bBoundsChanged |= ImGui::DragFloat3("##SystemBoundsMax", &EditingSystem->FixedBoundsMax.X, 0.5f);
 		}
 
 		if (bBoundsChanged && PreviewActor && PreviewActor->GetParticleSystemComponent())
@@ -1106,7 +1112,9 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 
 			if (MaxDistance >= MinDistance)
 			{
-				ImGui::DragFloat(Label, &EditingSystem->LODDistances[Index], 0.5f, MinDistance, MaxDistance);
+				ImGui::PushID(Index);
+				DrawFloatProperty(Label, "##LODDistance", &EditingSystem->LODDistances[Index], 0.5f, MinDistance, MaxDistance);
+				ImGui::PopID();
 			}
 		}
 	}
@@ -1347,12 +1355,12 @@ void FParticleSystemEditorPanel::OnRender()
 
 	if (EmitterPanelWidth <= 0.0f)
 	{
-		EmitterPanelWidth = EditorUIScale::Px(250.0f);
+		EmitterPanelWidth = EditorUIScale::Px(285.0f);
 	}
 
 	if (DetailsPanelWidth <= 0.0f)
 	{
-		DetailsPanelWidth = EditorUIScale::Px(300.0f);
+		DetailsPanelWidth = EditorUIScale::Px(360.0f);
 	}
 
 	const int32 VisibleColumnCount = (bShowEmitters ? 1 : 0) + (bShowViewport ? 1 : 0) + (bShowDetails ? 1 : 0);
