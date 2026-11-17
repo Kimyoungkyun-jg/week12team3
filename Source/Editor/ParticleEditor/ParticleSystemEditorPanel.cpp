@@ -355,6 +355,9 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 			}
 			SelectedEmitter = NewEmitter;
 			SelectedModule = nullptr;
+			SelectedLODIndex = 0;
+			SelectedCurveTrackIndex = 0;
+			SelectedCurveKeyId = -1;
 			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 			{
 				PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
@@ -684,6 +687,8 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 								{
 									SelectedEmitter = Emitter;
 									SelectedModule = Added;
+									SelectedCurveTrackIndex = 0;
+									SelectedCurveKeyId = -1;
 
 									if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 									{
@@ -822,20 +827,33 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		if (auto* MeshType = Cast<UParticleModuleTypeDataMesh>(SelectedModule))
 		{
 			DrawSection("RENDERER");
-			UParticleLODLevel* OwnerLOD = (SelectedEmitter && !SelectedEmitter->GetLODLevels().IsEmpty())
-				? SelectedEmitter->GetLODLevels()[0]
-				: nullptr;
-			if (!OwnerLOD && EditingSystem)
+			UParticleLODLevel* OwnerLOD = nullptr;
+
+			if (EditingSystem)
 			{
-				for (UParticleEmitter* E : EditingSystem->GetEmitters())
+				for (UParticleEmitter* Emitter : EditingSystem->GetEmitters())
 				{
-					if (E && !E->GetLODLevels().IsEmpty() && E->GetLODLevels()[0] && E->GetLODLevels()[0]->TypeDataModule == MeshType)
+					if (!Emitter)
 					{
-						OwnerLOD = E->GetLODLevels()[0];
+						continue;
+					}
+
+					for (UParticleLODLevel* CandidateLOD : Emitter->GetLODLevels())
+					{
+						if (CandidateLOD && CandidateLOD->TypeDataModule == MeshType)
+						{
+							OwnerLOD = CandidateLOD;
+							break;
+						}
+					}
+
+					if (OwnerLOD)
+					{
 						break;
 					}
 				}
 			}
+
 			DrawTypeDataMeshPicker(OwnerLOD, MeshType);
 		}
 		else if (Cast<UParticleModuleTypeDataSprite>(SelectedModule))
@@ -1018,12 +1036,17 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			SelectedEmitter->EmitterName = NameBuf;
 		ImGui::Checkbox("Solo", &SelectedEmitter->bIsSolo);
 		ImGui::DragFloat("Play Rate", &SelectedEmitter->PlayRate, 0.05f, 0.0f, 20.0f);
-		if (!SelectedEmitter->GetLODLevels().IsEmpty())
+		const TArray<UParticleLODLevel*>& LODLevels = SelectedEmitter->GetLODLevels();
+
+		if (!LODLevels.IsEmpty())
 		{
-			UParticleLODLevel* LOD = SelectedEmitter->GetLODLevels()[0];
+			SelectedLODIndex = std::clamp(SelectedLODIndex, 0, static_cast<int32>(LODLevels.Num()) - 1);
+
+			UParticleLODLevel* LOD = LODLevels[SelectedLODIndex];
+
 			if (auto* MeshType = LOD ? Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule) : nullptr)
 			{
-				ImGui::Separator();
+				DrawSection("RENDERER");
 				DrawTypeDataMeshPicker(LOD, MeshType);
 			}
 		}

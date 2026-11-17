@@ -1769,7 +1769,7 @@ void UEditorEngine::RenderPreviewViewport(FEditorViewportClient* PreviewClient, 
 	SceneRenderer.InitViews(Renderer, Options);
 
 	FSceneViewTargets& Targets = PreviewClient->GetViewTargets();
-	RenderScene(Targets, SceneView, SceneRenderer, PreviewWorld, Options, [this, &SceneView, &Targets, PreviewGizmo, bDrawGrid, PreviewWorld, BoundsComponent](FSceneOverlayCallbacks& Overlays)
+	RenderScene(Targets, SceneView, SceneRenderer, PreviewWorld, Options, [this, &SceneView, &Targets, PreviewGizmo, bDrawGrid, PreviewWorld, BoundsComponent, bDrawOriginAxis](FSceneOverlayCallbacks& Overlays)
 		{
 			Overlays.EditorLines = [this, &SceneView, PreviewWorld, BoundsComponent, bDrawOriginAxis]
 			{
