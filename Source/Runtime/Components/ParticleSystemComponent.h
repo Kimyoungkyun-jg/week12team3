@@ -85,6 +85,8 @@ struct FParticleEmitterInstance
 	bool IsGpuEmitter() const;
 };
 
+DECLARE_DELEGATE(FParticleCollisionSignature, const FParticleEventCollideData&);
+
 UCLASS()
 class UParticleSystemComponent : public UPrimitiveComponent
 {
@@ -122,6 +124,8 @@ public:
 	void PushRenderStateToProxy() override;
 	FParticleDynamicData BuildDynamicData();
 
+	void AddCollisionEvent(const FParticleEventCollideData& Event);
+
 	UPROPERTY()
 	FString TemplatePath;
 	UPROPERTY(EditAnywhere)
@@ -130,7 +134,8 @@ public:
 	bool bAutoDestroy = false;
 	UPROPERTY(EditAnywhere)
 	float CustomTimeDilation = 1.0f;
-	TArray<FParticleEventCollideData> CollisionEvents;
+	
+	FParticleCollisionSignature OnParticleCollision;
 
 private:
 	void LoadTemplateIfNeeded();
@@ -140,4 +145,6 @@ private:
 	TArray<FParticleSysParam> InstanceParamList;
 	FParticleInstanceParameters InstanceParameters;
 	FString LoadedTemplatePath;
+
+	TArray<FParticleEventCollideData> CollisionEvents;
 };

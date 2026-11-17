@@ -976,6 +976,11 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 	return Data;
 }
 
+void UParticleSystemComponent::AddCollisionEvent(const FParticleEventCollideData& Event)
+{
+	CollisionEvents.Add(Event);
+}
+
 void UParticleSystemComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -1229,9 +1234,10 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	Context.ComponentToWorld = GetWorldMatrix();
 	Context.Component = this;
 	for (FParticleEmitterInstance& Instance : EmitterInstances) Instance.Tick(ScaledDeltaTime, Origin, Context);
-	if (CollisionEvents.Num() > 0)
+
+	for (auto& Event : CollisionEvents)
 	{
-		HTR_LOG(Warning, "[Col] events={}", CollisionEvents.Num());
+		OnParticleCollision.Broadcast(Event);
 	}
 	CollisionEvents.Reset();
 	MarkRenderStateDirty();

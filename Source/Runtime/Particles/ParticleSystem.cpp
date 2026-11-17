@@ -414,6 +414,6 @@ void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float Delt
 		Event.Normal = Hit.ImpactNormal;
 		Event.Velocity = Vt;
 		Event.Component = Hit.HitComponent;
-		Context.Component->CollisionEvents.Add(Event);
+		Context.Component->AddCollisionEvent(Event);
 	}
 }

@@ -10,7 +10,10 @@ class AParticleSystemActor : public AActor
 	GENERATED_BODY()
 public:
 	AParticleSystemActor();
+	void BeginPlay() override;
 	UParticleSystemComponent* GetParticleSystemComponent() const { return ParticleSystemComponent; }
+
+	void HandleCollision(const FParticleEventCollideData& Event);
 
 private:
 	UParticleSystemComponent* ParticleSystemComponent = nullptr;
