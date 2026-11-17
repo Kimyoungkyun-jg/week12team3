@@ -1986,24 +1986,25 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 			if (EmitterIndex + 1 < static_cast<int32>(Emitters.Num()))
 			{
 				ImGui::SameLine(0.0f, EditorUIScale::Px(2.0f));
+
+				ImGui::PushID(EmitterIndex);
+				ImGui::InvisibleButton("##EmitterColumnResize", ImVec2(EditorUIScale::Px(6.0f), ImGui::GetContentRegionAvail().y));
+
+				if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+				{
+					ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+				}
+
+				if (ImGui::IsItemActive())
+				{
+					EmitterColumnWidth = std::clamp(EmitterColumnWidth + ImGui::GetIO().MouseDelta.x, 180.0f, 420.0f);
+				}
+
+				ImGui::PopID();
+				ImGui::SameLine(0.0f, EditorUIScale::Px(2.0f));
 			}
 
-			ImGui::SameLine(0.0f, EditorUIScale::Px(2.0f));
-
-			ImGui::PushID(EmitterIndex);
-			ImGui::InvisibleButton("##EmitterColumnResize", ImVec2(EditorUIScale::Px(6.0f), ImGui::GetContentRegionAvail().y));
-
-			if (ImGui::IsItemHovered() || ImGui::IsItemActive())
-			{
-				ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-			}
-
-			if (ImGui::IsItemActive())
-			{
-				EmitterColumnWidth = std::clamp(EmitterColumnWidth + ImGui::GetIO().MouseDelta.x, 180.0f, 420.0f);
-			}
-
-			ImGui::PopID();
+			
 		}
 	}
 
