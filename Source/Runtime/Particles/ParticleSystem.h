@@ -406,6 +406,7 @@ public:
 	bool RemoveBaseModule(UParticleModule* Module);
 	void InsertLODLevel(int32 Index);
 	void RemoveLODLevel(int32 Index);
+	bool MoveLODLevel(int32 FromIndex, int32 ToIndex);
 	void CacheEmitterModuleInfo();
 	const TArray<UParticleLODLevel*>& GetLODLevels() const { return LODLevels; }
 
@@ -415,6 +416,7 @@ public:
 	bool bIsSolo = false;
 	UPROPERTY(EditAnywhere)
 	float PlayRate = 1.0f;
+
 private:
 	UPROPERTY()
 	bool bInheritLODModules = false;
@@ -429,8 +431,11 @@ class UParticleSystem : public UObject
 public:
 	UParticleEmitter* AddEmitter();
 	bool RemoveEmitter(UParticleEmitter* Emitter);
+	UParticleEmitter* DuplicateEmitter(const UParticleEmitter* Source);
+	bool MoveEmitter(int32 FromIndex, int32 ToIndex);
+	void PrepareLODModules();
 	int32 GetLODCount() const;
-	bool InsertLOD(int32 Index);
+	bool InsertLOD(int32 Index, bool bCopyPrevious = false);
 	bool RemoveLOD(int32 Index);
 	float GetLODDistance(int32 Index) const;
 	bool SetLODDistance(int32 Index, float Distance);

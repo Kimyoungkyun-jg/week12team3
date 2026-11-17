@@ -613,16 +613,22 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 		{
 			// 애니메이션 에디터 창에 포커스가 있으면 Ctrl+S는 그 창이 처리하므로 씬 저장과 복사·붙여넣기 등은 받지 않는다.
 			// 전체 저장(Ctrl+Shift+S)은 어디에 포커스가 있어도 동작한다.
-			const bool bAnimEditorFocused =
+			const bool bAssetEditorFocused =
+				(ParticleSystemEditorPanel && ParticleSystemEditorPanel->HasFocusedWindow()) ||
 				(AnimSequenceViewerPanel && AnimSequenceViewerPanel->HasFocusedWindow()) ||
 				(AnimGraphEditorPanel && AnimGraphEditorPanel->HasFocusedWindow()) ||
 				(BlendSpaceEditorPanel && BlendSpaceEditorPanel->HasFocusedWindow()) ||
 				(AssetEditorPanel && AssetEditorPanel->HasFocusedWindow()) ||
 				(MaterialEditorPanel && MaterialEditorPanel->HasFocusedWindow());
-			if (bAnimEditorFocused)
+
+			if (bAssetEditorFocused)
+			{
 				EditorCommandUI::ProcessShortcuts({ &SaveAll });
+			}
 			else
+			{
 				EditorCommandUI::ProcessShortcuts({ &Save, &SaveAll, &Play, &Pause, &Resume, &Copy, &Paste, &Duplicate });
+			}
 		}
 
 		// F: 선택한 액터로 포커스 (UE). 우클릭 비행 중이거나 글자 입력 중이면 받지 않는다.
@@ -1753,7 +1759,8 @@ void UEditorEngine::RenderFrame(FEditorViewportClient* ViewClient,
 }
 
 void UEditorEngine::RenderPreviewViewport(FEditorViewportClient* PreviewClient, UWorld* PreviewWorld, const FGizmo* PreviewGizmo,
-	FSkyboxRenderer* SkyboxOverride, bool bDrawGrid, const UPrimitiveComponent* BoundsComponent)
+	FSkyboxRenderer* SkyboxOverride, bool bDrawGrid, const UPrimitiveComponent* BoundsComponent, bool bDrawOriginAxis,
+	const std::array<float, 4>& BackgroundColor)
 {
 	if (!PreviewClient || !PreviewWorld || PreviewClient->GetWidth() == 0 || PreviewClient->GetHeight() == 0)
 		return;
@@ -1763,15 +1770,16 @@ void UEditorEngine::RenderPreviewViewport(FEditorViewportClient* PreviewClient, 
 	FSceneRenderOptions Options;
 	BuildSceneRenderOptions(PreviewClient, false, Options);
 	Options.bDrawPrimitives = true;
+	Options.BackgroundColor = BackgroundColor;
 
 	const FSceneView SceneView = PreviewClient->CalcSceneView();
 	FSceneRenderer SceneRenderer(PreviewWorld, SceneView, PreviewClient->GetRenderData());
 	SceneRenderer.InitViews(Renderer, Options);
 
 	FSceneViewTargets& Targets = PreviewClient->GetViewTargets();
-	RenderScene(Targets, SceneView, SceneRenderer, PreviewWorld, Options, [this, &SceneView, &Targets, PreviewGizmo, bDrawGrid, PreviewWorld, BoundsComponent](FSceneOverlayCallbacks& Overlays)
+	RenderScene(Targets, SceneView, SceneRenderer, PreviewWorld, Options, [this, &SceneView, &Targets, PreviewGizmo, bDrawGrid, PreviewWorld, BoundsComponent, bDrawOriginAxis](FSceneOverlayCallbacks& Overlays)
 		{
-			Overlays.EditorLines = [this, &SceneView, PreviewWorld, BoundsComponent]
+			Overlays.EditorLines = [this, &SceneView, PreviewWorld, BoundsComponent, bDrawOriginAxis]
 			{
 				LineBatcher->BeginFrame();
 				for (TObjectIterator<USkeletalMeshDebugComponent> It; It; ++It)
@@ -1779,6 +1787,12 @@ void UEditorEngine::RenderPreviewViewport(FEditorViewportClient* PreviewClient, 
 				if (BoundsComponent)
 				{
 					LineBatcher->AddBox(BoundsComponent->CalcBounds(), FVector4(1.0f, 0.85f, 0.15f, 1.0f));
+				}
+				if (bDrawOriginAxis)
+				{
+					LineBatcher->AddLine(FVector::ZeroVector, FVector(100.0f, 0.0f, 0.0f), FVector4(1.0f, 0.0f, 0.0f, 1.0f));
+					LineBatcher->AddLine(FVector::ZeroVector, FVector(0.0f, 100.0f, 0.0f), FVector4(0.0f, 1.0f, 0.0f, 1.0f));
+					LineBatcher->AddLine(FVector::ZeroVector, FVector(0.0f, 0.0f, 100.0f), FVector4(0.0f, 0.4f, 1.0f, 1.0f));
 				}
 				LineBatcher->OnRender(SceneView.ViewProjectionMatrix);
 			};
@@ -2138,6 +2152,10 @@ void UEditorEngine::SaveAllAssets()
 	if (!IsPlaying())
 	{
 		SaveCurrentScene();
+	}
+	if (ParticleSystemEditorPanel)
+	{
+		ParticleSystemEditorPanel->Save();
 	}
 	if (AnimSequenceViewerPanel)
 	{
