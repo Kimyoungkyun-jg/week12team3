@@ -1,0 +1,19 @@
+{
+  "BlendInTime": 0.05,
+  "BlendOutTime": 0.12,
+  "Loop": false,
+  "Notifies": [],
+  "PlayRate": 1.0,
+  "Sections": [
+    {
+      "EndTime": 0.9666666686534882,
+      "Name": "Default",
+      "NextSection": "",
+      "StartTime": 0.0
+    }
+  ],
+  "Sequence": "Models/UnrealModel/AS_MM_Dash.fbxbin",
+  "Skeleton": "Models/UnrealModel/SKEL_SKM_Quinn_Simple_root.fbxbin",
+  "Slot": "FullBody",
+  "Version": 1
+}

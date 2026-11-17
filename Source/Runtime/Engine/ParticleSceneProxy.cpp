@@ -38,6 +38,162 @@ namespace
 			return EPSOType::Particle_MeshAdditive;
 		return EPSOType::Particle_MeshTranslucent;
 	}
+
+	EPSOType ResolveBeamTrailPSO(const UMaterialInterface& EntryMat)
+	{
+		if (EntryMat.GetBlendState() == EBlendState::Additive)
+			return EPSOType::Particle_BeamTrailAdditive;
+		return EPSOType::Particle_BeamTrailTranslucent;
+	}
+
+	bool HasRenderableStrips(const TArray<FBeamTrailStrip>& Strips)
+	{
+		for (const FBeamTrailStrip& Strip : Strips)
+		{
+			if (Strip.Points.Num() >= 2)
+				return true;
+		}
+		return false;
+	}
+
+	FVector SafeNormalize(const FVector& Vec, const FVector& Fallback)
+	{
+		const float LenSq = Vec.Dot(Vec);
+		if (LenSq > 1e-10f)
+			return Vec / std::sqrt(LenSq);
+		return Fallback;
+	}
+
+	void EmitBeamTrailStrips(const FParticleSceneProxy* Proxy, UMaterialInterface* EmitterMaterial,
+		UMaterialInterface* DefaultMaterial, int32 Sheets, int32 FacingMode,
+		const TArray<FBeamTrailStrip>& Strips, const FViewContext& View, FMeshElementCollector& Collector)
+	{
+		if (!HasRenderableStrips(Strips))
+			return;
+
+		UMaterialInterface* EntryMat = EmitterMaterial;
+		if (!EntryMat)
+			EntryMat = UAssetManager::GetAssetByPath<UMaterial>("BeamTrailMaterial");
+		if (!EntryMat)
+			EntryMat = DefaultMaterial;
+		if (!EntryMat)
+			return;
+
+		const int32 ClampedSheets = std::max(1, Sheets);
+		constexpr float PiValue = 3.14159265358979323846f;
+
+		for (const FBeamTrailStrip& Strip : Strips)
+		{
+			const int32 PointCount = static_cast<int32>(Strip.Points.Num());
+			if (PointCount < 2)
+				continue;
+
+			const uint32 VertCount = static_cast<uint32>(PointCount * 2);
+			const uint32 IndexCount = static_cast<uint32>((PointCount - 1) * 6);
+			const FVector MidPos = Strip.Points[PointCount / 2].Position;
+			const FVector CamDelta = MidPos - View.CameraPosition;
+			const float CameraDistSq = CamDelta.Dot(CamDelta);
+
+			for (int32 SheetIdx = 0; SheetIdx < ClampedSheets; ++SheetIdx)
+			{
+				FGlobalDynamicVertexBuffer::FAllocation VertAlloc = Collector.AllocateDynamicVertices(VertCount);
+				FGlobalDynamicIndexBuffer::FAllocation IdxAlloc = Collector.AllocateDynamicIndices(IndexCount);
+				if (!VertAlloc.Data || !IdxAlloc.Data)
+					continue;
+
+				FVertex* Vertices = reinterpret_cast<FVertex*>(VertAlloc.Data);
+				uint32* Indices = IdxAlloc.Data;
+				const float SheetAngle = (ClampedSheets > 1)
+					? (PiValue * static_cast<float>(SheetIdx) / static_cast<float>(ClampedSheets))
+					: 0.0f;
+				const float CosA = std::cos(SheetAngle);
+				const float SinA = std::sin(SheetAngle);
+
+				for (int32 i = 0; i < PointCount; ++i)
+				{
+					const FBeamTrailPoint& Pt = Strip.Points[i];
+					const FVector PrevPos = Strip.Points[std::max(0, i - 1)].Position;
+					const FVector NextPos = Strip.Points[std::min(PointCount - 1, i + 1)].Position;
+					const FVector Tangent = SafeNormalize(NextPos - PrevPos, FVector(1.0f, 0.0f, 0.0f));
+
+					FVector FacingNormal = FVector(0.0f, 0.0f, 1.0f);
+					if (FacingMode == 0)
+						FacingNormal = SafeNormalize(View.CameraPosition - Pt.Position, FVector(0.0f, 0.0f, 1.0f));
+					else if (FacingMode == 1)
+						FacingNormal = SafeNormalize(Pt.UpHint, FVector(0.0f, 0.0f, 1.0f));
+
+					FVector Side = FVector::Cross(Tangent, FacingNormal);
+					if (Side.Dot(Side) <= 1e-10f)
+					{
+						const FVector AltAxis = (std::abs(Tangent.Z) < 0.9f) ? FVector(0.0f, 0.0f, 1.0f) : FVector(0.0f, 1.0f, 0.0f);
+						Side = FVector::Cross(Tangent, AltAxis);
+					}
+					Side = SafeNormalize(Side, FVector(0.0f, 1.0f, 0.0f));
+
+					if (ClampedSheets > 1)
+					{
+						const FVector Ortho = FVector::Cross(Tangent, Side);
+						Side = SafeNormalize(Side * CosA + Ortho * SinA, Side);
+					}
+
+					const FVector FaceNormal = Pt.bUseExplicitEdges
+						? SafeNormalize(FVector::Cross(SafeNormalize(Pt.EdgeHalfOffset, Side), Tangent), FacingNormal)
+						: SafeNormalize(FVector::Cross(Side, Tangent), FacingNormal);
+					const float HalfWidth = std::max(0.001f, Pt.Width) * 0.5f;
+					const FVector HalfOffset = (Pt.bUseExplicitEdges && SheetIdx == 0)
+						? Pt.EdgeHalfOffset
+						: (Side * HalfWidth);
+
+					FVertex& V0 = Vertices[i * 2];
+					V0.Position = Pt.Position - HalfOffset;
+					V0.Normal = FaceNormal;
+					V0.Tangent = FVector4(Tangent.X, Tangent.Y, Tangent.Z, 1.0f);
+					V0.UV = FVector2(Pt.UCoord, 0.0f);
+					V0.Color = Pt.Color;
+
+					FVertex& V1 = Vertices[i * 2 + 1];
+					V1.Position = Pt.Position + HalfOffset;
+					V1.Normal = FaceNormal;
+					V1.Tangent = FVector4(Tangent.X, Tangent.Y, Tangent.Z, 1.0f);
+					V1.UV = FVector2(Pt.UCoord, 1.0f);
+					V1.Color = Pt.Color;
+				}
+
+				for (int32 s = 0; s < PointCount - 1; ++s)
+				{
+					const uint32 BaseV = static_cast<uint32>(s * 2);
+					const uint32 BaseI = static_cast<uint32>(s * 6);
+					Indices[BaseI + 0] = BaseV + 0;
+					Indices[BaseI + 1] = BaseV + 1;
+					Indices[BaseI + 2] = BaseV + 2;
+					Indices[BaseI + 3] = BaseV + 1;
+					Indices[BaseI + 4] = BaseV + 3;
+					Indices[BaseI + 5] = BaseV + 2;
+				}
+
+				FMeshBatch Batch{};
+				Batch.VertexFactory.Type = EVertexFactoryType::ParticleBeamTrail;
+				Batch.VertexFactory.bUsesDynamicVertexBuffer = true;
+				Batch.VertexFactory.bUsesDynamicIndexBuffer = true;
+				Batch.Material = EntryMat;
+				Batch.OverridePSOType = ResolveBeamTrailPSO(*EntryMat);
+				Batch.CameraDistanceSq = CameraDistSq;
+				Batch.bIsParticle = true;
+				Batch.bCastShadow = false;
+
+				FMeshBatchElement Element{};
+				Element.Proxy = Proxy;
+				Element.FirstIndex = IdxAlloc.FirstIndex;
+				Element.IndexCount = IndexCount;
+				Element.BaseVertexLocation = VertAlloc.BaseVertex;
+				Element.InstanceCount = 0;
+				Element.bReceiveShadow = false;
+				Element.bReceiveDecal = false;
+				Batch.Elements.Add(Element);
+				Collector.AddMesh(std::move(Batch));
+			}
+		}
+	}
 }
 
 void FDynamicSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
@@ -276,7 +432,6 @@ void FDynamicGpuSpriteEmitterData::GetDynamicMeshElementsForView(const FParticle
 	GpuBatch.SpawnCount = SimParams.SpawnCount;
 	GpuBatch.PendingSpawnBytes = std::move(PendingSpawnBytes);
 	GpuBatch.SimParams = SimParams;
-	GpuBatch.CurveLUT = CurveLUT;
 	GpuBatch.DrawParams = DrawParams;
 	Collector.AddGpuParticleBatch(std::move(GpuBatch));
 
@@ -308,6 +463,28 @@ void FDynamicGpuSpriteEmitterData::GetDynamicMeshElementsForView(const FParticle
 	Element.bReceiveDecal = false;
 	Batch.Elements.Add(Element);
 	Collector.AddMesh(std::move(Batch));
+}
+
+bool FDynamicBeamEmitterData::HasParticles() const
+{
+	return HasRenderableStrips(Beams);
+}
+
+void FDynamicBeamEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
+	UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
+{
+	EmitBeamTrailStrips(Proxy, Material, DefaultMaterial, Sheets, 0, Beams, View, Collector);
+}
+
+bool FDynamicRibbonEmitterData::HasParticles() const
+{
+	return HasRenderableStrips(Trails);
+}
+
+void FDynamicRibbonEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
+	UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
+{
+	EmitBeamTrailStrips(Proxy, Material, DefaultMaterial, SheetsPerTrail, FacingMode, Trails, View, Collector);
 }
 
 FParticleSceneProxy::FParticleSceneProxy(FParticleDynamicData&& InitialData)

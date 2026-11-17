@@ -66,6 +66,8 @@ struct FEditorSettings
 
 	bool bGammaCorrection = true;
 	float DisplayGamma = 2.2f;
+	bool bOptimizeParticleLookupTable = true;
+	float ParticleLookupErrorThreshold = 0.05f;
 
 	inline uint32 GetDirectionalShadowMapSize() const { return DirectionalShadowMapSizePerLevels[DirectionalShadowMapSizeLevel]; }
 	inline uint32 GetPointShadowMapSize() const { return PointShadowMapSizePerLevels[PointShadowMapSizeLevel]; }
@@ -107,6 +109,8 @@ private:
     void ReadViewportSettings(FEditorSettings& Out) const;
 	void DrawGameFrameworkSettings();
 	void DrawShadowMapSettings();
+	void DrawParticleSettings();
+	void ApplyParticleSettings() const;
 
 	UWorld* World = nullptr;
 	FViewportsPanel* ViewportsPanel = nullptr;

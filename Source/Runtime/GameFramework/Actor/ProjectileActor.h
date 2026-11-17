@@ -3,6 +3,7 @@
 #include "GameFramework/Actor.h"
 #include "ProjectileActor.generated.h"
 
+class AParticleSystemActor;
 class UStaticMeshComponent;
 class UPointLightComponent;
 class UProjectileMovementComponent;
@@ -16,6 +17,7 @@ class AProjectileActor : public AActor
 public:
     AProjectileActor();
     void BeginPlay() override;
+	void EndPlay() override;
     void Tick(float DeltaTime) override;
     void Launch(const FVector& Position, const FVector& Direction, bool bUseStaticMesh = false);
     void ReturnToPool();
@@ -26,6 +28,8 @@ public:
     UProjectileMovementComponent* GetProjectileMovementComponent() const { return ProjectileMovementComponent; }
 private:
 	void HandleProjectileImpact(AActor* OtherActor, const FHitResult& Hit);
+	void EnsureBloodParticleActor();
+	AParticleSystemActor* BloodParticleActor = nullptr;
     UStaticMeshComponent* StaticMeshComponent = nullptr;
     UStaticMeshComponent* FireBallMeshComponent = nullptr;
     UPointLightComponent* FireBallLightComponent = nullptr;

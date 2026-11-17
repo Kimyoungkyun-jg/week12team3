@@ -19,8 +19,15 @@
                                                     "Class": "UParticleModuleLifetime",
                                                     "Value": {
                                                         "Properties": {
-                                                            "Max": 3.0,
-                                                            "Min": 1.0,
+                                                            "Lifetime": {
+                                                                "Class": "UDistributionFloatUniform",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Max": 5.0,
+                                                                        "Min": 1.0
+                                                                    }
+                                                                }
+                                                            },
                                                             "bEnabled": true
                                                         }
                                                     }
@@ -29,15 +36,17 @@
                                                     "Class": "UParticleModuleSize",
                                                     "Value": {
                                                         "Properties": {
-                                                            "End": {
-                                                                "X": 5.0,
-                                                                "Y": 5.0,
-                                                                "Z": 5.0
-                                                            },
-                                                            "Start": {
-                                                                "X": 1.0,
-                                                                "Y": 1.0,
-                                                                "Z": 1.0
+                                                            "StartSize": {
+                                                                "Class": "UDistributionVectorConstant",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Constant": {
+                                                                            "X": 1.0,
+                                                                            "Y": 1.0,
+                                                                            "Z": 1.0
+                                                                        }
+                                                                    }
+                                                                }
                                                             },
                                                             "bEnabled": true
                                                         }
@@ -47,17 +56,50 @@
                                                     "Class": "UParticleModuleVelocity",
                                                     "Value": {
                                                         "Properties": {
-                                                            "Max": {
-                                                                "X": 0.0,
-                                                                "Y": 0.0,
-                                                                "Z": 10.0
+                                                            "StartVelocity": {
+                                                                "Class": "UDistributionVectorUniformCurve",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "MaxCurveX": {
+                                                                            "Class": "UCurveFloat",
+                                                                            "Value": {
+                                                                                "CurveData": "{\n  \"DefaultValue\": 0.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                            }
+                                                                        },
+                                                                        "MaxCurveY": {
+                                                                            "Class": "UCurveFloat",
+                                                                            "Value": {
+                                                                                "CurveData": "{\n  \"DefaultValue\": 0.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                            }
+                                                                        },
+                                                                        "MaxCurveZ": {
+                                                                            "Class": "UCurveFloat",
+                                                                            "Value": {
+                                                                                "CurveData": "{\n  \"DefaultValue\": 0.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                            }
+                                                                        },
+                                                                        "MinCurveX": {
+                                                                            "Class": "UCurveFloat",
+                                                                            "Value": {
+                                                                                "CurveData": "{\n  \"DefaultValue\": 0.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.1417948305606842,\n      \"Value\": 0.8112425804138184\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.9363397359848022,\n      \"Value\": 1.0739644765853882\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                            }
+                                                                        },
+                                                                        "MinCurveY": {
+                                                                            "Class": "UCurveFloat",
+                                                                            "Value": {
+                                                                                "CurveData": "{\n  \"DefaultValue\": 0.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.21535401046276093,\n      \"Value\": 0.860946774482727\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                            }
+                                                                        },
+                                                                        "MinCurveZ": {
+                                                                            "Class": "UCurveFloat",
+                                                                            "Value": {
+                                                                                "CurveData": "{\n  \"DefaultValue\": 0.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.2405189871788025,\n      \"Value\": 0.6881656646728516\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.6657146215438843,\n      \"Value\": 0.5808199048042297\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                            }
+                                                                        },
+                                                                        "bLockAxes": false
+                                                                    }
+                                                                }
                                                             },
-                                                            "Min": {
-                                                                "X": 0.0,
-                                                                "Y": 0.0,
-                                                                "Z": 10.0
-                                                            },
-                                                            "ParameterName": "",
                                                             "bEnabled": true
                                                         }
                                                     }
@@ -66,9 +108,26 @@
                                                     "Class": "UParticleModuleColor",
                                                     "Value": {
                                                         "Properties": {
-                                                            "End": 4294967295,
-                                                            "ParameterName": "",
-                                                            "Start": 4294967295,
+                                                            "StartAlpha": {
+                                                                "Class": "UDistributionFloatConstant",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Constant": 1.0
+                                                                    }
+                                                                }
+                                                            },
+                                                            "StartColor": {
+                                                                "Class": "UDistributionVectorConstant",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Constant": {
+                                                                            "X": 1.0,
+                                                                            "Y": 1.0,
+                                                                            "Z": 1.0
+                                                                        }
+                                                                    }
+                                                                }
+                                                            },
                                                             "bEnabled": true
                                                         }
                                                     }
@@ -77,41 +136,24 @@
                                                     "Class": "UParticleModuleSubUV",
                                                     "Value": {
                                                         "Properties": {
-                                                            "PlayRate": 0.10000000149011612,
+                                                            "PlayRate": 1.0,
                                                             "SubImageIndex": {
-                                                                "Class": "UCurveFloat",
+                                                                "Class": "UDistributionFloatConstantCurve",
                                                                 "Value": {
-                                                                    "CurveData": "{\n  \"DefaultValue\": 0.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 0,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0926268100738525\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                    "Properties": {
+                                                                        "Curve": {
+                                                                            "Class": "UCurveFloat",
+                                                                            "Value": {
+                                                                                "CurveData": "{\n  \"DefaultValue\": 0.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.12061426788568497,\n      \"Value\": 11.452651977539063\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.43015429377555847,\n      \"Value\": 7.663787841796875\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                            }
+                                                                        }
+                                                                    }
                                                                 }
                                                             },
                                                             "SubImagesHorizontal": 8,
                                                             "SubImagesVertical": 8,
                                                             "bEnabled": true,
-                                                            "bUseLinearOverLife": true
-                                                        }
-                                                    }
-                                                },
-                                                {
-                                                    "Class": "UParticleModuleCollision",
-                                                    "Value": {
-                                                        "Properties": {
-                                                            "CollisionRadius": 1.0,
-                                                            "FrictionMax": 0.5,
-                                                            "FrictionMin": 0.20000000298023224,
-                                                            "MaxCollisions": 10,
-                                                            "RestitutionMax": 0.5,
-                                                            "RestitutionMin": 0.0,
-                                                            "bEnabled": true
-                                                        }
-                                                    }
-                                                },
-                                                {
-                                                    "Class": "UParticleModuleEventGenerator",
-                                                    "Value": {
-                                                        "Properties": {
-                                                            "EventFrequency": 1,
-                                                            "EventName": "Hit",
-                                                            "bEnabled": true
+                                                            "bUseLinearOverLife": false
                                                         }
                                                     }
                                                 }
@@ -121,8 +163,8 @@
                                                 "Value": {
                                                     "Properties": {
                                                         "EmitterDuration": 1.0,
-                                                        "Material": null,
-                                                        "MaxParticles": 2,
+                                                        "Material": "SubUVMaterial",
+                                                        "MaxParticles": 1024,
                                                         "bEnabled": true,
                                                         "bLooping": true,
                                                         "bUseLocalSpace": false
@@ -134,7 +176,7 @@
                                                 "Value": {
                                                     "Properties": {
                                                         "Bursts": [],
-                                                        "Rate": 2.0,
+                                                        "Rate": 10.0,
                                                         "bEnabled": true
                                                     }
                                                 }

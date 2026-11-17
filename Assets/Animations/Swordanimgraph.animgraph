@@ -1,0 +1,75 @@
+{
+  "Version": 1,
+  "Skeleton": "Models/SwordModel/SKEL_reverse_grip_Mesh_Root.fbxbin",
+  "EntryState": 1,
+  "InvertDirection": false,
+  "RootPoseConnected": true,
+  "AnyStateX": 20.0,
+  "AnyStateY": 320.0,
+  "States": [
+    {
+      "Asset": "Assets/Animations/SwordLocomotion.blendspace",
+      "ConstantX": 0.0,
+      "ConstantY": 0.0,
+      "DirectionOffsetX": 0.0,
+      "DirectionOffsetY": 0.0,
+      "Id": 1,
+      "InputX": 2,
+      "InputY": 1,
+      "Loop": true,
+      "Name": "Locomotion",
+      "OutputOffsetX": 0.0,
+      "OutputOffsetY": 0.0,
+      "OutputPlayerId": 0,
+      "PlayRate": 1.0,
+      "PlayerOffsetX": 31.0,
+      "PlayerOffsetY": -1.0,
+      "Players": [],
+      "Pose": 2,
+      "PoseConnected": true,
+      "SpeedOffsetX": 0.0,
+      "SpeedOffsetY": 0.0,
+      "X": 80.0,
+      "Y": 120.0
+    }
+  ],
+  "Transitions": [],
+  "RootNodes": [
+    {
+      "Id": 1,
+      "Type": 0,
+      "Name": "Locomotion",
+      "X": 60.0,
+      "Y": 120.0
+    },
+    {
+      "Id": 2,
+      "Type": 1,
+      "Name": "Sword Attack Slot",
+      "X": 310.0,
+      "Y": 120.0,
+      "SourceNodeId": 1,
+      "SlotName": "FullBody"
+    },
+    {
+      "Id": 3,
+      "Type": 4,
+      "Name": "Output Pose",
+      "X": 560.0,
+      "Y": 120.0,
+      "SourceNodeId": 2
+    }
+  ],
+  "RootLinks": [
+    {
+      "FromNodeId": 1,
+      "ToNodeId": 2,
+      "ToPinIndex": 0
+    },
+    {
+      "FromNodeId": 2,
+      "ToNodeId": 3,
+      "ToPinIndex": 0
+    }
+  ]
+}

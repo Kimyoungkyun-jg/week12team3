@@ -62,6 +62,8 @@ private:
 	float GraphZoom = 1.0f;
 	float GraphPanX = 0.0f;
 	float GraphPanY = 0.0f;
+	float RightPanelWidth = 280.0f;
+	float PreviewSplitRatio = 0.45f;
 
 	int32 SelectedNodeId = 0;
 	int32 DraggingNodeId = 0;

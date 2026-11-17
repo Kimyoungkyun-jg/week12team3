@@ -10,9 +10,18 @@ struct FGpuParticle
 	float3 Size;
 	float RotationRate;
 	float4 BaseColor;
+	float3 BaseVelocity;
+	float BaseRotationRate;
 	float SubImageIndex;
 	uint bAlive;
 	float2 Pad;
+};
+
+struct FGpuDistributionDesc
+{
+	float4 AtlasUVAndMode;
+	float4 ValueScale;
+	float4 ValueBias;
 };
 
 cbuffer SimParams : register(b0)
@@ -22,30 +31,25 @@ cbuffer SimParams : register(b0)
 	uint SpawnCount;
 	uint WriteCursor;
 
-	float4 ColorStart;
-	float4 ColorEnd;
+	FGpuDistributionDesc SizeScale;
+	FGpuDistributionDesc ColorOverLife;
+	FGpuDistributionDesc SubUV;
+	FGpuDistributionDesc VelocityScale;
+	FGpuDistributionDesc RotationRateScale;
 
-	float3 SizeStart;
 	float SubUVCols;
-
-	float3 SizeEnd;
 	float SubUVRows;
-
-	uint UseColorModule;
-	uint UseSizeModule;
-	uint UseColorOverLife;
-	uint UseSizeByLife;
-
-	uint UseSubUV;
-	uint SubUVLinear;
 	float SubUVPlayRate;
-	uint HasColorOverride;
+	uint SubUVLinear;
 
+	uint HasColorOverride;
+	float3 Pad;
 	float4 ColorOverride;
 };
 
 StructuredBuffer<FGpuParticle> SpawnBuffer : register(t0);
-StructuredBuffer<float4> CurveLUT : register(t1);
+Texture2D CurveAtlas : register(t1);
+SamplerState CurveSampler : register(s0);
 RWStructuredBuffer<FGpuParticle> ParticleBuffer : register(u0);
 
 [numthreads(64, 1, 1)]
@@ -56,13 +60,13 @@ void CSInjectSpawns(uint3 DTid : SV_DispatchThreadID)
 	ParticleBuffer[Slot] = SpawnBuffer[DTid.x];
 }
 
-float4 SampleCurveLUT(uint BaseOffset, float T)
+// 분포 모드에 따라 상수 또는 전역 아틀라스에서 값을 평가한다
+float4 EvaluateDistribution(FGpuDistributionDesc Desc, float T)
 {
-	float Scaled = saturate(T) * 127.0f;
-	uint Idx0 = (uint)floor(Scaled);
-	uint Idx1 = min(Idx0 + 1, 127);
-	float Frac = Scaled - (float)Idx0;
-	return lerp(CurveLUT[BaseOffset + Idx0], CurveLUT[BaseOffset + Idx1], Frac);
+	if (Desc.AtlasUVAndMode.w < 1.5f)
+		return Desc.ValueScale;
+	float2 UV = float2(Desc.AtlasUVAndMode.x + saturate(T) * Desc.AtlasUVAndMode.y, Desc.AtlasUVAndMode.z);
+	return CurveAtlas.SampleLevel(CurveSampler, UV, 0) * Desc.ValueScale + Desc.ValueBias;
 }
 
 [numthreads(256, 1, 1)]
@@ -82,33 +86,36 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		return;
 	}
 
+	float T = saturate(p.RelativeTime);
+	if (VelocityScale.AtlasUVAndMode.w > 0.5f)
+	{
+		float3 velScale = EvaluateDistribution(VelocityScale, T).xyz;
+		p.Velocity = p.BaseVelocity * velScale;
+	}
+	if (RotationRateScale.AtlasUVAndMode.w > 0.5f)
+	{
+		float rotScale = EvaluateDistribution(RotationRateScale, T).x;
+		p.RotationRate = p.BaseRotationRate * rotScale;
+	}
+
 	p.Position += p.Velocity * DeltaTime;
 	p.Rotation += p.RotationRate * DeltaTime;
 
-	float T = saturate(p.RelativeTime);
-	if (UseColorModule != 0)
+	if (SizeScale.AtlasUVAndMode.w > 0.5f)
 	{
-		p.Color = lerp(ColorStart, ColorEnd, T);
+		float3 sizeScale = EvaluateDistribution(SizeScale, T).xyz;
+		p.Size = p.BaseSize * sizeScale;
 	}
-	if (UseSizeModule != 0)
+	if (ColorOverLife.AtlasUVAndMode.w > 0.5f)
 	{
-		p.Size = lerp(SizeStart, SizeEnd, T);
-	}
-	if (UseSizeByLife != 0)
-	{
-		float3 Scale = SampleCurveLUT(0, T).xyz;
-		p.Size = p.BaseSize * Scale;
-	}
-	if (UseColorOverLife != 0)
-	{
-		float4 curveColor = saturate(SampleCurveLUT(128, T));
+		float4 curveColor = saturate(EvaluateDistribution(ColorOverLife, T));
 		p.Color = float4(curveColor.rgb, p.BaseColor.a * curveColor.a);
 	}
 	if (HasColorOverride != 0)
 	{
-		p.Color = float4(ColorOverride.rgb, UseColorOverLife != 0 ? p.Color.a : ColorOverride.a);
+		p.Color = float4(ColorOverride.rgb, ColorOverLife.AtlasUVAndMode.w > 0.5f ? p.Color.a : ColorOverride.a);
 	}
-	if (UseSubUV != 0)
+	if (SubUV.AtlasUVAndMode.w > 0.5f || SubUVLinear != 0)
 	{
 		float TotalFrames = max(1.0f, SubUVCols * SubUVRows);
 		float ClampedT = clamp(p.RelativeTime, 0.0f, 0.9999f);
@@ -119,10 +126,10 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		{
 			RawIndex = (Rate > 1.0f) ? fmod(ScaledT * TotalFrames, TotalFrames) : (ScaledT * TotalFrames);
 		}
-		else
+		else if (SubUV.AtlasUVAndMode.w > 0.5f)
 		{
 			float CurveT = (Rate > 1.0f) ? fmod(ScaledT, 1.0f) : saturate(ScaledT);
-			RawIndex = SampleCurveLUT(256, CurveT).x;
+			RawIndex = EvaluateDistribution(SubUV, CurveT).x;
 		}
 		p.SubImageIndex = floor(clamp(RawIndex, 0.0f, TotalFrames - 1.0f));
 	}

@@ -54,6 +54,7 @@ public:
 	void CreateBillboardMaterial();
 	void CreateParticleMaterial();
 	void CreateParticleSpriteMaterial();
+	void CreateBeamTrailMaterial();
 	static UMaterialInterface* LoadMaterialAsset(const FString& AssetPath);
 	static bool SaveMaterialAsset(const FString& AssetPath, UMaterialInterface& Material);
 	void LoadDeferredAssets();
@@ -101,6 +102,7 @@ public:
 	USoundWave* LoadSound(const FString& Path);
 	static UStaticMesh* LoadObjStaticMesh(const FString& Path);
 	static USkeleton* LoadSkeleton(const FString& AssetPath);
+	static bool SaveSkeleton(const USkeleton& Skeleton);
 	static UAnimSequence* LoadAnimSequence(const FString& AssetPath);
 	static bool SaveAnimSequence(const UAnimSequence& Sequence);
 	static UBlendSpace* LoadBlendSpace(const FString& AssetPath);

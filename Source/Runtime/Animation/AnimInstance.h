@@ -24,7 +24,7 @@ public:
 	void InitializeAnimation();
 	void UpdateAnimation(float DeltaSeconds);
 	virtual bool EvaluatePose(TArray<FMatrix>& OutLocalPose);
-	bool ConsumeRootMotion(FMatrix& OutDelta);
+	virtual bool ConsumeRootMotion(FMatrix& OutDelta);
 	// UpdateAnimation에서 노드 트리로부터 모은 Notify를 호출한다. 포즈와 본 행렬 갱신이 끝난 뒤(TickComponent 끝)에 불러야 한다.
 	void TriggerAnimNotifies();
 

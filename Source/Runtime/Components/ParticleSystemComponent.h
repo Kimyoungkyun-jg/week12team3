@@ -32,10 +32,13 @@ struct FGpuParticle
 	FVector Size = FVector::OneVector;
 	float RotationRate = 0.0f;
 	FVector4 BaseColor = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	FVector BaseVelocity = FVector::ZeroVector;
+	float BaseRotationRate = 0.0f;
 	float SubImageIndex = 0.0f;
 	uint32 bAlive = 0;
 	float Pad[2] = {};
 };
+static_assert(sizeof(FGpuParticle) == 128);
 
 struct FParticleEmitterInstance
 {
@@ -66,6 +69,21 @@ struct FParticleEmitterInstance
 	bool bHasGpuTrailBoundsCurr = false;
 	bool bHasGpuTrailBoundsPrev = false;
 	float GpuTrailTimer = 0.0f;
+
+	FVector EmitterUpAxis = FVector(0.0f, 0.0f, 1.0f);
+	FMatrix EmitterWorldToLocal = FMatrix::Identity;
+	FVector PrevEmitterOrigin = FVector::ZeroVector;
+	FVector PrevRibbonBase = FVector::ZeroVector;
+	FVector PrevRibbonTip = FVector::ZeroVector;
+	FVector LastRibbonUp = FVector(0.0f, 0.0f, 1.0f);
+	bool bHasPrevEmitterOrigin = false;
+	bool bHasPrevRibbonEndpoints = false;
+	float SpawnPerUnitBuffer = 0.0f;
+	int32 CurrentTrailIndex = 0;
+	bool bCurrentTrailActive = true;
+	bool bSuppressSpawning = false;
+	bool bForceLooping = false;
+	float SuppressElapsed = 0.0f;
 
 	FParticleEmitterInstance() = default;
 	~FParticleEmitterInstance();
@@ -98,16 +116,20 @@ public:
 	void TickComponent(float DeltaTime) override;
 	void Activate(bool bReset = false) override;
 	void Deactivate() override;
+	void StopEmission(float InFadeOutDuration = 0.0f);
+	void SetForceLooping(bool bEnable);
 	bool HasCompleted() const;
 	void SetTemplate(UParticleSystem* InTemplate);
 	UParticleSystem* GetTemplate() const { return Template; }
 	const TArray<FParticleEmitterInstance>& GetEmitterInstances() const { return EmitterInstances; }
 	TArray<FParticleEmitterInstance>& GetEmitterInstancesMutable() { return EmitterInstances; }
 	void UpdateLOD(float Distance);
+	void SetForcedLOD(int32 Index);
 	void UpdateEmitterStrides();
 	void ResetParticles();
 	void SetColorParameter(const FString& Name, const FColor& Value);
 	void SetVectorParameter(const FString& Name, const FVector& Value);
+	void ClearVectorParameter(const FString& Name);
 	void SetFloatParameter(const FString& Name, float Value);
 	FColor GetColorParameter(const FString& Name, const FColor& Default) const;
 	FVector GetVectorParameter(const FString& Name, const FVector& Default) const;
@@ -145,6 +167,11 @@ private:
 	TArray<FParticleSysParam> InstanceParamList;
 	FParticleInstanceParameters InstanceParameters;
 	FString LoadedTemplatePath;
+	float FadeAlpha = 1.0f;
+	float FadeOutDuration = 0.0f;
+	float FadeOutElapsed = 0.0f;
+	bool bFadingOut = false;
+	int32 ForcedLODIndex = -1;
 
 	TArray<FParticleEventCollideData> CollisionEvents;
 };

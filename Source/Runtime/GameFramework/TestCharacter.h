@@ -4,6 +4,7 @@
 #include "TestCharacter.generated.h"
 
 class ARifleActor;
+class UParticleSystemComponent;
 class UUserWidget;
 
 UCLASS()
@@ -17,6 +18,7 @@ public:
 	void EndPlay() override;
 	void Jump() override;
 	void Attack() override;
+	void Dash();
 	void StartAim();
 	void StopAim();
 	bool SetCameraTuning(float InNormalArmLength, float InNormalFOV, float InAimArmLength, float InAimFOV);
@@ -48,5 +50,6 @@ private:
 	float AimArmLength = 1.0f;
 	UPROPERTY(EditAnywhere)
 	float AimFOV = 70.0f;
+	UParticleSystemComponent* DashRibbonComponent = nullptr;
 	UUserWidget* AimWidget = nullptr;
 };

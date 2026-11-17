@@ -4,6 +4,7 @@
 #include "RenderCommand.h"
 
 #include "RenderUtil.h"
+#include "Render/ParticleCurveTexture.h"
 #include "Render/Material.h"
 #include "Render/MaterialRenderProxy.h"
 #include "Asset/AssetManager.h"
@@ -490,7 +491,9 @@ constexpr FPipelineTableEntry PipelineTable[] =
 	{ EPSOType::Particle_MeshTranslucent, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
 	{ EPSOType::Particle_MeshAdditive, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Additive, EDepthStencilState::ReadOnly },
 	{ EPSOType::Particle_Sprite, "Resources/Shader/ParticleSpriteShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
-	{ EPSOType::SkeletalMesh_GBuffer, "Resources/Shader/SkeletalMeshGBufferShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default }
+	{ EPSOType::SkeletalMesh_GBuffer, "Resources/Shader/SkeletalMeshGBufferShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default },
+	{ EPSOType::Particle_BeamTrailTranslucent, "Resources/Shader/ParticleBeamTrailShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
+	{ EPSOType::Particle_BeamTrailAdditive, "Resources/Shader/ParticleBeamTrailShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Additive, EDepthStencilState::ReadOnly }
 };
 
 static_assert(sizeof(PipelineTable) / sizeof(PipelineTable[0]) == static_cast<size_t>(EPSOType::Count));
@@ -725,6 +728,11 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 		BaseProgram = GetSkeletalMeshGBufferShaderProgram(bGPUSkinning);
 		break;
 
+	case EPSOType::Particle_BeamTrailTranslucent:
+	case EPSOType::Particle_BeamTrailAdditive:
+		ShaderPath = "Resources/Shader/ParticleBeamTrailShader.hlsl";
+		break;
+
 	default:
 		OutError = "Unsupported Material Graph PSO.";
 		return nullptr;
@@ -909,6 +917,7 @@ FComputeShader* FRenderResourceManager::GetComputeShader(const FString& InPath, 
 
 void FRenderResourceManager::Shutdown()
 {
+	FParticleCurveTexture::Get().Shutdown();
 	Get().ComputeShaderMap.Empty();
 	Get().VertexShaderMap.Empty();
 	Get().PixelShaderMap.Empty();

@@ -19,7 +19,8 @@ namespace
 // 이전 버전을 읽을 수 없게 되는 변경(필드 순서·의미 변경)이면 FbxBakeMinVersion도 올리고 에디터에서 재임포트한다.
 // 6: AnimSequence 끝에 Notify 목록 추가
 // 7: Notify 항목에 Duration 추가 (구간형 Notify State). 6 이하 파일은 Duration 0으로 읽는다.
-constexpr uint32 FbxBakeVersion = 7;
+// 스켈레톤 소켓 목록 직렬화 추가
+constexpr uint32 FbxBakeVersion = 8;
 constexpr uint32 FbxBakeMinVersion = 5;
 constexpr uint32 MaxNotifies = 4096;
 constexpr uint32 MaxElements = 1000000;
@@ -261,6 +262,34 @@ void Serialize(FBinary& Ar, FFbxAssetData& Data)
 	else if (Data.Type == EFbxAssetType::Skeleton)
 	{
 		Skeleton(Ar, Data.RefSkeleton);
+		if (Ar.Version >= 8)
+		{
+			uint32 SocketCount = static_cast<uint32>(Data.Sockets.Num());
+			Ar.Pod(SocketCount);
+			if (!Ar.bGood || SocketCount > MaxNotifies)
+			{
+				Ar.bGood = false;
+				return;
+			}
+			if (Ar.In)
+			{
+				Data.Sockets.SetNum(static_cast<int32>(SocketCount));
+			}
+			for (FSkeletalMeshSocket& Socket : Data.Sockets)
+			{
+				Ar.String(Socket.SocketName);
+				Ar.String(Socket.BoneName);
+				Ar.Pod(Socket.RelativeLocation.X);
+				Ar.Pod(Socket.RelativeLocation.Y);
+				Ar.Pod(Socket.RelativeLocation.Z);
+				Ar.Pod(Socket.RelativeRotation.Pitch);
+				Ar.Pod(Socket.RelativeRotation.Yaw);
+				Ar.Pod(Socket.RelativeRotation.Roll);
+				Ar.Pod(Socket.RelativeScale.X);
+				Ar.Pod(Socket.RelativeScale.Y);
+				Ar.Pod(Socket.RelativeScale.Z);
+			}
+		}
 	}
 	else if (Data.Type == EFbxAssetType::AnimSequence)
 	{
@@ -498,7 +527,32 @@ bool FFbxAssetData::Validate(FString& Error) const
 	}
 	else if (Type == EFbxAssetType::Skeleton)
 	{
-		return RefSkeleton.Validate(Error);
+		if (!RefSkeleton.Validate(Error))
+		{
+			return false;
+		}
+		for (const FSkeletalMeshSocket& Socket : Sockets)
+		{
+			if (Socket.SocketName.empty() || Socket.BoneName.empty())
+			{
+				Error = "Invalid skeleton socket: " + Socket.SocketName;
+				return false;
+			}
+			const float Values[] = {
+				Socket.RelativeLocation.X, Socket.RelativeLocation.Y, Socket.RelativeLocation.Z,
+				Socket.RelativeRotation.Pitch, Socket.RelativeRotation.Yaw, Socket.RelativeRotation.Roll,
+				Socket.RelativeScale.X, Socket.RelativeScale.Y, Socket.RelativeScale.Z
+			};
+			for (float Value : Values)
+			{
+				if (!std::isfinite(Value))
+				{
+					Error = "Non-finite socket transform: " + Socket.SocketName;
+					return false;
+				}
+			}
+		}
+		return true;
 	}
 	else if (Type == EFbxAssetType::AnimSequence)
 	{

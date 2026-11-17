@@ -3,6 +3,7 @@
 #include "Asset/FbxImporter/FbxDebugScene.h"
 #include "Editor/HitoriEd/EditorResourcePaths.h"
 #include "SkeletalMeshViewer.h"
+#include "Animation/Skeleton.h"
 #include "Asset/AssetManager.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -184,7 +185,10 @@ void FSkeletalMeshViewerPanel::Tick(float DeltaTime)
 				const FString SelectedName = Viewer->SelectedBone >= 0 && Viewer->SelectedBone < Current->RefSkeleton.GetNum()
 					? Current->RefSkeleton.RefBoneInfo[Viewer->SelectedBone].Name : FString();
 				Viewer->MeshComponent->SetSkeletalMesh(Updated); RefreshBoneHierarchy(*Viewer);
-				SelectBone(*Viewer, SelectedName.empty() ? -1 : Updated->RefSkeleton.FindBoneIndex(SelectedName));
+				if (!Viewer->SelectedSocketName.empty() && Updated->Skeleton && Updated->Skeleton->HasSocket(Viewer->SelectedSocketName))
+					SelectSocket(*Viewer, Viewer->SelectedSocketName);
+				else
+					SelectBone(*Viewer, SelectedName.empty() ? -1 : Updated->RefSkeleton.FindBoneIndex(SelectedName));
 				Viewer->bScrollTreeToSelection = true;
 			}
 		}
@@ -284,6 +288,74 @@ void FSkeletalMeshViewerPanel::Release()
 	Viewers.Reset();
 }
 
+void FSkeletalMeshViewerPanel::SaveIfDirty()
+{
+	for (TUniquePtr<FSkeletalMeshViewer>& Viewer : Viewers)
+	{
+		if (Viewer && Viewer->bSkeletonDirty)
+			SaveViewerSkeleton(*Viewer);
+	}
+}
+
+void FSkeletalMeshViewerPanel::SaveViewerSkeleton(FSkeletalMeshViewer& Viewer)
+{
+	USkeletalMesh* MeshAsset = Viewer.MeshComponent ? Viewer.MeshComponent->GetSkeletalMesh() : nullptr;
+	USkeleton* Skeleton = MeshAsset ? MeshAsset->Skeleton : nullptr;
+	if (!Skeleton)
+	{
+		Viewer.SocketStatus = "No Skeleton";
+		return;
+	}
+	if (UAssetManager::SaveSkeleton(*Skeleton))
+	{
+		Viewer.bSkeletonDirty = false;
+		Viewer.SocketStatus = "Saved";
+	}
+	else
+	{
+		Viewer.SocketStatus = "Save Failed";
+	}
+}
+
+void FSkeletalMeshViewerPanel::AddSocketToBone(FSkeletalMeshViewer& Viewer, int32 BoneIndex)
+{
+	USkeletalMesh* MeshAsset = Viewer.MeshComponent ? Viewer.MeshComponent->GetSkeletalMesh() : nullptr;
+	USkeleton* Skeleton = MeshAsset ? MeshAsset->Skeleton : nullptr;
+	if (!MeshAsset || !Skeleton || !MeshAsset->MeshData.Bones.IsValidIndex(BoneIndex))
+		return;
+
+	const FString& BoneName = MeshAsset->MeshData.Bones[BoneIndex].Name;
+	FString Candidate = BoneName + "_Socket";
+	int32 Suffix = 1;
+	while (Skeleton->HasSocket(Candidate))
+	{
+		Candidate = BoneName + "_Socket" + std::to_string(Suffix);
+		++Suffix;
+	}
+
+	FSkeletalMeshSocket NewSocket;
+	NewSocket.SocketName = Candidate;
+	NewSocket.BoneName = BoneName;
+	if (!Skeleton->AddSocket(NewSocket))
+		return;
+
+	Viewer.bSkeletonDirty = true;
+	Viewer.SocketStatus.clear();
+	SelectSocket(Viewer, NewSocket.SocketName);
+}
+
+void FSkeletalMeshViewerPanel::SelectSocket(FSkeletalMeshViewer& Viewer, const FString& SocketName)
+{
+	Viewer.SelectedSocketName = SocketName;
+	Viewer.SelectedBone = -1;
+	if (USkeletalMeshDebugComponent* Debug = Cast<USkeletalMeshDebugComponent>(Viewer.MeshComponent))
+	{
+		Debug->SetSelectedBone(-1);
+		Debug->SetSelectedSocketName(SocketName);
+	}
+	Viewer.Gizmo.SetTarget(!SocketName.empty() ? Viewer.BoneGizmoTarget : nullptr);
+}
+
 void FSkeletalMeshViewerPanel::OnRender()
 {
 	bHasFocusedViewer = false;
@@ -315,6 +387,9 @@ void FSkeletalMeshViewerPanel::OnRender()
 		{
 			const bool bFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 			bHasFocusedViewer |= bFocused;
+			if (bFocused && ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyAlt &&
+				ImGui::IsKeyPressed(ImGuiKey_S, false))
+				SaveViewerSkeleton(*Viewer);
 			if (bFocused && !Viewer->Gizmo.IsUsing() && ImGui::IsKeyPressed(ImGuiKey_Space, false))
 			{
 				const int NextMode = (static_cast<int>(Viewer->Gizmo.GetMode()) + 1) % 3;
@@ -412,6 +487,27 @@ void FSkeletalMeshViewerPanel::DrawBoneDetails(FSkeletalMeshViewer& Viewer)
 	if (ImGui::Button("Focus")) FocusOnSelectedBone(Viewer);
 	ImGui::SetItemTooltip("Focus the camera on the selected bone, or the whole mesh if none is selected (F)");
 
+	if (Viewer.SelectedBone >= 0)
+	{
+		ImGui::SameLine();
+		if (ImGui::Button("Add Socket"))
+			AddSocketToBone(Viewer, Viewer.SelectedBone);
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Save Skeleton"))
+		SaveViewerSkeleton(Viewer);
+	if (Viewer.bSkeletonDirty || !Viewer.SocketStatus.empty())
+	{
+		ImGui::SameLine();
+		ImGui::TextUnformatted(Viewer.bSkeletonDirty ? "* Modified" : Viewer.SocketStatus.c_str());
+	}
+
+	if (!Viewer.SelectedSocketName.empty())
+	{
+		DrawSocketDetails(Viewer);
+		return;
+	}
+
 	if (Viewer.SelectedBone < 0)
 	{
 		ImGui::Spacing();
@@ -477,6 +573,95 @@ void FSkeletalMeshViewerPanel::DrawBoneDetails(FSkeletalMeshViewer& Viewer)
 		FRotator GRot = MatrixToRotator(GlobalMat);
 		ImGui::TextDisabled("Location: (%.2f, %.2f, %.2f)", GLoc.X, GLoc.Y, GLoc.Z);
 		ImGui::TextDisabled("Rotation: (%.1f, %.1f, %.1f)", GRot.Roll, GRot.Pitch, GRot.Yaw);
+	}
+}
+
+void FSkeletalMeshViewerPanel::DrawSocketDetails(FSkeletalMeshViewer& Viewer)
+{
+	USkeletalMeshComponent* Mesh = Viewer.MeshComponent;
+	USkeletalMesh* MeshAsset = Mesh ? Mesh->GetSkeletalMesh() : nullptr;
+	USkeleton* Skeleton = MeshAsset ? MeshAsset->Skeleton : nullptr;
+	FSkeletalMeshSocket* Socket = Skeleton ? Skeleton->FindMutableSocket(Viewer.SelectedSocketName) : nullptr;
+	if (!Socket)
+	{
+		SelectSocket(Viewer, FString());
+		return;
+	}
+
+	if (Viewer.EditedSocketKey != Socket->SocketName)
+	{
+		Viewer.EditedSocketKey = Socket->SocketName;
+		strncpy_s(Viewer.SocketNameBuffer, sizeof(Viewer.SocketNameBuffer), Socket->SocketName.c_str(), _TRUNCATE);
+	}
+
+	ImGui::SeparatorText("Socket Info");
+	const bool bConfirmed = ImGui::InputText("Socket Name", Viewer.SocketNameBuffer, sizeof(Viewer.SocketNameBuffer),
+		ImGuiInputTextFlags_EnterReturnsTrue);
+	if (bConfirmed || ImGui::IsItemDeactivatedAfterEdit())
+	{
+		const FString NewName = Viewer.SocketNameBuffer;
+		if (!NewName.empty() && NewName != Socket->SocketName && !Skeleton->HasSocket(NewName))
+		{
+			Socket->SocketName = NewName;
+			Viewer.SelectedSocketName = NewName;
+			Viewer.EditedSocketKey = NewName;
+			if (USkeletalMeshDebugComponent* Debug = Cast<USkeletalMeshDebugComponent>(Viewer.MeshComponent))
+				Debug->SetSelectedSocketName(NewName);
+			Viewer.bSkeletonDirty = true;
+			Viewer.SocketStatus.clear();
+		}
+		else
+		{
+			strncpy_s(Viewer.SocketNameBuffer, sizeof(Viewer.SocketNameBuffer), Socket->SocketName.c_str(), _TRUNCATE);
+		}
+	}
+
+	if (ImGui::BeginCombo("Parent Bone", Socket->BoneName.c_str()))
+	{
+		const TArray<FBoneInfo>& Bones = MeshAsset->MeshData.Bones;
+		for (int32 i = 0; i < Bones.Num(); ++i)
+		{
+			if (ImGui::Selectable(Bones[i].Name.c_str(), Socket->BoneName == Bones[i].Name))
+			{
+				Socket->BoneName = Bones[i].Name;
+				Viewer.bSkeletonDirty = true;
+				Viewer.SocketStatus.clear();
+			}
+		}
+		ImGui::EndCombo();
+	}
+
+	ImGui::SeparatorText("Socket Transform (Relative)");
+	float LocValues[3] = { Socket->RelativeLocation.X, Socket->RelativeLocation.Y, Socket->RelativeLocation.Z };
+	float ScaleValues[3] = { Socket->RelativeScale.X, Socket->RelativeScale.Y, Socket->RelativeScale.Z };
+	bool bModified = false;
+	bModified |= DrawVector3Controller("Location", LocValues, 0.0f, 0.01f);
+	bModified |= DrawRotatorAsXYZ("Rotation", Socket->RelativeRotation, 0.5f);
+	bModified |= DrawVector3Controller("Scale", ScaleValues, 1.0f, 0.01f);
+	if (bModified)
+	{
+		Socket->RelativeLocation = FVector(LocValues[0], LocValues[1], LocValues[2]);
+		Socket->RelativeScale = FVector(ScaleValues[0], ScaleValues[1], ScaleValues[2]);
+		Viewer.bSkeletonDirty = true;
+		Viewer.SocketStatus.clear();
+		const int32 BoneIndex = MeshAsset->RefSkeleton.FindBoneIndex(Socket->BoneName);
+		const TArray<FMatrix>& Globals = Mesh->GetGlobalBoneTransforms();
+		if (Globals.IsValidIndex(BoneIndex))
+			Viewer.BoneGizmoTarget->SetWorldTransform((Socket->GetSocketLocalMatrix() * Globals[BoneIndex]) * Mesh->GetWorldMatrix(), false);
+	}
+
+	if (ImGui::Button("Reset Transform"))
+	{
+		Socket->RelativeLocation = FVector(0.0f, 0.0f, 0.0f);
+		Socket->RelativeRotation = FRotator(0.0f, 0.0f, 0.0f);
+		Socket->RelativeScale = FVector(1.0f, 1.0f, 1.0f);
+		Viewer.bSkeletonDirty = true;
+		Viewer.SocketStatus.clear();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("Delete Socket"))
+	{
+		Viewer.PendingDeleteSocketName = Socket->SocketName;
 	}
 }
 
@@ -627,6 +812,7 @@ void FSkeletalMeshViewerPanel::DrawViewportToolbar(FSkeletalMeshViewer& Viewer)
 			{
 				ImGui::Checkbox("Bone Volumes", &Debug->bDrawBones);
 				ImGui::Checkbox("Bone Axes", &Debug->bDrawBoneAxes);
+				ImGui::Checkbox("Sockets", &Debug->bDrawSockets);
 				ImGui::DragFloat("Axis Length", &Debug->BoneAxisLength, .01f, .001f, 100.0f);
 				ImGui::DragFloat("Joint Radius", &Debug->BoneRadiusScale, .0001f, .0001f, .1f, "%.4f");
 				ImGui::Separator();
@@ -832,31 +1018,56 @@ void FSkeletalMeshViewerPanel::DrawBoneTree(FSkeletalMeshViewer& Viewer)
 	}
 	ImGui::PopStyleVar();
 	ImGui::PopStyleColor(2);
+
+	if (!Viewer.PendingDeleteSocketName.empty())
+	{
+		USkeletalMesh* MeshAsset = Viewer.MeshComponent ? Viewer.MeshComponent->GetSkeletalMesh() : nullptr;
+		USkeleton* Skeleton = MeshAsset ? MeshAsset->Skeleton : nullptr;
+		if (Skeleton && Skeleton->RemoveSocket(Viewer.PendingDeleteSocketName))
+		{
+			Viewer.bSkeletonDirty = true;
+			Viewer.SocketStatus.clear();
+			if (Viewer.SelectedSocketName == Viewer.PendingDeleteSocketName)
+				SelectSocket(Viewer, FString());
+		}
+		Viewer.PendingDeleteSocketName.clear();
+	}
 }
 
 void FSkeletalMeshViewerPanel::DrawBoneNode(FSkeletalMeshViewer& Viewer, int32 BoneIndex)
 {
 	ImGui::TableNextRow();
 	ImGui::TableNextColumn();
-	if (BoneIndex == Viewer.SelectedBone)
+	if (BoneIndex == Viewer.SelectedBone && Viewer.SelectedSocketName.empty())
 	{
 		ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImColor(0, 122, 204, 255));
 	}
 
-	const FBoneInfo& Bone = Viewer.MeshComponent->GetSkeletalMesh()->MeshData.Bones[BoneIndex];
-	const bool bLeaf = Viewer.Children[BoneIndex].IsEmpty();
+	USkeletalMesh* MeshAsset = Viewer.MeshComponent->GetSkeletalMesh();
+	const FBoneInfo& Bone = MeshAsset->MeshData.Bones[BoneIndex];
+	TArray<const FSkeletalMeshSocket*> BoneSockets;
+	if (MeshAsset->Skeleton)
+	{
+		for (const FSkeletalMeshSocket& Socket : MeshAsset->Skeleton->Sockets)
+		{
+			if (Socket.BoneName == Bone.Name)
+				BoneSockets.Add(&Socket);
+		}
+	}
+	const bool bHasChildren = !Viewer.Children[BoneIndex].IsEmpty() || !BoneSockets.IsEmpty();
+	const bool bLeaf = !bHasChildren;
 
 	ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth |
 		ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_DrawLinesToNodes;
 
-	if (BoneIndex == Viewer.SelectedBone)
+	if (BoneIndex == Viewer.SelectedBone && Viewer.SelectedSocketName.empty())
 		Flags |= ImGuiTreeNodeFlags_Selected;
 
 	if (bLeaf)
 		Flags |= ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen;
 
 	bool bIsSocketOrLeaf = false;
-	if (bLeaf) // 자식이 없는 말단 본
+	if (Viewer.Children[BoneIndex].IsEmpty()) // 자식이 없는 말단 본
 	{
 		bIsSocketOrLeaf = true;
 	}
@@ -902,6 +1113,13 @@ void FSkeletalMeshViewerPanel::DrawBoneNode(FSkeletalMeshViewer& Viewer, int32 B
 	if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
 		SelectBone(Viewer, BoneIndex);
 
+	if (ImGui::BeginPopupContextItem())
+	{
+		if (ImGui::MenuItem("Add Socket"))
+			AddSocketToBone(Viewer, BoneIndex);
+		ImGui::EndPopup();
+	}
+
 	if (BoneIndex == Viewer.SelectedBone && Viewer.bScrollTreeToSelection)
 	{
 		ImGui::SetScrollHereY(0.5f);
@@ -911,6 +1129,26 @@ void FSkeletalMeshViewerPanel::DrawBoneNode(FSkeletalMeshViewer& Viewer, int32 B
 
 	if (bOpen && !bLeaf)
 	{
+		for (const FSkeletalMeshSocket* Socket : BoneSockets)
+		{
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			const bool bSocketSelected = (Socket->SocketName == Viewer.SelectedSocketName);
+			if (bSocketSelected)
+				ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImColor(0, 122, 204, 255));
+			ImGuiTreeNodeFlags SocketFlags = ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth;
+			if (bSocketSelected)
+				SocketFlags |= ImGuiTreeNodeFlags_Selected;
+			ImGui::TreeNodeEx(Socket->SocketName.c_str(), SocketFlags, "  [Socket] %s", Socket->SocketName.c_str());
+			if (ImGui::IsItemClicked())
+				SelectSocket(Viewer, Socket->SocketName);
+			if (ImGui::BeginPopupContextItem())
+			{
+				if (ImGui::MenuItem("Delete Socket"))
+					Viewer.PendingDeleteSocketName = Socket->SocketName;
+				ImGui::EndPopup();
+			}
+		}
 		for (int32 Child : Viewer.Children[BoneIndex])
 			DrawBoneNode(Viewer, Child);
 		ImGui::TreePop();
@@ -959,18 +1197,61 @@ int32 FSkeletalMeshViewerPanel::PickBone(FSkeletalMeshViewer& Viewer, const ImVe
 void FSkeletalMeshViewerPanel::SelectBone(FSkeletalMeshViewer& Viewer, int32 BoneIndex)
 {
 	Viewer.SelectedBone = BoneIndex;
-	if (auto* Debug = Cast<USkeletalMeshDebugComponent>(Viewer.MeshComponent)) Debug->SetSelectedBone(BoneIndex);
+	Viewer.SelectedSocketName.clear();
+	if (USkeletalMeshDebugComponent* Debug = Cast<USkeletalMeshDebugComponent>(Viewer.MeshComponent))
+	{
+		Debug->SetSelectedBone(BoneIndex);
+		Debug->SetSelectedSocketName(FString());
+	}
 	Viewer.Gizmo.SetTarget(BoneIndex >= 0 ? Viewer.BoneGizmoTarget : nullptr);
 }
 
 void FSkeletalMeshViewerPanel::UpdateBoneGizmo(FSkeletalMeshViewer& Viewer, const ImVec2& ViewMin, bool bLeftDown)
 {
-	if (Viewer.SelectedBone < 0 || Viewer.BoneDrawMode == EBoneDrawMode::None)
-		return;
-
 	USkeletalMeshComponent* Mesh = Viewer.MeshComponent;
+	USkeletalMesh* MeshAsset = Mesh ? Mesh->GetSkeletalMesh() : nullptr;
+	if (!MeshAsset) return;
 	const TArray<FMatrix>& Globals = Mesh->GetGlobalBoneTransforms(); // 모델 공간
 	const FMatrix ComponentWorld = Mesh->GetWorldMatrix();
+
+	if (!Viewer.SelectedSocketName.empty())
+	{
+		USkeleton* Skeleton = MeshAsset->Skeleton;
+		FSkeletalMeshSocket* Socket = Skeleton ? Skeleton->FindMutableSocket(Viewer.SelectedSocketName) : nullptr;
+		const int32 BoneIndex = Socket ? MeshAsset->RefSkeleton.FindBoneIndex(Socket->BoneName) : -1;
+		if (!Socket || !Globals.IsValidIndex(BoneIndex)) return;
+
+		const FMatrix BoneWorld = Globals[BoneIndex] * ComponentWorld;
+		if (!Viewer.Gizmo.IsUsing())
+			Viewer.BoneGizmoTarget->SetWorldTransform(Socket->GetSocketLocalMatrix() * BoneWorld, false);
+
+		const ImVec2 Mouse = ImGui::GetMousePos();
+		const FVector2 MousePos(Mouse.x - ViewMin.x, Mouse.y - ViewMin.y);
+		FEditorViewportClient& Client = Viewer.Client;
+		Viewer.Gizmo.Update(
+			Client.DeprojectScreenToWorld(MousePos), MousePos,
+			Client.GetViewProjectionMatrix(),
+			static_cast<int>(Client.GetWidth()), static_cast<int>(Client.GetHeight()),
+			bLeftDown, Client.GetViewLocation(), !Client.IsPerspective()
+		);
+
+		if (Viewer.Gizmo.IsUsing())
+		{
+			const FTransform Local = DecomposeMatrix(Viewer.BoneGizmoTarget->GetWorldMatrix() * BoneWorld.Inverse());
+			Socket->RelativeLocation = Local.Location;
+			Socket->RelativeRotation = Local.Rotation;
+			Socket->RelativeScale = FVector(
+				std::max(0.0001f, Local.Scale.X),
+				std::max(0.0001f, Local.Scale.Y),
+				std::max(0.0001f, Local.Scale.Z));
+			Viewer.bSkeletonDirty = true;
+			Viewer.SocketStatus.clear();
+		}
+		return;
+	}
+
+	if (Viewer.SelectedBone < 0 || Viewer.BoneDrawMode == EBoneDrawMode::None)
+		return;
 
 	if (!Viewer.Gizmo.IsUsing())
 		Viewer.BoneGizmoTarget->SetWorldTransform(Globals[Viewer.SelectedBone] * ComponentWorld, false);

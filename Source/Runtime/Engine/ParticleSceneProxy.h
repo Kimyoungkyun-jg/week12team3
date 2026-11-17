@@ -67,7 +67,6 @@ public:
 	UMaterialInterface* Material = nullptr;
 	mutable FGpuParticleSimParams SimParams{};
 	mutable TArray<uint8> PendingSpawnBytes;
-	TArray<FVector4> CurveLUT;
 	uint32 MaxParticles = 0;
 	uint32 ParticleStride = 0;
 	mutable bool bResetRequested = false;
@@ -78,6 +77,47 @@ public:
 	FVector4 AtlasParams = FVector4(1.0f, 1.0f, 0.0f, 0.0f);
 
 	bool HasParticles() const override { return MaxParticles > 0 && GpuResources != nullptr; }
+	void GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
+		UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
+};
+
+struct FBeamTrailPoint
+{
+	FVector Position = FVector::ZeroVector;
+	float Width = 0.25f;
+	FVector4 Color = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+	FVector UpHint = FVector(0.0f, 0.0f, 1.0f);
+	float UCoord = 0.0f;
+	FVector EdgeHalfOffset = FVector::ZeroVector;
+	bool bUseExplicitEdges = false;
+};
+
+struct FBeamTrailStrip
+{
+	TArray<FBeamTrailPoint> Points;
+};
+
+class FDynamicBeamEmitterData : public FDynamicEmitterDataBase
+{
+public:
+	UMaterialInterface* Material = nullptr;
+	int32 Sheets = 1;
+	TArray<FBeamTrailStrip> Beams;
+
+	bool HasParticles() const override;
+	void GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
+		UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
+};
+
+class FDynamicRibbonEmitterData : public FDynamicEmitterDataBase
+{
+public:
+	UMaterialInterface* Material = nullptr;
+	int32 SheetsPerTrail = 1;
+	int32 FacingMode = 0;
+	TArray<FBeamTrailStrip> Trails;
+
+	bool HasParticles() const override;
 	void GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
 		UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
 };

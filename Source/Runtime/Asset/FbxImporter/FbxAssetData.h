@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Animation/ReferenceSkeleton.h"
+#include "Animation/Skeleton.h"
 #include "Asset/AnimNotifyEvent.h"
 #include "Asset/AnimDataModel.h"
 #include "Render/SkeletalMesh.h"
@@ -119,6 +119,7 @@ struct FFbxAssetData
 	std::array<float, 3> ScreenThresholds{ .30f, .10f, .03f };
 	FString SkeletonKey; // SkeletalMesh와 AnimSequence가 쓰는 Skeleton
 	FReferenceSkeleton RefSkeleton;
+	TArray<FSkeletalMeshSocket> Sockets;
 	FFbxAnimationData Animation;
 	FFbxMaterialData Material;
 	FImageData Texture;

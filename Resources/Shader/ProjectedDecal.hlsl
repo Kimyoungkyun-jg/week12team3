@@ -49,7 +49,8 @@ VS_OUT mainVS(VS_IN Input)
 	VS_OUT Output;
 
 	float4 WorldPosition = mul(float4(Input.Position, 1.0f), Prim.LocalToWorld);
-	Output.Position = mul(WorldPosition, VP);
+	float4 ViewPosition = mul(WorldPosition, View);
+	Output.Position = mul(ViewPosition, Projection);
 	Output.WorldPosition = WorldPosition.xyz;
 
 	return Output;

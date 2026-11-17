@@ -64,7 +64,14 @@ public:
 	USceneComponent* GetAttachParent() const { return AttachParent; }
 	const TArray<USceneComponent*>& GetAttachChildren() const { return AttachChildren; }
 	void SetupAttachment(USceneComponent* InParent, EAttachmentRule Rule = EAttachmentRule::KeepRelative);
+	void SetupAttachmentToSocket(USceneComponent* InParent, const FString& InSocketName, EAttachmentRule Rule = EAttachmentRule::KeepRelative);
 	void DetachFromParent(EAttachmentRule Rule = EAttachmentRule::KeepRelative);
+	void SetAttachSocketName(const FString& InSocketName);
+	const FString& GetAttachSocketName() const { return AttachSocketName; }
+	virtual bool DoesSocketExist(const FString& InSocketName) const { return false; }
+	virtual FMatrix GetSocketWorldMatrix(const FString& InSocketName) const { return GetWorldMatrix(); }
+	virtual FQuat GetSocketWorldRotationQuat(const FString& InSocketName) const { return GetWorldRotationQuat(); }
+	virtual FVector GetSocketWorldScale3D(const FString& InSocketName) const { return GetWorldScale3D(); }
 
 	virtual FBox CalcLocalBounds() const { return FBox{ FVector(), FVector() }; }
 	FBox CalcBounds() const { return CalcLocalBounds().GetWorldAABB(GetWorldMatrix()); }
@@ -113,6 +120,8 @@ protected:
 	FTransform Transform;
 
 	USceneComponent* AttachParent = nullptr; // Attach 부모 정보
+	UPROPERTY(EditAnywhere)
+	FString AttachSocketName;
 	TArray<USceneComponent*> AttachChildren;
 
 	bool bAbsoluteLocation = false;
@@ -123,4 +132,5 @@ protected:
 private:
 	// GetWorldMatrix의 TRS 합성과 같은 규칙으로 부모 기준 상대 값을 역산한다.
 	void ApplyWorldTRS(const FVector& Location, const FQuat& Rotation, const FVector& Scale);
+	void ApplyParentAttachment(USceneComponent* InParent, const FString& NewSocketName, EAttachmentRule Rule);
 };

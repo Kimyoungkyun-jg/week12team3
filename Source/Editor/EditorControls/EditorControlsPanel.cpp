@@ -34,6 +34,7 @@
 #include "GameFramework/Actor/FakeSpotLightActor.h"
 #include "GameFramework/Actor/PlayerStart.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/SwordCharacter.h"
 
 namespace
 {
@@ -66,6 +67,7 @@ namespace
 		{ "Gameplay", "Projectile",        &AProjectileActor::StaticClass },
 		{ "Gameplay", "Rifle",             &ARifleActor::StaticClass },
 		{ "Gameplay", "Zombie",            &AZombieActor::StaticClass },
+		{ "Gameplay", "Sword Character",   &ASwordCharacter::StaticClass },
 		{ "Gameplay", "Player Start",      &APlayerStart::StaticClass },
 		{ "Gameplay", "Level Sequence",    &ALevelSequenceActor::StaticClass },
 	};

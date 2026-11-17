@@ -376,7 +376,7 @@ void FOutputLogPanel::ExecCommand(const FString& CommandLine)
 		return;
 	const FString& Command = Tokens[0];
 
-	#if !defined(ENGINE_SHIPPING)
+#if !defined(ENGINE_SHIPPING)
 	if (EqualsIgnoreCase(Command, "CauseCrash"))
 	{
 		constexpr DWORD TestCrashCode = 0xE0420001;

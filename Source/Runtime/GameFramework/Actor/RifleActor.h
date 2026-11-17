@@ -4,6 +4,7 @@
 #include "RifleActor.generated.h"
 
 class AProjectileActor;
+class UParticleSystemComponent;
 class USkeletalMeshComponent;
 
 UCLASS()
@@ -12,6 +13,7 @@ class ARifleActor : public AActor
 	GENERATED_BODY()
 public:
 	ARifleActor();
+	void BeginPlay() override;
 	void EndPlay() override;
 
 	AProjectileActor* Fire(const FVector& CameraOrigin, const FVector& CameraDirection);
@@ -19,7 +21,9 @@ public:
 	const TArray<AProjectileActor*>& GetProjectiles() const { return Projectiles; }
 
 private:
+	AProjectileActor* SpawnPooledProjectile(UWorld* World);
 	USkeletalMeshComponent* SkeletalMeshComponent = nullptr;
+	UParticleSystemComponent* MuzzleParticleComponent = nullptr;
 	TArray<AProjectileActor*> Projectiles;
 
 	UPROPERTY(EditAnywhere)

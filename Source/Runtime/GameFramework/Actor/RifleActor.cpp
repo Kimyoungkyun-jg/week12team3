@@ -3,7 +3,9 @@
 #include "GameFramework/Actor/ProjectileActor.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Components/ProjectileMovementComponent.h"
+#include "Particles/ParticleSystem.h"
 #include "Collision/HitResult.h"
 #include "Collision/Ray.h"
 #include "Asset/AssetManager.h"
@@ -18,6 +20,40 @@ ARifleActor::ARifleActor()
 		"Assets/Models/UnrealModel/SK_SK_Rifle_Root.fbxbin");
 	if (RifleMesh) SkeletalMeshComponent->SetSkeletalMesh(RifleMesh);
 	else HTR_LOG(Error, "Failed to load SK_SK_Rifle_Root.fbxbin for ARifleActor");
+	MuzzleParticleComponent = CreateDefaultSubobject<UParticleSystemComponent>("MuzzleParticleComponent");
+	MuzzleParticleComponent->SetupAttachment(SkeletalMeshComponent);
+	MuzzleParticleComponent->SetRelativeLocation(FVector(MuzzleDistance, 0.0f, 0.089f));
+	if (UParticleSystem* MuzzleTemplate = UParticleSystem::LoadFromFile("Assets/Particles/MuzzleFlash.particle", MuzzleParticleComponent))
+	{
+		MuzzleParticleComponent->TemplatePath = "Assets/Particles/MuzzleFlash.particle";
+		MuzzleParticleComponent->SetTemplate(MuzzleTemplate);
+	}
+	MuzzleParticleComponent->bPreviewInEditor = false;
+	MuzzleParticleComponent->SetVisibility(false);
+	MuzzleParticleComponent->Deactivate();
+}
+
+void ARifleActor::BeginPlay()
+{
+	Super::BeginPlay();
+	UWorld* World = GetWorld();
+	if (!World || !World->IsGameWorld()) return;
+	// 사격 중 프레임 저하가 나지 않도록 발사체와 혈흔 풀을 시작 시 미리 생성한다
+	while (Projectiles.Num() < static_cast<uint32>(MaxProjectiles))
+	{
+		if (!SpawnPooledProjectile(World)) break;
+	}
+}
+
+AProjectileActor* ARifleActor::SpawnPooledProjectile(UWorld* World)
+{
+	if (!World || Projectiles.Num() >= static_cast<uint32>(MaxProjectiles)) return nullptr;
+	AProjectileActor* Projectile = Cast<AProjectileActor>(World->SpawnActor(AProjectileActor::StaticClass()));
+	if (!Projectile) return nullptr;
+	Projectile->GetRootComponent()->SetCollisionRadiusOverride(0.035f);
+	Projectile->GetStaticMeshComponent()->SetRelativeScale3D(FVector(0.14f, 0.045f, 0.045f));
+	Projectiles.Add(Projectile);
+	return Projectile;
 }
 
 AProjectileActor* ARifleActor::Fire(const FVector& CameraOrigin, const FVector& CameraDirection)
@@ -52,14 +88,8 @@ AProjectileActor* ARifleActor::Fire(const FVector& CameraOrigin, const FVector& 
 			break;
 		}
 	}
-	if (!Projectile && Projectiles.Num() < static_cast<uint32>(MaxProjectiles))
-	{
-		Projectile = Cast<AProjectileActor>(World->SpawnActor(AProjectileActor::StaticClass()));
-		if (!Projectile) return nullptr;
-		Projectile->GetRootComponent()->SetCollisionRadiusOverride(0.035f);
-		Projectile->GetStaticMeshComponent()->SetRelativeScale3D(FVector(0.14f, 0.045f, 0.045f));
-		Projectiles.Add(Projectile);
-	}
+	if (!Projectile)
+		Projectile = SpawnPooledProjectile(World);
 	if (!Projectile) return nullptr;
 
 	UProjectileMovementComponent* Movement = Projectile->GetProjectileMovementComponent();
@@ -71,6 +101,12 @@ AProjectileActor* ARifleActor::Fire(const FVector& CameraOrigin, const FVector& 
 	FVector FireDirection = (Target - Muzzle).GetSafeNormal();
 	if (FireDirection.SizeSquared() <= SMALL_NUMBER) FireDirection = CameraForward;
 	Projectile->Launch(Muzzle, FireDirection, true);
+	if (MuzzleParticleComponent)
+	{
+		// 발사 순간 총구 이펙트를 처음부터 다시 재생한다
+		MuzzleParticleComponent->SetVisibility(true);
+		MuzzleParticleComponent->Activate(true);
+	}
 	return Projectile;
 }
 

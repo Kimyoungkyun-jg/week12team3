@@ -376,6 +376,14 @@ bool FRenderGraphBuilder::Execute() // 등록되어 있던
 		RenderCommand::SetViewport(Viewport.X, Viewport.Y, Viewport.Width, Viewport.Height);
 		Pass.Execute();
 		RenderCommand::EndRenderPass();
+		if (!Pass.Desc.ReadTextures.empty())
+		{
+			// 이 패스가 바인딩한 입력 슬롯만 해제해 다음 패스로 SRV가 남지 않게 한다.
+			RenderCommand::UnbindShaderResources(
+				Pass.Desc.ReadTextureStartSlot,
+				static_cast<uint32>(Pass.Desc.ReadTextures.size()),
+				EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+		}
 
 		if (Pass.Desc.OnAfterExecute)
 			Pass.Desc.OnAfterExecute();

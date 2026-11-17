@@ -32,22 +32,9 @@ namespace
 			std::max(InOutBounds.Max.Z, Max.Z));
 	}
 
-	float SampleMaxCurveAbs(const UCurveFloat* Curve)
-	{
-		if (!Curve)
-			return 1.0f;
-		float MaxVal = 0.0f;
-		constexpr int32 SampleCount = 8;
-		for (int32 i = 0; i <= SampleCount; ++i)
-		{
-			const float T = static_cast<float>(i) / static_cast<float>(SampleCount);
-			MaxVal = std::max(MaxVal, std::abs(Curve->GetFloatValue(T)));
-		}
-		return MaxVal;
-	}
-
+	// 빌드 캐시로부터 GPU 에미터의 예상 최대 도달 범위를 계산한다
 	void ComputeGpuEmitterReach(
-		const UParticleLODLevel* LOD,
+		UParticleLODLevel* LOD,
 		FVector& OutOffsetMin,
 		FVector& OutOffsetMax,
 		FVector& OutVelReach,
@@ -62,61 +49,568 @@ namespace
 		if (!LOD)
 			return;
 
-		FVector VelMax = FVector::ZeroVector;
-		float MaxSizeX = 1.0f;
-		float MaxSizeY = 1.0f;
-		float ScaleX = 1.0f;
-		float ScaleY = 1.0f;
+		const FParticleEmitterBuildInfo& Build = LOD->EnsureBuilt();
+		OutOffsetMin = Build.SpawnLocationMin;
+		OutOffsetMax = Build.SpawnLocationMax;
+		OutMaxLifetime = std::max(0.05f, Build.MaxLifetime);
+		OutVelReach = Build.MaxVelocity * OutMaxLifetime;
+		const float FinalSizeX = Build.MaxStartSize.X * Build.MaxLifeScale.X;
+		const float FinalSizeY = Build.MaxStartSize.Y * Build.MaxLifeScale.Y;
+		OutHalfDiagSize = 0.5f * std::sqrt(FinalSizeX * FinalSizeX + FinalSizeY * FinalSizeY);
+	}
 
-		for (const UParticleModule* Module : LOD->Modules)
+	FGpuDistributionDesc MakeGpuDistributionDesc(const FGpuDistributionBuildChannel& Channel)
+	{
+		FGpuDistributionDesc Desc{};
+		if (Channel.Mode == 2 && Channel.AtlasHandle.IsValid())
 		{
-			if (!Module || !Module->bEnabled)
-				continue;
-			if (const auto* LifeMod = Cast<UParticleModuleLifetime>(Module))
+			Desc.AtlasUVAndMode = FVector4(
+				Channel.AtlasHandle.UStart,
+				Channel.AtlasHandle.UScale,
+				Channel.AtlasHandle.VCoord,
+				2.0f);
+			Desc.ValueScale = Channel.ValueScale;
+			Desc.ValueBias = Channel.ValueBias;
+		}
+		else if (Channel.Mode == 1)
+		{
+			Desc.AtlasUVAndMode = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
+			Desc.ValueScale = Channel.ConstantValue;
+			Desc.ValueBias = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+		}
+		return Desc;
+	}
+
+	template <typename TModule>
+	const TModule* FindEnabledModule(const UParticleLODLevel* LOD)
+	{
+		if (!LOD)
+			return nullptr;
+		for (const UParticleModule* Module : LOD->EffectiveModules)
+		{
+			if (Module && Module->bEnabled)
 			{
-				OutMaxLifetime = std::max(0.05f, LifeMod->Max);
+				if (const TModule* Typed = Cast<TModule>(Module))
+					return Typed;
 			}
-			else if (const auto* LocMod = Cast<UParticleModuleLocation>(Module))
+		}
+		return nullptr;
+	}
+
+	uint32 AdvanceNoiseSeed(uint32 Seed)
+	{
+		uint32 Next = Seed * 1664525u + 1013904223u;
+		return Next ? Next : 1u;
+	}
+
+	void ResolveBeamEndpoints(
+		const UParticleLODLevel* LOD,
+		const UParticleModuleTypeDataBeam* BeamType,
+		const FVector& Origin,
+		bool bUseLocalSpace,
+		const FMatrix& WorldToLocal,
+		const FParticleInstanceParameters* InstanceParams,
+		FParticleRandom& Random,
+		FBeamTypeDataPayload& OutPayload)
+	{
+		const FVector BaseOrigin = bUseLocalSpace ? FVector::ZeroVector : Origin;
+		const UParticleModuleBeamSource* SourceMod = FindEnabledModule<UParticleModuleBeamSource>(LOD);
+		const UParticleModuleBeamTarget* TargetMod = FindEnabledModule<UParticleModuleBeamTarget>(LOD);
+
+		FVector SourcePos = BaseOrigin;
+		FVector SrcTangent = FVector::ZeroVector;
+		if (SourceMod)
+		{
+			if (SourceMod->SourceMethod == static_cast<int32>(EBeamEndpointMethod::UserSet) && SourceMod->Source)
 			{
-				const FVector ModMin(
-					std::min(LocMod->Min.X, LocMod->Max.X),
-					std::min(LocMod->Min.Y, LocMod->Max.Y),
-					std::min(LocMod->Min.Z, LocMod->Max.Z));
-				const FVector ModMax(
-					std::max(LocMod->Min.X, LocMod->Max.X),
-					std::max(LocMod->Min.Y, LocMod->Max.Y),
-					std::max(LocMod->Min.Z, LocMod->Max.Z));
-				OutOffsetMin = FVector(
-					std::min(OutOffsetMin.X, ModMin.X),
-					std::min(OutOffsetMin.Y, ModMin.Y),
-					std::min(OutOffsetMin.Z, ModMin.Z));
-				OutOffsetMax = FVector(
-					std::max(OutOffsetMax.X, ModMax.X),
-					std::max(OutOffsetMax.Y, ModMax.Y),
-					std::max(OutOffsetMax.Z, ModMax.Z));
+				SourcePos = BaseOrigin + SourceMod->Source->GetValue(0.0f, InstanceParams, &Random);
 			}
-			else if (const auto* VelMod = Cast<UParticleModuleVelocity>(Module))
+			else if (SourceMod->SourceMethod == static_cast<int32>(EBeamEndpointMethod::Parameter))
 			{
-				VelMax.X = std::max({ VelMax.X, std::abs(VelMod->Min.X), std::abs(VelMod->Max.X) });
-				VelMax.Y = std::max({ VelMax.Y, std::abs(VelMod->Min.Y), std::abs(VelMod->Max.Y) });
-				VelMax.Z = std::max({ VelMax.Z, std::abs(VelMod->Min.Z), std::abs(VelMod->Max.Z) });
+				if (InstanceParams && !SourceMod->SourceParameterName.empty())
+				{
+					if (const FVector* ParamVec = InstanceParams->VectorParams.Find(SourceMod->SourceParameterName))
+						SourcePos = bUseLocalSpace ? WorldToLocal.TransformPosition(*ParamVec) : *ParamVec;
+				}
+				else if (SourceMod->Source)
+				{
+					SourcePos = BaseOrigin + SourceMod->Source->GetValue(0.0f, InstanceParams, &Random);
+				}
 			}
-			else if (const auto* SizeMod = Cast<UParticleModuleSize>(Module))
+			if (SourceMod->bUseSourceTangent && SourceMod->SourceTangent)
 			{
-				MaxSizeX = std::max({ MaxSizeX, std::abs(SizeMod->Start.X), std::abs(SizeMod->End.X) });
-				MaxSizeY = std::max({ MaxSizeY, std::abs(SizeMod->Start.Y), std::abs(SizeMod->End.Y) });
-			}
-			else if (const auto* SizeByLife = Cast<UParticleModuleSizeByLife>(Module))
-			{
-				ScaleX = std::max(ScaleX, SampleMaxCurveAbs(SizeByLife->ScaleX));
-				ScaleY = std::max(ScaleY, SampleMaxCurveAbs(SizeByLife->ScaleY));
+				const float Strength = SourceMod->SourceStrength ? SourceMod->SourceStrength->GetValue(0.0f, InstanceParams, &Random) : 1.0f;
+				SrcTangent = SourceMod->SourceTangent->GetValue(0.0f, InstanceParams, &Random) * Strength;
 			}
 		}
 
-		OutVelReach = VelMax * OutMaxLifetime;
-		const float FinalSizeX = MaxSizeX * ScaleX;
-		const float FinalSizeY = MaxSizeY * ScaleY;
-		OutHalfDiagSize = 0.5f * std::sqrt(FinalSizeX * FinalSizeX + FinalSizeY * FinalSizeY);
+		FVector TargetPos = SourcePos + FVector(BeamType ? BeamType->Distance : 3.0f, 0.0f, 0.0f);
+		FVector DstTangent = FVector::ZeroVector;
+		if (BeamType && BeamType->BeamMethod == static_cast<int32>(EBeamMethod::Distance))
+		{
+			FVector Dir(1.0f, 0.0f, 0.0f);
+			if (TargetMod && TargetMod->Target)
+			{
+				const FVector Candidate = TargetMod->Target->GetValue(0.0f, InstanceParams, &Random);
+				if (Candidate.Dot(Candidate) > 1e-8f)
+					Dir = Candidate.Normalized();
+			}
+			TargetPos = SourcePos + Dir * BeamType->Distance;
+		}
+		else if (TargetMod)
+		{
+			if (TargetMod->TargetMethod == static_cast<int32>(EBeamEndpointMethod::Emitter))
+			{
+				TargetPos = BaseOrigin;
+			}
+			else if (TargetMod->TargetMethod == static_cast<int32>(EBeamEndpointMethod::UserSet) && TargetMod->Target)
+			{
+				TargetPos = BaseOrigin + TargetMod->Target->GetValue(0.0f, InstanceParams, &Random);
+			}
+			else if (TargetMod->TargetMethod == static_cast<int32>(EBeamEndpointMethod::Parameter))
+			{
+				bool bFoundParam = false;
+				if (InstanceParams && !TargetMod->TargetParameterName.empty())
+				{
+					if (const FVector* ParamVec = InstanceParams->VectorParams.Find(TargetMod->TargetParameterName))
+					{
+						TargetPos = bUseLocalSpace ? WorldToLocal.TransformPosition(*ParamVec) : *ParamVec;
+						bFoundParam = true;
+					}
+				}
+				if (!bFoundParam && TargetMod->Target)
+					TargetPos = BaseOrigin + TargetMod->Target->GetValue(0.0f, InstanceParams, &Random);
+			}
+		}
+
+		if (TargetMod && TargetMod->bUseTargetTangent && TargetMod->TargetTangent)
+		{
+			const float Strength = TargetMod->TargetStrength ? TargetMod->TargetStrength->GetValue(0.0f, InstanceParams, &Random) : 1.0f;
+			DstTangent = TargetMod->TargetTangent->GetValue(0.0f, InstanceParams, &Random) * Strength;
+		}
+
+		OutPayload.SourcePoint = SourcePos;
+		OutPayload.TargetPoint = TargetPos;
+		OutPayload.SourceTangent = SrcTangent;
+		OutPayload.TargetTangent = DstTangent;
+	}
+
+	void BuildBeamStripPoints(
+		const FBaseParticle& Particle,
+		const FBeamTypeDataPayload& Payload,
+		const UParticleModuleTypeDataBeam* BeamType,
+		const UParticleModuleBeamNoise* NoiseMod,
+		const FParticleInstanceParameters* InstanceParams,
+		const FMatrix& LocalToWorld,
+		bool bTransformToWorld,
+		FBeamTrailStrip& OutStrip) // 어디에, 어떤 폭과 색으로 Beam의 점을 놓을지
+	{
+		OutStrip.Points.Reset();
+		if (!BeamType)
+			return;
+
+		const int32 SegCount = std::clamp(BeamType->Segments, 1, 512);
+		const float Travel = std::clamp(Payload.TravelRatio, 0.0f, 1.0f);
+		const bool bHasSourceTan = Payload.SourceTangent.Dot(Payload.SourceTangent) > 1e-8f;
+		const bool bHasTargetTan = Payload.TargetTangent.Dot(Payload.TargetTangent) > 1e-8f;
+		const bool bUseCurve = bHasSourceTan || bHasTargetTan;
+		const float ChordLen = (Payload.TargetPoint - Payload.SourcePoint).Length();
+		const FVector ScaledSrcTan = Payload.SourceTangent * std::max(1.0f, ChordLen);
+		const FVector ScaledDstTan = Payload.TargetTangent * std::max(1.0f, ChordLen);
+
+		TArray<FVector> NoiseNodes;
+		int32 Freq = 0;
+		if (NoiseMod && NoiseMod->bEnabled && NoiseMod->NoiseRange && NoiseMod->Frequency > 0)
+		{
+			Freq = std::clamp(NoiseMod->Frequency, 1, 256);
+			NoiseNodes.SetNum(Freq + 1);
+			FParticleRandom NoiseRand{ Payload.NoiseSeed ? Payload.NoiseSeed : 1u, InstanceParams };
+			const int32 ModeIdx = NoiseMod->NoiseRange->GetModeIndex();
+			const bool bApplyRandomSign = (ModeIdx != static_cast<int32>(EDistributionMode::Uniform))
+				&& (ModeIdx != static_cast<int32>(EDistributionMode::UniformCurve));
+
+			for (int32 k = 0; k <= Freq; ++k)
+			{
+				if (NoiseMod->bLockEndpoints && (k == 0 || k == Freq))
+				{
+					NoiseNodes[k] = FVector::ZeroVector;
+					continue;
+				}
+				const float Frac = static_cast<float>(k) / static_cast<float>(Freq);
+				FVector Offset = NoiseMod->NoiseRange->GetValue(Frac, InstanceParams, &NoiseRand);
+				if (bApplyRandomSign)
+				{
+					Offset.X *= NoiseRand.Range(-1.0f, 1.0f);
+					Offset.Y *= NoiseRand.Range(-1.0f, 1.0f);
+					Offset.Z *= NoiseRand.Range(-1.0f, 1.0f);
+				}
+				NoiseNodes[k] = Offset;
+			}
+		}
+
+		const FVector4 ParticleColor(
+			Particle.Color.R / 255.0f,
+			Particle.Color.G / 255.0f,
+			Particle.Color.B / 255.0f,
+			Particle.Color.A / 255.0f);
+		const float BaseWidth = std::max(0.001f, std::abs(Particle.Size.X));
+		const float Tile = std::max(0.01f, BeamType->TextureTile);
+
+		OutStrip.Points.Reserve(SegCount + 1);
+		float AccumDist = 0.0f;
+		FVector PrevPos = FVector::ZeroVector;
+
+		for (int32 i = 0; i <= SegCount; ++i)
+		{
+			const float T = static_cast<float>(i) / static_cast<float>(SegCount);
+			const float U = T * Travel;
+
+			FVector Pos;
+			if (bUseCurve)
+			{
+				const float U2 = U * U;
+				const float U3 = U2 * U;
+				const float H00 = 2.0f * U3 - 3.0f * U2 + 1.0f;
+				const float H10 = U3 - 2.0f * U2 + U;
+				const float H01 = -2.0f * U3 + 3.0f * U2;
+				const float H11 = U3 - U2;
+				Pos = Payload.SourcePoint * H00
+					+ ScaledSrcTan * H10
+					+ Payload.TargetPoint * H01
+					+ ScaledDstTan * H11;
+			}
+			else
+			{
+				Pos = Payload.SourcePoint + (Payload.TargetPoint - Payload.SourcePoint) * U;
+			}
+
+			if (Freq > 0 && !NoiseNodes.IsEmpty())
+			{
+				const float SampleIdx = U * static_cast<float>(Freq);
+				const int32 Idx0 = std::clamp(static_cast<int32>(std::floor(SampleIdx)), 0, Freq);
+				const int32 Idx1 = std::min(Idx0 + 1, Freq);
+				float Frac = SampleIdx - static_cast<float>(Idx0);
+				if (NoiseMod->bSmooth)
+				{
+					Frac = Frac * Frac * (3.0f - 2.0f * Frac);
+				}
+				else if (NoiseMod->NoiseTension > 0.0f)
+				{
+					const float SmoothFrac = Frac * Frac * (3.0f - 2.0f * Frac);
+					const float Tension = std::clamp(NoiseMod->NoiseTension, 0.0f, 1.0f);
+					Frac = Frac + (SmoothFrac - Frac) * Tension;
+				}
+				Pos += NoiseNodes[Idx0] + (NoiseNodes[Idx1] - NoiseNodes[Idx0]) * Frac;
+			}
+
+			if (bTransformToWorld)
+				Pos = LocalToWorld.TransformPosition(Pos);
+
+			if (i > 0)
+				AccumDist += (Pos - PrevPos).Length();
+			PrevPos = Pos;
+
+			float Taper = 1.0f;
+			if (BeamType->TaperMethod != static_cast<int32>(EBeamTaperMethod::None))
+			{
+				const float Factor = BeamType->TaperFactor ? BeamType->TaperFactor->GetValue(T, InstanceParams, nullptr) : 1.0f;
+				const float Scale = BeamType->TaperScale ? BeamType->TaperScale->GetValue(T, InstanceParams, nullptr) : 1.0f;
+				const float Evaluated = Factor * Scale;
+				if (BeamType->TaperMethod == static_cast<int32>(EBeamTaperMethod::Full))
+					Taper = Evaluated;
+				else
+					Taper = 1.0f + (Evaluated - 1.0f) * T;
+			}
+
+			FBeamTrailPoint Pt{};
+			Pt.Position = Pos;
+			Pt.Width = std::max(0.001f, BaseWidth * std::max(0.0f, Taper));
+			Pt.Color = ParticleColor;
+			Pt.UpHint = FVector(0.0f, 0.0f, 1.0f);
+			Pt.UCoord = (BeamType->TextureTileDistance > 0.0f)
+				? (AccumDist / BeamType->TextureTileDistance)
+				: (T * Tile);
+			OutStrip.Points.Add(Pt);
+		}
+	}
+
+	struct FRibbonSortItem
+	{
+		const FBaseParticle* Particle = nullptr;
+		const FRibbonTypeDataPayload* Payload = nullptr;
+	};
+
+	bool ResolveRibbonEndpoints(
+		const UParticleModuleTypeDataRibbon* RibbonType,
+		const FParticleInstanceParameters* InstanceParams,
+		FVector& OutBase,
+		FVector& OutTip)
+	{
+		if (!RibbonType || !InstanceParams ||
+			RibbonType->SourceParameterName.empty() ||
+			RibbonType->TargetParameterName.empty())
+			return false;
+
+		const FVector* BaseVec = InstanceParams->VectorParams.Find(RibbonType->SourceParameterName);
+		const FVector* TipVec = InstanceParams->VectorParams.Find(RibbonType->TargetParameterName);
+		if (!BaseVec || !TipVec)
+			return false;
+
+		OutBase = *BaseVec;
+		OutTip = *TipVec;
+		return true;
+	}
+
+	FVector ComputeRibbonBladeUp(
+		const FVector& BladeVec,
+		const FVector& Tangent,
+		const FVector& FallbackUp)
+	{
+		FVector Normal = FVector::Cross(BladeVec, Tangent);
+		if (Normal.Dot(Normal) > 1e-8f)
+			return Normal.Normalized();
+		if (FallbackUp.Dot(FallbackUp) > 1e-8f)
+			return FallbackUp.Normalized();
+		const FVector AltAxis = (std::abs(BladeVec.Z) < 0.9f) ? FVector(0.0f, 0.0f, 1.0f) : FVector(1.0f, 0.0f, 0.0f);
+		FVector Ortho = FVector::Cross(BladeVec, AltAxis);
+		return (Ortho.Dot(Ortho) > 1e-8f) ? Ortho.Normalized() : FVector(0.0f, 0.0f, 1.0f);
+	}
+
+	float EvalRibbonKnotStep(float TPrev, const FVector& A, const FVector& B)
+	{
+		const float DistSq = (B - A).Dot(B - A);
+		return TPrev + std::max(0.001f, std::pow(DistSq, 0.25f));
+	}
+
+	FVector EvalCentripetalCatmullRom(const FVector& P0, const FVector& P1, const FVector& P2, const FVector& P3, float Alpha)
+	{
+		const float T0 = 0.0f;
+		const float T1 = EvalRibbonKnotStep(T0, P0, P1);
+		const float T2 = EvalRibbonKnotStep(T1, P1, P2);
+		const float T3 = EvalRibbonKnotStep(T2, P2, P3);
+		const float T = FMath::Lerp(T1, T2, Alpha);
+		const FVector A1 = P0 * ((T1 - T) / (T1 - T0)) + P1 * ((T - T0) / (T1 - T0));
+		const FVector A2 = P1 * ((T2 - T) / (T2 - T1)) + P2 * ((T - T1) / (T2 - T1));
+		const FVector A3 = P2 * ((T3 - T) / (T3 - T2)) + P3 * ((T - T2) / (T3 - T2));
+		const FVector B1 = A1 * ((T2 - T) / (T2 - T0)) + A2 * ((T - T0) / (T2 - T0));
+		const FVector B2 = A2 * ((T3 - T) / (T3 - T1)) + A3 * ((T - T1) / (T3 - T1));
+		return B1 * ((T2 - T) / (T2 - T1)) + B2 * ((T - T1) / (T2 - T1));
+	}
+
+	void SmoothRibbonStripPoints(TArray<FBeamTrailPoint>& InOutPoints)
+	{
+		const int32 RawCount = static_cast<int32>(InOutPoints.Num());
+		if (RawCount < 2)
+			return;
+
+		TArray<FBeamTrailPoint> Filtered;
+		Filtered.Reserve(RawCount);
+		Filtered.Add(InOutPoints[0]);
+		constexpr float MinDistSq = 0.01f * 0.01f;
+		for (int32 i = 1; i < RawCount; ++i)
+		{
+			const FBeamTrailPoint& Prev = Filtered[Filtered.Num() - 1];
+			const FVector Delta = InOutPoints[i].Position - Prev.Position;
+			const FVector TipDelta = (InOutPoints[i].Position + InOutPoints[i].EdgeHalfOffset) -
+				(Prev.Position + Prev.EdgeHalfOffset);
+			if (Delta.Dot(Delta) >= MinDistSq || TipDelta.Dot(TipDelta) >= MinDistSq)
+				Filtered.Add(InOutPoints[i]);
+			else if (i == RawCount - 1)
+				Filtered[Filtered.Num() - 1] = InOutPoints[i];
+		}
+
+		const int32 Count = static_cast<int32>(Filtered.Num());
+		if (Count < 3)
+		{
+			InOutPoints = std::move(Filtered);
+			return;
+		}
+
+		constexpr int32 SubSteps = 6;
+		TArray<FBeamTrailPoint> Smoothed;
+		Smoothed.Reserve((Count - 1) * SubSteps + 1);
+		for (int32 i = 0; i < Count - 1; ++i)
+		{
+			const FBeamTrailPoint& A0 = Filtered[std::max(0, i - 1)];
+			const FBeamTrailPoint& A1 = Filtered[i];
+			const FBeamTrailPoint& A2 = Filtered[i + 1];
+			const FBeamTrailPoint& A3 = Filtered[std::min(Count - 1, i + 2)];
+			Smoothed.Add(A1);
+
+			const bool bExplicit = A1.bUseExplicitEdges && A2.bUseExplicitEdges;
+			const FVector B0 = A0.Position - A0.EdgeHalfOffset;
+			const FVector B1 = A1.Position - A1.EdgeHalfOffset;
+			const FVector B2 = A2.Position - A2.EdgeHalfOffset;
+			const FVector B3 = A3.Position - A3.EdgeHalfOffset;
+			const FVector E0 = A0.Position + A0.EdgeHalfOffset;
+			const FVector E1 = A1.Position + A1.EdgeHalfOffset;
+			const FVector E2 = A2.Position + A2.EdgeHalfOffset;
+			const FVector E3 = A3.Position + A3.EdgeHalfOffset;
+
+			for (int32 Step = 1; Step < SubSteps; ++Step)
+			{
+				const float Alpha = static_cast<float>(Step) / static_cast<float>(SubSteps);
+				FBeamTrailPoint Mid{};
+				if (bExplicit)
+				{
+					const FVector SubBase = EvalCentripetalCatmullRom(B0, B1, B2, B3, Alpha);
+					const FVector SubTip = EvalCentripetalCatmullRom(E0, E1, E2, E3, Alpha);
+					Mid.Position = (SubBase + SubTip) * 0.5f;
+					Mid.EdgeHalfOffset = (SubTip - SubBase) * 0.5f;
+					Mid.Width = std::max(0.001f, (SubTip - SubBase).Length());
+					Mid.bUseExplicitEdges = true;
+				}
+				else
+				{
+					Mid.Position = EvalCentripetalCatmullRom(A0.Position, A1.Position, A2.Position, A3.Position, Alpha);
+					Mid.Width = FMath::Lerp(A1.Width, A2.Width, Alpha);
+				}
+				FVector InterpUp = A1.UpHint + (A2.UpHint - A1.UpHint) * Alpha;
+				Mid.UpHint = (InterpUp.Dot(InterpUp) > 1e-8f) ? InterpUp.Normalized() : A1.UpHint;
+				Mid.Color = FVector4(
+					FMath::Lerp(A1.Color.X, A2.Color.X, Alpha),
+					FMath::Lerp(A1.Color.Y, A2.Color.Y, Alpha),
+					FMath::Lerp(A1.Color.Z, A2.Color.Z, Alpha),
+					FMath::Lerp(A1.Color.W, A2.Color.W, Alpha));
+				Smoothed.Add(Mid);
+			}
+		}
+		Smoothed.Add(Filtered[Count - 1]);
+		InOutPoints = std::move(Smoothed);
+	}
+
+	void BuildRibbonStrips(
+		const FParticleEmitterInstance& Emitter,
+		const UParticleLODLevel* LOD,
+		const UParticleModuleTypeDataRibbon* RibbonType,
+		const FMatrix& LocalToWorld,
+		bool bTransformToWorld,
+		const FVector& Origin,
+		bool bIncludeClipOrigin,
+		TArray<FBeamTrailStrip>& OutTrails) // 이미 생성되어 살아 있는 리본 파티클을 연결 가능한 선 목록으로 바꾸는 함수
+	{
+		OutTrails.Reset();
+		if (!LOD || !RibbonType || !Emitter.ParticleData || !Emitter.ParticleIndices || Emitter.ActiveParticles <= 0)
+			return;
+
+		const uint32 RibbonOffset = Emitter.GetModuleDataOffset(LOD->EffectiveTypeData);
+		if (RibbonOffset == 0)
+			return;
+
+		TArray<FRibbonSortItem> Items;
+		Items.Reserve(Emitter.ActiveParticles);
+		for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index) // 기본 파티클 정보 + payload 수집
+		{
+			const uint8* Addr = Emitter.ParticleData + static_cast<size_t>(Emitter.ParticleIndices[Index]) * static_cast<size_t>(Emitter.ParticleStride);
+			const FBaseParticle* Particle = reinterpret_cast<const FBaseParticle*>(Addr);
+			const FRibbonTypeDataPayload* Payload = reinterpret_cast<const FRibbonTypeDataPayload*>(Addr + RibbonOffset);
+			Items.Add({ Particle, Payload });
+		}
+
+		std::sort(Items.begin(), Items.end(), [](const FRibbonSortItem& A, const FRibbonSortItem& B)
+		{
+			if (A.Payload->TrailIndex != B.Payload->TrailIndex)
+				return A.Payload->TrailIndex < B.Payload->TrailIndex;
+			return A.Payload->SpawnOrder < B.Payload->SpawnOrder;
+		});
+
+		const int32 MaxTrails = std::max(1, RibbonType->MaxTrailCount);
+		const int32 MaxPerTrail = std::max(2, RibbonType->MaxParticleInTrailCount);
+		const bool bLocal = LOD->EffectiveRequired && LOD->EffectiveRequired->bUseLocalSpace;
+
+		TArray<FBeamTrailStrip> AllTrails;
+		int32 RunStart = 0;
+		const int32 TotalItems = static_cast<int32>(Items.Num());
+		while (RunStart < TotalItems)
+		{
+			const int32 TrailId = Items[RunStart].Payload->TrailIndex;
+			int32 RunEnd = RunStart + 1;
+			while (RunEnd < TotalItems && Items[RunEnd].Payload->TrailIndex == TrailId)
+				++RunEnd;
+
+			const int32 ClampedStart = std::max(RunStart, RunEnd - MaxPerTrail);
+			const int32 NodeCount = RunEnd - ClampedStart;
+			const bool bAppendHead = bIncludeClipOrigin && RibbonType->bClipSourceSegment && (TrailId == Emitter.CurrentTrailIndex);
+
+			if (NodeCount + (bAppendHead ? 1 : 0) >= 2)
+			{
+				FBeamTrailStrip Strip;
+				Strip.Points.Reserve(NodeCount + (bAppendHead ? 1 : 0));
+
+				for (int32 i = ClampedStart; i < RunEnd; ++i)
+				{
+					const FBaseParticle& P = *Items[i].Particle;
+					const FRibbonTypeDataPayload& PL = *Items[i].Payload;
+
+					FBeamTrailPoint Pt{};
+					Pt.Position = (bLocal && bTransformToWorld) ? LocalToWorld.TransformPosition(P.Location) : P.Location;
+					Pt.UpHint = (bLocal && bTransformToWorld) ? LocalToWorld.TransformVector(PL.SourceUp) : PL.SourceUp;
+					Pt.Width = (PL.WidthOverride > 0.0f) ? PL.WidthOverride : std::max(0.001f, std::abs(P.Size.X));
+					Pt.EdgeHalfOffset = (bLocal && bTransformToWorld) ? LocalToWorld.TransformVector(PL.EdgeHalfOffset) : PL.EdgeHalfOffset;
+					Pt.bUseExplicitEdges = PL.bUseExplicitEdges;
+					Pt.Color = FVector4(P.Color.R / 255.0f, P.Color.G / 255.0f, P.Color.B / 255.0f, P.Color.A / 255.0f);
+					Strip.Points.Add(Pt);
+				}
+
+				if (bAppendHead && !Strip.Points.IsEmpty())
+				{
+					const FBeamTrailPoint& LastPt = Strip.Points[Strip.Points.Num() - 1];
+					FVector ParamBase = FVector::ZeroVector;
+					FVector ParamTip = FVector::ZeroVector;
+					const bool bHasParamHead = ResolveRibbonEndpoints(RibbonType, Emitter.InstanceParameters, ParamBase, ParamTip);
+					const FVector HeadPos = bHasParamHead
+						? (ParamBase + ParamTip) * 0.5f
+						: (bLocal ? (bTransformToWorld ? LocalToWorld.TransformPosition(FVector::ZeroVector) : FVector::ZeroVector) : Origin);
+					const FVector Delta = HeadPos - LastPt.Position;
+					if (Delta.Dot(Delta) > 1e-8f)
+					{
+						FBeamTrailPoint HeadPt = LastPt;
+						HeadPt.Position = HeadPos;
+						if (bHasParamHead)
+						{
+							const FVector BladeVec = ParamTip - ParamBase;
+							if (BladeVec.Dot(BladeVec) > 1e-8f)
+							{
+								HeadPt.Width = BladeVec.Length();
+								HeadPt.EdgeHalfOffset = BladeVec * 0.5f;
+								HeadPt.bUseExplicitEdges = true;
+								HeadPt.UpHint = ComputeRibbonBladeUp(BladeVec, Delta, LastPt.UpHint);
+							}
+						}
+						else
+						{
+							HeadPt.UpHint = bLocal
+								? (bTransformToWorld ? LocalToWorld.TransformVector(FVector(0.0f, 0.0f, 1.0f)) : FVector(0.0f, 0.0f, 1.0f))
+								: Emitter.EmitterUpAxis;
+						}
+						Strip.Points.Add(HeadPt);
+					}
+				}
+
+				if (Strip.Points.Num() >= 2)
+				{
+					SmoothRibbonStripPoints(Strip.Points);
+					const int32 FinalCount = static_cast<int32>(Strip.Points.Num());
+					float AccumDist = 0.0f;
+					for (int32 i = FinalCount - 1; i >= 0; --i)
+					{
+						if (i < FinalCount - 1)
+							AccumDist += (Strip.Points[i].Position - Strip.Points[i + 1].Position).Length();
+						if (RibbonType->TilingDistance > 0.0f)
+							Strip.Points[i].UCoord = AccumDist / RibbonType->TilingDistance;
+						else
+							Strip.Points[i].UCoord = static_cast<float>(FinalCount - 1 - i) / static_cast<float>(FinalCount - 1);
+					}
+					AllTrails.Add(std::move(Strip));
+				}
+			}
+
+			RunStart = RunEnd;
+		}
+
+		const int32 TrailStart = std::max(0, static_cast<int32>(AllTrails.Num()) - MaxTrails);
+		for (int32 i = TrailStart; i < static_cast<int32>(AllTrails.Num()); ++i)
+			OutTrails.Add(std::move(AllTrails[i]));
 	}
 }
 
@@ -150,6 +644,20 @@ FParticleEmitterInstance::FParticleEmitterInstance(const FParticleEmitterInstanc
 	, bHasGpuTrailBoundsCurr(false)
 	, bHasGpuTrailBoundsPrev(false)
 	, GpuTrailTimer(0.0f)
+	, EmitterUpAxis(Other.EmitterUpAxis)
+	, EmitterWorldToLocal(Other.EmitterWorldToLocal)
+	, PrevEmitterOrigin(Other.PrevEmitterOrigin)
+	, PrevRibbonBase(Other.PrevRibbonBase)
+	, PrevRibbonTip(Other.PrevRibbonTip)
+	, LastRibbonUp(Other.LastRibbonUp)
+	, bHasPrevEmitterOrigin(false)
+	, bHasPrevRibbonEndpoints(false)
+	, SpawnPerUnitBuffer(0.0f)
+	, CurrentTrailIndex(Other.CurrentTrailIndex)
+	, bCurrentTrailActive(Other.bCurrentTrailActive)
+	, bSuppressSpawning(Other.bSuppressSpawning)
+	, bForceLooping(Other.bForceLooping)
+	, SuppressElapsed(Other.SuppressElapsed)
 {
 	if (MaxActiveParticles > 0 && ParticleStride > 0 && Other.ParticleData && Other.ParticleIndices)
 	{
@@ -196,6 +704,20 @@ FParticleEmitterInstance::FParticleEmitterInstance(FParticleEmitterInstance&& Ot
 	, bHasGpuTrailBoundsCurr(Other.bHasGpuTrailBoundsCurr)
 	, bHasGpuTrailBoundsPrev(Other.bHasGpuTrailBoundsPrev)
 	, GpuTrailTimer(Other.GpuTrailTimer)
+	, EmitterUpAxis(Other.EmitterUpAxis)
+	, EmitterWorldToLocal(Other.EmitterWorldToLocal)
+	, PrevEmitterOrigin(Other.PrevEmitterOrigin)
+	, PrevRibbonBase(Other.PrevRibbonBase)
+	, PrevRibbonTip(Other.PrevRibbonTip)
+	, LastRibbonUp(Other.LastRibbonUp)
+	, bHasPrevEmitterOrigin(Other.bHasPrevEmitterOrigin)
+	, bHasPrevRibbonEndpoints(Other.bHasPrevRibbonEndpoints)
+	, SpawnPerUnitBuffer(Other.SpawnPerUnitBuffer)
+	, CurrentTrailIndex(Other.CurrentTrailIndex)
+	, bCurrentTrailActive(Other.bCurrentTrailActive)
+	, bSuppressSpawning(Other.bSuppressSpawning)
+	, bForceLooping(Other.bForceLooping)
+	, SuppressElapsed(Other.SuppressElapsed)
 {
 	Other.ParticleData = nullptr;
 	Other.ParticleIndices = nullptr;
@@ -229,6 +751,20 @@ FParticleEmitterInstance& FParticleEmitterInstance::operator=(FParticleEmitterIn
 	GpuWriteCursor = Other.GpuWriteCursor;
 	LastGpuDeltaTime = Other.LastGpuDeltaTime;
 	bGpuResetRequested = Other.bGpuResetRequested;
+	EmitterUpAxis = Other.EmitterUpAxis;
+	EmitterWorldToLocal = Other.EmitterWorldToLocal;
+	PrevEmitterOrigin = Other.PrevEmitterOrigin;
+	PrevRibbonBase = Other.PrevRibbonBase;
+	PrevRibbonTip = Other.PrevRibbonTip;
+	LastRibbonUp = Other.LastRibbonUp;
+	bHasPrevEmitterOrigin = Other.bHasPrevEmitterOrigin;
+	bHasPrevRibbonEndpoints = Other.bHasPrevRibbonEndpoints;
+	SpawnPerUnitBuffer = Other.SpawnPerUnitBuffer;
+	CurrentTrailIndex = Other.CurrentTrailIndex;
+	bCurrentTrailActive = Other.bCurrentTrailActive;
+	bSuppressSpawning = Other.bSuppressSpawning;
+	bForceLooping = Other.bForceLooping;
+	SuppressElapsed = Other.SuppressElapsed;
 	Other.ParticleData = nullptr;
 	Other.ParticleIndices = nullptr;
 	Other.ActiveParticles = 0;
@@ -243,16 +779,17 @@ void FParticleEmitterInstance::UpdateStride()
 	ModuleOffsetMap.Empty();
 	if (CurrentLODLevel)
 	{
-		if (CurrentLODLevel->TypeDataModule && CurrentLODLevel->TypeDataModule->bEnabled)
+		if (CurrentLODLevel->EffectiveTypeData && CurrentLODLevel->EffectiveTypeData->bEnabled)
 		{
-			const uint32 ReqBytes = CurrentLODLevel->TypeDataModule->RequiredBytes();
+			const uint32 ReqBytes = CurrentLODLevel->EffectiveTypeData->RequiredBytes();
 			if (ReqBytes > 0)
 			{
-				ModuleOffsetMap.Add(CurrentLODLevel->TypeDataModule, static_cast<uint32>(NewSize));
+				ModuleOffsetMap.Add(CurrentLODLevel->EffectiveTypeData, static_cast<uint32>(NewSize));
 				NewSize += static_cast<int32>(ReqBytes);
 			}
 		}
-		for (const UParticleModule* Module : CurrentLODLevel->Modules)
+
+		for (const UParticleModule* Module : CurrentLODLevel->EffectiveModules)
 		{
 			if (!Module || !Module->bEnabled) continue;
 			const uint32 ReqBytes = Module->RequiredBytes();
@@ -348,6 +885,18 @@ void FParticleEmitterInstance::Initialize(UParticleEmitter* Emitter, uint32 Seed
 	bHasGpuTrailBoundsCurr = false;
 	bHasGpuTrailBoundsPrev = false;
 	GpuTrailTimer = 0.0f;
+	PrevEmitterOrigin = FVector::ZeroVector;
+	PrevRibbonBase = FVector::ZeroVector;
+	PrevRibbonTip = FVector::ZeroVector;
+	LastRibbonUp = FVector(0.0f, 0.0f, 1.0f);
+	bHasPrevEmitterOrigin = false;
+	bHasPrevRibbonEndpoints = false;
+	SpawnPerUnitBuffer = 0.0f;
+	CurrentTrailIndex = 0;
+	bCurrentTrailActive = true;
+	bSuppressSpawning = false;
+	bForceLooping = false;
+	SuppressElapsed = 0.0f;
 	ActiveParticles = 0;
 	ParticleCounter = 0;
 	EmitterTime = 0.0;
@@ -364,10 +913,21 @@ void FParticleEmitterInstance::Initialize(UParticleEmitter* Emitter, uint32 Seed
 	if (LODs.IsEmpty()) { Resize(0); return; }
 	CurrentLODLevel = LODs[0];
 	if (!CurrentLODLevel) { Resize(0); return; }
-	const EParticleEmitterType Type = CurrentLODLevel->GetOrCreateTypeData()->GetEmitterType();
-	if (Type != EParticleEmitterType::Sprite && Type != EParticleEmitterType::GpuSprite && Type != EParticleEmitterType::Mesh) { Resize(0); return; }
 	Emitter->CacheEmitterModuleInfo();
-	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
+
+	if (!CurrentLODLevel->EffectiveTypeData || !CurrentLODLevel->EffectiveRequired) { Resize(0); return; }
+	const EParticleEmitterType Type = CurrentLODLevel->EffectiveTypeData->GetEmitterType();
+	if (Type != EParticleEmitterType::Sprite
+		&& Type != EParticleEmitterType::GpuSprite
+		&& Type != EParticleEmitterType::Mesh
+		&& Type != EParticleEmitterType::Beam
+		&& Type != EParticleEmitterType::Ribbon)
+	{
+		Resize(0);
+		return;
+	}
+
+	UParticleModuleRequired* Required = CurrentLODLevel->EffectiveRequired;
 	if (Type == EParticleEmitterType::GpuSprite)
 	{
 		Resize(0);
@@ -384,14 +944,57 @@ void FParticleEmitterInstance::SetLODLevel(int32 NewLODIndex)
 	if (!SpriteTemplate) return;
 	const TArray<UParticleLODLevel*>& LODs = SpriteTemplate->GetLODLevels();
 	if (LODs.IsEmpty()) return;
+
 	const int32 ClampedIndex = std::clamp(NewLODIndex, 0, static_cast<int32>(LODs.Num()) - 1);
 	if (CurrentLODLevelIndex == ClampedIndex && CurrentLODLevel == LODs[ClampedIndex]) return;
+	UParticleLODLevel* NextLOD = LODs[ClampedIndex];
+
+	const auto HasCompatiblePayload = [](const UParticleLODLevel& A, const UParticleLODLevel& B)
+	{
+		TArray<const UParticleModule*> PayloadA;
+		TArray<const UParticleModule*> PayloadB;
+		for (const UParticleModule* Module : A.EffectiveModules)
+			if (Module && Module->bEnabled && Module->RequiredBytes() > 0) PayloadA.Add(Module);
+		for (const UParticleModule* Module : B.EffectiveModules)
+			if (Module && Module->bEnabled && Module->RequiredBytes() > 0) PayloadB.Add(Module);
+
+		if (PayloadA.Num() != PayloadB.Num())
+		{
+			return false;
+		}
+
+		for (uint32 Index = 0; Index < PayloadA.Num(); ++Index)
+		{
+			const UParticleModule* Left = PayloadA[Index];
+			const UParticleModule* Right = PayloadB[Index];
+			if (Left->LODSlotId != Right->LODSlotId
+				|| Left->GetClass() != Right->GetClass()
+				|| Left->RequiredBytes() != Right->RequiredBytes())
+			{
+				return false;
+			}
+		}
+		return true;
+	};
+
+	const bool bResetForLOD = (CurrentLODLevel->EffectiveTypeData->GetClass() != NextLOD->EffectiveTypeData->GetClass()
+		|| CurrentLODLevel->EffectiveRequired->bUseLocalSpace != NextLOD->EffectiveRequired->bUseLocalSpace
+		|| (NextLOD->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::GpuSprite
+			&& CurrentLODLevel->EffectiveRequired->MaxParticles != NextLOD->EffectiveRequired->MaxParticles)
+		|| !HasCompatiblePayload(*CurrentLODLevel, *NextLOD));
+
 	CurrentLODLevelIndex = ClampedIndex;
-	CurrentLODLevel = LODs[ClampedIndex];
+	CurrentLODLevel = NextLOD;
 	if (!CurrentLODLevel) return;
-	SpriteTemplate->CacheEmitterModuleInfo();
-	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
-	if (IsGpuEmitter())
+
+	UParticleModuleRequired* Required = CurrentLODLevel->EffectiveRequired;
+	if (bResetForLOD)
+	{
+		Reset();
+		GpuResources.reset();
+	}
+
+	if (CurrentLODLevel->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::GpuSprite)
 	{
 		Resize(0);
 		MaxActiveParticles = std::clamp(Required->MaxParticles, 0, 65535);
@@ -417,6 +1020,17 @@ void FParticleEmitterInstance::Reset()
 	bHasGpuTrailBoundsCurr = false;
 	bHasGpuTrailBoundsPrev = false;
 	GpuTrailTimer = 0.0f;
+	PrevEmitterOrigin = FVector::ZeroVector;
+	PrevRibbonBase = FVector::ZeroVector;
+	PrevRibbonTip = FVector::ZeroVector;
+	LastRibbonUp = FVector(0.0f, 0.0f, 1.0f);
+	bHasPrevEmitterOrigin = false;
+	bHasPrevRibbonEndpoints = false;
+	SpawnPerUnitBuffer = 0.0f;
+	CurrentTrailIndex = 0;
+	bCurrentTrailActive = true;
+	bSuppressSpawning = false;
+	SuppressElapsed = 0.0f;
 	if (ParticleIndices)
 	{
 		for (int32 Index = 0; Index < MaxActiveParticles; ++Index)
@@ -426,16 +1040,26 @@ void FParticleEmitterInstance::Reset()
 
 bool FParticleEmitterInstance::IsGpuEmitter() const
 {
-	return CurrentLODLevel && CurrentLODLevel->bEnabled &&
-		CurrentLODLevel->TypeDataModule &&
-		CurrentLODLevel->TypeDataModule->GetEmitterType() == EParticleEmitterType::GpuSprite;
+	return CurrentLODLevel && CurrentLODLevel->bEnabled && CurrentLODLevel->EffectiveTypeData
+		&& CurrentLODLevel->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::GpuSprite;
 }
 
 bool FParticleEmitterInstance::HasCompleted() const
 {
 	if (!CurrentLODLevel || !CurrentLODLevel->bEnabled) return true;
-	const UParticleModuleRequired* Required = CurrentLODLevel->RequiredModule;
-	if (!Required || Required->bLooping || Required->EmitterDuration <= 0.0f) return false;
+	const UParticleModuleRequired* Required = CurrentLODLevel->EffectiveRequired;
+	if (!Required) return true;
+	if (bSuppressSpawning)
+	{
+		if (IsGpuEmitter())
+		{
+			const FParticleEmitterBuildInfo& Build = CurrentLODLevel->EnsureBuilt();
+			return PendingGpuSpawns.IsEmpty() && SuppressElapsed >= std::max(0.05f, Build.MaxLifetime);
+		}
+		return ActiveParticles == 0;
+	}
+	const bool bEffectiveLooping = bForceLooping || Required->bLooping;
+	if (bEffectiveLooping || Required->EmitterDuration <= 0.0f) return false;
 	if (IsGpuEmitter())
 		return EmitterTime >= static_cast<double>(Required->EmitterDuration) && PendingGpuSpawns.IsEmpty();
 	return EmitterTime >= static_cast<double>(Required->EmitterDuration) && ActiveParticles == 0;
@@ -443,18 +1067,32 @@ bool FParticleEmitterInstance::HasCompleted() const
 
 void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, const FParticleTickContext& Context)
 {
-	if (!CurrentLODLevel || !CurrentLODLevel->bEnabled || !std::isfinite(DeltaTime) || DeltaTime <= 0.0f) return;
+	if (!CurrentLODLevel || !CurrentLODLevel->bEnabled || !CurrentLODLevel->EffectiveTypeData ||
+		!CurrentLODLevel->EffectiveRequired || !CurrentLODLevel->EffectiveSpawn ||
+		!std::isfinite(DeltaTime) || DeltaTime <= 0.0f) return;
 	if (SpriteTemplate)
 	{
 		DeltaTime *= std::max(0.0f, SpriteTemplate->PlayRate);
 		if (DeltaTime <= 0.0f) return;
 	}
-	const EParticleEmitterType EmitterType = CurrentLODLevel->GetOrCreateTypeData()->GetEmitterType();
-	if (EmitterType != EParticleEmitterType::Sprite && EmitterType != EParticleEmitterType::GpuSprite && EmitterType != EParticleEmitterType::Mesh) return;
-	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
+	const EParticleEmitterType EmitterType = CurrentLODLevel->EffectiveTypeData->GetEmitterType();
+	if (EmitterType != EParticleEmitterType::Sprite && EmitterType != EParticleEmitterType::GpuSprite &&
+		EmitterType != EParticleEmitterType::Mesh && EmitterType != EParticleEmitterType::Beam &&
+		EmitterType != EParticleEmitterType::Ribbon) return;
+	UParticleModuleRequired* Required = CurrentLODLevel->EffectiveRequired;
 	const bool bIsGpu = (EmitterType == EParticleEmitterType::GpuSprite);
-	const int32 MaxAllowed = std::clamp(Required->MaxParticles, 0, 65535);
 	const UParticleModuleEventGenerator* EventGenerator = nullptr;
+	const bool bIsBeam = (EmitterType == EParticleEmitterType::Beam);
+	const bool bIsRibbon = (EmitterType == EParticleEmitterType::Ribbon);
+	const UParticleModuleTypeDataBeam* BeamType = bIsBeam ? Cast<UParticleModuleTypeDataBeam>(CurrentLODLevel->EffectiveTypeData) : nullptr;
+	const UParticleModuleTypeDataRibbon* RibbonType = bIsRibbon ? Cast<UParticleModuleTypeDataRibbon>(CurrentLODLevel->EffectiveTypeData) : nullptr;
+	const UParticleModuleBeamNoise* BeamNoise = bIsBeam ? FindEnabledModule<UParticleModuleBeamNoise>(CurrentLODLevel) : nullptr;
+	const UParticleModuleSpawnPerUnit* SpawnPerUnitMod = bIsRibbon ? FindEnabledModule<UParticleModuleSpawnPerUnit>(CurrentLODLevel) : nullptr;
+	const uint32 TypeDataOffset = (bIsBeam || bIsRibbon) ? GetModuleDataOffset(CurrentLODLevel->EffectiveTypeData) : 0u;
+	const int32 RawMaxAllowed = std::clamp(Required->MaxParticles, 0, 65535);
+	const int32 MaxAllowed = (bIsBeam && BeamType)
+		? std::min(RawMaxAllowed, std::max(1, BeamType->MaxBeamCount))
+		: RawMaxAllowed;
 
 	if (bIsGpu)
 	{
@@ -500,29 +1138,43 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 			for (const UParticleModule* Module : CurrentLODLevel->UpdateModules)
 			{
 				if (!Module) continue;
-				Module->Update(Particle, DeltaTime, GetModuleDataOffset(Module));
+				Module->Update(Particle, DeltaTime, GetModuleDataOffset(Module), InstanceParameters);
 
-				const UParticleModuleCollision *Collision;
-				if (Collision = Cast<UParticleModuleCollision>(Module))
+				if (const UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
 				{
 					Collision->TickCollision(Particle, DeltaTime, GetModuleDataOffset(Module), Context, EventGenerator);
 				}
-
-				if (!InstanceParameters) continue;
-				if (const auto* ColorMod = Cast<UParticleModuleColor>(Module))
+			}
+			if (bIsBeam && BeamType && TypeDataOffset > 0)
+			{
+				FBeamTypeDataPayload& BeamPayload = *reinterpret_cast<FBeamTypeDataPayload*>(
+					reinterpret_cast<uint8*>(&Particle) + TypeDataOffset);
+				ResolveBeamEndpoints(CurrentLODLevel, BeamType, Origin, Required->bUseLocalSpace,
+					EmitterWorldToLocal, InstanceParameters, Random, BeamPayload);
+				if (BeamType->Speed > 0.0f)
 				{
-					if (!ColorMod->ParameterName.empty())
-					{
-						if (const FColor* Override = InstanceParameters->ColorParams.Find(ColorMod->ParameterName))
-							Particle.Color = *Override;
-					}
+					const float BeamDist = (BeamPayload.TargetPoint - BeamPayload.SourcePoint).Length();
+					BeamPayload.TravelRatio = std::min(1.0f,
+						BeamPayload.TravelRatio + (BeamType->Speed * DeltaTime) / std::max(BeamDist, 0.001f));
 				}
-				else if (const auto* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
+				else
 				{
-					if (!ColorOverLife->ParameterName.empty())
+					BeamPayload.TravelRatio = 1.0f;
+				}
+				if (BeamNoise && BeamNoise->bEnabled)
+				{
+					if (BeamNoise->NoiseLockTime <= 0.0f)
 					{
-						if (const FColor* Override = InstanceParameters->ColorParams.Find(ColorOverLife->ParameterName))
-							Particle.Color = FColor(Override->R, Override->G, Override->B, Particle.Color.A);
+						BeamPayload.NoiseSeed = AdvanceNoiseSeed(BeamPayload.NoiseSeed);
+					}
+					else
+					{
+						BeamPayload.NoiseLockTimer += DeltaTime;
+						if (BeamPayload.NoiseLockTimer >= BeamNoise->NoiseLockTime)
+						{
+							BeamPayload.NoiseLockTimer = std::fmod(BeamPayload.NoiseLockTimer, BeamNoise->NoiseLockTime);
+							BeamPayload.NoiseSeed = AdvanceNoiseSeed(BeamPayload.NoiseSeed);
+						}
 					}
 				}
 			}
@@ -533,13 +1185,69 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 	const double StartTime = EmitterTime;
 	const double EndTime = StartTime + DeltaTime;
 	EmitterTime = EndTime;
+	if (bSuppressSpawning)
+	{
+		SuppressElapsed += DeltaTime;
+		return;
+	}
 	const double Duration = Required->EmitterDuration;
-	const double SpawnTime = Duration > 0.0 && !Required->bLooping
+	const bool bEffectiveLooping = bForceLooping || Required->bLooping;
+	const double SpawnTime = Duration > 0.0 && !bEffectiveLooping
 		? std::clamp(Duration - StartTime, 0.0, static_cast<double>(DeltaTime))
 		: static_cast<double>(DeltaTime);
-	const UParticleModuleSpawn* SpawnModule = CurrentLODLevel->GetOrCreateSpawn();
+	const UParticleModuleSpawn* SpawnModule = CurrentLODLevel->EffectiveSpawn;
 	const int32 Available = bIsGpu ? MaxActiveParticles : std::max(0, MaxAllowed - ActiveParticles);
 	int32 ToSpawn = 0;
+	int32 UnitSpawnCount = 0;
+	bool bMovedAboveTolerance = false;
+	FVector CurRibbonBase = FVector::ZeroVector;
+	FVector CurRibbonTip = FVector::ZeroVector;
+	const bool bUseRibbonParams = bIsRibbon && ResolveRibbonEndpoints(RibbonType, InstanceParameters, CurRibbonBase, CurRibbonTip);
+	if (bUseRibbonParams && Required->bUseLocalSpace)
+	{
+		CurRibbonBase = EmitterWorldToLocal.TransformPosition(CurRibbonBase);
+		CurRibbonTip = EmitterWorldToLocal.TransformPosition(CurRibbonTip);
+	}
+	const FVector EffectiveOrigin = bUseRibbonParams ? (CurRibbonBase + CurRibbonTip) * 0.5f : Origin;
+	const FVector PrevOriginForSpawn = PrevEmitterOrigin;
+	const FVector PrevBaseForSpawn = PrevRibbonBase;
+	const FVector PrevTipForSpawn = PrevRibbonTip;
+	const bool bCanInterpolateUnitSpawn = bIsRibbon && bHasPrevEmitterOrigin;
+	const bool bCanInterpolateRibbonEndpoints = bUseRibbonParams && bHasPrevRibbonEndpoints;
+	const FVector RibbonMoveDir = bCanInterpolateRibbonEndpoints
+		? (EffectiveOrigin - ((PrevBaseForSpawn + PrevTipForSpawn) * 0.5f))
+		: FVector::ZeroVector;
+
+	if (bIsRibbon && SpawnPerUnitMod && SpawnPerUnitMod->SpawnPerUnit > 0.0f)
+	{
+		if (bHasPrevEmitterOrigin && SpawnTime > 0.0)
+		{
+			const float MoveDist = (EffectiveOrigin - PrevEmitterOrigin).Length();
+			if (MoveDist > SpawnPerUnitMod->MaxFrameDistance) // 직전 프레임 위치에서 이번 프레임 위치까지 이동한 거리가 MaxFrameDistance 보다 크면 새로운 리본으로 간주
+			{
+				++CurrentTrailIndex;
+				SpawnPerUnitBuffer = 0.0f;
+			}
+			else if (MoveDist >= SpawnPerUnitMod->MovementTolerance) // 이번 프레임의 이동 거리로 리본 파티클을 몇 개 생성할지 계산
+			{
+				bMovedAboveTolerance = true;
+				SpawnPerUnitBuffer += MoveDist * SpawnPerUnitMod->SpawnPerUnit;
+				const float Floored = std::floor(SpawnPerUnitBuffer);
+				UnitSpawnCount = std::min(Available, static_cast<int32>(Floored));
+				SpawnPerUnitBuffer -= Floored;
+				ToSpawn += UnitSpawnCount;
+			}
+		}
+		PrevEmitterOrigin = EffectiveOrigin;
+		bHasPrevEmitterOrigin = true;
+	}
+	if (bUseRibbonParams)
+	{
+		PrevRibbonBase = CurRibbonBase;
+		PrevRibbonTip = CurRibbonTip;
+		bHasPrevRibbonEndpoints = true;
+	}
+
 	if (SpawnModule->bEnabled)
 	{
 		for (const FParticleBurst& Burst : SpawnModule->Bursts)
@@ -547,7 +1255,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 			if (Burst.Count <= 0 || !std::isfinite(Burst.Time) || Burst.Time < 0.0f ||
 				(Duration > 0.0 && Burst.Time >= Duration)) continue;
 			double Occurrences = 0.0;
-			if (Duration > 0.0 && Required->bLooping)
+			if (Duration > 0.0 && bEffectiveLooping)
 			{
 				const double FirstCycle = std::max(0.0, std::ceil((StartTime - Burst.Time) / Duration));
 				const double LastCycle = std::ceil((EndTime - Burst.Time) / Duration);
@@ -558,13 +1266,17 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 			ToSpawn += static_cast<int32>(std::min<double>(Available - ToSpawn, Occurrences * Burst.Count));
 		}
 
+		const bool bSkipRateForUnitSpawn = SpawnPerUnitMod && SpawnPerUnitMod->bIgnoreSpawnRateWhenMoving && bMovedAboveTolerance;
 		const float Rate = std::max(0.0f, SpawnModule->Rate);
-		if (std::isfinite(Rate) && Rate > 0.0f && SpawnTime > 0.0)
+		if (!bSkipRateForUnitSpawn && std::isfinite(Rate) && Rate > 0.0f && SpawnTime > 0.0)
 		{
 			const double Count = static_cast<double>(SpawnFraction) + static_cast<double>(Rate) * SpawnTime;
 			ToSpawn += static_cast<int32>(std::min<double>(std::floor(Count), Available - ToSpawn));
 			SpawnFraction = static_cast<float>(Count - std::floor(Count));
 		}
+
+		if (bIsBeam && ToSpawn == 0 && ActiveParticles == 0 && Available > 0 && SpawnTime > 0.0 && Rate > 0.0f)
+			ToSpawn = 1;
 	}
 	if (bIsGpu)
 	{
@@ -586,12 +1298,19 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 			GpuP.Size = Base.Size;
 			GpuP.RotationRate = Base.RotationRate;
 			GpuP.BaseColor = GpuP.Color;
+			GpuP.BaseVelocity = Base.BaseVelocity;
+			GpuP.BaseRotationRate = Base.BaseRotationRate;
 			GpuP.SubImageIndex = 0.0f;
 			GpuP.bAlive = 1;
 			PendingGpuSpawns.Add(GpuP);
 			++ParticleCounter;
 		}
 		return;
+	}
+	if (bIsRibbon && ToSpawn > 0 && !bCurrentTrailActive)
+	{
+		++CurrentTrailIndex;
+		bCurrentTrailActive = true;
 	}
 	const int32 RequiredCapacity = ActiveParticles + ToSpawn;
 	if (RequiredCapacity > MaxActiveParticles)
@@ -606,12 +1325,66 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 		std::memset(Addr, 0, static_cast<size_t>(ParticleStride));
 		new (Addr) FBaseParticle();
 		DECLARE_PARTICLE(Particle, Addr);
-		Particle.Location = Required->bUseLocalSpace ? FVector::ZeroVector : Origin;
+		FVector SpawnBladeBase = CurRibbonBase;
+		FVector SpawnBladeTip = CurRibbonTip;
+		if (bCanInterpolateUnitSpawn && Index < UnitSpawnCount && UnitSpawnCount > 0 && (bUseRibbonParams || !Required->bUseLocalSpace))
+		{
+			const float Alpha = static_cast<float>(Index + 1) / static_cast<float>(UnitSpawnCount);
+			if (bCanInterpolateRibbonEndpoints)
+			{
+				SpawnBladeBase = PrevBaseForSpawn + (CurRibbonBase - PrevBaseForSpawn) * Alpha;
+				SpawnBladeTip = PrevTipForSpawn + (CurRibbonTip - PrevTipForSpawn) * Alpha;
+				Particle.Location = (SpawnBladeBase + SpawnBladeTip) * 0.5f;
+			}
+			else
+			{
+				Particle.Location = PrevOriginForSpawn + (EffectiveOrigin - PrevOriginForSpawn) * Alpha;
+			}
+		}
+		else
+		{
+			Particle.Location = bUseRibbonParams
+				? EffectiveOrigin
+				: (Required->bUseLocalSpace ? FVector::ZeroVector : EffectiveOrigin);
+		}
 		Random.InstanceParams = InstanceParameters;
 		for (const UParticleModule* Module : CurrentLODLevel->SpawnModules)
 			if (Module) Module->Spawn(Particle, Random);
 		Particle.BaseAlpha = Particle.Color.A;
 		Particle.Lifetime = std::max(Particle.Lifetime, 0.001f);
+
+		if (bIsBeam && BeamType && TypeDataOffset > 0)
+		{
+			FBeamTypeDataPayload& BeamPayload = *reinterpret_cast<FBeamTypeDataPayload*>(Addr + TypeDataOffset);
+			new (&BeamPayload) FBeamTypeDataPayload();
+			ResolveBeamEndpoints(CurrentLODLevel, BeamType, Origin, Required->bUseLocalSpace,
+				EmitterWorldToLocal, InstanceParameters, Random, BeamPayload);
+			BeamPayload.TravelRatio = (BeamType->Speed > 0.0f) ? 0.0f : 1.0f;
+			BeamPayload.NoiseSeed = AdvanceNoiseSeed(Random.State + ParticleCounter);
+			BeamPayload.NoiseLockTimer = 0.0f;
+		}
+		else if (bIsRibbon && TypeDataOffset > 0)
+		{
+			FRibbonTypeDataPayload& RibbonPayload = *reinterpret_cast<FRibbonTypeDataPayload*>(Addr + TypeDataOffset);
+			new (&RibbonPayload) FRibbonTypeDataPayload();
+			RibbonPayload.SpawnOrder = ParticleCounter;
+			RibbonPayload.TrailIndex = CurrentTrailIndex;
+			if (bUseRibbonParams)
+			{
+				const FVector BladeVec = SpawnBladeTip - SpawnBladeBase;
+				RibbonPayload.WidthOverride = std::max(0.001f, BladeVec.Length());
+				RibbonPayload.EdgeHalfOffset = BladeVec * 0.5f;
+				RibbonPayload.bUseExplicitEdges = true;
+				RibbonPayload.SourceUp = ComputeRibbonBladeUp(BladeVec, RibbonMoveDir, LastRibbonUp);
+				if (RibbonMoveDir.Dot(RibbonMoveDir) > 1e-8f)
+					LastRibbonUp = RibbonPayload.SourceUp;
+			}
+			else
+			{
+				RibbonPayload.SourceUp = Required->bUseLocalSpace ? FVector(0.0f, 0.0f, 1.0f) : EmitterUpAxis;
+			}
+		}
+
 		++ActiveParticles;
 		++ParticleCounter;
 	}
@@ -649,12 +1422,12 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 	bool bHasBounds = false;
 	for (const FParticleEmitterInstance& Emitter : EmitterInstances)
 	{
-		const UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
-		if (!LOD || !LOD->bEnabled || !LOD->RequiredModule || !LOD->TypeDataModule)
+		UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
+		if (!LOD || !LOD->bEnabled || !LOD->EffectiveRequired || !LOD->EffectiveTypeData)
 			continue;
-		if (LOD->TypeDataModule->GetEmitterType() == EParticleEmitterType::GpuSprite)
+		if (LOD->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::GpuSprite)
 		{
-			FVector OffsetMin, OffsetMax, VelReach; 
+			FVector OffsetMin, OffsetMax, VelReach;
 			float HalfDiagSize = 1.0f;
 			float MaxLifetime = 1.0f;
 			ComputeGpuEmitterReach(LOD, OffsetMin, OffsetMax, VelReach, HalfDiagSize, MaxLifetime);
@@ -666,26 +1439,54 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 		}
 		else if (Emitter.ParticleData && Emitter.ParticleIndices)
 		{
-			const bool bLocal = LOD->RequiredModule->bUseLocalSpace;
+			const EParticleEmitterType EmitterType = LOD->EffectiveTypeData->GetEmitterType();
+			const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
 			const FMatrix InvWorld = bLocal ? FMatrix::Identity : GetWorldMatrix().Inverse();
-			const auto* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule);
-			UStaticMesh* MeshAsset = MeshTypeData ? MeshTypeData->Mesh : nullptr;
-			const FVector MeshBaseExtent = MeshAsset
-				? (MeshAsset->GetRenderBounds().Max - MeshAsset->GetRenderBounds().Min) * 0.5f
-				: FVector::ZeroVector;
-			const float MeshBaseRadius = MeshAsset ? MeshBaseExtent.Length() : 0.0f;
-			for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index)
+			if (EmitterType == EParticleEmitterType::Beam)
 			{
-				DECLARE_PARTICLE_CONST(Particle, Emitter.ParticleData + static_cast<size_t>(Emitter.ParticleIndices[Index]) * static_cast<size_t>(Emitter.ParticleStride));
-				const FVector LocalPos = bLocal ? Particle.Location : InvWorld.TransformPosition(Particle.Location);
-				float Radius = 0.5f * std::sqrt(Particle.Size.X * Particle.Size.X + Particle.Size.Y * Particle.Size.Y);
-				if (MeshAsset)
+				const UParticleModuleTypeDataBeam* BeamType = Cast<UParticleModuleTypeDataBeam>(LOD->EffectiveTypeData);
+				const UParticleModuleBeamNoise* NoiseMod = FindEnabledModule<UParticleModuleBeamNoise>(LOD);
+				const uint32 BeamOffset = Emitter.GetModuleDataOffset(LOD->EffectiveTypeData);
+				if (BeamType && BeamOffset > 0)
 				{
-					const float MaxAxisScale = std::max({ std::abs(Particle.Size.X), std::abs(Particle.Size.Y), std::abs(Particle.Size.Z) });
-					Radius = std::max(1.0f, MeshBaseRadius * MaxAxisScale);
+					FBeamTrailStrip Strip;
+					for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index)
+					{
+						const uint8* Addr = Emitter.ParticleData + static_cast<size_t>(Emitter.ParticleIndices[Index]) * static_cast<size_t>(Emitter.ParticleStride);
+						const FBaseParticle& Particle = *reinterpret_cast<const FBaseParticle*>(Addr);
+						const FBeamTypeDataPayload& Payload = *reinterpret_cast<const FBeamTypeDataPayload*>(Addr + BeamOffset);
+						BuildBeamStripPoints(Particle, Payload, BeamType, NoiseMod, Emitter.InstanceParameters, FMatrix::Identity, false, Strip);
+						for (const FBeamTrailPoint& Pt : Strip.Points)
+						{
+							const FVector LocalPos = bLocal ? Pt.Position : InvWorld.TransformPosition(Pt.Position);
+							const float HalfW = Pt.Width * 0.5f;
+							const FVector Extent(HalfW, HalfW, HalfW);
+							ExpandParticleBox(LocalBounds, bHasBounds, LocalPos - Extent, LocalPos + Extent);
+						}
+					}
 				}
-				const FVector Extent(Radius, Radius, Radius);
-				ExpandParticleBox(LocalBounds, bHasBounds, LocalPos - Extent, LocalPos + Extent);
+			}
+			else
+			{
+				const UParticleModuleTypeDataMesh* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(LOD->EffectiveTypeData);
+				UStaticMesh* MeshAsset = MeshTypeData ? MeshTypeData->Mesh : nullptr;
+				const FVector MeshBaseExtent = MeshAsset
+					? (MeshAsset->GetRenderBounds().Max - MeshAsset->GetRenderBounds().Min) * 0.5f
+					: FVector::ZeroVector;
+				const float MeshBaseRadius = MeshAsset ? MeshBaseExtent.Length() : 0.0f;
+				for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index)
+				{
+					DECLARE_PARTICLE_CONST(Particle, Emitter.ParticleData + static_cast<size_t>(Emitter.ParticleIndices[Index]) * static_cast<size_t>(Emitter.ParticleStride));
+					const FVector LocalPos = bLocal ? Particle.Location : InvWorld.TransformPosition(Particle.Location);
+					float Radius = 0.5f * std::sqrt(Particle.Size.X * Particle.Size.X + Particle.Size.Y * Particle.Size.Y);
+					if (MeshAsset)
+					{
+						const float MaxAxisScale = std::max({ std::abs(Particle.Size.X), std::abs(Particle.Size.Y), std::abs(Particle.Size.Z) });
+						Radius = std::max(1.0f, MeshBaseRadius * MaxAxisScale);
+					}
+					const FVector Extent(Radius, Radius, Radius);
+					ExpandParticleBox(LocalBounds, bHasBounds, LocalPos - Extent, LocalPos + Extent);
+				}
 			}
 		}
 	}
@@ -730,9 +1531,9 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 
 	for (FParticleEmitterInstance& Emitter : EmitterInstances)
 	{
-		const UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
-		if (!LOD || !LOD->bEnabled || !LOD->RequiredModule || !LOD->TypeDataModule) continue;
-		const EParticleEmitterType EmitterType = LOD->TypeDataModule->GetEmitterType();
+		UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
+		if (!LOD || !LOD->bEnabled || !LOD->EffectiveRequired || !LOD->EffectiveTypeData) continue;
+		const EParticleEmitterType EmitterType = LOD->EffectiveTypeData->GetEmitterType();
 		if (EmitterType == EParticleEmitterType::GpuSprite)
 		{
 			if (Emitter.MaxActiveParticles <= 0) continue;
@@ -743,7 +1544,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			float HalfDiagSize = 1.0f;
 			float MaxLifetime = 1.0f;
 			ComputeGpuEmitterReach(LOD, OffsetMin, OffsetMax, VelReach, HalfDiagSize, MaxLifetime);
-			const bool bLocal = LOD->RequiredModule->bUseLocalSpace;
+			const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
 			if (!bLocal)
 			{
 				bHasWorldSpaceParticles = true;
@@ -761,7 +1562,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 				for (const FGpuParticle& Spawn : Emitter.PendingGpuSpawns)
 				{
 					ExpandParticleBox(Emitter.GpuTrailBoundsCurr, Emitter.bHasGpuTrailBoundsCurr,
-						Spawn.Position - SpawnPad, Spawn.Position + SpawnPad);
+						Spawn.Position - SpawnPad, Spawn.Position + SpawnPad); // 이전에 남긴 파티클 궤적(Trail) 범위를 누적 기록
 				}
 			}
 
@@ -790,7 +1591,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 
 			auto GpuData = MakeUnique<FDynamicGpuSpriteEmitterData>();
 			GpuData->GpuResources = Emitter.GpuResources;
-			GpuData->Material = LOD->RequiredModule->Material;
+			GpuData->Material = LOD->EffectiveRequired->Material;
 			GpuData->MaxParticles = static_cast<uint32>(Emitter.MaxActiveParticles);
 			GpuData->ParticleStride = static_cast<uint32>(sizeof(FGpuParticle));
 			GpuData->bResetRequested = Emitter.bGpuResetRequested;
@@ -805,6 +1606,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 				Emitter.PendingGpuSpawns.Reset();
 			}
 
+			const FParticleEmitterBuildInfo& Build = LOD->EnsureBuilt();
 			GpuData->SimParams.DeltaTime = Emitter.LastGpuDeltaTime;
 			Emitter.LastGpuDeltaTime = 0.0f;
 			GpuData->SimParams.MaxParticles = GpuData->MaxParticles;
@@ -813,114 +1615,142 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			if (GpuData->MaxParticles > 0 && SpawnCount > 0)
 				Emitter.GpuWriteCursor = (Emitter.GpuWriteCursor + SpawnCount) % GpuData->MaxParticles;
 
-			GpuData->CurveLUT.SetNum(384);
-			for (int32 i = 0; i < 384; ++i)
-				GpuData->CurveLUT[i] = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+			GpuData->SimParams.SizeScale = MakeGpuDistributionDesc(Build.SizeScale);
+			GpuData->SimParams.ColorOverLife = MakeGpuDistributionDesc(Build.ColorOverLife);
+			GpuData->SimParams.SubUV = MakeGpuDistributionDesc(Build.SubUV);
+			GpuData->SimParams.VelocityScale = MakeGpuDistributionDesc(Build.VelocityScale);
+			GpuData->SimParams.RotationRateScale = MakeGpuDistributionDesc(Build.RotationRateScale);
+			GpuData->SimParams.SubUVCols = Build.SubUVCols;
+			GpuData->SimParams.SubUVRows = Build.SubUVRows;
+			GpuData->SimParams.SubUVPlayRate = Build.SubUVPlayRate;
+			GpuData->SimParams.SubUVLinear = Build.bSubUVLinear ? 1u : 0u;
 
-			const UParticleModuleSubUV* SubUVMod = nullptr;
-			for (const UParticleModule* Module : LOD->Modules)
+			if (!Build.ColorParameterName.empty())
 			{
-				if (!Module || !Module->bEnabled) continue;
-				if (const auto* ColorMod = Cast<UParticleModuleColor>(Module))
+				if (const FColor* Override = InstanceParameters.ColorParams.Find(Build.ColorParameterName))
 				{
-					GpuData->SimParams.UseColorModule = 1;
-					GpuData->SimParams.ColorStart = FVector4(ColorMod->Start.R / 255.0f, ColorMod->Start.G / 255.0f, ColorMod->Start.B / 255.0f, ColorMod->Start.A / 255.0f);
-					GpuData->SimParams.ColorEnd = FVector4(ColorMod->End.R / 255.0f, ColorMod->End.G / 255.0f, ColorMod->End.B / 255.0f, ColorMod->End.A / 255.0f);
-					if (!ColorMod->ParameterName.empty())
-					{
-						if (const FColor* Override = InstanceParameters.ColorParams.Find(ColorMod->ParameterName))
-						{
-							GpuData->SimParams.HasColorOverride = 1;
-							GpuData->SimParams.ColorOverride = FVector4(Override->R / 255.0f, Override->G / 255.0f, Override->B / 255.0f, Override->A / 255.0f);
-						}
-					}
-				}
-				else if (const auto* SizeMod = Cast<UParticleModuleSize>(Module))
-				{
-					GpuData->SimParams.UseSizeModule = 1;
-					GpuData->SimParams.SizeStart = SizeMod->Start;
-					GpuData->SimParams.SizeEnd = SizeMod->End;
-				}
-				else if (const auto* SizeByLife = Cast<UParticleModuleSizeByLife>(Module))
-				{
-					GpuData->SimParams.UseSizeByLife = 1;
-					for (int32 i = 0; i < 128; ++i)
-					{
-						const float T = static_cast<float>(i) / 127.0f;
-						GpuData->CurveLUT[i] = FVector4(
-							SizeByLife->ScaleX ? SizeByLife->ScaleX->GetFloatValue(T) : 1.0f,
-							SizeByLife->ScaleY ? SizeByLife->ScaleY->GetFloatValue(T) : 1.0f,
-							SizeByLife->ScaleZ ? SizeByLife->ScaleZ->GetFloatValue(T) : 1.0f,
-							1.0f);
-					}
-				}
-				else if (const auto* ColorOverLife = Cast<UParticleModuleColorOverLife>(Module))
-				{
-					GpuData->SimParams.UseColorOverLife = 1;
-					for (int32 i = 0; i < 128; ++i)
-					{
-						const float T = static_cast<float>(i) / 127.0f;
-						GpuData->CurveLUT[128 + i] = FVector4(
-							ColorOverLife->ColorR ? ColorOverLife->ColorR->GetFloatValue(T) : 1.0f,
-							ColorOverLife->ColorG ? ColorOverLife->ColorG->GetFloatValue(T) : 1.0f,
-							ColorOverLife->ColorB ? ColorOverLife->ColorB->GetFloatValue(T) : 1.0f,
-							ColorOverLife->EvaluateAlphaScale(T));
-					}
-					if (!ColorOverLife->ParameterName.empty())
-					{
-						if (const FColor* Override = InstanceParameters.ColorParams.Find(ColorOverLife->ParameterName))
-						{
-							GpuData->SimParams.HasColorOverride = 1;
-							GpuData->SimParams.ColorOverride = FVector4(Override->R / 255.0f, Override->G / 255.0f, Override->B / 255.0f, Override->A / 255.0f);
-						}
-					}
-				}
-				else if (const auto* CandidateSubUV = Cast<UParticleModuleSubUV>(Module))
-				{
-					SubUVMod = CandidateSubUV;
-					GpuData->SimParams.UseSubUV = 1;
-					GpuData->SimParams.SubUVCols = static_cast<float>(std::max(1, CandidateSubUV->SubImagesHorizontal));
-					GpuData->SimParams.SubUVRows = static_cast<float>(std::max(1, CandidateSubUV->SubImagesVertical));
-					GpuData->SimParams.SubUVLinear = CandidateSubUV->bUseLinearOverLife ? 1u : 0u;
-					GpuData->SimParams.SubUVPlayRate = CandidateSubUV->PlayRate;
-					if (!CandidateSubUV->bUseLinearOverLife && CandidateSubUV->SubImageIndex)
-					{
-						for (int32 i = 0; i < 128; ++i)
-						{
-							const float T = static_cast<float>(i) / 127.0f;
-							const float V = CandidateSubUV->SubImageIndex->GetFloatValue(T);
-							GpuData->CurveLUT[256 + i] = FVector4(V, 0.0f, 0.0f, 0.0f);
-						}
-					}
+					GpuData->SimParams.HasColorOverride = 1;
+					GpuData->SimParams.ColorOverride = FVector4(
+						Override->R / 255.0f, Override->G / 255.0f, Override->B / 255.0f, Override->A / 255.0f);
 				}
 			}
 
-			GpuData->bUseLocalSpace = LOD->RequiredModule->bUseLocalSpace;
+			GpuData->bUseLocalSpace = LOD->EffectiveRequired->bUseLocalSpace;
 			GpuData->LocalToWorld = Data.LocalToWorld;
 			GpuData->WorldLocation = Data.WorldLocation;
 			GpuData->WorldScale = Data.WorldScale;
 			GpuData->AtlasParams = FVector4(
-				SubUVMod ? static_cast<float>(std::max(1, SubUVMod->SubImagesVertical)) : 1.0f,
-				SubUVMod ? static_cast<float>(std::max(1, SubUVMod->SubImagesHorizontal)) : 1.0f,
+				Build.bHasSubUV ? Build.SubUVRows : 1.0f,
+				Build.bHasSubUV ? Build.SubUVCols : 1.0f,
 				1.0f,
-				SubUVMod ? 1.0f : 0.0f);
+				Build.bHasSubUV ? 1.0f : 0.0f);
 			Data.DynamicEmitters.Add(std::move(GpuData));
+			continue;
+		}
+
+		if (EmitterType == EParticleEmitterType::Beam)
+		{
+			const UParticleModuleTypeDataBeam* BeamType = Cast<UParticleModuleTypeDataBeam>(LOD->EffectiveTypeData);
+			const UParticleModuleBeamNoise* NoiseMod = FindEnabledModule<UParticleModuleBeamNoise>(LOD);
+			const uint32 BeamOffset = Emitter.GetModuleDataOffset(LOD->EffectiveTypeData);
+			if (!BeamType || BeamOffset == 0 || !Emitter.ParticleData || !Emitter.ParticleIndices || Emitter.ActiveParticles <= 0)
+				continue;
+
+			const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
+			if (!bLocal)
+				bHasWorldSpaceParticles = true;
+
+			TUniquePtr<FDynamicBeamEmitterData> BeamData = MakeUnique<FDynamicBeamEmitterData>();
+			BeamData->Material = LOD->EffectiveRequired->Material;
+			BeamData->Sheets = std::max(1, BeamType->Sheets);
+			BeamData->Beams.Reserve(Emitter.ActiveParticles);
+
+			for (int32 Index = 0; Index < Emitter.ActiveParticles; ++Index)
+			{
+				const uint8* Addr = Emitter.ParticleData + static_cast<size_t>(Emitter.ParticleIndices[Index]) * static_cast<size_t>(Emitter.ParticleStride);
+				const FBaseParticle& Particle = *reinterpret_cast<const FBaseParticle*>(Addr);
+				const FBeamTypeDataPayload& Payload = *reinterpret_cast<const FBeamTypeDataPayload*>(Addr + BeamOffset);
+
+				FBeamTrailStrip Strip;
+				BuildBeamStripPoints(Particle, Payload, BeamType, NoiseMod, Emitter.InstanceParameters, Data.LocalToWorld, bLocal, Strip);
+				if (FadeAlpha < 1.0f)
+				{
+					for (FBeamTrailPoint& Pt : Strip.Points)
+						Pt.Color.W *= FadeAlpha;
+				}
+				if (!Data.bFixedBounds)
+				{
+					for (const FBeamTrailPoint& Pt : Strip.Points)
+					{
+						const float HalfW = Pt.Width * 0.5f;
+						const FVector Extent(HalfW, HalfW, HalfW);
+						ExpandParticleBox(Data.Bounds, bHasBounds, Pt.Position - Extent, Pt.Position + Extent);
+					}
+				}
+				if (Strip.Points.Num() >= 2)
+					BeamData->Beams.Add(std::move(Strip));
+			}
+
+			if (BeamData->HasParticles())
+				Data.DynamicEmitters.Add(std::move(BeamData));
+			continue;
+		}
+
+		if (EmitterType == EParticleEmitterType::Ribbon)
+		{
+			const UParticleModuleTypeDataRibbon* RibbonType = Cast<UParticleModuleTypeDataRibbon>(LOD->EffectiveTypeData);
+			if (!RibbonType || !Emitter.ParticleData || !Emitter.ParticleIndices || Emitter.ActiveParticles <= 0)
+				continue;
+
+			const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
+			if (!bLocal)
+				bHasWorldSpaceParticles = true;
+
+			TUniquePtr<FDynamicRibbonEmitterData> RibbonData = MakeUnique<FDynamicRibbonEmitterData>();
+			RibbonData->Material = LOD->EffectiveRequired->Material;
+			RibbonData->SheetsPerTrail = std::max(1, RibbonType->SheetsPerTrail);
+			RibbonData->FacingMode = RibbonType->FacingMode;
+			BuildRibbonStrips(Emitter, LOD, RibbonType, Data.LocalToWorld, bLocal, Data.WorldLocation, Emitter.bCurrentTrailActive, RibbonData->Trails);
+			if (FadeAlpha < 1.0f)
+			{
+				for (FBeamTrailStrip& Strip : RibbonData->Trails)
+				{
+					for (FBeamTrailPoint& Pt : Strip.Points)
+						Pt.Color.W *= FadeAlpha;
+				}
+			}
+
+			if (!Data.bFixedBounds)
+			{
+				for (const FBeamTrailStrip& Strip : RibbonData->Trails)
+				{
+					for (const FBeamTrailPoint& Pt : Strip.Points)
+					{
+						const float HalfW = Pt.Width * 0.5f;
+						const FVector Extent(HalfW, HalfW, HalfW);
+						ExpandParticleBox(Data.Bounds, bHasBounds, Pt.Position - Extent, Pt.Position + Extent);
+					}
+				}
+			}
+
+			if (RibbonData->HasParticles())
+				Data.DynamicEmitters.Add(std::move(RibbonData));
 			continue;
 		}
 
 		if (EmitterType != EParticleEmitterType::Sprite && EmitterType != EParticleEmitterType::Mesh) continue;
 		const bool bIsMeshEmitter = (EmitterType == EParticleEmitterType::Mesh);
-		const auto* MeshTypeData = bIsMeshEmitter ? Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule) : nullptr;
+		const auto* MeshTypeData = bIsMeshEmitter ? Cast<UParticleModuleTypeDataMesh>(LOD->EffectiveTypeData) : nullptr;
 		UStaticMesh* MeshAsset = MeshTypeData ? MeshTypeData->Mesh : nullptr;
 		if (bIsMeshEmitter && !MeshAsset) continue;
 
-		const bool bLocal = LOD->RequiredModule->bUseLocalSpace;
+		const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
 		if (!bLocal)
 			bHasWorldSpaceParticles = true;
 		const UParticleModuleSubUV* SubUVModule = nullptr;
 		if (!bIsMeshEmitter)
 		{
-			for (const UParticleModule* Module : LOD->Modules)
+			for (const UParticleModule* Module : LOD->EffectiveModules)
 			{
 				if (Module && Module->bEnabled)
 				{
@@ -932,7 +1762,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 		const float AtlasRowSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesVertical)) : 1.0f;
 		const float AtlasColSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesHorizontal)) : 1.0f;
 		const uint32 SubUVOffset = SubUVModule ? Emitter.GetModuleDataOffset(SubUVModule) : 0;
-		UMaterialInterface* EmitterMaterial = LOD->RequiredModule->Material;
+		UMaterialInterface* EmitterMaterial = LOD->EffectiveRequired->Material;
 		const float MeshBaseRadius = MeshAsset
 			? ((MeshAsset->GetRenderBounds().Max - MeshAsset->GetRenderBounds().Min) * 0.5f).Length()
 			: 0.0f;
@@ -984,7 +1814,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			ParticleData.Constants.CurrentFrame = CurrentFrame;
 			ParticleData.Constants.AtlasRowSize = AtlasRowSize;
 			ParticleData.Constants.AtlasColSize = AtlasColSize;
-			ParticleData.Constants.Alpha = Particle.Color.A / 255.0f;
+			ParticleData.Constants.Alpha = (Particle.Color.A / 255.0f) * FadeAlpha;
 			ParticleData.Constants.Tint = FVector4(Particle.Color.R / 255.0f, Particle.Color.G / 255.0f,
 				Particle.Color.B / 255.0f, 1.0f);
 			ParticleData.Constants.DecodeSRGB = 1.0f;
@@ -1035,24 +1865,106 @@ void UParticleSystemComponent::EndPlay()
 
 void UParticleSystemComponent::Activate(bool bReset)
 {
+	bFadingOut = false;
+	FadeAlpha = 1.0f;
+	FadeOutDuration = 0.0f;
+	FadeOutElapsed = 0.0f;
+	for (FParticleEmitterInstance& Instance : EmitterInstances)
+	{
+		Instance.bSuppressSpawning = false;
+		Instance.SuppressElapsed = 0.0f;
+	}
 	Super::Activate(bReset);
-	if (bReset) ResetParticles();
+	if (bReset)
+	{
+		ResetParticles();
+	}
+	else
+	{
+		for (FParticleEmitterInstance& Instance : EmitterInstances)
+		{
+			++Instance.CurrentTrailIndex;
+			Instance.bCurrentTrailActive = true;
+			Instance.bHasPrevEmitterOrigin = false;
+			Instance.bHasPrevRibbonEndpoints = false;
+			Instance.SpawnPerUnitBuffer = 0.0f;
+		}
+	}
 }
 
 void UParticleSystemComponent::Deactivate()
 {
+	bFadingOut = false;
+	FadeAlpha = 1.0f;
 	Super::Deactivate();
+	for (FParticleEmitterInstance& Instance : EmitterInstances)
+	{
+		Instance.bForceLooping = false;
+		Instance.bCurrentTrailActive = false;
+		Instance.bHasPrevRibbonEndpoints = false;
+	}
 	MarkRenderStateDirty();
+}
+
+void UParticleSystemComponent::StopEmission(float InFadeOutDuration)
+{
+	if (!IsActive())
+		return;
+	bFadingOut = true;
+	FadeOutDuration = std::max(0.0f, InFadeOutDuration);
+	FadeOutElapsed = 0.0f;
+	FadeAlpha = 1.0f;
+	for (FParticleEmitterInstance& Instance : EmitterInstances)
+	{
+		Instance.bForceLooping = false;
+		Instance.bSuppressSpawning = true;
+		Instance.bCurrentTrailActive = false;
+		Instance.bHasPrevRibbonEndpoints = false;
+		Instance.SuppressElapsed = 0.0f;
+	}
+}
+
+void UParticleSystemComponent::SetForceLooping(bool bEnable)
+{
+	for (FParticleEmitterInstance& Instance : EmitterInstances)
+		Instance.bForceLooping = bEnable;
 }
 
 bool UParticleSystemComponent::HasCompleted() const
 {
+	if (bFadingOut && FadeOutDuration > 0.0f && FadeAlpha <= 0.0f)
+		return true;
 	if (!Template || EmitterInstances.IsEmpty()) return true;
+	bool bHasEnabledEmitter = false;
+	bool bHasEmitterEnabledAtAnotherLOD = false;
 	for (const FParticleEmitterInstance& Instance : EmitterInstances)
 	{
-		if (!Instance.HasCompleted()) return false;
+		if (!Instance.HasCompleted())
+		{
+			return false;
+		}
+
+		if (!Instance.CurrentLODLevel || !Instance.SpriteTemplate)
+		{
+			continue;
+		}
+
+		if (Instance.CurrentLODLevel->bEnabled)
+		{
+			bHasEnabledEmitter = true;
+		}
+		else
+		{
+			for (const UParticleLODLevel* LOD : Instance.SpriteTemplate->GetLODLevels())
+			{
+				if (LOD && LOD->bEnabled)
+				{
+					bHasEmitterEnabledAtAnotherLOD = true;
+				}
+			}
+		}
 	}
-	return true;
+	return bHasEnabledEmitter || !bHasEmitterEnabledAtAnotherLOD;
 }
 
 void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
@@ -1067,6 +1979,11 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 		FParticleEmitterInstance& Instance = EmitterInstances.AddDefaulted_GetRef();
 		Instance.InstanceParameters = &InstanceParameters;
 		Instance.Initialize(Emitter, Seed++);
+	}
+
+	if (ForcedLODIndex >= 0)
+	{
+		UpdateLOD(0.0f);
 	}
 	MarkRenderStateDirty();
 }
@@ -1091,19 +2008,65 @@ void UParticleSystemComponent::UpdateEmitterStrides()
 			Instance.SpriteTemplate->CacheEmitterModuleInfo();
 		Instance.UpdateStride();
 	}
+	MarkRenderStateDirty();
 }
 
 void UParticleSystemComponent::UpdateLOD(float Distance)
 {
-	if (!Template || EmitterInstances.IsEmpty()) return;
+	if (!Template || EmitterInstances.IsEmpty())
+	{
+		return;
+	}
+
 	const TArray<float>& Distances = Template->LODDistances;
 	int32 TargetLOD = 0;
-	for (int32 Index = 0; Index < static_cast<int32>(Distances.Num()); ++Index)
+
+	if (ForcedLODIndex >= 0)
 	{
-		if (Distance >= Distances[Index]) TargetLOD = Index;
+		TargetLOD = ForcedLODIndex;
 	}
+	else
+	{
+		for (int32 Index = 0; Index < static_cast<int32>(Distances.Num()); ++Index)
+		{
+			if (Distance >= Distances[Index])
+			{
+				TargetLOD = Index;
+			}
+		}
+	}
+
+	bool bLODChanged = false;
 	for (FParticleEmitterInstance& Instance : EmitterInstances)
+	{
+		const UParticleLODLevel* PreviousLOD = Instance.CurrentLODLevel;
 		Instance.SetLODLevel(TargetLOD);
+		if (PreviousLOD != Instance.CurrentLODLevel)
+		{
+			bLODChanged = true;
+		}
+	}
+
+	if (bLODChanged)
+	{
+		MarkRenderStateDirty();
+	}
+}
+
+void UParticleSystemComponent::SetForcedLOD(int32 Index)
+{
+	if (ForcedLODIndex == Index)
+	{
+		return;
+	}
+
+	ForcedLODIndex = Index;
+	if (ForcedLODIndex >= 0)
+	{
+		UpdateLOD(0.0f);
+	}
+
+	MarkRenderStateDirty();
 }
 
 void UParticleSystemComponent::ResetParticles()
@@ -1169,6 +2132,23 @@ void UParticleSystemComponent::SetVectorParameter(const FString& Name, const FVe
 	NewParam.Vector = Value;
 	InstanceParamList.Add(NewParam);
 	SyncInstanceParameters();
+}
+
+void UParticleSystemComponent::ClearVectorParameter(const FString& Name)
+{
+	if (Name.empty()) return;
+	bool bRemoved = false;
+	for (int32 Index = InstanceParamList.Num() - 1; Index >= 0; --Index)
+	{
+		if (InstanceParamList[Index].Name == Name &&
+			InstanceParamList[Index].ParamType == EParticleSysParamType::Vector)
+		{
+			InstanceParamList.RemoveAt(Index);
+			bRemoved = true;
+		}
+	}
+	if (bRemoved)
+		SyncInstanceParameters();
 }
 
 void UParticleSystemComponent::SetFloatParameter(const FString& Name, float Value)
@@ -1259,7 +2239,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	LoadTemplateIfNeeded();
 	if (!Template || !std::isfinite(DeltaTime) || DeltaTime <= 0.0f) return;
 	const bool bIsGame = GetWorld() && GetWorld()->IsGameWorld();
-	if (bIsGame && !IsActive()) return;
+	if ((bIsGame || !bPreviewInEditor) && !IsActive()) return;
 	const float ScaledDeltaTime = DeltaTime * std::max(0.0f, Template->PlayRate) * std::max(0.0f, CustomTimeDilation);
 	if (ScaledDeltaTime <= 0.0f)
 	{
@@ -1268,12 +2248,24 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 		CollisionEvents.Reset();
 		return;
 	}
+	if (bFadingOut && FadeOutDuration > 0.0f)
+	{
+		FadeOutElapsed += DeltaTime;
+		FadeAlpha = std::clamp(1.0f - FadeOutElapsed / FadeOutDuration, 0.0f, 1.0f);
+	}
 	const FVector Origin = GetWorldLocation();
+	const FVector UpAxis = GetWorldRotationQuat().RotateVector(FVector(0.0f, 0.0f, 1.0f));
+	const FMatrix WorldToLocal = GetWorldMatrix().Inverse();
 	FParticleTickContext Context;
 	Context.World = GetWorld();
 	Context.ComponentToWorld = GetWorldMatrix();
 	Context.Component = this;
-	for (FParticleEmitterInstance& Instance : EmitterInstances) Instance.Tick(ScaledDeltaTime, Origin, Context);
+	for (FParticleEmitterInstance& Instance : EmitterInstances)
+	{
+		Instance.EmitterUpAxis = UpAxis;
+		Instance.EmitterWorldToLocal = WorldToLocal;
+		Instance.Tick(ScaledDeltaTime, Origin, Context);
+	}
 
 	for (auto& Event : CollisionEvents)
 	{
@@ -1283,6 +2275,8 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	MarkRenderStateDirty();
 	if (HasCompleted())
 	{
+		if (bFadingOut)
+			ResetParticles();
 		if (IsActive()) Deactivate();
 		if (bAutoDestroy && bIsGame && GetOwner())
 			GetOwner()->Destroy();

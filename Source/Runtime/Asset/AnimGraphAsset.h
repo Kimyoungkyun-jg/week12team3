@@ -37,6 +37,15 @@ struct FRootAnimGraphLink
 	int32 ToPinIndex = 0;
 };
 
+struct FAnimMontageSegment
+{
+	FString SequencePath;
+	float StartTime = 0.0f;
+	float EndTime = 0.0f;
+	float AnimStartOffset = 0.0f;
+	float PlayRate = 1.0f;
+};
+
 struct FAnimMontageSection
 {
 	FString Name;
@@ -49,6 +58,9 @@ struct FAnimMontageNotify
 {
 	FString Name;
 	float Time = 0.0f;
+	float Duration = 0.0f;
+	FString ClassName;
+	FString Properties;
 };
 
 struct FAnimMontageAsset
@@ -60,6 +72,7 @@ struct FAnimMontageAsset
 	float BlendInTime = 0.1f;
 	float BlendOutTime = 0.15f;
 	bool bLoop = false;
+	std::vector<FAnimMontageSegment> Segments;
 	std::vector<FAnimMontageSection> Sections;
 	std::vector<FAnimMontageNotify> Notifies;
 

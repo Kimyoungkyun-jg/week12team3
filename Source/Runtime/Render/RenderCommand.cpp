@@ -435,6 +435,20 @@ void RenderCommand::CopyTexture(FTexture2D* Dst, FTexture2D* Src)
 	RenderDevice->GetContext()->CopyResource(Dst->GetRawPtr(), Src->GetRawPtr());
 }
 
+void RenderCommand::UpdateTexture2DRegion(FTexture2D* Texture, uint32 X, uint32 Y, uint32 Width, uint32 Height, const void* Data, uint32 RowPitch)
+{
+	if (!Texture || !Texture->GetRawPtr() || !Data || Width == 0 || Height == 0 || RowPitch == 0)
+		return;
+	D3D11_BOX Box{};
+	Box.left = X;
+	Box.top = Y;
+	Box.front = 0;
+	Box.right = X + Width;
+	Box.bottom = Y + Height;
+	Box.back = 1;
+	RenderDevice->GetContext()->UpdateSubresource(Texture->GetRawPtr(), 0, &Box, Data, RowPitch, 0);
+}
+
 void RenderCommand::SetPrimitiveTopology(EPrimitiveTopology Topology)
 {
 	RenderDevice->GetContext()->IASetPrimitiveTopology(D3D11Type::ToD3D11(Topology));

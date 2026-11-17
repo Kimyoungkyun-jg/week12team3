@@ -1,0 +1,871 @@
+{
+	"Class": "UParticleSystem",
+	"Object": {
+		"Properties": {
+			"Emitters": [
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "EnergyBeamCore",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"Lifetime": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.8
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"StartSize": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.45,
+																			"Y": 0.45,
+																			"Z": 0.45
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSizeByLife",
+													"Value": {
+														"Properties": {
+															"LifeScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.35\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.1,\n      \"Value\": 1.2\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.72,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.05\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColor",
+													"Value": {
+														"Properties": {
+															"StartAlpha": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"StartColor": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.85,
+																			"Y": 0.96,
+																			"Z": 1.0
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.9\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.4\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.98\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.82\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.05,
+															"FadeOutStart": 0.72,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 2.0,
+														"Material": "Materials/BeamCore.material",
+														"MaxParticles": 16,
+														"bEnabled": true,
+														"bLooping": true,
+														"bUseLocalSpace": true
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [],
+														"Rate": 10.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataBeam",
+												"Value": {
+													"Properties": {
+														"BeamMethod": 0,
+														"Distance": 8.0,
+														"MaxBeamCount": 1,
+														"Segments": 32,
+														"Sheets": 1,
+														"Speed": 28.0,
+														"TaperFactor": {
+															"Class": "UDistributionFloatConstant",
+															"Value": {
+																"Properties": {
+																	"Constant": 1.0
+																}
+															}
+														},
+														"TaperMethod": 1,
+														"TaperScale": {
+															"Class": "UDistributionFloatConstantCurve",
+															"Value": {
+																"Properties": {
+																	"Curve": {
+																		"Class": "UCurveFloat",
+																		"Value": {
+																			"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.5\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.15,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.92,\n      \"Value\": 1.05\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.25\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																		}
+																	}
+																}
+															}
+														},
+														"TextureTile": 1.5,
+														"TextureTileDistance": 0.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bIsSolo": false
+						}
+					}
+				},
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "EnergyOuterAura",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"Lifetime": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.8
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"StartSize": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 1.2,
+																			"Y": 1.2,
+																			"Z": 1.2
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSizeByLife",
+													"Value": {
+														"Properties": {
+															"LifeScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.45\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.14,\n      \"Value\": 1.25\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.72,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.1\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColor",
+													"Value": {
+														"Properties": {
+															"StartAlpha": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"StartColor": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.1,
+																			"Y": 0.55,
+																			"Z": 1.0
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.18\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.05\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.65\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.35\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.06,
+															"FadeOutStart": 0.7,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 2.0,
+														"Material": "Materials/EnergyWaveAura.material",
+														"MaxParticles": 16,
+														"bEnabled": true,
+														"bLooping": true,
+														"bUseLocalSpace": true
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [],
+														"Rate": 10.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataBeam",
+												"Value": {
+													"Properties": {
+														"BeamMethod": 0,
+														"Distance": 8.3,
+														"MaxBeamCount": 1,
+														"Segments": 32,
+														"Sheets": 1,
+														"Speed": 28.0,
+														"TaperFactor": {
+															"Class": "UDistributionFloatConstant",
+															"Value": {
+																"Properties": {
+																	"Constant": 1.0
+																}
+															}
+														},
+														"TaperMethod": 1,
+														"TaperScale": {
+															"Class": "UDistributionFloatConstantCurve",
+															"Value": {
+																"Properties": {
+																	"Curve": {
+																		"Class": "UCurveFloat",
+																		"Value": {
+																			"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.45\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.2,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.35\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																		}
+																	}
+																}
+															}
+														},
+														"TextureTile": 2.0,
+														"TextureTileDistance": 0.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bIsSolo": false
+						}
+					}
+				},
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "EnergyLightningArcs",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"Lifetime": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.8
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"StartSize": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.38,
+																			"Y": 0.38,
+																			"Z": 0.38
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColor",
+													"Value": {
+														"Properties": {
+															"StartAlpha": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"StartColor": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.45,
+																			"Y": 0.88,
+																			"Z": 1.0
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.5,
+																			"Y": 0.9,
+																			"Z": 1.0
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.05,
+															"FadeOutStart": 0.72,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleBeamNoise",
+													"Value": {
+														"Properties": {
+															"Frequency": 10,
+															"NoiseLockRadius": 0.0,
+															"NoiseLockTime": 0.04,
+															"NoiseRange": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.38,
+																			"Y": 0.38,
+																			"Z": 0.38
+																		},
+																		"Min": {
+																			"X": -0.38,
+																			"Y": -0.38,
+																			"Z": -0.38
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"NoiseTension": 0.15,
+															"bEnabled": true,
+															"bLockEndpoints": true,
+															"bLowFreqEnabled": true,
+															"bSmooth": false
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 2.0,
+														"Material": "Materials/LightningBeam.material",
+														"MaxParticles": 16,
+														"bEnabled": true,
+														"bLooping": true,
+														"bUseLocalSpace": true
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [],
+														"Rate": 20.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataBeam",
+												"Value": {
+													"Properties": {
+														"BeamMethod": 0,
+														"Distance": 8.0,
+														"MaxBeamCount": 2,
+														"Segments": 28,
+														"Sheets": 1,
+														"Speed": 28.0,
+														"TaperFactor": {
+															"Class": "UDistributionFloatConstant",
+															"Value": {
+																"Properties": {
+																	"Constant": 1.0
+																}
+															}
+														},
+														"TaperMethod": 1,
+														"TaperScale": {
+															"Class": "UDistributionFloatConstantCurve",
+															"Value": {
+																"Properties": {
+																	"Curve": {
+																		"Class": "UCurveFloat",
+																		"Value": {
+																			"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.4\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.5,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.4\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																		}
+																	}
+																}
+															}
+														},
+														"TextureTile": 1.5,
+														"TextureTileDistance": 0.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bIsSolo": false
+						}
+					}
+				},
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "MuzzleEnergyBall",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"Lifetime": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 0.35
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"StartSize": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 1.35,
+																			"Y": 1.35,
+																			"Z": 1.35
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSizeByLife",
+													"Value": {
+														"Properties": {
+															"LifeScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.85\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.5,\n      \"Value\": 1.15\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.75\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.85\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.5,\n      \"Value\": 1.15\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.75\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColor",
+													"Value": {
+														"Properties": {
+															"StartAlpha": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"StartColor": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.65,
+																			"Y": 0.94,
+																			"Z": 1.0
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.65,
+																			"Y": 0.94,
+																			"Z": 1.0
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.2,
+															"FadeOutStart": 0.55,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 2.0,
+														"Material": "Materials/EnergyOrb.material",
+														"MaxParticles": 16,
+														"bEnabled": true,
+														"bLooping": true,
+														"bUseLocalSpace": true
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [],
+														"Rate": 6.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataSprite",
+												"Value": {
+													"Properties": {
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bIsSolo": false
+						}
+					}
+				}
+			],
+			"FixedBoundsMax": {
+				"X": 10.0,
+				"Y": 3.0,
+				"Z": 3.0
+			},
+			"FixedBoundsMin": {
+				"X": -2.0,
+				"Y": -3.0,
+				"Z": -3.0
+			},
+			"LODDistances": [],
+			"PlayRate": 1.0,
+			"SecondsBeforeInactive": 1.0,
+			"UpdateTimeFPS": 60.0,
+			"WarmupTickRate": 0.0,
+			"WarmupTime": 0.0,
+			"bUseFixedRelativeBoundingBox": false
+		}
+	},
+	"Version": 1
+}

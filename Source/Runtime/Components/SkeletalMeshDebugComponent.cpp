@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "SkeletalMeshDebugComponent.h"
 
+#include "Animation/Skeleton.h"
 #include "Render/LineBatcher.h"
 #include "Render/SkeletalMesh.h"
 
@@ -76,7 +77,7 @@ void USkeletalMeshDebugComponent::SetSelectedBone(const int32 BoneIndex)
 }
 
 void USkeletalMeshDebugComponent::SetSkeletalMesh(USkeletalMesh* Mesh)
-{ SelectedBoneIndex = -1; HoveredBoneIndex = -1; Super::SetSkeletalMesh(Mesh); }
+{ SelectedBoneIndex = -1; HoveredBoneIndex = -1; SelectedSocketName.clear(); Super::SetSkeletalMesh(Mesh); }
 
 bool USkeletalMeshDebugComponent::ShouldDrawBone(const int32 Bone) const
 {
@@ -155,6 +156,24 @@ void USkeletalMeshDebugComponent::DrawDebug(FLineBatcher* LineBatcher) const
 				LineBatcher->AddBox(PoseBounds.GetWorldAABB(ComponentToWorld),
 					Index == SelectedBoneIndex ? SelectedBoneColor : BoundsColor);
 			}
+		}
+	}
+	if (bDrawSockets && SkeletalMesh->Skeleton && BoneTransforms.Num() == Bones.Num())
+	{
+		const FVector4 SocketColor(0.2f, 0.9f, 1.0f, 1.0f);
+		const float SocketRadius = std::max(0.012f, BoneAxisLength * 0.35f);
+		const float AxisLen = std::max(0.03f, BoneAxisLength * 1.2f);
+		for (const FSkeletalMeshSocket& Socket : SkeletalMesh->Skeleton->Sockets)
+		{
+			const int32 BoneIndex = SkeletalMesh->RefSkeleton.FindBoneIndex(Socket.BoneName);
+			if (!BoneTransforms.IsValidIndex(BoneIndex)) continue;
+			const FMatrix SocketWorld = (Socket.GetSocketLocalMatrix() * BoneTransforms[BoneIndex]) * ComponentToWorld;
+			const FVector SocketOrigin = SocketWorld.TransformPosition(FVector(0.f, 0.f, 0.f));
+			const bool bSelected = (Socket.SocketName == SelectedSocketName);
+			AddWireSphere(*LineBatcher, SocketOrigin, SocketRadius, bSelected ? SelectedBoneColor : SocketColor);
+			LineBatcher->AddForegroundLine(SocketOrigin, SocketWorld.TransformPosition(FVector(AxisLen, 0.f, 0.f)), FVector4(1.f, 0.2f, 0.2f, 1.f));
+			LineBatcher->AddForegroundLine(SocketOrigin, SocketWorld.TransformPosition(FVector(0.f, AxisLen, 0.f)), FVector4(0.2f, 1.f, 0.2f, 1.f));
+			LineBatcher->AddForegroundLine(SocketOrigin, SocketWorld.TransformPosition(FVector(0.f, 0.f, AxisLen)), FVector4(0.2f, 0.4f, 1.f, 1.f));
 		}
 	}
 	if (!bDrawBones && !bDrawBoneAxes) return;

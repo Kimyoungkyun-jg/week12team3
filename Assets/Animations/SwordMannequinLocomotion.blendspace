@@ -1,0 +1,155 @@
+{
+  "Samples": [
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_walk_B.fbxbin",
+      "X": -180.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_run_B.fbxbin",
+      "X": -180.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_walk_L135.fbxbin",
+      "X": -135.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_run_L135.fbxbin",
+      "X": -135.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_walk_L.fbxbin",
+      "X": -90.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_run_L.fbxbin",
+      "X": -90.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_walk_L45.fbxbin",
+      "X": -45.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_run_L45.fbxbin",
+      "X": -45.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_walk_F.fbxbin",
+      "X": 0.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_run_F.fbxbin",
+      "X": 0.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_walk_R45.fbxbin",
+      "X": 45.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_run_R45.fbxbin",
+      "X": 45.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_walk_R.fbxbin",
+      "X": 90.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_run_R.fbxbin",
+      "X": 90.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_walk_R135.fbxbin",
+      "X": 135.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_run_R135.fbxbin",
+      "X": 135.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_walk_B.fbxbin",
+      "X": 180.0,
+      "Y": 300.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_strafe_run_B.fbxbin",
+      "X": 180.0,
+      "Y": 600.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_Idle.fbxbin",
+      "X": -180.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_Idle.fbxbin",
+      "X": -135.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_Idle.fbxbin",
+      "X": -90.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_Idle.fbxbin",
+      "X": -45.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_Idle.fbxbin",
+      "X": 0.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_Idle.fbxbin",
+      "X": 45.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_Idle.fbxbin",
+      "X": 90.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_Idle.fbxbin",
+      "X": 135.0,
+      "Y": 0.0
+    },
+    {
+      "Sequence": "Models/SwordModel/AS_Idle.fbxbin",
+      "X": 180.0,
+      "Y": 0.0
+    }
+  ],
+  "Skeleton": "Models/SwordModel/SKEL_SK_Mannequin_root.fbxbin",
+  "Type": "BlendSpace2D",
+  "XAxis": {
+    "Divisions": 8,
+    "Max": 180.0,
+    "Min": -180.0,
+    "Name": "Direction",
+    "Snap": true
+  },
+  "YAxis": {
+    "Divisions": 2,
+    "Max": 600.0,
+    "Min": 0.0,
+    "Name": "Speed",
+    "Snap": true
+  }
+}

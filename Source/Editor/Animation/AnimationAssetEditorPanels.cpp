@@ -21,6 +21,46 @@ namespace
 	{ return P.x >= Min.x && P.x <= Max.x && P.y >= Min.y && P.y <= Max.y; }
 	FString SequenceLabel(const FString& Path)
 	{ return Path.empty() ? "None" : FbxPath::FromString(Path).stem().string(); }
+
+	float GetSequenceDuration(const FString& SequencePath)
+	{
+		UAnimSequence* Seq = SequencePath.empty() ? nullptr : UAssetManager::LoadAnimSequence(SequencePath);
+		return Seq && Seq->GetDataModel() ? std::max(0.0f, Seq->GetDataModel()->PlayLength) : 0.0f;
+	}
+
+	void SyncMontageSegmentsFromLegacy(FAnimMontageAsset& Montage)
+	{
+		if (Montage.Segments.empty() && !Montage.SequencePath.empty())
+		{
+			const float Len = std::max(0.01f, GetSequenceDuration(Montage.SequencePath));
+			Montage.Segments.push_back({ Montage.SequencePath, 0.0f, Len, 0.0f, 1.0f });
+		}
+		if (!Montage.Segments.empty())
+			Montage.SequencePath = Montage.Segments[0].SequencePath;
+	}
+
+	void RepackSegmentsSequentially(FAnimMontageAsset& Montage)
+	{
+		float Cursor = 0.0f;
+		for (FAnimMontageSegment& Seg : Montage.Segments)
+		{
+			const float Duration = std::max(0.01f, Seg.EndTime - Seg.StartTime);
+			Seg.StartTime = Cursor;
+			Seg.EndTime = Cursor + Duration;
+			Cursor = Seg.EndTime;
+		}
+		Montage.SequencePath = Montage.Segments.empty() ? FString() : Montage.Segments[0].SequencePath;
+	}
+
+	void AppendSequenceSegment(FAnimMontageAsset& Montage, const FString& SequencePath)
+	{
+		float Tail = 0.0f;
+		for (const FAnimMontageSegment& Seg : Montage.Segments)
+			Tail = std::max(Tail, Seg.EndTime);
+		const float Duration = std::max(0.01f, GetSequenceDuration(SequencePath));
+		Montage.Segments.push_back({ SequencePath, Tail, Tail + Duration, 0.0f, 1.0f });
+		Montage.SequencePath = Montage.Segments[0].SequencePath;
+	}
 }
 
 FString FAnimationAssetEditorPanel::SkeletonPath() const
@@ -37,8 +77,12 @@ bool FAnimationAssetEditorPanel::IsCompatibleSequence(const FString& Path) const
 
 float FAnimationAssetEditorPanel::SequenceLength() const
 {
-	UAnimSequence* Sequence = Kind == EKind::Montage ? UAssetManager::LoadAnimSequence(Montage.SequencePath) : nullptr;
-	return Sequence && Sequence->GetDataModel() ? std::max(0.0f, Sequence->GetDataModel()->PlayLength) : 0.0f;
+	if (Kind != EKind::Montage) return 0.0f;
+	float MaxEnd = 0.0f;
+	for (const FAnimMontageSegment& Seg : Montage.Segments)
+		MaxEnd = std::max(MaxEnd, Seg.EndTime);
+	if (MaxEnd > 0.0f) return MaxEnd;
+	return GetSequenceDuration(Montage.SequencePath);
 }
 
 void FAnimationAssetEditorPanel::NewAsset(const FString& InPath)
@@ -47,7 +91,7 @@ void FAnimationAssetEditorPanel::NewAsset(const FString& InPath)
 	Path = InPath;
 	Montage = {};
 	AimOffset = {};
-	SelectedSample = SelectedSection = SelectedNotify = DraggedMarker = -1;
+	SelectedSample = SelectedSegment = SelectedSection = SelectedNotify = DraggedMarker = -1;
 	PreviewTime = PreviewPitch = 0.0f;
 	bPlaying = true;
 	bDirty = true;
@@ -70,6 +114,7 @@ void FAnimationAssetEditorPanel::OpenAsset(const FString& InPath)
 		if (fs::exists(FbxPath::FromString(InPath), Ec)) Status = Error;
 		return;
 	}
+	if (Kind == EKind::Montage) SyncMontageSegmentsFromLegacy(Montage);
 	bDirty = false;
 	Status.clear();
 	StartPreview();
@@ -81,7 +126,13 @@ void FAnimationAssetEditorPanel::Save()
 	if (SkeletonPath().empty()) { Status = "Select a skeleton."; return; }
 	if (Kind == EKind::Montage)
 	{
-		if (!IsCompatibleSequence(Montage.SequencePath)) { Status = "Select a compatible sequence."; return; }
+		SyncMontageSegmentsFromLegacy(Montage);
+		if (Montage.Segments.empty()) { Status = "Add at least one compatible sequence."; return; }
+		for (const FAnimMontageSegment& Seg : Montage.Segments)
+		{
+			if (!IsCompatibleSequence(Seg.SequencePath)) { Status = "Select compatible sequences for all segments."; return; }
+			if (Seg.EndTime <= Seg.StartTime || Seg.StartTime < 0.0f) { Status = "Segment bounds are invalid."; return; }
+		}
 		const float Length = SequenceLength();
 		for (const auto& Section : Montage.Sections)
 			if (Section.EndTime > Length || Section.StartTime >= Section.EndTime)
@@ -125,10 +176,31 @@ void FAnimationAssetEditorPanel::EvaluatePreview()
 	TArray<FAnimBoneTransform> Pose;
 	if (Kind == EKind::Montage)
 	{
-		UAnimSequence* Sequence = UAssetManager::LoadAnimSequence(Montage.SequencePath);
-		if (Sequence && Sequence->Skeleton == Mesh->Skeleton &&
-			Sequence->EvaluateLocalPoseTransforms(std::min(PreviewTime, SequenceLength()), Pose))
-			Preview.ApplyPose(Pose);
+		const FAnimMontageSegment* ActiveSeg = nullptr;
+		const FAnimMontageSegment* NearestSeg = Montage.Segments.empty() ? nullptr : &Montage.Segments[0];
+		for (const FAnimMontageSegment& Seg : Montage.Segments)
+		{
+			if (PreviewTime >= Seg.StartTime && PreviewTime <= Seg.EndTime)
+				ActiveSeg = &Seg;
+			if (Seg.StartTime <= PreviewTime && (!NearestSeg || Seg.StartTime >= NearestSeg->StartTime))
+				NearestSeg = &Seg;
+		}
+		const FAnimMontageSegment* Chosen = ActiveSeg ? ActiveSeg : NearestSeg;
+		const FString TargetPath = Chosen ? Chosen->SequencePath : Montage.SequencePath;
+		UAnimSequence* Sequence = UAssetManager::LoadAnimSequence(TargetPath);
+		if (Sequence && Sequence->Skeleton == Mesh->Skeleton && Sequence->GetDataModel())
+		{
+			float LocalTime = std::min(PreviewTime, Sequence->GetDataModel()->PlayLength);
+			if (Chosen)
+			{
+				const float SeqRate = std::isfinite(Sequence->RateScale) && Sequence->RateScale > 0.0f ? Sequence->RateScale : 1.0f;
+				const float SegRate = Chosen->PlayRate > 0.0f ? Chosen->PlayRate : 1.0f;
+				LocalTime = std::clamp(Chosen->AnimStartOffset + std::max(0.0f, PreviewTime - Chosen->StartTime) * SeqRate * SegRate,
+					0.0f, Sequence->GetDataModel()->PlayLength);
+			}
+			if (Sequence->EvaluateLocalPoseTransforms(LocalTime, Pose))
+				Preview.ApplyPose(Pose);
+		}
 		return;
 	}
 	UAnimSequence* Base = UAssetManager::LoadAnimSequence(AimOffset.BaseSequencePath);
@@ -196,7 +268,12 @@ void FAnimationAssetEditorPanel::DrawAssetDetails()
 			if (ImGui::Selectable(Candidate.c_str(), Candidate == Skeleton) && Candidate != Skeleton)
 			{
 				Skeleton = Candidate;
-				if (Kind == EKind::Montage) Montage.SequencePath.clear();
+				if (Kind == EKind::Montage)
+				{
+					Montage.SequencePath.clear();
+					Montage.Segments.clear();
+					SelectedSegment = SelectedSection = SelectedNotify = -1;
+				}
 				else { AimOffset.BaseSequencePath.clear(); AimOffset.Samples.clear(); SelectedSample = -1; }
 				bDirty = true; StartPreview();
 			}
@@ -213,26 +290,91 @@ void FAnimationAssetEditorPanel::DrawAssetDetails()
 		bDirty |= ImGui::DragFloat("Blend In", &Montage.BlendInTime, 0.01f, 0.0f, 5.0f);
 		bDirty |= ImGui::DragFloat("Blend Out", &Montage.BlendOutTime, 0.01f, 0.0f, 5.0f);
 		bDirty |= ImGui::Checkbox("Loop", &Montage.bLoop);
-		ImGui::SeparatorText("Animation");
-		ImGui::TextWrapped("Sequence: %s", Montage.SequencePath.empty() ? "Drag a sequence onto the track." : Montage.SequencePath.c_str());
+		ImGui::SeparatorText("Sequences");
+		if (ImGui::BeginCombo("Add Sequence", "Append sequence..."))
+		{
+			TArray<UAnimSequence*> AllSeqs;
+			UAssetManager::GetAllAnimSequences(AllSeqs);
+			for (UAnimSequence* Seq : AllSeqs)
+			{
+				if (!Seq || !Seq->Skeleton || !Seq->GetDataModel()) continue;
+				if (!SkeletonPath().empty() && Seq->Skeleton->GetPath() != SkeletonPath()) continue;
+				if (ImGui::Selectable(Seq->GetPath().c_str()))
+				{
+					if (SkeletonPath().empty()) Montage.SkeletonPath = Seq->Skeleton->GetPath();
+					AppendSequenceSegment(Montage, Seq->GetPath());
+					SelectedSegment = static_cast<int>(Montage.Segments.size()) - 1;
+					SelectedSection = SelectedNotify = -1;
+					bDirty = true;
+					StartPreview();
+				}
+			}
+			ImGui::EndCombo();
+		}
+		if (!Montage.Segments.empty() && ImGui::Button("Snap Order"))
+		{
+			RepackSegmentsSequentially(Montage);
+			bDirty = true;
+		}
+		for (int I = 0; I < static_cast<int>(Montage.Segments.size()); ++I)
+		{
+			ImGui::PushID(2000 + I);
+			const FAnimMontageSegment& Seg = Montage.Segments[I];
+			const FString RowLabel = std::to_string(I + 1) + ". " + SequenceLabel(Seg.SequencePath);
+			if (ImGui::Selectable(RowLabel.c_str(), SelectedSegment == I))
+			{ SelectedSegment = I; SelectedSection = SelectedNotify = -1; }
+			if (I > 0)
+			{
+				ImGui::SameLine();
+				if (ImGui::SmallButton("^"))
+				{
+					std::swap(Montage.Segments[I], Montage.Segments[I - 1]);
+					RepackSegmentsSequentially(Montage);
+					SelectedSegment = I - 1;
+					bDirty = true;
+				}
+			}
+			if (I + 1 < static_cast<int>(Montage.Segments.size()))
+			{
+				ImGui::SameLine();
+				if (ImGui::SmallButton("v"))
+				{
+					std::swap(Montage.Segments[I], Montage.Segments[I + 1]);
+					RepackSegmentsSequentially(Montage);
+					SelectedSegment = I + 1;
+					bDirty = true;
+				}
+			}
+			ImGui::SameLine();
+			if (ImGui::SmallButton("X"))
+			{
+				Montage.Segments.erase(Montage.Segments.begin() + I);
+				Montage.SequencePath = Montage.Segments.empty() ? FString() : Montage.Segments[0].SequencePath;
+				SelectedSegment = -1;
+				bDirty = true;
+				ImGui::PopID();
+				break;
+			}
+			ImGui::PopID();
+		}
 		ImGui::BeginDisabled(SequenceLength() <= 0.0f);
 		if (ImGui::Button("Add Section"))
 		{
 			const float End = SequenceLength();
 			Montage.Sections.push_back({ "Section", std::min(PreviewTime, End - 0.001f), End, "" });
-			SelectedSection = static_cast<int>(Montage.Sections.size()) - 1; SelectedNotify = -1; bDirty = true;
+			SelectedSection = static_cast<int>(Montage.Sections.size()) - 1; SelectedNotify = SelectedSegment = -1; bDirty = true;
 		}
 		if (ImGui::Button("Add Notify"))
 		{
 			Montage.Notifies.push_back({ "Notify", PreviewTime });
-			SelectedNotify = static_cast<int>(Montage.Notifies.size()) - 1; SelectedSection = -1; bDirty = true;
+			SelectedNotify = static_cast<int>(Montage.Notifies.size()) - 1; SelectedSection = SelectedSegment = -1; bDirty = true;
 		}
 		ImGui::EndDisabled();
 		for (int I = 0; I < static_cast<int>(Montage.Sections.size()); ++I)
 		{
 			ImGui::PushID(I);
 			if (ImGui::Selectable(Montage.Sections[I].Name.c_str(), SelectedSection == I))
-			{ SelectedSection = I; SelectedNotify = -1; }
+			{ SelectedSection = I; SelectedNotify = SelectedSegment = -1; }
 			ImGui::PopID();
 		}
 		return;
@@ -360,8 +502,22 @@ void FAnimationAssetEditorPanel::DrawGraph()
 		const float X = Min.x + Width * I / 10.0f;
 		Draw->AddLine({ X, Min.y - 8.0f }, { X, Max.y }, IM_COL32(68, 72, 80, 255));
 	}
-	if (!Montage.SequencePath.empty()) Draw->AddText({ Min.x + 8.0f, Min.y + Row + 7.0f }, IM_COL32_WHITE,
-		SequenceLabel(Montage.SequencePath).c_str());
+	for (int I = 0; I < static_cast<int>(Montage.Segments.size()); ++I)
+	{
+		const FAnimMontageSegment& Seg = Montage.Segments[I];
+		const ImVec2 A(XAt(Seg.StartTime), Min.y + Row + 3.0f);
+		const ImVec2 B(std::max(A.x + 6.0f, XAt(Seg.EndTime)), Min.y + Row * 2.0f - 4.0f);
+		const ImU32 Fill = I == SelectedSegment
+			? IM_COL32(72, 128, 96, 255)
+			: (I % 2 == 0 ? IM_COL32(52, 92, 70, 255) : IM_COL32(44, 78, 60, 255));
+		Draw->AddRectFilled(A, B, Fill, 3.0f);
+		Draw->AddRect(A, B, I == SelectedSegment ? IM_COL32(190, 245, 205, 255) : IM_COL32(95, 145, 115, 255), 3.0f);
+		Draw->PushClipRect(A, B, true);
+		Draw->AddText({ A.x + 6.0f, A.y + 4.0f }, IM_COL32_WHITE, SequenceLabel(Seg.SequencePath).c_str());
+		Draw->PopClipRect();
+	}
+	if (Montage.Segments.empty() && !Montage.SequencePath.empty())
+		Draw->AddText({ Min.x + 8.0f, Min.y + Row + 7.0f }, IM_COL32_WHITE, SequenceLabel(Montage.SequencePath).c_str());
 	for (int I = 0; I < static_cast<int>(Montage.Sections.size()); ++I)
 	{
 		const auto& Sec = Montage.Sections[I];
@@ -372,11 +528,19 @@ void FAnimationAssetEditorPanel::DrawGraph()
 	}
 	for (int I = 0; I < static_cast<int>(Montage.Notifies.size()); ++I)
 	{
-		const float X = XAt(Montage.Notifies[I].Time);
+		const FAnimMontageNotify& Notify = Montage.Notifies[I];
+		const float X = XAt(Notify.Time);
 		const float Y = Min.y + Row * 2.5f;
+		if (Notify.Duration > 0.0f)
+		{
+			const ImVec2 A(X, Min.y + Row * 2.0f + 4.0f);
+			const ImVec2 B(std::max(X + 6.0f, XAt(Notify.Time + Notify.Duration)), Min.y + Row * 3.0f - 5.0f);
+			Draw->AddRectFilled(A, B, I == SelectedNotify ? IM_COL32(160, 110, 45, 190) : IM_COL32(120, 82, 36, 170), 3.0f);
+			Draw->AddRect(A, B, I == SelectedNotify ? IM_COL32(255, 218, 100, 255) : IM_COL32(231, 169, 72, 220), 3.0f);
+		}
 		Draw->AddQuadFilled({ X, Y - 7.0f }, { X + 7.0f, Y }, { X, Y + 7.0f }, { X - 7.0f, Y },
 			I == SelectedNotify ? IM_COL32(255, 218, 100, 255) : IM_COL32(231, 169, 72, 255));
-		Draw->AddText({ X + 9.0f, Y - 7.0f }, IM_COL32_WHITE, Montage.Notifies[I].Name.c_str());
+		Draw->AddText({ X + 9.0f, Y - 7.0f }, IM_COL32_WHITE, Notify.Name.c_str());
 	}
 	Draw->AddLine({ XAt(PreviewTime), Min.y - 9.0f }, { XAt(PreviewTime), Max.y }, IM_COL32(255, 95, 82, 255), 2.0f);
 	if (Hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
@@ -390,20 +554,56 @@ void FAnimationAssetEditorPanel::DrawGraph()
 				if (std::abs(Mouse.x - XAt(Sec.StartTime)) < 8.0f) DraggedMarker = I * 2;
 				else if (std::abs(Mouse.x - XAt(Sec.EndTime)) < 8.0f) DraggedMarker = I * 2 + 1;
 				if (Mouse.x >= XAt(Sec.StartTime) && Mouse.x <= XAt(Sec.EndTime))
-				{ SelectedSection = I; SelectedNotify = -1; }
+				{ SelectedSection = I; SelectedNotify = SelectedSegment = -1; }
 			}
 		}
-		else if (Mouse.y >= Min.y + Row * 2.0f)
+		else if (Mouse.y < Min.y + Row * 2.0f)
+		{
+			for (int I = 0; I < static_cast<int>(Montage.Segments.size()); ++I)
+			{
+				const FAnimMontageSegment& Seg = Montage.Segments[I];
+				if (std::abs(Mouse.x - XAt(Seg.StartTime)) < 8.0f) DraggedMarker = 2000 + I * 3;
+				else if (std::abs(Mouse.x - XAt(Seg.EndTime)) < 8.0f) DraggedMarker = 2000 + I * 3 + 1;
+				else if (Mouse.x >= XAt(Seg.StartTime) && Mouse.x <= XAt(Seg.EndTime))
+				{
+					DraggedMarker = 2000 + I * 3 + 2;
+					DragSegmentAnchorOffset = TimeAt(Mouse.x) - Seg.StartTime;
+				}
+				if (Mouse.x >= XAt(Seg.StartTime) && Mouse.x <= XAt(Seg.EndTime))
+				{ SelectedSegment = I; SelectedSection = SelectedNotify = -1; }
+			}
+		}
+		else
 		{
 			for (int I = 0; I < static_cast<int>(Montage.Notifies.size()); ++I)
 				if (std::abs(Mouse.x - XAt(Montage.Notifies[I].Time)) < 10.0f)
-				{ DraggedMarker = 1000 + I; SelectedNotify = I; SelectedSection = -1; break; }
+				{ DraggedMarker = 1000 + I; SelectedNotify = I; SelectedSection = SelectedSegment = -1; break; }
 		}
 		if (DraggedMarker < 0) { PreviewTime = TimeAt(Mouse.x); bPlaying = false; }
 	}
 	if (Active && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
 	{
-		if (DraggedMarker >= 1000 && static_cast<size_t>(DraggedMarker - 1000) < Montage.Notifies.size())
+		if (DraggedMarker >= 2000)
+		{
+			const int SegCode = DraggedMarker - 2000;
+			const int SegIdx = SegCode / 3;
+			const int Mode = SegCode % 3;
+			if (SegIdx >= 0 && SegIdx < static_cast<int>(Montage.Segments.size()))
+			{
+				FAnimMontageSegment& Seg = Montage.Segments[SegIdx];
+				const float RawTime = std::max(0.0f, (Mouse.x - Min.x) / std::max(1.0f, Width) * Length);
+				if (Mode == 0) Seg.StartTime = std::clamp(RawTime, 0.0f, std::max(0.0f, Seg.EndTime - 0.01f));
+				else if (Mode == 1) Seg.EndTime = std::max(RawTime, Seg.StartTime + 0.01f);
+				else
+				{
+					const float Span = std::max(0.01f, Seg.EndTime - Seg.StartTime);
+					Seg.StartTime = std::max(0.0f, RawTime - DragSegmentAnchorOffset);
+					Seg.EndTime = Seg.StartTime + Span;
+				}
+				bDirty = true;
+			}
+		}
+		else if (DraggedMarker >= 1000 && static_cast<size_t>(DraggedMarker - 1000) < Montage.Notifies.size())
 		{ Montage.Notifies[DraggedMarker - 1000].Time = TimeAt(Mouse.x); bDirty = true; }
 		else if (DraggedMarker >= 0 && static_cast<size_t>(DraggedMarker / 2) < Montage.Sections.size())
 		{
@@ -421,9 +621,13 @@ void FAnimationAssetEditorPanel::DrawGraph()
 			const FString Candidate = static_cast<const char*>(Payload->Data);
 			if (IsCompatibleSequence(Candidate) && Mouse.y >= Min.y + Row && Mouse.y < Min.y + Row * 2.0f)
 			{
-				Montage.SequencePath = Candidate;
-				if (auto* Seq = UAssetManager::LoadAnimSequence(Candidate)) Montage.SkeletonPath = Seq->Skeleton->GetPath();
-				PreviewTime = 0.0f; bDirty = true; StartPreview();
+				UAnimSequence* DroppedSeq = UAssetManager::LoadAnimSequence(Candidate);
+				if (DroppedSeq && DroppedSeq->Skeleton && Montage.SkeletonPath.empty())
+					Montage.SkeletonPath = DroppedSeq->Skeleton->GetPath();
+				AppendSequenceSegment(Montage, Candidate);
+				SelectedSegment = static_cast<int>(Montage.Segments.size()) - 1;
+				SelectedSection = SelectedNotify = -1;
+				bDirty = true; StartPreview();
 			}
 		}
 		ImGui::EndDragDropTarget();
@@ -448,7 +652,49 @@ void FAnimationAssetEditorPanel::DrawSelectedDetails()
 		{ AimOffset.Samples.erase(AimOffset.Samples.begin() + SelectedSample); SelectedSample = -1; bDirty = true; }
 		return;
 	}
-	if (SelectedSection >= 0 && SelectedSection < static_cast<int>(Montage.Sections.size()))
+	if (SelectedSegment >= 0 && SelectedSegment < static_cast<int>(Montage.Segments.size()))
+	{
+		FAnimMontageSegment& Seg = Montage.Segments[SelectedSegment];
+		if (ImGui::BeginCombo("Sequence", SequenceLabel(Seg.SequencePath).c_str()))
+		{
+			TArray<UAnimSequence*> AllSeqs;
+			UAssetManager::GetAllAnimSequences(AllSeqs);
+			for (UAnimSequence* Seq : AllSeqs)
+			{
+				if (!Seq || !Seq->Skeleton || !Seq->GetDataModel()) continue;
+				if (!SkeletonPath().empty() && Seq->Skeleton->GetPath() != SkeletonPath()) continue;
+				if (ImGui::Selectable(Seq->GetPath().c_str(), Seg.SequencePath == Seq->GetPath()))
+				{
+					Seg.SequencePath = Seq->GetPath();
+					if (SelectedSegment == 0) Montage.SequencePath = Seg.SequencePath;
+					bDirty = true;
+				}
+			}
+			ImGui::EndCombo();
+		}
+		bDirty |= ImGui::DragFloat("Start", &Seg.StartTime, 0.01f, 0.0f, std::max(0.0f, Seg.EndTime - 0.01f));
+		bDirty |= ImGui::DragFloat("End", &Seg.EndTime, 0.01f, Seg.StartTime + 0.01f, std::max(SequenceLength() + 5.0f, Seg.StartTime + 5.0f));
+		bDirty |= ImGui::DragFloat("Anim Offset", &Seg.AnimStartOffset, 0.01f, 0.0f, std::max(0.0f, GetSequenceDuration(Seg.SequencePath)));
+		bDirty |= ImGui::DragFloat("Play Rate", &Seg.PlayRate, 0.01f, 0.05f, 10.0f);
+		if (ImGui::Button("Reset Clip Length"))
+		{
+			const float ClipLen = GetSequenceDuration(Seg.SequencePath);
+			if (ClipLen > 0.0f)
+			{
+				Seg.EndTime = Seg.StartTime + std::max(0.01f, (ClipLen - Seg.AnimStartOffset) / std::max(0.05f, Seg.PlayRate));
+				bDirty = true;
+			}
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Delete Segment"))
+		{
+			Montage.Segments.erase(Montage.Segments.begin() + SelectedSegment);
+			Montage.SequencePath = Montage.Segments.empty() ? FString() : Montage.Segments[0].SequencePath;
+			SelectedSegment = -1;
+			bDirty = true;
+		}
+	}
+	else if (SelectedSection >= 0 && SelectedSection < static_cast<int>(Montage.Sections.size()))
 	{
 		auto& Sec = Montage.Sections[SelectedSection];
 		char Name[128]{}; strncpy_s(Name, Sec.Name.c_str(), sizeof(Name) - 1);
@@ -462,14 +708,17 @@ void FAnimationAssetEditorPanel::DrawSelectedDetails()
 	}
 	else if (SelectedNotify >= 0 && SelectedNotify < static_cast<int>(Montage.Notifies.size()))
 	{
-		auto& Notify = Montage.Notifies[SelectedNotify];
+		FAnimMontageNotify& Notify = Montage.Notifies[SelectedNotify];
 		char Name[128]{}; strncpy_s(Name, Notify.Name.c_str(), sizeof(Name) - 1);
 		if (ImGui::InputText("Notify", Name, sizeof(Name))) { Notify.Name = Name; bDirty = true; }
 		bDirty |= ImGui::DragFloat("Time", &Notify.Time, 0.01f, 0.0f, SequenceLength());
+		bDirty |= ImGui::DragFloat("Duration", &Notify.Duration, 0.01f, 0.0f, SequenceLength());
+		if (!Notify.ClassName.empty())
+			ImGui::TextWrapped("State Class: %s", Notify.ClassName.c_str());
 		if (ImGui::Button("Delete Notify"))
 		{ Montage.Notifies.erase(Montage.Notifies.begin() + SelectedNotify); SelectedNotify = -1; bDirty = true; }
 	}
-	else ImGui::TextWrapped("Select a Section or Notify in the timeline.");
+	else ImGui::TextWrapped("Select a Sequence, Section, or Notify in the timeline.");
 }
 
 void FAnimationAssetEditorPanel::DrawAssetBrowser()
@@ -574,6 +823,13 @@ void FAnimationAssetEditorPanel::OnRender()
 		{ Montage.Notifies.erase(Montage.Notifies.begin() + SelectedNotify); SelectedNotify = -1; bDirty = true; }
 		else if (Kind == EKind::Montage && SelectedSection >= 0 && SelectedSection < static_cast<int>(Montage.Sections.size()))
 		{ Montage.Sections.erase(Montage.Sections.begin() + SelectedSection); SelectedSection = -1; bDirty = true; }
+		else if (Kind == EKind::Montage && SelectedSegment >= 0 && SelectedSegment < static_cast<int>(Montage.Segments.size()))
+		{
+			Montage.Segments.erase(Montage.Segments.begin() + SelectedSegment);
+			Montage.SequencePath = Montage.Segments.empty() ? FString() : Montage.Segments[0].SequencePath;
+			SelectedSegment = -1;
+			bDirty = true;
+		}
 	}
 	ImGui::End();
 }

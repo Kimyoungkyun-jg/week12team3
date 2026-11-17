@@ -26,6 +26,12 @@ struct FSkeletalMeshViewer
 	TArray<TArray<uint32>> Children;
 	TArray<int32> WeightedVertexCounts;
 	int32 SelectedBone = -1;
+	FString SelectedSocketName;
+	FString PendingDeleteSocketName;
+	bool bSkeletonDirty = false;
+	FString SocketStatus;
+	char SocketNameBuffer[128] = {};
+	FString EditedSocketKey;
 
 	FGizmo Gizmo;
 	USceneComponent* BoneGizmoTarget = nullptr;
@@ -66,6 +72,7 @@ public:
 	void OnHidden() override { bHasFocusedViewer = false; }
 	void OpenFBX(const FString& Path);
 	void Release();
+	void SaveIfDirty();
 	const TArray<TUniquePtr<FSkeletalMeshViewer>>& GetViewers() const { return Viewers; }
 	bool HasFocuesdViewer() const { return IsOpen() && bHasFocusedViewer; }
 
@@ -75,6 +82,10 @@ private:
 	void DrawBoneTree(FSkeletalMeshViewer& Viewer);
 	void DrawBoneNode(FSkeletalMeshViewer& Viewer, int32 BoneIndex);
 	void DrawBoneDetails(FSkeletalMeshViewer& Viewer);
+	void DrawSocketDetails(FSkeletalMeshViewer& Viewer);
+	void SaveViewerSkeleton(FSkeletalMeshViewer& Viewer);
+	void AddSocketToBone(FSkeletalMeshViewer& Viewer, int32 BoneIndex);
+	void SelectSocket(FSkeletalMeshViewer& Viewer, const FString& SocketName);
 	void FocusOnSelectedBone(FSkeletalMeshViewer& Viewer);
 	int32 PickBone(FSkeletalMeshViewer& Viewer, const ImVec2& ViewMin, const ImVec2& ViewSize);
 	void SelectBone(FSkeletalMeshViewer& Viewer, int32 BoneIndex);

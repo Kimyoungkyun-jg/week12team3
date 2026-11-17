@@ -26,6 +26,11 @@
     },
     {
       "FromNodeId": 3,
+      "ToNodeId": 8,
+      "ToPinIndex": 0
+    },
+    {
+      "FromNodeId": 8,
       "ToNodeId": 5,
       "ToPinIndex": 0
     },
@@ -123,8 +128,25 @@
       "SecondarySourceNodeId": 0,
       "SequencePath": "",
       "SlotName": "UpperBody",
-      "SourceNodeId": 3,
+      "SourceNodeId": 8,
       "Type": 4,
+      "X": 1540.0,
+      "Y": 120.0
+    },
+    {
+      "AimOffsetPath": "",
+      "Alpha": 1.0,
+      "AlphaInput": 0,
+      "ConstantPitch": 0.0,
+      "Id": 8,
+      "Name": "FullBody Slot",
+      "PitchInput": 12,
+      "PlayRate": 1.0,
+      "SecondarySourceNodeId": 0,
+      "SequencePath": "",
+      "SlotName": "FullBody",
+      "SourceNodeId": 3,
+      "Type": 1,
       "X": 1290.0,
       "Y": 120.0
     },

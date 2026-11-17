@@ -3,6 +3,10 @@
 #include "Asset/AnimSequence.h"
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/ParticleSystemComponent.h"
+#include "Particles/ParticleSystem.h"
+#include "GameFramework/Actor.h"
+#include "UObject/Casts.h"
 #include "Engine/Classes/Sound/SoundWave.h"
 #include "Engine/GameplayStatics.h"
 #include "Engine/World.h"
@@ -41,11 +45,9 @@ void UAnimNotify_PlaySound::Notify(const FAnimNotifyContext& Context)
 	FVector Location = Mesh->GetWorldLocation();
 	if (!BoneName.empty() && Mesh->GetSkeletalMesh())
 	{
-		const int32 BoneIndex = Mesh->GetSkeletalMesh()->RefSkeleton.FindBoneIndex(BoneName);
-		const TArray<FMatrix>& Globals = Mesh->GetGlobalBoneTransforms();
-		if (Globals.IsValidIndex(BoneIndex))
+		if (Mesh->DoesSocketExist(BoneName))
 		{
-			Location = (Globals[BoneIndex] * Mesh->GetWorldMatrix()).TransformPosition(FVector(0.f, 0.f, 0.f));
+			Location = Mesh->GetSocketWorldMatrix(BoneName).TransformPosition(FVector(0.f, 0.f, 0.f));
 		}
 		else if (WarnedBoneName != BoneName)
 		{
@@ -95,4 +97,159 @@ void UAnimNotifyState_Log::NotifyTick(const FAnimNotifyContext& Context)
 void UAnimNotifyState_Log::NotifyEnd(const FAnimNotifyContext& Context)
 {
 	HTR_LOG(Info, "[AnimNotifyState] End   {} {}{}", DescribeStateEvent(Context), Message, Context.bInterrupted ? " (interrupted)" : "");
+}
+
+namespace
+{
+	UParticleSystemComponent* FindTargetParticleComponent(USkeletalMeshComponent* Mesh, const FString& ComponentName)
+	{
+		if (!Mesh || !Mesh->GetOwner())
+			return nullptr;
+
+		for (UActorComponent* Comp : Mesh->GetOwner()->GetComponents())
+		{
+			UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp);
+			if (!ParticleComp)
+				continue;
+			if (ComponentName.empty() || ParticleComp->GetName() == ComponentName)
+				return ParticleComp;
+		}
+		return nullptr;
+	}
+
+	UParticleSystemComponent* FindOrCreatePreviewParticleComponent(
+		USkeletalMeshComponent* Mesh, const FString& ComponentName, const FString& ParticlePath)
+	{
+		if (UParticleSystemComponent* Existing = FindTargetParticleComponent(Mesh, ComponentName))
+			return Existing;
+		if (!Mesh || !Mesh->GetOwner() || ParticlePath.empty())
+			return nullptr;
+
+		const FString NewName = ComponentName.empty() ? FString("NotifyParticlePreview") : ComponentName;
+		UParticleSystemComponent* Created = Cast<UParticleSystemComponent>(
+			Mesh->GetOwner()->AddComponent(UParticleSystemComponent::StaticClass(), NewName, true));
+		if (!Created)
+			return nullptr;
+		Created->SetupAttachment(Mesh);
+		Created->bPreviewInEditor = false;
+		Created->SetVisibility(false);
+		Created->Deactivate();
+		return Created;
+	}
+
+	FRotator ExtractRotationFromMatrix(const FMatrix& Matrix)
+	{
+		FMatrix RotMat = FMatrix::Identity;
+		for (int Axis = 0; Axis < 3; ++Axis)
+		{
+			FVector Row(Matrix.M[Axis][0], Matrix.M[Axis][1], Matrix.M[Axis][2]);
+			const float LenSq = Row.Dot(Row);
+			if (LenSq > 1e-8f)
+				Row = Row / std::sqrt(LenSq);
+			RotMat.M[Axis][0] = Row.X;
+			RotMat.M[Axis][1] = Row.Y;
+			RotMat.M[Axis][2] = Row.Z;
+		}
+		const float Horizontal = std::sqrt(RotMat.M[0][0] * RotMat.M[0][0] + RotMat.M[0][1] * RotMat.M[0][1]);
+		if (Horizontal > 1e-6f)
+			return MatrixToRotator(RotMat);
+		return FRotator(FMath::RadiansToDegrees(std::atan2(-RotMat.M[0][2], Horizontal)),
+			FMath::RadiansToDegrees(std::atan2(-RotMat.M[1][0], RotMat.M[1][1])), 0.0f);
+	}
+
+	void SyncParticleToBone(USkeletalMeshComponent* Mesh, UParticleSystemComponent* ParticleComp,
+		const FString& BoneName, const FString& SecondBoneName,
+		const FString& BaseParamName, const FString& TipParamName,
+		const FVector& BoneOffset, bool bFollowBoneRotation)
+	{
+		if (!Mesh || !ParticleComp || BoneName.empty() || !Mesh->GetSkeletalMesh())
+			return;
+
+		if (!Mesh->DoesSocketExist(BoneName))
+			return;
+
+		const FMatrix BoneWorld = Mesh->GetSocketWorldMatrix(BoneName);
+		const FVector BonePos = BoneWorld.TransformPosition(BoneOffset);
+		if (!SecondBoneName.empty() && Mesh->DoesSocketExist(SecondBoneName))
+		{
+			const FVector SecondPos = Mesh->GetSocketWorldMatrix(SecondBoneName).TransformPosition(FVector::ZeroVector);
+			const FVector MidPos = (BonePos + SecondPos) * 0.5f;
+			ParticleComp->SetVectorParameter(BaseParamName.empty() ? FString("RibbonBase") : BaseParamName, BonePos);
+			ParticleComp->SetVectorParameter(TipParamName.empty() ? FString("RibbonTip") : TipParamName, SecondPos);
+			// 양손 중앙에서 본 회전 또는 오너 전방 방향을 맞춘다
+			if (bFollowBoneRotation)
+				ParticleComp->SetWorldLocationAndRotation(MidPos, ExtractRotationFromMatrix(BoneWorld), false);
+			else if (Mesh->GetOwner())
+				ParticleComp->SetWorldLocationAndRotation(MidPos, Mesh->GetOwner()->GetActorRotation(), false);
+			else
+				ParticleComp->SetWorldLocation(MidPos, false);
+			return;
+		}
+		if (bFollowBoneRotation)
+			ParticleComp->SetWorldLocationAndRotation(BonePos, ExtractRotationFromMatrix(BoneWorld), false);
+		else if (Mesh->GetOwner())
+			ParticleComp->SetWorldLocationAndRotation(BonePos, Mesh->GetOwner()->GetActorRotation(), false);
+		else
+			ParticleComp->SetWorldLocation(BonePos, false);
+	}
+}
+
+void UAnimNotifyState_ParticleEffect::NotifyBegin(const FAnimNotifyContext& Context)
+{
+	UParticleSystemComponent* ParticleComp = FindOrCreatePreviewParticleComponent(Context.MeshComponent, ComponentName, ParticlePath);
+	if (!ParticleComp)
+		return;
+
+	if (!ParticlePath.empty() && ParticleComp->TemplatePath != ParticlePath)
+	{
+		UParticleSystem* Loaded = UParticleSystem::LoadFromFile(ParticlePath, ParticleComp);
+		FString ResolvedPath = ParticlePath;
+		if (!Loaded && ParticlePath.rfind("Assets/", 0) != 0)
+		{
+			ResolvedPath = "Assets/" + ParticlePath;
+			Loaded = UParticleSystem::LoadFromFile(ResolvedPath, ParticleComp);
+		}
+		if (Loaded)
+		{
+			ParticleComp->TemplatePath = ResolvedPath;
+			ParticleComp->SetTemplate(Loaded);
+		}
+	}
+
+	SyncParticleToBone(Context.MeshComponent, ParticleComp, BoneName, SecondBoneName,
+		BaseParameterName, TipParameterName, BoneOffset, bFollowBoneRotation);
+	ParticleComp->SetForceLooping(bLoopDuringState);
+	ParticleComp->SetVisibility(true);
+	ParticleComp->Activate(true);
+}
+
+void UAnimNotifyState_ParticleEffect::NotifyTick(const FAnimNotifyContext& Context)
+{
+	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ComponentName);
+	if (!ParticleComp)
+		return;
+
+	SyncParticleToBone(Context.MeshComponent, ParticleComp, BoneName, SecondBoneName,
+		BaseParameterName, TipParameterName, BoneOffset, bFollowBoneRotation);
+	if (bLoopDuringState)
+	{
+		ParticleComp->SetForceLooping(true);
+		if (!ParticleComp->IsActive())
+			ParticleComp->Activate(true);
+	}
+}
+
+void UAnimNotifyState_ParticleEffect::NotifyEnd(const FAnimNotifyContext& Context)
+{
+	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ComponentName);
+	if (!ParticleComp)
+		return;
+
+	if (!SecondBoneName.empty())
+	{
+		ParticleComp->ClearVectorParameter(BaseParameterName.empty() ? FString("RibbonBase") : BaseParameterName);
+		ParticleComp->ClearVectorParameter(TipParameterName.empty() ? FString("RibbonTip") : TipParameterName);
+	}
+	ParticleComp->SetForceLooping(false);
+	ParticleComp->StopEmission(FadeOutDuration);
 }

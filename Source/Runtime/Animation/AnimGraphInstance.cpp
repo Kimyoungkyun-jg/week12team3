@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "Animation/AnimGraphInstance.h"
+#include "Animation/AnimNotify.h"
 #include "Asset/AnimSequence.h"
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -31,6 +32,43 @@ namespace
 		Visited.erase(CurrentId);
 		return false;
 	}
+}
+
+float UAnimGraphInstance::ResolveSegmentRate(const FActiveMontageSegment& Segment)
+{
+	const float SeqRate = Segment.Sequence && std::isfinite(Segment.Sequence->RateScale) && Segment.Sequence->RateScale > 0.0f
+		? Segment.Sequence->RateScale : 1.0f;
+	const float SegRate = std::isfinite(Segment.PlayRate) && Segment.PlayRate > 0.0f ? Segment.PlayRate : 1.0f;
+	return SeqRate * SegRate;
+}
+
+float UAnimGraphInstance::MapToSegmentLocalTime(const FActiveMontageSegment& Segment, float MontageTime)
+{
+	const float SeqLength = Segment.Sequence && Segment.Sequence->GetDataModel()
+		? Segment.Sequence->GetDataModel()->PlayLength : 0.0f;
+	const float LocalTime = Segment.AnimStartOffset +
+		std::max(0.0f, MontageTime - Segment.StartTime) * ResolveSegmentRate(Segment);
+	return std::clamp(LocalTime, 0.0f, std::max(0.0f, SeqLength));
+}
+
+const UAnimGraphInstance::FActiveMontageSegment* UAnimGraphInstance::ResolveActiveSegment(
+	const std::vector<FActiveMontageSegment>& Segments, float MontageTime, float& OutLocalTime)
+{
+	if (Segments.empty()) return nullptr;
+	const FActiveMontageSegment* Match = nullptr;
+	const FActiveMontageSegment* NearestPrior = &Segments[0];
+	for (const FActiveMontageSegment& Seg : Segments)
+	{
+		if (!Seg.Sequence || !Seg.Sequence->GetDataModel()) continue;
+		if (MontageTime >= Seg.StartTime && MontageTime <= Seg.EndTime)
+			Match = &Seg;
+		if (Seg.StartTime <= MontageTime && Seg.StartTime >= NearestPrior->StartTime)
+			NearestPrior = &Seg;
+	}
+	const FActiveMontageSegment* Chosen = Match ? Match : NearestPrior;
+	if (!Chosen || !Chosen->Sequence || !Chosen->Sequence->GetDataModel()) return nullptr;
+	OutLocalTime = MapToSegmentLocalTime(*Chosen, MontageTime);
+	return Chosen;
 }
 
 bool UAnimGraphInstance::SetPreviewGraph(const FAnimGraphAsset& InGraph)
@@ -116,13 +154,46 @@ float UAnimGraphInstance::PlayMontage(const FString& MontagePath, float InPlayRa
 		HTR_LOG(Warning, "Montage skeleton mismatch: {}", MontagePath);
 		return 0.0f;
 	}
-	UAnimSequence* Sequence = UAssetManager::LoadAnimSequence(Asset.SequencePath);
-	if (!Sequence || Sequence->Skeleton != Mesh->Skeleton || !Sequence->GetDataModel() ||
-		Sequence->GetDataModel()->PlayLength <= 0.0f)
+	std::vector<FActiveMontageSegment> LoadedSegments;
+	float TotalLength = 0.0f;
+	if (!Asset.Segments.empty())
 	{
-		HTR_LOG(Warning, "Montage sequence failed to load: {}", Asset.SequencePath);
-		return 0.0f;
+		for (const FAnimMontageSegment& SegDef : Asset.Segments)
+		{
+			UAnimSequence* SegSeq = UAssetManager::LoadAnimSequence(SegDef.SequencePath);
+			if (!SegSeq || SegSeq->Skeleton != Mesh->Skeleton || !SegSeq->GetDataModel() ||
+				SegSeq->GetDataModel()->PlayLength <= 0.0f)
+			{
+				HTR_LOG(Warning, "Montage segment sequence failed to load: {}", SegDef.SequencePath);
+				return 0.0f;
+			}
+			FActiveMontageSegment ActiveSeg;
+			ActiveSeg.Sequence = SegSeq;
+			ActiveSeg.StartTime = std::max(0.0f, SegDef.StartTime);
+			ActiveSeg.AnimStartOffset = std::max(0.0f, SegDef.AnimStartOffset);
+			ActiveSeg.PlayRate = SegDef.PlayRate > 0.0f ? SegDef.PlayRate : 1.0f;
+			ActiveSeg.EndTime = SegDef.EndTime > ActiveSeg.StartTime
+				? SegDef.EndTime
+				: (ActiveSeg.StartTime + SegSeq->GetDataModel()->PlayLength / ResolveSegmentRate(ActiveSeg));
+			TotalLength = std::max(TotalLength, ActiveSeg.EndTime);
+			LoadedSegments.push_back(ActiveSeg);
+		}
 	}
+	else
+	{
+		UAnimSequence* SingleSeq = UAssetManager::LoadAnimSequence(Asset.SequencePath);
+		if (!SingleSeq || SingleSeq->Skeleton != Mesh->Skeleton || !SingleSeq->GetDataModel() ||
+			SingleSeq->GetDataModel()->PlayLength <= 0.0f)
+		{
+			HTR_LOG(Warning, "Montage sequence failed to load: {}", Asset.SequencePath);
+			return 0.0f;
+		}
+		const float SeqLen = SingleSeq->GetDataModel()->PlayLength;
+		LoadedSegments.push_back({ SingleSeq, 0.0f, SeqLen, 0.0f, 1.0f });
+		TotalLength = SeqLen;
+	}
+	if (LoadedSegments.empty() || TotalLength <= 0.0f) return 0.0f;
+	UAnimSequence* Sequence = LoadedSegments[0].Sequence;
 
 	int32 SectionIdx = -1;
 	float InitialPos = 0.0f;
@@ -140,7 +211,7 @@ float UAnimGraphInstance::PlayMontage(const FString& MontagePath, float InPlayRa
 				}
 			}
 		}
-		InitialPos = std::clamp(Asset.Sections[SectionIdx].StartTime, 0.0f, Sequence->GetDataModel()->PlayLength);
+		InitialPos = std::clamp(Asset.Sections[SectionIdx].StartTime, 0.0f, TotalLength);
 	}
 
 	FActiveMontage* Target = nullptr;
@@ -161,6 +232,25 @@ float UAnimGraphInstance::PlayMontage(const FString& MontagePath, float InPlayRa
 	Target->Path = MontagePath;
 	Target->Asset = std::move(Asset);
 	Target->Sequence = Sequence;
+	Target->Segments = std::move(LoadedSegments);
+	// 몽타주 전용 구간 노티파이 인스턴스를 생성해 속성을 복원한다
+	Target->NotifyStates.assign(Target->Asset.Notifies.size(), nullptr);
+	for (size_t Idx = 0; Idx < Target->Asset.Notifies.size(); ++Idx)
+	{
+		const FAnimMontageNotify& NotifyDef = Target->Asset.Notifies[Idx];
+		if (NotifyDef.ClassName.empty() || NotifyDef.Duration <= 0.0f) continue;
+		UClass* StateClass = FindClass(NotifyDef.ClassName);
+		if (!StateClass || !StateClass->IsChildOf(UAnimNotifyState::StaticClass()) || !StateClass->Constructor) continue;
+		UAnimNotifyState* State = NewObject<UAnimNotifyState>(this, StateClass);
+		if (!State) continue;
+		if (!NotifyDef.Properties.empty())
+		{
+			json Props = json::parse(NotifyDef.Properties, nullptr, false);
+			if (Props.is_object()) State->Serialize(Props, true);
+		}
+		Target->NotifyStates[Idx] = State;
+	}
+	Target->TotalLength = TotalLength;
 	Target->Position = InitialPos;
 	Target->PlayRate = InPlayRate;
 	Target->ElapsedTime = 0.0f;
@@ -172,10 +262,10 @@ float UAnimGraphInstance::PlayMontage(const FString& MontagePath, float InPlayRa
 	Target->StopStartWeight = 1.0f;
 	Target->bPlaying = true;
 	Target->bNotifyIncludeStart = true;
-	const float RateScale = std::isfinite(Sequence->RateScale) && Sequence->RateScale > 0.0f
+	const float SingleRateScale = (Target->Asset.Segments.empty() && std::isfinite(Sequence->RateScale) && Sequence->RateScale > 0.0f)
 		? Sequence->RateScale : 1.0f;
-	return Sequence->GetDataModel()->PlayLength /
-		std::max(0.001f, InPlayRate * Target->Asset.PlayRate * RateScale);
+	return TotalLength /
+		std::max(0.001f, InPlayRate * Target->Asset.PlayRate * SingleRateScale);
 }
 
 void UAnimGraphInstance::StopMontage(const FString& SlotName, float BlendOutOverride)
@@ -238,20 +328,23 @@ float UAnimGraphInstance::GetMontageWeight(const FString& SlotName) const
 
 void UAnimGraphInstance::UpdateMontages(float DeltaSeconds)
 {
+	PendingMontageRootMotion = FMatrix::Identity;
+	bHasPendingMontageRootMotion = false;
 	if (!std::isfinite(DeltaSeconds) || DeltaSeconds <= 0.0f) return;
 	for (auto& Montage : ActiveMontages)
 	{
-		if (!Montage.bPlaying || !Montage.Sequence || !Montage.Sequence->GetDataModel()) continue;
-		const float SeqLength = Montage.Sequence->GetDataModel()->PlayLength;
+		if (!Montage.bPlaying || Montage.Segments.empty()) continue;
+		const float SeqLength = Montage.TotalLength;
 		if (SeqLength <= 0.0f)
 		{
 			Montage.bPlaying = false;
 			Montage.BlendWeight = 0.0f;
 			continue;
 		}
-		const float RateScale = std::isfinite(Montage.Sequence->RateScale) && Montage.Sequence->RateScale > 0.0f
+		const float SingleRateScale = (Montage.Asset.Segments.empty() && Montage.Sequence &&
+			std::isfinite(Montage.Sequence->RateScale) && Montage.Sequence->RateScale > 0.0f)
 			? Montage.Sequence->RateScale : 1.0f;
-		const float EffectiveRate = std::max(0.001f, Montage.PlayRate * Montage.Asset.PlayRate * RateScale); // montage 최종 속도 배율
+		const float EffectiveRate = std::max(0.001f, Montage.PlayRate * Montage.Asset.PlayRate * SingleRateScale); // 몽타주 최종 속도 배율
 
 		if (Montage.bStopping)
 		{
@@ -285,18 +378,49 @@ void UAnimGraphInstance::UpdateMontages(float DeltaSeconds)
 
 		const float NotifyCheckEnd = std::min(NextPos, SecEnd);
 		TArray<FAnimNotifyQueueItem> SequenceNotifies;
-		Montage.Sequence->GetNotifyQueueItems(PrevPos, NotifyCheckEnd, 0,
-			Montage.bNotifyIncludeStart, 1.0f, SequenceNotifies);
-		Montage.bNotifyIncludeStart = false;
-		for (FAnimNotifyQueueItem& Item : SequenceNotifies)
+		for (const FActiveMontageSegment& Seg : Montage.Segments)
 		{
-			Item.SourceNode = Montage.Sequence;
-			LastTriggeredNotify = Item.Event.Name;
-			if (!Item.Event.IsState() && OnMontageNotify) OnMontageNotify(Item.Event.Name);
+			if (!Seg.Sequence || !Seg.Sequence->GetDataModel()) continue;
+			const float WinStart = std::max(PrevPos, Seg.StartTime);
+			const float WinEnd = std::min(NotifyCheckEnd, Seg.EndTime);
+			const bool bIncludeSegStart = (WinStart == Seg.StartTime && PrevPos <= Seg.StartTime) || Montage.bNotifyIncludeStart;
+			if (WinEnd < WinStart) continue;
+			if (WinEnd == WinStart && !(bIncludeSegStart && WinStart >= Seg.StartTime && WinStart <= Seg.EndTime)) continue;
+			TArray<FAnimNotifyQueueItem> SegItems;
+			const float LocalStart = MapToSegmentLocalTime(Seg, WinStart);
+			const float LocalEnd = MapToSegmentLocalTime(Seg, WinEnd);
+			Seg.Sequence->GetNotifyQueueItems(LocalStart, LocalEnd, 0, bIncludeSegStart, 1.0f, SegItems);
+			for (FAnimNotifyQueueItem& Item : SegItems)
+			{
+				Item.SourceNode = Seg.Sequence;
+				LastTriggeredNotify = Item.Event.Name;
+				if (!Item.Event.IsState() && OnMontageNotify) OnMontageNotify(Item.Event.Name);
+				SequenceNotifies.Add(Item);
+			}
 		}
-		AddNotifyQueueItems(SequenceNotifies);
-		for (const auto& Notify : Montage.Asset.Notifies)
+		Montage.bNotifyIncludeStart = false;
+		for (size_t NotifyIdx = 0; NotifyIdx < Montage.Asset.Notifies.size(); ++NotifyIdx)
 		{
+			const FAnimMontageNotify& Notify = Montage.Asset.Notifies[NotifyIdx];
+			UAnimNotifyState* NotifyState = NotifyIdx < Montage.NotifyStates.size() ? Montage.NotifyStates[NotifyIdx] : nullptr;
+			if (NotifyState && Notify.Duration > 0.0f)
+			{
+				const float StateEnd = Notify.Time + Notify.Duration;
+				if (StateEnd > PrevPos && Notify.Time <= NotifyCheckEnd)
+				{
+					FAnimNotifyQueueItem Item;
+					Item.Event.Name = Notify.Name;
+					Item.Event.TriggerTime = Notify.Time;
+					Item.Event.Duration = Notify.Duration;
+					Item.Event.NotifyState = NotifyState;
+					Item.Event.bStateEnds = (StateEnd <= NotifyCheckEnd);
+					Item.Weight = 1.0f;
+					Item.Source = Montage.Sequence;
+					Item.SourceNode = NotifyState;
+					SequenceNotifies.Add(Item);
+				}
+				continue;
+			}
 			const bool bAlreadyTriggered = std::any_of(SequenceNotifies.begin(), SequenceNotifies.end(),
 				[&](const FAnimNotifyQueueItem& Item)
 				{
@@ -312,13 +436,46 @@ void UAnimGraphInstance::UpdateMontages(float DeltaSeconds)
 				if (OnMontageNotify) OnMontageNotify(Notify.Name);
 			}
 		}
+		AddNotifyQueueItems(SequenceNotifies);
 
 		if (NextPos < SecEnd)
 		{
 			Montage.Position = NextPos;
+			if (!Montage.bStopping)
+			{
+				for (const FActiveMontageSegment& Seg : Montage.Segments)
+				{
+					if (!Seg.Sequence) continue;
+					const float WinStart = std::max(PrevPos, Seg.StartTime);
+					const float WinEnd = std::min(Montage.Position, Seg.EndTime);
+					if (WinEnd <= WinStart) continue;
+					FMatrix SegDelta;
+					if (Seg.Sequence->ExtractRootMotion(MapToSegmentLocalTime(Seg, WinStart), MapToSegmentLocalTime(Seg, WinEnd), 0, SegDelta))
+					{
+						PendingMontageRootMotion = SegDelta * PendingMontageRootMotion;
+						bHasPendingMontageRootMotion = true;
+					}
+				}
+			}
 		}
 		else
 		{
+			if (!Montage.bStopping)
+			{
+				for (const FActiveMontageSegment& Seg : Montage.Segments)
+				{
+					if (!Seg.Sequence) continue;
+					const float WinStart = std::max(PrevPos, Seg.StartTime);
+					const float WinEnd = std::min(SecEnd, Seg.EndTime);
+					if (WinEnd <= WinStart) continue;
+					FMatrix SegDelta;
+					if (Seg.Sequence->ExtractRootMotion(MapToSegmentLocalTime(Seg, WinStart), MapToSegmentLocalTime(Seg, WinEnd), 0, SegDelta))
+					{
+						PendingMontageRootMotion = SegDelta * PendingMontageRootMotion;
+						bHasPendingMontageRootMotion = true;
+					}
+				}
+			}
 			int32 NextSecIdx = -1;
 			if (!NextSectionName.empty())
 			{
@@ -371,9 +528,11 @@ bool UAnimGraphInstance::EvaluateSlotPose(const FString& SlotName, const USkelet
 	for (const auto& Montage : ActiveMontages)
 	{
 		if (!Montage.bPlaying || Montage.Asset.SlotName != SlotName || Montage.BlendWeight <= 0.0f) continue;
-		if (!Montage.Sequence || Montage.Sequence->Skeleton != Skeleton) continue;
+		float LocalTime = 0.0f;
+		const FActiveMontageSegment* ActiveSeg = ResolveActiveSegment(Montage.Segments, Montage.Position, LocalTime);
+		if (!ActiveSeg || !ActiveSeg->Sequence || ActiveSeg->Sequence->Skeleton != Skeleton) continue;
 		TArray<FAnimBoneTransform> MontagePose;
-		if (!Montage.Sequence->EvaluateLocalPoseTransforms(Montage.Position, MontagePose)) continue;
+		if (!ActiveSeg->Sequence->EvaluateLocalPoseTransforms(LocalTime, MontagePose)) continue;
 		if (Montage.BlendWeight >= 1.0f || InOutPose.Num() != MontagePose.Num())
 		{
 			InOutPose = std::move(MontagePose);
@@ -385,6 +544,25 @@ bool UAnimGraphInstance::EvaluateSlotPose(const FString& SlotName, const USkelet
 			InOutPose = std::move(Blended);
 			return true;
 		}
+	}
+	return false;
+}
+
+bool UAnimGraphInstance::ConsumeRootMotion(FMatrix& OutDelta)
+{
+	FMatrix GraphDelta = FMatrix::Identity;
+	const bool bHasGraphDelta = UAnimInstance::ConsumeRootMotion(GraphDelta);
+	if (bHasPendingMontageRootMotion)
+	{
+		OutDelta = PendingMontageRootMotion;
+		PendingMontageRootMotion = FMatrix::Identity;
+		bHasPendingMontageRootMotion = false;
+		return true;
+	}
+	if (bHasGraphDelta)
+	{
+		OutDelta = GraphDelta;
+		return true;
 	}
 	return false;
 }

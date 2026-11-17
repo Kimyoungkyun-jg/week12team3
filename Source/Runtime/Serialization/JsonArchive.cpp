@@ -27,56 +27,122 @@ namespace
 	constexpr int32 ObjectVersion = 1;
 }
 
-bool FJsonArchive::SaveObject(UObject* Object, const FString& Path)
+bool FJsonArchive::SaveObjectToBytes(UObject* Object, TArray<uint8>& OutBytes)
 {
-	if (!Object) return false;
-	TArray<uint8> Bytes;
-	FMemoryWriter Writer(Bytes);
+	if (!Object)
+	{
+		return false;
+	}
+
+	OutBytes.Reset();
+
+	FMemoryWriter Writer(OutBytes);
+
 	{
 		FJsonArchiveOutputFormatter Formatter(Writer);
 		FStructuredArchive Ar(Formatter);
 		FStructuredArchive::FRecord Root = Ar.Open().EnterRecord();
+
 		int32 Version = ObjectVersion;
 		FString ClassName = Object->GetClass()->Name;
+
 		Root << SA_VALUE("Version", Version);
 		Root << SA_VALUE("Class", ClassName);
 		Object->Serialize(Root.EnterRecord("Object"));
+
 		Ar.Close();
 	}
-	if (Writer.IsError()) return false;
+
+	return !Writer.IsError();
+}
+
+bool FJsonArchive::LoadObjectFromBytes(UObject* Object, const TArray<uint8>& Bytes, const FString& LegacyClassName)
+{
+	if (!Object || Bytes.IsEmpty())
+	{
+		return false;
+	}
+
+	FMemoryReader Reader(Bytes);
+	FJsonArchiveInputFormatter Formatter(Reader);
+
+	if (Reader.IsError())
+	{
+		return false;
+	}
+
+	FStructuredArchive Ar(Formatter);
+	FStructuredArchive::FRecord Root = Ar.Open().EnterRecord();
+
+	int32 Version = 0;
+	FString ClassName;
+
+	Root << SA_VALUE("Version", Version);
+	Root << SA_VALUE("Class", ClassName);
+
+	if (Version != ObjectVersion || (ClassName != Object->GetClass()->Name && ClassName != LegacyClassName))
+	{
+		return false;
+	}
+
+	Object->Serialize(Root.EnterRecord("Object"));
+	Ar.Close();
+
+	return !Reader.IsError();
+}
+
+bool FJsonArchive::SaveObject(UObject* Object, const FString& Path)
+{
+	TArray<uint8> Bytes;
+
+	if (!SaveObjectToBytes(Object, Bytes))
+	{
+		return false;
+	}
+
 	std::ofstream File(Path, std::ios::binary);
-	if (!File) return false;
+
+	if (!File)
+	{
+		return false;
+	}
+
 	File.write(reinterpret_cast<const char*>(Bytes.GetData()), Bytes.Num());
 	return File.good();
 }
 
 bool FJsonArchive::LoadObject(UObject* Object, const FString& Path, const FString& LegacyClassName)
 {
-	if (!Object) return false;
-	std::ifstream File(Path, std::ios::binary | std::ios::ate);
-	if (!File) return false;
-	const std::streamsize Size = File.tellg();
-	if (Size <= 0 || Size > std::numeric_limits<int32>::max()) return false;
-	TArray<uint8> Bytes;
-	Bytes.SetNum(static_cast<int32>(Size));
-	File.seekg(0);
-	if (!File.read(reinterpret_cast<char*>(Bytes.GetData()), Size)) return false;
-	FMemoryReader Reader(Bytes);
-	FJsonArchiveInputFormatter Formatter(Reader);
-	if (Reader.IsError()) return false;
-	FStructuredArchive Ar(Formatter);
-	FStructuredArchive::FRecord Root = Ar.Open().EnterRecord();
-	int32 Version = 0;
-	FString ClassName;
-	Root << SA_VALUE("Version", Version);
-	Root << SA_VALUE("Class", ClassName);
-	if (Version != ObjectVersion || (ClassName != Object->GetClass()->Name && ClassName != LegacyClassName))
+	if (!Object)
 	{
 		return false;
 	}
-	Object->Serialize(Root.EnterRecord("Object"));
-	Ar.Close();
-	return !Reader.IsError();
+
+	std::ifstream File(Path, std::ios::binary | std::ios::ate);
+
+	if (!File)
+	{
+		return false;
+	}
+
+	const std::streamsize Size = File.tellg();
+
+	if (Size <= 0 || Size > std::numeric_limits<int32>::max())
+	{
+		return false;
+	}
+
+	TArray<uint8> Bytes;
+	Bytes.SetNum(static_cast<int32>(Size));
+
+	File.seekg(0);
+
+	if (!File.read(reinterpret_cast<char*>(Bytes.GetData()), Size))
+	{
+		return false;
+	}
+
+	return LoadObjectFromBytes(Object, Bytes, LegacyClassName);
 }
 
 bool FJsonArchive::SaveWorldToBytes(UWorld* World, TArray<uint8>& OutBytes)

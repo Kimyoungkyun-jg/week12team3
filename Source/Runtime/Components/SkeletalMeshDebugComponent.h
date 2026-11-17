@@ -19,15 +19,18 @@ public:
 	USkeletalMeshDebugComponent();
 	~USkeletalMeshDebugComponent() override;
 	void SetSkeletalMesh(USkeletalMesh* Mesh) override;
-	bool ShouldDrawDebug() const { return bDrawBones || bDrawBoneAxes || bDrawBoneBounds; }
+	bool ShouldDrawDebug() const { return bDrawBones || bDrawBoneAxes || bDrawBoneBounds || bDrawSockets; }
 	void DrawDebug(FLineBatcher* Lines) const;
 	void SetSelectedBone(int32 Bone);
 	int32 GetSelectedBone() const { return SelectedBoneIndex; }
 	void SetHoveredBone(int32 Bone) { HoveredBoneIndex = Bone; }
+	void SetSelectedSocketName(const FString& InSocketName) { SelectedSocketName = InSocketName; }
+	const FString& GetSelectedSocketName() const { return SelectedSocketName; }
 	bool ShouldDrawBone(int32 Bone) const;
 	void GetBoneSpheres(TArray<FVector>& Joints, TArray<float>& Radii) const;
 	EBoneDrawMode BoneDrawMode = EBoneDrawMode::AllHierarchy;
 	bool bDrawBoneBounds = false;
+	bool bDrawSockets = true;
 	UPROPERTY(EditAnywhere)
 	bool bDrawBones = false;
 	UPROPERTY(EditAnywhere)
@@ -39,4 +42,5 @@ public:
 private:
 	int32 SelectedBoneIndex = -1;
 	int32 HoveredBoneIndex = -1;
+	FString SelectedSocketName;
 };

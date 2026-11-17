@@ -866,8 +866,12 @@ void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 	Super::Serialize(Record);
 	FArchive& Ar = Record.GetUnderlyingArchive();
 
-	if (auto ColorSlot = Record.TryEnterField("BaseColor", Ar.IsSaving())) ColorSlot.GetValue() << BaseColor;
-	else if (auto LegacyColor = Record.TryEnterField("DiffuseOrFactor", false)) LegacyColor.GetValue() << BaseColor;
+	if (TOptional<FStructuredArchive::FSlot> ColorSlot = Record.TryEnterField("BaseColor", Ar.IsSaving())) ColorSlot.GetValue() << BaseColor;
+	else if (Ar.IsTextFormat())
+	{
+		if (TOptional<FStructuredArchive::FSlot> LegacyColor = Record.TryEnterField("DiffuseOrFactor", false))
+			LegacyColor.GetValue() << BaseColor;
+	}
 	Record << SA_VALUE("Shininess", Shininess) << SA_VALUE("UVScrollSpeed", UVScrollSpeed);
 	auto Optional = [&]<typename T>(const char* Name, T& Value)
 	{
@@ -889,9 +893,21 @@ void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 	FString Sampler = SamplerState == ESamplerState::LinearWrap ? "LinearWrap" : "LinearClamp";
 	Record << SA_VALUE("SamplerState", Sampler);
 	if (Ar.IsLoading()) SamplerState = Sampler == "LinearWrap" ? ESamplerState::LinearWrap : ESamplerState::LinearClamp;
-	FString Blend = BlendState == EBlendState::AlphaBlend ? "AlphaBlend" : "Opaque";
+	FString Blend = "Opaque";
+	if (BlendState == EBlendState::AlphaBlend)
+		Blend = "AlphaBlend";
+	else if (BlendState == EBlendState::Additive)
+		Blend = "Additive";
 	Record << SA_VALUE("BlendState", Blend);
-	if (Ar.IsLoading()) BlendState = Blend == "AlphaBlend" ? EBlendState::AlphaBlend : EBlendState::Opaque;
+	if (Ar.IsLoading())
+	{
+		if (Blend == "AlphaBlend")
+			BlendState = EBlendState::AlphaBlend;
+		else if (Blend == "Additive")
+			BlendState = EBlendState::Additive;
+		else
+			BlendState = EBlendState::Opaque;
+	}
 	uint8 PSOVal = static_cast<uint8>(PSOType);
 	Record << SA_VALUE("PSOType", PSOVal);
 	if (Ar.IsLoading()) PSOType = static_cast<EPSOType>(PSOVal);
@@ -912,6 +928,10 @@ void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 		else if (PSOType == EPSOType::Particle_MeshOpaque || PSOType == EPSOType::Particle_MeshTranslucent || PSOType == EPSOType::Particle_MeshAdditive)
 		{
 			UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleMesh);
+		}
+		else if (PSOType == EPSOType::Particle_BeamTrailTranslucent || PSOType == EPSOType::Particle_BeamTrailAdditive)
+		{
+			UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleBeamTrail);
 		}
 	}
 

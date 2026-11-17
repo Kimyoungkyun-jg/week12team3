@@ -1,0 +1,146 @@
+{
+  "Version": 1,
+  "Skeleton": "Models/SwordModel/SKEL_SK_Mannequin_root.fbxbin",
+  "EntryState": 1,
+  "InvertDirection": false,
+  "RootPoseConnected": true,
+  "AnyStateX": 20.0,
+  "AnyStateY": 320.0,
+  "States": [
+    {
+      "Asset": "Assets/Animations/SwordMannequinLocomotion.blendspace",
+      "ConstantX": 0.0,
+      "ConstantY": 0.0,
+      "DirectionOffsetX": 0.0,
+      "DirectionOffsetY": 0.0,
+      "Id": 1,
+      "InputX": 2,
+      "InputY": 1,
+      "Loop": true,
+      "Name": "Locomotion",
+      "OutputOffsetX": 0.0,
+      "OutputOffsetY": 0.0,
+      "OutputPlayerId": 0,
+      "PlayRate": 1.0,
+      "PlayerOffsetX": 0.0,
+      "PlayerOffsetY": 0.0,
+      "Players": [],
+      "Pose": 2,
+      "PoseConnected": true,
+      "SpeedOffsetX": 0.0,
+      "SpeedOffsetY": 0.0,
+      "X": 100.0,
+      "Y": 140.0
+    },
+    {
+      "Asset": "Models/SwordModel/AS_combo02.fbxbin",
+      "ConstantX": 0.0,
+      "ConstantY": 0.0,
+      "DirectionOffsetX": 0.0,
+      "DirectionOffsetY": 0.0,
+      "Id": 2,
+      "InputX": 0,
+      "InputY": 0,
+      "Loop": false,
+      "Name": "ComboAttack",
+      "OutputOffsetX": 0.0,
+      "OutputOffsetY": 0.0,
+      "OutputPlayerId": 0,
+      "PlayRate": 1.0,
+      "PlayerOffsetX": 0.0,
+      "PlayerOffsetY": 0.0,
+      "Players": [],
+      "Pose": 0,
+      "PoseConnected": true,
+      "SpeedOffsetX": 0.0,
+      "SpeedOffsetY": 0.0,
+      "X": 420.0,
+      "Y": 140.0
+    }
+  ],
+  "Transitions": [
+    {
+      "Id": 1,
+      "From": 1,
+      "To": 2,
+      "Input": 11,
+      "Compare": 1,
+      "Threshold": 0.0,
+      "BlendTime": 0.1
+    },
+    {
+      "Id": 2,
+      "From": 2,
+      "To": 1,
+      "Input": 7,
+      "Compare": 1,
+      "Threshold": 0.1,
+      "BlendTime": 0.1
+    }
+  ],
+  "RootNodes": [
+    {
+      "Id": 1,
+      "Type": 0,
+      "Name": "Locomotion",
+      "X": 60.0,
+      "Y": 120.0,
+      "SourceNodeId": 0,
+      "SecondarySourceNodeId": 0,
+      "SlotName": "FullBody",
+      "AimOffsetPath": "",
+      "SequencePath": "",
+      "Alpha": 1.0,
+      "AlphaInput": 0,
+      "PlayRate": 1.0,
+      "PitchInput": 12,
+      "ConstantPitch": 0.0
+    },
+    {
+      "Id": 2,
+      "Type": 1,
+      "Name": "FullBody Slot",
+      "X": 320.0,
+      "Y": 120.0,
+      "SourceNodeId": 1,
+      "SecondarySourceNodeId": 0,
+      "SlotName": "FullBody",
+      "AimOffsetPath": "",
+      "SequencePath": "",
+      "Alpha": 1.0,
+      "AlphaInput": 0,
+      "PlayRate": 1.0,
+      "PitchInput": 12,
+      "ConstantPitch": 0.0
+    },
+    {
+      "Id": 3,
+      "Type": 4,
+      "Name": "Output Pose",
+      "X": 580.0,
+      "Y": 120.0,
+      "SourceNodeId": 2,
+      "SecondarySourceNodeId": 0,
+      "SlotName": "FullBody",
+      "AimOffsetPath": "",
+      "SequencePath": "",
+      "Alpha": 1.0,
+      "AlphaInput": 0,
+      "PlayRate": 1.0,
+      "PitchInput": 12,
+      "ConstantPitch": 0.0
+    }
+  ],
+  "RootLinks": [
+    {
+      "FromNodeId": 1,
+      "ToNodeId": 2,
+      "ToPinIndex": 0
+    },
+    {
+      "FromNodeId": 2,
+      "ToNodeId": 3,
+      "ToPinIndex": 0
+    }
+  ]
+}

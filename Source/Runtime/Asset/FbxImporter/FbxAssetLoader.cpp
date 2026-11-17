@@ -178,6 +178,25 @@ void KeepAnimationSettings(const fs::path& Target, FFbxAssetData& Data)
 	}
 }
 
+// 스켈레톤 소켓 목록을 재임포트 후에도 유지한다
+void KeepSkeletonSockets(const fs::path& Target, FFbxAssetData& Data)
+{
+	FFbxAssetData Existing;
+	FString Ignored;
+	if (!fs::exists(Target) || !FFbxAssetBake::ReadBaked(FbxPath::ToString(Target), Existing, Ignored) ||
+		Existing.Type != EFbxAssetType::Skeleton)
+	{
+		return;
+	}
+	for (const FSkeletalMeshSocket& Socket : Existing.Sockets)
+	{
+		if (Data.RefSkeleton.FindBoneIndex(Socket.BoneName) >= 0)
+		{
+			Data.Sockets.Add(Socket);
+		}
+	}
+}
+
 // 아직 등록하지 않은 의존 애셋도 같은 배치에서 찾는다. 실패 시 기존 검색표는 그대로 유지된다.
 class FLoadBatch
 {
@@ -229,8 +248,10 @@ public:
 		}
 		else if (Asset.Type == EFbxAssetType::Skeleton)
 		{
-			auto* Skeleton = Allocate<USkeleton>();
-			Skeleton->RefSkeleton = Asset.RefSkeleton; Object = Skeleton;
+			USkeleton* Skeleton = Allocate<USkeleton>();
+			Skeleton->RefSkeleton = Asset.RefSkeleton;
+			Skeleton->Sockets = Asset.Sockets;
+			Object = Skeleton;
 		}
 		else if (Asset.Type == EFbxAssetType::AnimSequence)
 		{
@@ -495,6 +516,7 @@ FFbxImportResult FFbxAssetLoader::Import(const FString& SourcePath, const FFbxIm
 			if (!FbxPath::ResolveKey(Data.Key, Target, Result.Error)) return Result;
 			FReplacement File{ Target, Folder.Path / (std::to_string(Files.size()) + ".new"), Folder.Path / (std::to_string(Files.size()) + ".old") };
 			if (Data.Type == EFbxAssetType::AnimSequence) KeepAnimationSettings(Target, Data);
+			else if (Data.Type == EFbxAssetType::Skeleton) KeepSkeletonSockets(Target, Data);
 			if (!FFbxAssetBake::WriteBaked(FbxPath::ToString(File.Staged), Data, Result.Error)) return Result;
 			FFbxAssetData Verified;
 			if (!FFbxAssetBake::ReadBaked(FbxPath::ToString(File.Staged), Verified, Result.Error)) return Result;

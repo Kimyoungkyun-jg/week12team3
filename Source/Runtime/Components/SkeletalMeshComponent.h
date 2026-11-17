@@ -50,6 +50,12 @@ public:
 	static void SetForceSkinningUpdate(bool bForce) { bForceSkinningUpdate = bForce; }
 	static bool IsForceSkinningUpdate() { return bForceSkinningUpdate; }
 	const TArray<FMatrix>& GetGlobalBoneTransforms() const { return GlobalBoneTransforms; }
+	virtual bool DoesSocketExist(const FString& InSocketName) const override;
+	virtual FMatrix GetSocketWorldMatrix(const FString& InSocketName) const override;
+	virtual FQuat GetSocketWorldRotationQuat(const FString& InSocketName) const override;
+	virtual FVector GetSocketWorldScale3D(const FString& InSocketName) const override;
+	FTransform GetSocketTransform(const FString& InSocketName) const;
+	void GetSocketNames(TArray<FString>& OutSocketNames) const;
 	virtual FBox CalcLocalBounds() const override;
 
 	// Bone Weight Heatmap (SkeletalMesh Viewer 전용). 켜면 BoneIndex가 주는 가중치를 정점 색으로 칠한다.

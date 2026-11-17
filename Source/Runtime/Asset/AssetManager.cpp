@@ -164,6 +164,7 @@ void UAssetManager::Init(const FAssetLoadProgress& OnProgress)
 	Get().CreateBillboardMaterial();
 	Get().CreateParticleMaterial();
 	Get().CreateParticleSpriteMaterial();
+	Get().CreateBeamTrailMaterial();
 	Get().LoadDeferredAssets();
 	Get().CreateEditorArrowMaterial();
 	Get().CreateBoneWeightHeatmapMaterial();
@@ -435,6 +436,20 @@ void UAssetManager::CreateParticleSpriteMaterial()
 	RegisterAsset("ParticleSpriteMaterial", ParticleSpriteMat);
 }
 
+void UAssetManager::CreateBeamTrailMaterial()
+{
+	UMaterial* BeamTrailMat = NewObject<UMaterial>();
+	BeamTrailMat->PSOType = EPSOType::Particle_BeamTrailTranslucent;
+	BeamTrailMat->Shader = FRenderResourceManager::GetShaderProgram("Resources/Shader/ParticleBeamTrailShader.hlsl");
+	BeamTrailMat->Textures.Add(GetAssetByPath<UTexture2D>("WhiteTexture"));
+	BeamTrailMat->BlendState = EBlendState::AlphaBlend;
+	BeamTrailMat->DepthStencilState = EDepthStencilState::ReadOnly;
+	BeamTrailMat->SamplerState = ESamplerState::LinearWrap;
+	BeamTrailMat->ParamBuffer = RenderCommand::CreateConstantBuffer(256);
+	BeamTrailMat->UsageFlags = static_cast<uint32>(EMaterialUsage::ParticleBeamTrail);
+	RegisterAsset("BeamTrailMaterial", BeamTrailMat);
+}
+
 void UAssetManager::CreateEditorArrowMaterial() {
 	UMaterial* BaseMaterial = GetAssetByPath<UMaterial>("DefaultMaterial");
 	if (!BaseMaterial)
@@ -544,6 +559,10 @@ UMaterialInterface* UAssetManager::LoadMaterialAsset(const FString& AssetPath)
 		else if (BaseMaterial->PSOType == EPSOType::Particle_AlphaBlend || BaseMaterial->PSOType == EPSOType::Particle_Additive)
 		{
 			Template = GetAssetByPath<UMaterial>("SubUVMaterial");
+		}
+		else if (BaseMaterial->PSOType == EPSOType::Particle_BeamTrailTranslucent || BaseMaterial->PSOType == EPSOType::Particle_BeamTrailAdditive)
+		{
+			Template = GetAssetByPath<UMaterial>("BeamTrailMaterial");
 		}
 		else
 		{
@@ -763,6 +782,42 @@ USkeleton* UAssetManager::LoadSkeleton(const FString& AssetPath)
 		return Cast<USkeleton>(FFbxAssetLoader::LoadAsset(Path, Error));
 	}
 	return nullptr;
+}
+
+bool UAssetManager::SaveSkeleton(const USkeleton& Skeleton)
+{
+	const FString& Key = Skeleton.GetPath();
+	FString Path, Error;
+	if (Key.empty() || GetAssetExtension(Key) != ".fbxbin" || GetAssetByPath<USkeleton>(Key) != &Skeleton ||
+		!FbxPath::ResolveKey(Key, Path, Error))
+	{
+		return false;
+	}
+	FFbxAssetData Data;
+	if (!FFbxAssetBake::ReadBaked(Path, Data, Error) || Data.Type != EFbxAssetType::Skeleton)
+	{
+		HTR_LOG(Warning, "[Skeleton] Cannot save {}: {}", Key, Error);
+		return false;
+	}
+	Data.Sockets = Skeleton.Sockets;
+	const fs::path Target = FbxPath::FromString(Path);
+	fs::path Staged = Target;
+	Staged += L".saving";
+	if (!FFbxAssetBake::WriteBaked(FbxPath::ToString(Staged), Data, Error))
+	{
+		std::error_code Ignored;
+		fs::remove(Staged, Ignored);
+		HTR_LOG(Warning, "[Skeleton] Cannot save {}: {}", Key, Error);
+		return false;
+	}
+	std::error_code Ec;
+	fs::rename(Staged, Target, Ec);
+	if (Ec)
+	{
+		fs::remove(Staged, Ec);
+		return false;
+	}
+	return true;
 }
 
 UAnimSequence* UAssetManager::LoadAnimSequence(const FString& AssetPath)

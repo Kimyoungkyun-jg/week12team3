@@ -24,6 +24,8 @@ public:
 	bool HasFocusedWindow() const { return IsOpen() && bFocused; }
 private:
 	void SaveMaterial();
+	void SaveSkeletonAsset();
+	void SaveCurrentAsset();
 	FString Path;
 	FString Status;
 	URenderAsset* Asset = nullptr;
@@ -31,6 +33,8 @@ private:
 	FEditorViewportClient Client;
 	float CameraSpeed = 1.0f;
 	TUniquePtr<FSkyboxRenderer> Skybox;
+	char NewSocketName[128] = "NewSocket";
+	int32 NewSocketBoneIndex = 0;
 	bool bVisible = false;
 	bool bDirty = false;
 	bool bFocused = false;
