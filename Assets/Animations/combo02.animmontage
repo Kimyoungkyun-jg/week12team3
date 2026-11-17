@@ -1,12 +1,132 @@
 {
-  "Version": 1,
-  "Skeleton": "Models/SwordModel/SKEL_SK_Mannequin_root.fbxbin",
-  "Sequence": "Models/SwordModel/AS_combo02.fbxbin",
-  "Slot": "FullBody",
-  "PlayRate": 1.0,
   "BlendInTime": 0.08,
   "BlendOutTime": 0.15,
   "Loop": false,
+  "Notifies": [
+    {
+      "ClassName": "UAnimNotifyState_ParticleEffect",
+      "Duration": 0.12,
+      "Name": "SwordWave_1",
+      "Properties": {
+        "BaseParameterName": "RibbonBase",
+        "BoneName": "spine_02",
+        "BoneOffset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ComponentName": "SwordWaveComponent_1",
+        "FadeOutDuration": 0.0,
+        "ParticlePath": "Assets/Particles/BlueSwordWave.particle",
+        "SecondBoneName": "",
+        "TipParameterName": "RibbonTip",
+        "bFollowBoneRotation": false,
+        "bLoopDuringState": false
+      },
+      "Time": 0.3
+    },
+    {
+      "ClassName": "UAnimNotifyState_ParticleEffect",
+      "Duration": 0.12,
+      "Name": "SwordWave_2",
+      "Properties": {
+        "BaseParameterName": "RibbonBase",
+        "BoneName": "spine_02",
+        "BoneOffset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ComponentName": "SwordWaveComponent_2",
+        "FadeOutDuration": 0.0,
+        "ParticlePath": "Assets/Particles/BlueSwordWave.particle",
+        "SecondBoneName": "",
+        "TipParameterName": "RibbonTip",
+        "bFollowBoneRotation": false,
+        "bLoopDuringState": false
+      },
+      "Time": 1.04
+    },
+    {
+      "ClassName": "UAnimNotifyState_ParticleEffect",
+      "Duration": 0.12,
+      "Name": "SwordWave_3",
+      "Properties": {
+        "BaseParameterName": "RibbonBase",
+        "BoneName": "spine_02",
+        "BoneOffset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ComponentName": "SwordWaveComponent_3",
+        "FadeOutDuration": 0.0,
+        "ParticlePath": "Assets/Particles/BlueSwordWave.particle",
+        "SecondBoneName": "",
+        "TipParameterName": "RibbonTip",
+        "bFollowBoneRotation": false,
+        "bLoopDuringState": false
+      },
+      "Time": 1.4
+    },
+    {
+      "ClassName": "UAnimNotifyState_ParticleEffect",
+      "Duration": 0.12,
+      "Name": "SwordWave_4",
+      "Properties": {
+        "BaseParameterName": "RibbonBase",
+        "BoneName": "spine_02",
+        "BoneOffset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ComponentName": "SwordWaveComponent_4",
+        "FadeOutDuration": 0.0,
+        "ParticlePath": "Assets/Particles/BlueSwordWave.particle",
+        "SecondBoneName": "",
+        "TipParameterName": "RibbonTip",
+        "bFollowBoneRotation": false,
+        "bLoopDuringState": false
+      },
+      "Time": 2.68
+    },
+    {
+      "ClassName": "UAnimNotifyState_ParticleEffect",
+      "Duration": 0.12,
+      "Name": "SwordWave_5",
+      "Properties": {
+        "BaseParameterName": "RibbonBase",
+        "BoneName": "spine_02",
+        "BoneOffset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ComponentName": "SwordWaveComponent_5",
+        "FadeOutDuration": 0.0,
+        "ParticlePath": "Assets/Particles/BlueSwordWave.particle",
+        "SecondBoneName": "",
+        "TipParameterName": "RibbonTip",
+        "bFollowBoneRotation": false,
+        "bLoopDuringState": false
+      },
+      "Time": 3.18
+    }
+  ],
+  "PlayRate": 1.0,
   "Sections": [],
-  "Notifies": []
+  "Segments": [
+    {
+      "AnimStartOffset": 0.0,
+      "EndTime": 5.266666889190674,
+      "PlayRate": 1.0,
+      "Sequence": "Models/SwordModel/AS_combo02.fbxbin",
+      "StartTime": 0.0
+    }
+  ],
+  "Sequence": "Models/SwordModel/AS_combo02.fbxbin",
+  "Skeleton": "Models/SwordModel/SKEL_SK_Mannequin_root.fbxbin",
+  "Slot": "FullBody",
+  "Version": 1
 }
