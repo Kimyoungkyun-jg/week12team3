@@ -86,7 +86,7 @@ namespace
 	{
 		if (!LOD)
 			return nullptr;
-		for (const UParticleModule* Module : LOD->Modules)
+		for (const UParticleModule* Module : LOD->EffectiveModules)
 		{
 			if (Module && Module->bEnabled)
 			{
@@ -493,7 +493,7 @@ namespace
 		if (!LOD || !RibbonType || !Emitter.ParticleData || !Emitter.ParticleIndices || Emitter.ActiveParticles <= 0)
 			return;
 
-		const uint32 RibbonOffset = Emitter.GetModuleDataOffset(LOD->TypeDataModule);
+		const uint32 RibbonOffset = Emitter.GetModuleDataOffset(LOD->EffectiveTypeData);
 		if (RibbonOffset == 0)
 			return;
 
@@ -516,7 +516,7 @@ namespace
 
 		const int32 MaxTrails = std::max(1, RibbonType->MaxTrailCount);
 		const int32 MaxPerTrail = std::max(2, RibbonType->MaxParticleInTrailCount);
-		const bool bLocal = LOD->RequiredModule && LOD->RequiredModule->bUseLocalSpace;
+		const bool bLocal = LOD->EffectiveRequired && LOD->EffectiveRequired->bUseLocalSpace;
 
 		TArray<FBeamTrailStrip> AllTrails;
 		int32 RunStart = 0;
@@ -779,16 +779,17 @@ void FParticleEmitterInstance::UpdateStride()
 	ModuleOffsetMap.Empty();
 	if (CurrentLODLevel)
 	{
-		if (CurrentLODLevel->TypeDataModule && CurrentLODLevel->TypeDataModule->bEnabled)
+		if (CurrentLODLevel->EffectiveTypeData && CurrentLODLevel->EffectiveTypeData->bEnabled)
 		{
-			const uint32 ReqBytes = CurrentLODLevel->TypeDataModule->RequiredBytes();
+			const uint32 ReqBytes = CurrentLODLevel->EffectiveTypeData->RequiredBytes();
 			if (ReqBytes > 0)
 			{
-				ModuleOffsetMap.Add(CurrentLODLevel->TypeDataModule, static_cast<uint32>(NewSize));
+				ModuleOffsetMap.Add(CurrentLODLevel->EffectiveTypeData, static_cast<uint32>(NewSize));
 				NewSize += static_cast<int32>(ReqBytes);
 			}
 		}
-		for (const UParticleModule* Module : CurrentLODLevel->Modules)
+
+		for (const UParticleModule* Module : CurrentLODLevel->EffectiveModules)
 		{
 			if (!Module || !Module->bEnabled) continue;
 			const uint32 ReqBytes = Module->RequiredBytes();
@@ -912,12 +913,21 @@ void FParticleEmitterInstance::Initialize(UParticleEmitter* Emitter, uint32 Seed
 	if (LODs.IsEmpty()) { Resize(0); return; }
 	CurrentLODLevel = LODs[0];
 	if (!CurrentLODLevel) { Resize(0); return; }
-	const EParticleEmitterType Type = CurrentLODLevel->GetOrCreateTypeData()->GetEmitterType();
-	if (Type != EParticleEmitterType::Sprite && Type != EParticleEmitterType::GpuSprite &&
-		Type != EParticleEmitterType::Mesh && Type != EParticleEmitterType::Beam &&
-		Type != EParticleEmitterType::Ribbon) { Resize(0); return; }
 	Emitter->CacheEmitterModuleInfo();
-	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
+
+	if (!CurrentLODLevel->EffectiveTypeData || !CurrentLODLevel->EffectiveRequired) { Resize(0); return; }
+	const EParticleEmitterType Type = CurrentLODLevel->EffectiveTypeData->GetEmitterType();
+	if (Type != EParticleEmitterType::Sprite
+		&& Type != EParticleEmitterType::GpuSprite
+		&& Type != EParticleEmitterType::Mesh
+		&& Type != EParticleEmitterType::Beam
+		&& Type != EParticleEmitterType::Ribbon)
+	{
+		Resize(0);
+		return;
+	}
+
+	UParticleModuleRequired* Required = CurrentLODLevel->EffectiveRequired;
 	if (Type == EParticleEmitterType::GpuSprite)
 	{
 		Resize(0);
@@ -934,14 +944,57 @@ void FParticleEmitterInstance::SetLODLevel(int32 NewLODIndex)
 	if (!SpriteTemplate) return;
 	const TArray<UParticleLODLevel*>& LODs = SpriteTemplate->GetLODLevels();
 	if (LODs.IsEmpty()) return;
+
 	const int32 ClampedIndex = std::clamp(NewLODIndex, 0, static_cast<int32>(LODs.Num()) - 1);
 	if (CurrentLODLevelIndex == ClampedIndex && CurrentLODLevel == LODs[ClampedIndex]) return;
+	UParticleLODLevel* NextLOD = LODs[ClampedIndex];
+
+	const auto HasCompatiblePayload = [](const UParticleLODLevel& A, const UParticleLODLevel& B)
+	{
+		TArray<const UParticleModule*> PayloadA;
+		TArray<const UParticleModule*> PayloadB;
+		for (const UParticleModule* Module : A.EffectiveModules)
+			if (Module && Module->bEnabled && Module->RequiredBytes() > 0) PayloadA.Add(Module);
+		for (const UParticleModule* Module : B.EffectiveModules)
+			if (Module && Module->bEnabled && Module->RequiredBytes() > 0) PayloadB.Add(Module);
+
+		if (PayloadA.Num() != PayloadB.Num())
+		{
+			return false;
+		}
+
+		for (uint32 Index = 0; Index < PayloadA.Num(); ++Index)
+		{
+			const UParticleModule* Left = PayloadA[Index];
+			const UParticleModule* Right = PayloadB[Index];
+			if (Left->LODSlotId != Right->LODSlotId
+				|| Left->GetClass() != Right->GetClass()
+				|| Left->RequiredBytes() != Right->RequiredBytes())
+			{
+				return false;
+			}
+		}
+		return true;
+	};
+
+	const bool bResetForLOD = (CurrentLODLevel->EffectiveTypeData->GetClass() != NextLOD->EffectiveTypeData->GetClass()
+		|| CurrentLODLevel->EffectiveRequired->bUseLocalSpace != NextLOD->EffectiveRequired->bUseLocalSpace
+		|| (NextLOD->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::GpuSprite
+			&& CurrentLODLevel->EffectiveRequired->MaxParticles != NextLOD->EffectiveRequired->MaxParticles)
+		|| !HasCompatiblePayload(*CurrentLODLevel, *NextLOD));
+
 	CurrentLODLevelIndex = ClampedIndex;
-	CurrentLODLevel = LODs[ClampedIndex];
+	CurrentLODLevel = NextLOD;
 	if (!CurrentLODLevel) return;
-	SpriteTemplate->CacheEmitterModuleInfo();
-	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
-	if (IsGpuEmitter())
+
+	UParticleModuleRequired* Required = CurrentLODLevel->EffectiveRequired;
+	if (bResetForLOD)
+	{
+		Reset();
+		GpuResources.reset();
+	}
+
+	if (CurrentLODLevel->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::GpuSprite)
 	{
 		Resize(0);
 		MaxActiveParticles = std::clamp(Required->MaxParticles, 0, 65535);
@@ -987,15 +1040,14 @@ void FParticleEmitterInstance::Reset()
 
 bool FParticleEmitterInstance::IsGpuEmitter() const
 {
-	return CurrentLODLevel && CurrentLODLevel->bEnabled &&
-		CurrentLODLevel->TypeDataModule &&
-		CurrentLODLevel->TypeDataModule->GetEmitterType() == EParticleEmitterType::GpuSprite;
+	return CurrentLODLevel && CurrentLODLevel->bEnabled && CurrentLODLevel->EffectiveTypeData
+		&& CurrentLODLevel->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::GpuSprite;
 }
 
 bool FParticleEmitterInstance::HasCompleted() const
 {
 	if (!CurrentLODLevel || !CurrentLODLevel->bEnabled) return true;
-	const UParticleModuleRequired* Required = CurrentLODLevel->RequiredModule;
+	const UParticleModuleRequired* Required = CurrentLODLevel->EffectiveRequired;
 	if (!Required) return true;
 	if (bSuppressSpawning)
 	{
@@ -1015,25 +1067,27 @@ bool FParticleEmitterInstance::HasCompleted() const
 
 void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 {
-	if (!CurrentLODLevel || !CurrentLODLevel->bEnabled || !std::isfinite(DeltaTime) || DeltaTime <= 0.0f) return;
+	if (!CurrentLODLevel || !CurrentLODLevel->bEnabled || !CurrentLODLevel->EffectiveTypeData ||
+		!CurrentLODLevel->EffectiveRequired || !CurrentLODLevel->EffectiveSpawn ||
+		!std::isfinite(DeltaTime) || DeltaTime <= 0.0f) return;
 	if (SpriteTemplate)
 	{
 		DeltaTime *= std::max(0.0f, SpriteTemplate->PlayRate);
 		if (DeltaTime <= 0.0f) return;
 	}
-	const EParticleEmitterType EmitterType = CurrentLODLevel->GetOrCreateTypeData()->GetEmitterType();
+	const EParticleEmitterType EmitterType = CurrentLODLevel->EffectiveTypeData->GetEmitterType();
 	if (EmitterType != EParticleEmitterType::Sprite && EmitterType != EParticleEmitterType::GpuSprite &&
 		EmitterType != EParticleEmitterType::Mesh && EmitterType != EParticleEmitterType::Beam &&
 		EmitterType != EParticleEmitterType::Ribbon) return;
-	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
+	UParticleModuleRequired* Required = CurrentLODLevel->EffectiveRequired;
 	const bool bIsGpu = (EmitterType == EParticleEmitterType::GpuSprite);
 	const bool bIsBeam = (EmitterType == EParticleEmitterType::Beam);
 	const bool bIsRibbon = (EmitterType == EParticleEmitterType::Ribbon);
-	const UParticleModuleTypeDataBeam* BeamType = bIsBeam ? Cast<UParticleModuleTypeDataBeam>(CurrentLODLevel->TypeDataModule) : nullptr;
-	const UParticleModuleTypeDataRibbon* RibbonType = bIsRibbon ? Cast<UParticleModuleTypeDataRibbon>(CurrentLODLevel->TypeDataModule) : nullptr;
+	const UParticleModuleTypeDataBeam* BeamType = bIsBeam ? Cast<UParticleModuleTypeDataBeam>(CurrentLODLevel->EffectiveTypeData) : nullptr;
+	const UParticleModuleTypeDataRibbon* RibbonType = bIsRibbon ? Cast<UParticleModuleTypeDataRibbon>(CurrentLODLevel->EffectiveTypeData) : nullptr;
 	const UParticleModuleBeamNoise* BeamNoise = bIsBeam ? FindEnabledModule<UParticleModuleBeamNoise>(CurrentLODLevel) : nullptr;
 	const UParticleModuleSpawnPerUnit* SpawnPerUnitMod = bIsRibbon ? FindEnabledModule<UParticleModuleSpawnPerUnit>(CurrentLODLevel) : nullptr;
-	const uint32 TypeDataOffset = (bIsBeam || bIsRibbon) ? GetModuleDataOffset(CurrentLODLevel->TypeDataModule) : 0u;
+	const uint32 TypeDataOffset = (bIsBeam || bIsRibbon) ? GetModuleDataOffset(CurrentLODLevel->EffectiveTypeData) : 0u;
 	const int32 RawMaxAllowed = std::clamp(Required->MaxParticles, 0, 65535);
 	const int32 MaxAllowed = (bIsBeam && BeamType)
 		? std::min(RawMaxAllowed, std::max(1, BeamType->MaxBeamCount))
@@ -1126,7 +1180,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 	const double SpawnTime = Duration > 0.0 && !bEffectiveLooping
 		? std::clamp(Duration - StartTime, 0.0, static_cast<double>(DeltaTime))
 		: static_cast<double>(DeltaTime);
-	const UParticleModuleSpawn* SpawnModule = CurrentLODLevel->GetOrCreateSpawn();
+	const UParticleModuleSpawn* SpawnModule = CurrentLODLevel->EffectiveSpawn;
 	const int32 Available = bIsGpu ? MaxActiveParticles : std::max(0, MaxAllowed - ActiveParticles);
 	int32 ToSpawn = 0;
 	int32 UnitSpawnCount = 0;
@@ -1354,11 +1408,11 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 	for (const FParticleEmitterInstance& Emitter : EmitterInstances)
 	{
 		UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
-		if (!LOD || !LOD->bEnabled || !LOD->RequiredModule || !LOD->TypeDataModule)
+		if (!LOD || !LOD->bEnabled || !LOD->EffectiveRequired || !LOD->EffectiveTypeData)
 			continue;
-		if (LOD->TypeDataModule->GetEmitterType() == EParticleEmitterType::GpuSprite)
+		if (LOD->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::GpuSprite)
 		{
-			FVector OffsetMin, OffsetMax, VelReach; 
+			FVector OffsetMin, OffsetMax, VelReach;
 			float HalfDiagSize = 1.0f;
 			float MaxLifetime = 1.0f;
 			ComputeGpuEmitterReach(LOD, OffsetMin, OffsetMax, VelReach, HalfDiagSize, MaxLifetime);
@@ -1370,14 +1424,14 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 		}
 		else if (Emitter.ParticleData && Emitter.ParticleIndices)
 		{
-			const EParticleEmitterType EmitterType = LOD->TypeDataModule->GetEmitterType();
-			const bool bLocal = LOD->RequiredModule->bUseLocalSpace;
+			const EParticleEmitterType EmitterType = LOD->EffectiveTypeData->GetEmitterType();
+			const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
 			const FMatrix InvWorld = bLocal ? FMatrix::Identity : GetWorldMatrix().Inverse();
 			if (EmitterType == EParticleEmitterType::Beam)
 			{
-				const UParticleModuleTypeDataBeam* BeamType = Cast<UParticleModuleTypeDataBeam>(LOD->TypeDataModule);
+				const UParticleModuleTypeDataBeam* BeamType = Cast<UParticleModuleTypeDataBeam>(LOD->EffectiveTypeData);
 				const UParticleModuleBeamNoise* NoiseMod = FindEnabledModule<UParticleModuleBeamNoise>(LOD);
-				const uint32 BeamOffset = Emitter.GetModuleDataOffset(LOD->TypeDataModule);
+				const uint32 BeamOffset = Emitter.GetModuleDataOffset(LOD->EffectiveTypeData);
 				if (BeamType && BeamOffset > 0)
 				{
 					FBeamTrailStrip Strip;
@@ -1399,7 +1453,7 @@ FBox UParticleSystemComponent::CalcLocalBounds() const
 			}
 			else
 			{
-				const UParticleModuleTypeDataMesh* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule);
+				const UParticleModuleTypeDataMesh* MeshTypeData = Cast<UParticleModuleTypeDataMesh>(LOD->EffectiveTypeData);
 				UStaticMesh* MeshAsset = MeshTypeData ? MeshTypeData->Mesh : nullptr;
 				const FVector MeshBaseExtent = MeshAsset
 					? (MeshAsset->GetRenderBounds().Max - MeshAsset->GetRenderBounds().Min) * 0.5f
@@ -1463,8 +1517,8 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 	for (FParticleEmitterInstance& Emitter : EmitterInstances)
 	{
 		UParticleLODLevel* LOD = Emitter.CurrentLODLevel;
-		if (!LOD || !LOD->bEnabled || !LOD->RequiredModule || !LOD->TypeDataModule) continue;
-		const EParticleEmitterType EmitterType = LOD->TypeDataModule->GetEmitterType();
+		if (!LOD || !LOD->bEnabled || !LOD->EffectiveRequired || !LOD->EffectiveTypeData) continue;
+		const EParticleEmitterType EmitterType = LOD->EffectiveTypeData->GetEmitterType();
 		if (EmitterType == EParticleEmitterType::GpuSprite)
 		{
 			if (Emitter.MaxActiveParticles <= 0) continue;
@@ -1475,7 +1529,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			float HalfDiagSize = 1.0f;
 			float MaxLifetime = 1.0f;
 			ComputeGpuEmitterReach(LOD, OffsetMin, OffsetMax, VelReach, HalfDiagSize, MaxLifetime);
-			const bool bLocal = LOD->RequiredModule->bUseLocalSpace;
+			const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
 			if (!bLocal)
 			{
 				bHasWorldSpaceParticles = true;
@@ -1522,7 +1576,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 
 			auto GpuData = MakeUnique<FDynamicGpuSpriteEmitterData>();
 			GpuData->GpuResources = Emitter.GpuResources;
-			GpuData->Material = LOD->RequiredModule->Material;
+			GpuData->Material = LOD->EffectiveRequired->Material;
 			GpuData->MaxParticles = static_cast<uint32>(Emitter.MaxActiveParticles);
 			GpuData->ParticleStride = static_cast<uint32>(sizeof(FGpuParticle));
 			GpuData->bResetRequested = Emitter.bGpuResetRequested;
@@ -1566,7 +1620,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 				}
 			}
 
-			GpuData->bUseLocalSpace = LOD->RequiredModule->bUseLocalSpace;
+			GpuData->bUseLocalSpace = LOD->EffectiveRequired->bUseLocalSpace;
 			GpuData->LocalToWorld = Data.LocalToWorld;
 			GpuData->WorldLocation = Data.WorldLocation;
 			GpuData->WorldScale = Data.WorldScale;
@@ -1581,18 +1635,18 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 
 		if (EmitterType == EParticleEmitterType::Beam)
 		{
-			const UParticleModuleTypeDataBeam* BeamType = Cast<UParticleModuleTypeDataBeam>(LOD->TypeDataModule);
+			const UParticleModuleTypeDataBeam* BeamType = Cast<UParticleModuleTypeDataBeam>(LOD->EffectiveTypeData);
 			const UParticleModuleBeamNoise* NoiseMod = FindEnabledModule<UParticleModuleBeamNoise>(LOD);
-			const uint32 BeamOffset = Emitter.GetModuleDataOffset(LOD->TypeDataModule);
+			const uint32 BeamOffset = Emitter.GetModuleDataOffset(LOD->EffectiveTypeData);
 			if (!BeamType || BeamOffset == 0 || !Emitter.ParticleData || !Emitter.ParticleIndices || Emitter.ActiveParticles <= 0)
 				continue;
 
-			const bool bLocal = LOD->RequiredModule->bUseLocalSpace;
+			const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
 			if (!bLocal)
 				bHasWorldSpaceParticles = true;
 
 			TUniquePtr<FDynamicBeamEmitterData> BeamData = MakeUnique<FDynamicBeamEmitterData>();
-			BeamData->Material = LOD->RequiredModule->Material;
+			BeamData->Material = LOD->EffectiveRequired->Material;
 			BeamData->Sheets = std::max(1, BeamType->Sheets);
 			BeamData->Beams.Reserve(Emitter.ActiveParticles);
 
@@ -1629,16 +1683,16 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 
 		if (EmitterType == EParticleEmitterType::Ribbon)
 		{
-			const UParticleModuleTypeDataRibbon* RibbonType = Cast<UParticleModuleTypeDataRibbon>(LOD->TypeDataModule);
+			const UParticleModuleTypeDataRibbon* RibbonType = Cast<UParticleModuleTypeDataRibbon>(LOD->EffectiveTypeData);
 			if (!RibbonType || !Emitter.ParticleData || !Emitter.ParticleIndices || Emitter.ActiveParticles <= 0)
 				continue;
 
-			const bool bLocal = LOD->RequiredModule->bUseLocalSpace;
+			const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
 			if (!bLocal)
 				bHasWorldSpaceParticles = true;
 
 			TUniquePtr<FDynamicRibbonEmitterData> RibbonData = MakeUnique<FDynamicRibbonEmitterData>();
-			RibbonData->Material = LOD->RequiredModule->Material;
+			RibbonData->Material = LOD->EffectiveRequired->Material;
 			RibbonData->SheetsPerTrail = std::max(1, RibbonType->SheetsPerTrail);
 			RibbonData->FacingMode = RibbonType->FacingMode;
 			BuildRibbonStrips(Emitter, LOD, RibbonType, Data.LocalToWorld, bLocal, Data.WorldLocation, Emitter.bCurrentTrailActive, RibbonData->Trails);
@@ -1671,17 +1725,17 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 
 		if (EmitterType != EParticleEmitterType::Sprite && EmitterType != EParticleEmitterType::Mesh) continue;
 		const bool bIsMeshEmitter = (EmitterType == EParticleEmitterType::Mesh);
-		const auto* MeshTypeData = bIsMeshEmitter ? Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule) : nullptr;
+		const auto* MeshTypeData = bIsMeshEmitter ? Cast<UParticleModuleTypeDataMesh>(LOD->EffectiveTypeData) : nullptr;
 		UStaticMesh* MeshAsset = MeshTypeData ? MeshTypeData->Mesh : nullptr;
 		if (bIsMeshEmitter && !MeshAsset) continue;
 
-		const bool bLocal = LOD->RequiredModule->bUseLocalSpace;
+		const bool bLocal = LOD->EffectiveRequired->bUseLocalSpace;
 		if (!bLocal)
 			bHasWorldSpaceParticles = true;
 		const UParticleModuleSubUV* SubUVModule = nullptr;
 		if (!bIsMeshEmitter)
 		{
-			for (const UParticleModule* Module : LOD->Modules)
+			for (const UParticleModule* Module : LOD->EffectiveModules)
 			{
 				if (Module && Module->bEnabled)
 				{
@@ -1693,7 +1747,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 		const float AtlasRowSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesVertical)) : 1.0f;
 		const float AtlasColSize = SubUVModule ? static_cast<float>(std::max(1, SubUVModule->SubImagesHorizontal)) : 1.0f;
 		const uint32 SubUVOffset = SubUVModule ? Emitter.GetModuleDataOffset(SubUVModule) : 0;
-		UMaterialInterface* EmitterMaterial = LOD->RequiredModule->Material;
+		UMaterialInterface* EmitterMaterial = LOD->EffectiveRequired->Material;
 		const float MeshBaseRadius = MeshAsset
 			? ((MeshAsset->GetRenderBounds().Max - MeshAsset->GetRenderBounds().Min) * 0.5f).Length()
 			: 0.0f;
@@ -1861,11 +1915,36 @@ bool UParticleSystemComponent::HasCompleted() const
 	if (bFadingOut && FadeOutDuration > 0.0f && FadeAlpha <= 0.0f)
 		return true;
 	if (!Template || EmitterInstances.IsEmpty()) return true;
+	bool bHasEnabledEmitter = false;
+	bool bHasEmitterEnabledAtAnotherLOD = false;
 	for (const FParticleEmitterInstance& Instance : EmitterInstances)
 	{
-		if (!Instance.HasCompleted()) return false;
+		if (!Instance.HasCompleted())
+		{
+			return false;
+		}
+
+		if (!Instance.CurrentLODLevel || !Instance.SpriteTemplate)
+		{
+			continue;
+		}
+
+		if (Instance.CurrentLODLevel->bEnabled)
+		{
+			bHasEnabledEmitter = true;
+		}
+		else
+		{
+			for (const UParticleLODLevel* LOD : Instance.SpriteTemplate->GetLODLevels())
+			{
+				if (LOD && LOD->bEnabled)
+				{
+					bHasEmitterEnabledAtAnotherLOD = true;
+				}
+			}
+		}
 	}
-	return true;
+	return bHasEnabledEmitter || !bHasEmitterEnabledAtAnotherLOD;
 }
 
 void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
@@ -1880,6 +1959,11 @@ void UParticleSystemComponent::SetTemplate(UParticleSystem* InTemplate)
 		FParticleEmitterInstance& Instance = EmitterInstances.AddDefaulted_GetRef();
 		Instance.InstanceParameters = &InstanceParameters;
 		Instance.Initialize(Emitter, Seed++);
+	}
+
+	if (ForcedLODIndex >= 0)
+	{
+		UpdateLOD(0.0f);
 	}
 	MarkRenderStateDirty();
 }
@@ -1904,19 +1988,65 @@ void UParticleSystemComponent::UpdateEmitterStrides()
 			Instance.SpriteTemplate->CacheEmitterModuleInfo();
 		Instance.UpdateStride();
 	}
+	MarkRenderStateDirty();
 }
 
 void UParticleSystemComponent::UpdateLOD(float Distance)
 {
-	if (!Template || EmitterInstances.IsEmpty()) return;
+	if (!Template || EmitterInstances.IsEmpty())
+	{
+		return;
+	}
+
 	const TArray<float>& Distances = Template->LODDistances;
 	int32 TargetLOD = 0;
-	for (int32 Index = 0; Index < static_cast<int32>(Distances.Num()); ++Index)
+
+	if (ForcedLODIndex >= 0)
 	{
-		if (Distance >= Distances[Index]) TargetLOD = Index;
+		TargetLOD = ForcedLODIndex;
 	}
+	else
+	{
+		for (int32 Index = 0; Index < static_cast<int32>(Distances.Num()); ++Index)
+		{
+			if (Distance >= Distances[Index])
+			{
+				TargetLOD = Index;
+			}
+		}
+	}
+
+	bool bLODChanged = false;
 	for (FParticleEmitterInstance& Instance : EmitterInstances)
+	{
+		const UParticleLODLevel* PreviousLOD = Instance.CurrentLODLevel;
 		Instance.SetLODLevel(TargetLOD);
+		if (PreviousLOD != Instance.CurrentLODLevel)
+		{
+			bLODChanged = true;
+		}
+	}
+
+	if (bLODChanged)
+	{
+		MarkRenderStateDirty();
+	}
+}
+
+void UParticleSystemComponent::SetForcedLOD(int32 Index)
+{
+	if (ForcedLODIndex == Index)
+	{
+		return;
+	}
+
+	ForcedLODIndex = Index;
+	if (ForcedLODIndex >= 0)
+	{
+		UpdateLOD(0.0f);
+	}
+
+	MarkRenderStateDirty();
 }
 
 void UParticleSystemComponent::ResetParticles()

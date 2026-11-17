@@ -122,6 +122,7 @@ public:
 	const TArray<FParticleEmitterInstance>& GetEmitterInstances() const { return EmitterInstances; }
 	TArray<FParticleEmitterInstance>& GetEmitterInstancesMutable() { return EmitterInstances; }
 	void UpdateLOD(float Distance);
+	void SetForcedLOD(int32 Index);
 	void UpdateEmitterStrides();
 	void ResetParticles();
 	void SetColorParameter(const FString& Name, const FColor& Value);
@@ -164,4 +165,5 @@ private:
 	float FadeOutDuration = 0.0f;
 	float FadeOutElapsed = 0.0f;
 	bool bFadingOut = false;
+	int32 ForcedLODIndex = -1;
 };

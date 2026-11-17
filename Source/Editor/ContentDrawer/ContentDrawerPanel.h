@@ -42,6 +42,7 @@ public:
 		UTexture2D*& InOutTexture,
 		const char* NullLabel = "None");
 	static void InvalidateMaterialThumbnail(const FString& Path);
+	static bool FocusAsset(const FString& AssetPath);
 
 	// .widget 파일을 더블클릭하면 불린다 (UI 에디터가 연다).
 	void SetOpenWidgetCallback(std::function<void(const FString&)> InCallback) { OnOpenWidget = std::move(InCallback); }

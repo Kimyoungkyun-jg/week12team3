@@ -128,6 +128,9 @@ public:
 	virtual void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const {}
 	virtual void InvalidateDistributions() const {}
 
+	UPROPERTY()
+	int32 LODSlotId = 0;
+
 	UPROPERTY(EditAnywhere)
 	bool bEnabled = true;
 };
@@ -607,6 +610,11 @@ public:
 	TArray<UParticleModule*> Modules;
 	UPROPERTY(Instanced)
 	UParticleModuleTypeDataBase* TypeDataModule = nullptr;
+	UParticleModuleRequired* EffectiveRequired = nullptr;
+	UParticleModuleSpawn* EffectiveSpawn = nullptr;
+	UParticleModuleTypeDataBase* EffectiveTypeData = nullptr;
+	TArray<UParticleModule*> EffectiveModules;
+	bool OwnsModule(const UParticleModule* Module) const;
 	TArray<UParticleModule*> SpawnModules;
 	TArray<UParticleModule*> UpdateModules;
 
@@ -621,6 +629,14 @@ class UParticleEmitter : public UObject
 	GENERATED_BODY()
 public:
 	UParticleLODLevel* AddLODLevel();
+	bool UsesModuleInheritance() const { return bInheritLODModules; }
+	void EnableModuleInheritance();
+	UParticleModule* DuplicateLODModule(int32 TargetIndex, const UParticleModule* Slot, bool bFromHighest);
+	bool InheritLODModule(int32 TargetIndex, UParticleModule* Module);
+	bool RemoveBaseModule(UParticleModule* Module);
+	void InsertLODLevel(int32 Index);
+	void RemoveLODLevel(int32 Index);
+	bool MoveLODLevel(int32 FromIndex, int32 ToIndex);
 	void CacheEmitterModuleInfo();
 	const TArray<UParticleLODLevel*>& GetLODLevels() const { return LODLevels; }
 
@@ -630,7 +646,10 @@ public:
 	bool bIsSolo = false;
 	UPROPERTY(EditAnywhere)
 	float PlayRate = 1.0f;
+
 private:
+	UPROPERTY()
+	bool bInheritLODModules = false;
 	UPROPERTY(Instanced)
 	TArray<UParticleLODLevel*> LODLevels;
 };
@@ -642,6 +661,14 @@ class UParticleSystem : public UObject
 public:
 	UParticleEmitter* AddEmitter();
 	bool RemoveEmitter(UParticleEmitter* Emitter);
+	UParticleEmitter* DuplicateEmitter(const UParticleEmitter* Source);
+	bool MoveEmitter(int32 FromIndex, int32 ToIndex);
+	void PrepareLODModules();
+	int32 GetLODCount() const;
+	bool InsertLOD(int32 Index, bool bCopyPrevious = false);
+	bool RemoveLOD(int32 Index);
+	float GetLODDistance(int32 Index) const;
+	bool SetLODDistance(int32 Index, float Distance);
 	const TArray<UParticleEmitter*>& GetEmitters() const { return Emitters; }
 	bool SaveToFile(const FString& Path);
 	static UParticleSystem* LoadFromFile(const FString& Path, UObject* Outer = nullptr);
@@ -665,6 +692,7 @@ public:
 	UPROPERTY(EditAnywhere)
 	TArray<float> LODDistances;
 private:
+	void FillMissingLODDistances();
 	UPROPERTY(Instanced)
 	TArray<UParticleEmitter*> Emitters;
 };
