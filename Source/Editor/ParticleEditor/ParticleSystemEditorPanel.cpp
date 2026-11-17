@@ -305,7 +305,6 @@ bool FParticleSystemEditorPanel::CopyLODData(UParticleLODLevel* Destination, con
 		return false;
 	}
 
-	Destination->Level = Source->Level;
 	Destination->bEnabled = Source->bEnabled;
 
 	if (Source->RequiredModule)
@@ -2136,6 +2135,7 @@ void FParticleSystemEditorPanel::OnRender()
 	}
 
 	const ImVec2 Available = ImGui::GetContentRegionAvail();
+	const float AvailableHeight = std::max(1.0f, Available.y);
 	const float Splitter = EditorUIScale::Px(6.0f);
 
 	const bool bLeftVisible = bShowViewport || bShowDetails;
@@ -2170,9 +2170,10 @@ void FParticleSystemEditorPanel::OnRender()
 
 	const float BottomHeight = bHasTwoRows ? LayoutHeight - TopHeight : LayoutHeight;
 
-	auto DrawHorizontalSplitter = [&](const char* Id, float Width)
+	auto DrawHorizontalSplitter = [&](const char* Id, float PanelWidth)
 	{
-		ImGui::InvisibleButton(Id, ImVec2(Width, Splitter));
+		const ImVec2 ButtonSize(PanelWidth, Splitter);
+		ImGui::InvisibleButton(Id, ButtonSize);
 
 		const bool bHovered = ImGui::IsItemHovered();
 		const bool bActive = ImGui::IsItemActive();
@@ -2184,18 +2185,21 @@ void FParticleSystemEditorPanel::OnRender()
 
 		if (bActive)
 		{
-			TopRowRatio = std::clamp(TopRowRatio + ImGui::GetIO().MouseDelta.y / std::max(1.0f, AvailableHeight), 0.2f, 0.8f);
+			TopRowRatio = std::clamp(TopRowRatio + ImGui::GetIO().MouseDelta.y / AvailableHeight, 0.2f, 0.8f);
 		}
 
 		const ImVec2 Min = ImGui::GetItemRectMin();
+		const ImVec2 Max(Min.x + PanelWidth, Min.y + Splitter);
 		const ImU32 Color = ImGui::GetColorU32(bHovered || bActive ? ImGuiCol_SeparatorHovered : ImGuiCol_Separator);
 
-		ImGui::GetWindowDrawList()->AddRectFilled(Min, ImVec2(Min.x + Width, Min.y + Splitter), Color);
+		ImDrawList* DrawList = ImGui::GetWindowDrawList();
+		DrawList->AddRectFilled(Min, Max, Color);
 	};
 
 	auto DrawVerticalSplitter = [&]()
 	{
-		ImGui::InvisibleButton("##CascadeColumnSplitter", ImVec2(Splitter, AvailableHeight));
+		const ImVec2 ButtonSize(Splitter, AvailableHeight);
+		ImGui::InvisibleButton("##CascadeColumnSplitter", ButtonSize);
 
 		const bool bHovered = ImGui::IsItemHovered();
 		const bool bActive = ImGui::IsItemActive();
@@ -2211,9 +2215,11 @@ void FParticleSystemEditorPanel::OnRender()
 		}
 
 		const ImVec2 Min = ImGui::GetItemRectMin();
+		const ImVec2 Max(Min.x + Splitter, Min.y + AvailableHeight);
 		const ImU32 Color = ImGui::GetColorU32(bHovered || bActive ? ImGuiCol_SeparatorHovered : ImGuiCol_Separator);
 
-		ImGui::GetWindowDrawList()->AddRectFilled(Min, ImVec2(Min.x + Splitter, Min.y + AvailableHeight), Color);
+		ImDrawList* DrawList = ImGui::GetWindowDrawList();
+		DrawList->AddRectFilled(Min, Max, Color);
 	};
 
 	if (bLeftVisible)

@@ -84,7 +84,5 @@ private:
 	bool bShowCurveEditor = true;
 	bool bVisible = false;
 	bool bFocusRequested = false;
-	bool bCopyPreviousLOD = true;
-	bool bShowParticleStats = true;
 	float BackgroundColor[4] = { 0.06f, 0.06f, 0.07f, 1.0f };
 };
