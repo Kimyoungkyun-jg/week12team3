@@ -102,6 +102,53 @@
                         "bActorEnableCollision": true
                     },
                     "RootComponentName": ""
+                },
+                {
+                    "Class": "AParticleHitEffectActor",
+                    "Components": [
+                        {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "EffectComponent",
+                            "Parent": "",
+                            "Properties": {
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/HitParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.1913127899169922,
+                                        "Y": -1.9446601867675781,
+                                        "Z": 7.143117427825928
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": true,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": true
+                            }
+                        }
+                    ],
+                    "Name": "AParticleHitEffectActor_0",
+                    "Properties": {
+                        "bActorEnableCollision": true
+                    },
+                    "RootComponentName": "EffectComponent"
                 }
             ],
             "Properties": {}
