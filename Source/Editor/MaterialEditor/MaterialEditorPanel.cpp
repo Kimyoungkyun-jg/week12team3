@@ -1050,6 +1050,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 		DrawUsageFlag("Used with Skeletal Mesh", EMaterialUsage::SkeletalMesh);
 		DrawUsageFlag("Used with Particle Sprites", EMaterialUsage::ParticleSprite);
 		DrawUsageFlag("Used with Mesh Particles", EMaterialUsage::ParticleMesh);
+		DrawUsageFlag("Used with Beam Trails", EMaterialUsage::ParticleBeamTrail);
 	}
 
 	ImGui::Separator();
@@ -1093,11 +1094,20 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 			MarkMaterialChanged();
 		}
 
-		int Blend = Material.BlendState == EBlendState::AlphaBlend ? 1 : 0;
+		int Blend = 0;
+		if (Material.BlendState == EBlendState::AlphaBlend)
+			Blend = 1;
+		else if (Material.BlendState == EBlendState::Additive)
+			Blend = 2;
 
-		if (ImGui::Combo("Blend", &Blend, "Opaque\0Alpha Blend\0"))
+		if (ImGui::Combo("Blend", &Blend, "Opaque\0Alpha Blend\0Additive\0"))
 		{
-			Material.SetBlendState(Blend ? EBlendState::AlphaBlend : EBlendState::Opaque);
+			EBlendState NewBlend = EBlendState::Opaque;
+			if (Blend == 1)
+				NewBlend = EBlendState::AlphaBlend;
+			else if (Blend == 2)
+				NewBlend = EBlendState::Additive;
+			Material.SetBlendState(NewBlend);
 			MarkMaterialChanged();
 		}
 
@@ -1426,6 +1436,18 @@ void FMaterialEditorPanel::OnRender()
 					else
 					{
 						CompileVariant(EPSOType::Particle_MeshTranslucent);
+					}
+				}
+
+				if (Material->HasUsage(EMaterialUsage::ParticleBeamTrail))
+				{
+					if (Material->GetBlendState() == EBlendState::Additive)
+					{
+						CompileVariant(EPSOType::Particle_BeamTrailAdditive);
+					}
+					else
+					{
+						CompileVariant(EPSOType::Particle_BeamTrailTranslucent);
 					}
 				}
 

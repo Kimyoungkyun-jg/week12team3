@@ -40,6 +40,8 @@ enum class EPSOType : uint8
 	Particle_MeshAdditive,
 	Particle_Sprite,
 	SkeletalMesh_GBuffer,
+	Particle_BeamTrailTranslucent,
+	Particle_BeamTrailAdditive,
 	Count
 };
 class UMaterial;

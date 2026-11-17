@@ -12,6 +12,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/SkinnedMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Animation/Skeleton.h"
 #include "Render/SkeletalMesh.h"
 #include "Components/TextRenderComponent.h"
 #include "Components/ParticleSubUVComponent.h"
@@ -1084,6 +1085,35 @@ namespace
 					ImGui::EndCombo();
 				}
 				break;
+			}
+			if (Property.Name == "AttachSocketName")
+			{
+				USceneComponent* SceneComponent = Cast<USceneComponent>(Object);
+				USkeletalMeshComponent* ParentSkel = SceneComponent ? Cast<USkeletalMeshComponent>(SceneComponent->GetAttachParent()) : nullptr;
+				USkeletalMesh* ParentMesh = ParentSkel ? ParentSkel->GetSkeletalMesh() : nullptr;
+				if (ParentMesh && ParentMesh->Skeleton)
+				{
+					const FString Preview = Value->empty() ? FString("None") : *Value;
+					if (ImGui::BeginCombo(Label.c_str(), Preview.c_str()))
+					{
+						if (ImGui::Selectable("None", Value->empty()))
+						{
+							Value->clear();
+							bChanged = true;
+						}
+						for (const FSkeletalMeshSocket& Socket : ParentMesh->Skeleton->Sockets)
+						{
+							const FString ItemLabel = Socket.SocketName + "  (" + Socket.BoneName + ")";
+							if (ImGui::Selectable(ItemLabel.c_str(), *Value == Socket.SocketName))
+							{
+								*Value = Socket.SocketName;
+								bChanged = true;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					break;
+				}
 			}
 
 			char Buffer[256] = {};

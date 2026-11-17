@@ -371,22 +371,36 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 				ImGui::Checkbox("S", &Emitter->bIsSolo);
 				UParticleModuleTypeDataBase* TypeData = LOD->GetOrCreateTypeData();
 				const EParticleEmitterType CurType = TypeData ? TypeData->GetEmitterType() : EParticleEmitterType::Sprite;
-				int TypeIdx = (CurType == EParticleEmitterType::GpuSprite) ? 1 : (CurType == EParticleEmitterType::Mesh ? 2 : 0);
+				int TypeIdx = 0;
+				if (CurType == EParticleEmitterType::GpuSprite) TypeIdx = 1;
+				else if (CurType == EParticleEmitterType::Mesh) TypeIdx = 2;
+				else if (CurType == EParticleEmitterType::Beam) TypeIdx = 3;
+				else if (CurType == EParticleEmitterType::Ribbon) TypeIdx = 4;
 				ImGui::SetNextItemWidth(-1.0f);
-				if (ImGui::Combo("##EmitterType", &TypeIdx, "Sprite\0GPU Sprite\0Mesh\0"))
+				if (ImGui::Combo("##EmitterType", &TypeIdx, "Sprite\0GPU Sprite\0Mesh\0Beam\0Ribbon\0"))
 				{
 					UClass* TargetClass = UParticleModuleTypeDataSprite::StaticClass();
 					if (TypeIdx == 1)
 						TargetClass = UParticleModuleTypeDataGpuSprite::StaticClass();
 					else if (TypeIdx == 2)
 						TargetClass = UParticleModuleTypeDataMesh::StaticClass();
+					else if (TypeIdx == 3)
+						TargetClass = UParticleModuleTypeDataBeam::StaticClass();
+					else if (TypeIdx == 4)
+						TargetClass = UParticleModuleTypeDataRibbon::StaticClass();
 					const bool bWasTypeDataSelected = (SelectedModule == TypeData);
 					UParticleModuleTypeDataBase* NewTypeData = LOD->SetTypeData(TargetClass);
-					if (auto* NewMeshType = Cast<UParticleModuleTypeDataMesh>(NewTypeData))
+					if (UParticleModuleTypeDataMesh* NewMeshType = Cast<UParticleModuleTypeDataMesh>(NewTypeData))
 					{
 						if (!NewMeshType->Mesh)
 							NewMeshType->Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Cube");
 						LOD->GetOrCreateRequired()->Material = nullptr;
+					}
+					else if (Cast<UParticleModuleTypeDataBeam>(NewTypeData) || Cast<UParticleModuleTypeDataRibbon>(NewTypeData))
+					{
+						UMaterial* DefaultBeamMat = UAssetManager::GetAssetByPath<UMaterial>("BeamTrailMaterial");
+						if (DefaultBeamMat)
+							LOD->GetOrCreateRequired()->Material = DefaultBeamMat;
 					}
 					if (bWasTypeDataSelected)
 						SelectedModule = NewTypeData;
@@ -472,6 +486,11 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					AddModItem("Initial Rotation", UParticleModuleRotation::StaticClass());
 					AddModItem("Rotation Rate Over Life", UParticleModuleRotationRateOverLife::StaticClass());
 					AddModItem("SubImage Index", UParticleModuleSubUV::StaticClass());
+					ImGui::Separator();
+					AddModItem("Beam Source", UParticleModuleBeamSource::StaticClass());
+					AddModItem("Beam Target", UParticleModuleBeamTarget::StaticClass());
+					AddModItem("Beam Noise", UParticleModuleBeamNoise::StaticClass());
+					AddModItem("Spawn Per Unit", UParticleModuleSpawnPerUnit::StaticClass());
 					ImGui::EndPopup();
 				}
 			}
@@ -549,6 +568,32 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			}
 			DrawTypeDataMeshPicker(OwnerLOD, MeshType);
 		}
+		else if (UParticleModuleTypeDataBeam* BeamType = Cast<UParticleModuleTypeDataBeam>(SelectedModule))
+		{
+			ImGui::Combo("Beam Method", &BeamType->BeamMethod, "Distance\0Target\0");
+			ImGui::DragInt("Max Beam Count", &BeamType->MaxBeamCount, 1.0f, 1, 64);
+			ImGui::DragInt("Segments", &BeamType->Segments, 1.0f, 1, 512);
+			ImGui::DragInt("Sheets", &BeamType->Sheets, 1.0f, 1, 8);
+			ImGui::DragFloat("Distance", &BeamType->Distance, 0.1f, 0.01f, 1000.0f);
+			ImGui::DragFloat("Speed", &BeamType->Speed, 0.5f, 0.0f, 1000.0f);
+			ImGui::DragFloat("Texture Tile", &BeamType->TextureTile, 0.1f, 0.01f, 64.0f);
+			ImGui::DragFloat("Texture Tile Distance", &BeamType->TextureTileDistance, 0.1f, 0.0f, 100.0f);
+			ImGui::Combo("Taper Method", &BeamType->TaperMethod, "None\0Full\0Partial\0");
+			if (BeamType->TaperMethod != 0)
+			{
+				DrawDistributionFloat("Taper Factor", BeamType->TaperFactor, BeamType, 1.0f, 0.05f, 0.0f, 10.0f);
+				DrawDistributionFloat("Taper Scale", BeamType->TaperScale, BeamType, 1.0f, 0.05f, 0.0f, 10.0f);
+			}
+		}
+		else if (UParticleModuleTypeDataRibbon* RibbonType = Cast<UParticleModuleTypeDataRibbon>(SelectedModule))
+		{
+			ImGui::DragInt("Max Trail Count", &RibbonType->MaxTrailCount, 1.0f, 1, 64);
+			ImGui::DragInt("Max Particles Per Trail", &RibbonType->MaxParticleInTrailCount, 1.0f, 2, 4096);
+			ImGui::DragInt("Sheets Per Trail", &RibbonType->SheetsPerTrail, 1.0f, 1, 8);
+			ImGui::Combo("Facing Mode", &RibbonType->FacingMode, "Camera\0Source Up\0World Up\0");
+			ImGui::DragFloat("Tiling Distance", &RibbonType->TilingDistance, 0.1f, 0.0f, 100.0f);
+			ImGui::Checkbox("Clip Source Segment", &RibbonType->bClipSourceSegment);
+		}
 		else if (auto* Req = Cast<UParticleModuleRequired>(SelectedModule))
 		{
 			ImGui::DragInt("Max Particles", &Req->MaxParticles, 1.0f, 1, 100000);
@@ -577,9 +622,12 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			}
 
 			const bool bMeshEmitter = OwnerLOD && Cast<UParticleModuleTypeDataMesh>(OwnerLOD->TypeDataModule);
-			const uint32 UsageFlag = static_cast<uint32>(bMeshEmitter ? EMaterialUsage::ParticleMesh : EMaterialUsage::ParticleSprite);
+			const bool bBeamTrailEmitter = OwnerLOD && (Cast<UParticleModuleTypeDataBeam>(OwnerLOD->TypeDataModule) || Cast<UParticleModuleTypeDataRibbon>(OwnerLOD->TypeDataModule));
+			const uint32 UsageFlag = static_cast<uint32>(bMeshEmitter
+				? EMaterialUsage::ParticleMesh
+				: (bBeamTrailEmitter ? EMaterialUsage::ParticleBeamTrail : EMaterialUsage::ParticleSprite));
 			UMaterial* FallbackMaterial = (!Req->Material && !bMeshEmitter)
-				? UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial")
+				? UAssetManager::GetAssetByPath<UMaterial>(bBeamTrailEmitter ? "BeamTrailMaterial" : "SubUVMaterial")
 				: nullptr;
 			if (FContentDrawerPanel::DrawMaterialPicker("Material", Req->Material, "(Default)", FallbackMaterial, UsageFlag))
 			{
@@ -671,6 +719,61 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 				DrawDistributionFloat("SubImage Index", Sub->SubImageIndex, Sub, 0.0f, 0.1f, 0.0f, 256.0f);
 			if (bSubChanged && SelectedLOD)
 				SelectedLOD->MarkBuildDirty();
+		}
+		else if (UParticleModuleBeamSource* SrcMod = Cast<UParticleModuleBeamSource>(SelectedModule))
+		{
+			ImGui::Combo("Source Method", &SrcMod->SourceMethod, "Emitter\0User Set\0Parameter\0");
+			if (SrcMod->SourceMethod == 2)
+			{
+				char ParamBuf[128] = {};
+				strncpy_s(ParamBuf, SrcMod->SourceParameterName.c_str(), _TRUNCATE);
+				if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
+					SrcMod->SourceParameterName = ParamBuf;
+			}
+			if (SrcMod->SourceMethod != 0)
+				DrawDistributionVector("Source", SrcMod->Source, SrcMod, FVector::ZeroVector, false, 0.05f);
+			ImGui::Checkbox("Use Source Tangent", &SrcMod->bUseSourceTangent);
+			if (SrcMod->bUseSourceTangent)
+			{
+				DrawDistributionVector("Source Tangent", SrcMod->SourceTangent, SrcMod, FVector(1.0f, 0.0f, 0.0f), false, 0.05f);
+				DrawDistributionFloat("Source Strength", SrcMod->SourceStrength, SrcMod, 1.0f, 0.05f, 0.0f, 100.0f);
+			}
+		}
+		else if (UParticleModuleBeamTarget* DstMod = Cast<UParticleModuleBeamTarget>(SelectedModule))
+		{
+			ImGui::Combo("Target Method", &DstMod->TargetMethod, "Emitter\0User Set\0Parameter\0");
+			if (DstMod->TargetMethod == 2)
+			{
+				char ParamBuf[128] = {};
+				strncpy_s(ParamBuf, DstMod->TargetParameterName.c_str(), _TRUNCATE);
+				if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
+					DstMod->TargetParameterName = ParamBuf;
+			}
+			if (DstMod->TargetMethod != 0)
+				DrawDistributionVector("Target", DstMod->Target, DstMod, FVector(3.0f, 0.0f, 0.0f), false, 0.05f);
+			ImGui::Checkbox("Use Target Tangent", &DstMod->bUseTargetTangent);
+			if (DstMod->bUseTargetTangent)
+			{
+				DrawDistributionVector("Target Tangent", DstMod->TargetTangent, DstMod, FVector(-1.0f, 0.0f, 0.0f), false, 0.05f);
+				DrawDistributionFloat("Target Strength", DstMod->TargetStrength, DstMod, 1.0f, 0.05f, 0.0f, 100.0f);
+			}
+		}
+		else if (UParticleModuleBeamNoise* NoiseMod = Cast<UParticleModuleBeamNoise>(SelectedModule))
+		{
+			ImGui::DragInt("Frequency", &NoiseMod->Frequency, 1.0f, 1, 256);
+			DrawDistributionVector("Noise Range", NoiseMod->NoiseRange, NoiseMod, FVector(0.25f, 0.25f, 0.25f), false, 0.02f);
+			ImGui::DragFloat("Noise Lock Time", &NoiseMod->NoiseLockTime, 0.005f, 0.0f, 5.0f);
+			ImGui::Checkbox("Smooth", &NoiseMod->bSmooth);
+			if (!NoiseMod->bSmooth)
+				ImGui::SliderFloat("Noise Tension", &NoiseMod->NoiseTension, 0.0f, 1.0f);
+			ImGui::Checkbox("Lock Endpoints", &NoiseMod->bLockEndpoints);
+		}
+		else if (UParticleModuleSpawnPerUnit* UnitMod = Cast<UParticleModuleSpawnPerUnit>(SelectedModule))
+		{
+			ImGui::DragFloat("Spawn Per Unit", &UnitMod->SpawnPerUnit, 0.5f, 0.0f, 500.0f);
+			ImGui::DragFloat("Movement Tolerance", &UnitMod->MovementTolerance, 0.005f, 0.0f, 10.0f);
+			ImGui::DragFloat("Max Frame Distance", &UnitMod->MaxFrameDistance, 0.5f, 0.1f, 1000.0f);
+			ImGui::Checkbox("Ignore Spawn Rate When Moving", &UnitMod->bIgnoreSpawnRateWhenMoving);
 		}
 	}
 	else if (SelectedEmitter)

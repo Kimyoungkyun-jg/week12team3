@@ -35,6 +35,27 @@ struct FSubUVPayload
 	float ImageIndex = 0.0f;
 };
 
+struct FBeamTypeDataPayload
+{
+	FVector SourcePoint = FVector::ZeroVector;
+	FVector TargetPoint = FVector(3.0f, 0.0f, 0.0f);
+	FVector SourceTangent = FVector(1.0f, 0.0f, 0.0f);
+	FVector TargetTangent = FVector(-1.0f, 0.0f, 0.0f);
+	float TravelRatio = 1.0f;
+	uint32 NoiseSeed = 1;
+	float NoiseLockTimer = 0.0f;
+};
+
+struct FRibbonTypeDataPayload
+{
+	uint32 SpawnOrder = 0;
+	int32 TrailIndex = 0;
+	FVector SourceUp = FVector(0.0f, 0.0f, 1.0f);
+	float WidthOverride = -1.0f;
+	FVector EdgeHalfOffset = FVector::ZeroVector;
+	bool bUseExplicitEdges = false;
+};
+
 enum class EParticleSysParamType : uint8
 {
 	Scalar,
@@ -151,7 +172,11 @@ public:
 	TArray<FParticleBurst> Bursts;
 };
 
-enum class EParticleEmitterType : uint8 { Sprite, GpuSprite, Mesh };
+enum class EParticleEmitterType : uint8 { Sprite, GpuSprite, Mesh, Beam, Ribbon };
+enum class EBeamMethod : uint8 { Distance = 0, Target = 1 };
+enum class EBeamEndpointMethod : uint8 { Emitter = 0, UserSet = 1, Parameter = 2 };
+enum class EBeamTaperMethod : uint8 { None = 0, Full = 1, Partial = 2 }; // 빔의 시작점에서 끝점으로 갈수록 굵기를 조절할 수 있는 옵션
+enum class ERibbonFacingMode : uint8 { Camera = 0, SourceUp = 1, WorldUp = 2 };
 
 UCLASS()
 class UParticleModuleTypeDataBase : public UParticleModule
@@ -188,6 +213,162 @@ public:
 	EParticleEmitterType GetEmitterType() const override { return EParticleEmitterType::Mesh; }
 	UPROPERTY(EditAnywhere)
 	UStaticMesh* Mesh = nullptr;
+};
+
+UCLASS()
+class UParticleModuleTypeDataBeam : public UParticleModuleTypeDataBase
+{
+	GENERATED_BODY()
+public:
+	UParticleModuleTypeDataBeam();
+	const char* GetDisplayName() const override { return "TypeData Beam"; }
+	EParticleEmitterType GetEmitterType() const override { return EParticleEmitterType::Beam; }
+	uint32 RequiredBytes() const override { return sizeof(FBeamTypeDataPayload); }
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(EditAnywhere)
+	int32 BeamMethod = 1;
+	UPROPERTY(EditAnywhere)
+	int32 MaxBeamCount = 1;
+	UPROPERTY(EditAnywhere)
+	int32 Segments = 16;
+	UPROPERTY(EditAnywhere)
+	int32 Sheets = 1;
+	UPROPERTY(EditAnywhere)
+	float Distance = 3.0f;
+	UPROPERTY(EditAnywhere)
+	float Speed = 0.0f;
+	UPROPERTY(EditAnywhere)
+	float TextureTile = 1.0f;
+	UPROPERTY(EditAnywhere)
+	float TextureTileDistance = 0.0f;
+	UPROPERTY(EditAnywhere)
+	int32 TaperMethod = 0;
+	UPROPERTY(Instanced)
+	UDistributionFloat* TaperFactor = nullptr;
+	UPROPERTY(Instanced)
+	UDistributionFloat* TaperScale = nullptr;
+};
+
+UCLASS()
+class UParticleModuleTypeDataRibbon : public UParticleModuleTypeDataBase
+{
+	GENERATED_BODY()
+public:
+	const char* GetDisplayName() const override { return "TypeData Ribbon"; }
+	EParticleEmitterType GetEmitterType() const override { return EParticleEmitterType::Ribbon; }
+	uint32 RequiredBytes() const override { return sizeof(FRibbonTypeDataPayload); }
+
+	UPROPERTY(EditAnywhere)
+	int32 MaxTrailCount = 1;
+	UPROPERTY(EditAnywhere)
+	int32 MaxParticleInTrailCount = 256;
+	UPROPERTY(EditAnywhere)
+	int32 SheetsPerTrail = 1;
+	UPROPERTY(EditAnywhere)
+	int32 FacingMode = 0;
+	UPROPERTY(EditAnywhere)
+	float TilingDistance = 0.0f;
+	UPROPERTY(EditAnywhere)
+	bool bClipSourceSegment = true;
+	UPROPERTY(EditAnywhere)
+	FString SourceParameterName = "RibbonBase";
+	UPROPERTY(EditAnywhere)
+	FString TargetParameterName = "RibbonTip";
+};
+
+UCLASS()
+class UParticleModuleBeamSource : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	UParticleModuleBeamSource();
+	const char* GetDisplayName() const override { return "Beam Source"; }
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(EditAnywhere)
+	int32 SourceMethod = 0;
+	UPROPERTY(Instanced)
+	UDistributionVector* Source = nullptr;
+	UPROPERTY(EditAnywhere)
+	bool bUseSourceTangent = false;
+	UPROPERTY(Instanced)
+	UDistributionVector* SourceTangent = nullptr;
+	UPROPERTY(Instanced)
+	UDistributionFloat* SourceStrength = nullptr;
+	UPROPERTY(EditAnywhere)
+	FString SourceParameterName;
+};
+
+UCLASS()
+class UParticleModuleBeamTarget : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	UParticleModuleBeamTarget();
+	const char* GetDisplayName() const override { return "Beam Target"; }
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(EditAnywhere)
+	int32 TargetMethod = 1;
+	UPROPERTY(Instanced)
+	UDistributionVector* Target = nullptr;
+	UPROPERTY(EditAnywhere)
+	bool bUseTargetTangent = false;
+	UPROPERTY(Instanced)
+	UDistributionVector* TargetTangent = nullptr;
+	UPROPERTY(Instanced)
+	UDistributionFloat* TargetStrength = nullptr;
+	UPROPERTY(EditAnywhere)
+	FString TargetParameterName;
+};
+
+UCLASS()
+class UParticleModuleBeamNoise : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	UParticleModuleBeamNoise();
+	const char* GetDisplayName() const override { return "Beam Noise"; }
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(EditAnywhere)
+	int32 Frequency = 8;
+	UPROPERTY(Instanced)
+	UDistributionVector* NoiseRange = nullptr;
+	UPROPERTY(EditAnywhere)
+	float NoiseLockTime = 0.05f;
+	UPROPERTY(EditAnywhere)
+	bool bLowFreqEnabled = true;
+	UPROPERTY(EditAnywhere)
+	bool bSmooth = false;
+	UPROPERTY(EditAnywhere)
+	float NoiseTension = 0.0f;
+	UPROPERTY(EditAnywhere)
+	bool bLockEndpoints = true;
+	UPROPERTY(EditAnywhere)
+	float NoiseLockRadius = 0.0f;
+};
+
+UCLASS()
+class UParticleModuleSpawnPerUnit : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	const char* GetDisplayName() const override { return "Spawn Per Unit"; }
+
+	UPROPERTY(EditAnywhere)
+	float SpawnPerUnit = 10.0f;
+	UPROPERTY(EditAnywhere)
+	float MovementTolerance = 0.01f;
+	UPROPERTY(EditAnywhere)
+	float MaxFrameDistance = 50.0f;
+	UPROPERTY(EditAnywhere)
+	bool bIgnoreSpawnRateWhenMoving = false;
 };
 
 UCLASS()

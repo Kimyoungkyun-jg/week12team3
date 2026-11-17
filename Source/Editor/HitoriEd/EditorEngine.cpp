@@ -1265,7 +1265,7 @@ void UEditorEngine::TickPIEInput(float DeltaTime)
 		GameViewport.InputKey(nullptr, static_cast<int32>(EKeyCode::F8), true);
 	ProcessSIERequest();
 	constexpr EKeyCode Keys[] = { EKeyCode::W, EKeyCode::A, EKeyCode::S, EKeyCode::D,
-		EKeyCode::Q, EKeyCode::E, EKeyCode::F, EKeyCode::Space, EKeyCode::Shift };
+		EKeyCode::Q, EKeyCode::E, EKeyCode::F, EKeyCode::R, EKeyCode::Space, EKeyCode::Shift };
 	for (EKeyCode Key : Keys)
 	{
 		if (FInputSystem::IsKeyPressed(Key))
@@ -2158,6 +2158,10 @@ void UEditorEngine::SaveAllAssets()
 	if (MaterialEditorPanel)
 	{
 		MaterialEditorPanel->SaveIfDirty();
+	}
+	if (SkeletalMeshViewerPanel)
+	{
+		SkeletalMeshViewerPanel->SaveIfDirty();
 	}
 }
 

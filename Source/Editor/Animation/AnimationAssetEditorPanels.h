@@ -53,9 +53,11 @@ private:
 	float PreviewTime = 0.0f;
 	float PreviewPitch = 0.0f;
 	int SelectedSample = -1;
+	int SelectedSegment = -1;
 	int SelectedSection = -1;
 	int SelectedNotify = -1;
 	int DraggedMarker = -1;
+	float DragSegmentAnchorOffset = 0.0f;
 	char Search[128]{};
 	bool bPlaying = true;
 	bool bDirty = false;

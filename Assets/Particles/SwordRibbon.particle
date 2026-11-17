@@ -1,0 +1,165 @@
+{
+    "Class": "UParticleSystem",
+    "Object": {
+        "Properties": {
+            "Emitters": [
+                {
+                    "Class": "UParticleEmitter",
+                    "Value": {
+                        "Properties": {
+                            "EmitterName": "SwordSwingRibbon",
+                            "LODLevels": [
+                                {
+                                    "Class": "UParticleLODLevel",
+                                    "Value": {
+                                        "Properties": {
+                                            "Level": 0,
+                                            "Modules": [
+                                                {
+                                                    "Class": "UParticleModuleLifetime",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "Lifetime": {
+                                                                "Class": "UDistributionFloatConstant",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Constant": 0.20000000298023224
+                                                                    }
+                                                                }
+                                                            },
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleSize",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "StartSize": {
+                                                                "Class": "UDistributionVectorConstant",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Constant": {
+                                                                            "X": 0.1599999964237213,
+                                                                            "Y": 0.1599999964237213,
+                                                                            "Z": 0.1599999964237213
+                                                                        }
+                                                                    }
+                                                                }
+                                                            },
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleColor",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "StartAlpha": {
+                                                                "Class": "UDistributionFloatConstant",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Constant": 1.0
+                                                                    }
+                                                                }
+                                                            },
+                                                            "StartColor": {
+                                                                "Class": "UDistributionVectorConstant",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Constant": {
+                                                                            "X": 0.550000011920929,
+                                                                            "Y": 0.800000011920929,
+                                                                            "Z": 1.0
+                                                                        }
+                                                                    }
+                                                                }
+                                                            },
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleSpawnPerUnit",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "MaxFrameDistance": 10.0,
+                                                            "MovementTolerance": 0.019999999552965164,
+                                                            "SpawnPerUnit": 8.0,
+                                                            "bEnabled": true,
+                                                            "bIgnoreSpawnRateWhenMoving": true
+                                                        }
+                                                    }
+                                                }
+                                            ],
+                                            "RequiredModule": {
+                                                "Class": "UParticleModuleRequired",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "EmitterDuration": 0.0,
+                                                        "Material": "Materials/SwordTrail.material",
+                                                        "MaxParticles": 256,
+                                                        "bEnabled": true,
+                                                        "bLooping": true,
+                                                        "bUseLocalSpace": false
+                                                    }
+                                                }
+                                            },
+                                            "SpawnModule": {
+                                                "Class": "UParticleModuleSpawn",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "Bursts": [],
+                                                        "Rate": 0.0,
+                                                        "bEnabled": true
+                                                    }
+                                                }
+                                            },
+                                            "TypeDataModule": {
+                                                "Class": "UParticleModuleTypeDataRibbon",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "FacingMode": 1,
+                                                        "MaxParticleInTrailCount": 256,
+                                                        "MaxTrailCount": 1,
+                                                        "SheetsPerTrail": 1,
+                                                        "SourceParameterName": "RibbonBase",
+                                                        "TargetParameterName": "RibbonTip",
+                                                        "TilingDistance": 0.0,
+                                                        "bClipSourceSegment": true,
+                                                        "bEnabled": true
+                                                    }
+                                                }
+                                            },
+                                            "bEnabled": true
+                                        }
+                                    }
+                                }
+                            ],
+                            "PlayRate": 1.0,
+                            "bIsSolo": false
+                        }
+                    }
+                }
+            ],
+            "FixedBoundsMax": {
+                "X": 100.0,
+                "Y": 100.0,
+                "Z": 100.0
+            },
+            "FixedBoundsMin": {
+                "X": -100.0,
+                "Y": -100.0,
+                "Z": -100.0
+            },
+            "LODDistances": [],
+            "PlayRate": 1.0,
+            "SecondsBeforeInactive": 1.0,
+            "UpdateTimeFPS": 240.0,
+            "WarmupTickRate": 0.0,
+            "WarmupTime": 0.0,
+            "bUseFixedRelativeBoundingBox": false
+        }
+    },
+    "Version": 1
+}

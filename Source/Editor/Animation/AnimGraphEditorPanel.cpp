@@ -132,6 +132,13 @@ void FAnimGraphEditorPanel::OpenMontageAsset(const FString& InPath)
 	FString Error;
 	if (FAnimMontageAsset::Load(InPath, Loaded, Error))
 	{
+		if (Loaded.Segments.empty() && !Loaded.SequencePath.empty())
+		{
+			UAnimSequence* Seq = UAssetManager::LoadAnimSequence(Loaded.SequencePath);
+			const float Len = (Seq && Seq->GetDataModel() && Seq->GetDataModel()->PlayLength > 0.0f)
+				? Seq->GetDataModel()->PlayLength : 1.0f;
+			Loaded.Segments.push_back({ Loaded.SequencePath, 0.0f, Len, 0.0f, 1.0f });
+		}
 		MontageEditPath = InPath;
 		EditingMontage = std::move(Loaded);
 		MontageStatus = "Loaded " + InPath;
@@ -150,6 +157,7 @@ void FAnimGraphEditorPanel::NewMontageAsset(const FString& InPath)
 	NewMontage.SkeletonPath = !Graph.SkeletonPath.empty()
 		? Graph.SkeletonPath : "Models/UnrealModel/SKEL_SKM_Quinn_Simple_root.fbxbin";
 	NewMontage.SequencePath = "Models/UnrealModel/AS_MF_Rifle_Fire.fbxbin";
+	NewMontage.Segments.push_back({ NewMontage.SequencePath, 0.0f, 0.4667f, 0.0f, 1.0f });
 	NewMontage.SlotName = "UpperBody";
 	NewMontage.PlayRate = 1.0f;
 	NewMontage.BlendInTime = 0.05f;
@@ -1780,19 +1788,51 @@ void FAnimGraphEditorPanel::DrawMontageEditorWindow()
 
 	TArray<UAnimSequence*> Sequences;
 	UAssetManager::GetAllAnimSequences(Sequences);
-	if (ImGui::BeginCombo("Sequence Track", EditingMontage.SequencePath.empty() ? "Select Sequence" : EditingMontage.SequencePath.c_str()))
+	if (ImGui::BeginCombo("Add Sequence", "Append sequence..."))
 	{
-		for (auto* Seq : Sequences)
+		for (UAnimSequence* Seq : Sequences)
 		{
-			if (!Seq || !Seq->Skeleton) continue;
+			if (!Seq || !Seq->Skeleton || !Seq->GetDataModel()) continue;
 			if (!EditingMontage.SkeletonPath.empty() && EditingMontage.SkeletonPath != Seq->Skeleton->GetPath()) continue;
-			if (ImGui::Selectable(Seq->GetPath().c_str(), EditingMontage.SequencePath == Seq->GetPath()))
+			if (ImGui::Selectable(Seq->GetPath().c_str()))
 			{
-				EditingMontage.SequencePath = Seq->GetPath();
-				EditingMontage.SkeletonPath = Seq->Skeleton->GetPath();
+				if (EditingMontage.SkeletonPath.empty()) EditingMontage.SkeletonPath = Seq->Skeleton->GetPath();
+				float Tail = 0.0f;
+				for (const FAnimMontageSegment& ExistingSeg : EditingMontage.Segments)
+					Tail = std::max(Tail, ExistingSeg.EndTime);
+				const float ClipLen = std::max(0.01f, Seq->GetDataModel()->PlayLength);
+				EditingMontage.Segments.push_back({ Seq->GetPath(), Tail, Tail + ClipLen, 0.0f, 1.0f });
+				EditingMontage.SequencePath = EditingMontage.Segments[0].SequencePath;
 			}
 		}
 		ImGui::EndCombo();
+	}
+	if (ImGui::CollapsingHeader("Sequence Segments", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		for (size_t Idx = 0; Idx < EditingMontage.Segments.size(); ++Idx)
+		{
+			ImGui::PushID(static_cast<int>(Idx) + 2000);
+			FAnimMontageSegment& Seg = EditingMontage.Segments[Idx];
+			ImGui::Text("%s", FbxPath::FromString(Seg.SequencePath).stem().string().c_str());
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(EditorUIScale::Px(70));
+			ImGui::DragFloat("Start", &Seg.StartTime, 0.01f, 0.0f, std::max(0.0f, Seg.EndTime - 0.01f));
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(EditorUIScale::Px(70));
+			ImGui::DragFloat("End", &Seg.EndTime, 0.01f, Seg.StartTime + 0.01f, Seg.StartTime + 30.0f);
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(EditorUIScale::Px(60));
+			ImGui::DragFloat("Rate", &Seg.PlayRate, 0.01f, 0.05f, 10.0f);
+			ImGui::SameLine();
+			if (ImGui::SmallButton("X"))
+			{
+				EditingMontage.Segments.erase(EditingMontage.Segments.begin() + static_cast<ptrdiff_t>(Idx));
+				EditingMontage.SequencePath = EditingMontage.Segments.empty() ? FString() : EditingMontage.Segments[0].SequencePath;
+				ImGui::PopID();
+				break;
+			}
+			ImGui::PopID();
+		}
 	}
 
 	char SlotBuf[128]{};
@@ -1803,9 +1843,13 @@ void FAnimGraphEditorPanel::DrawMontageEditorWindow()
 	ImGui::DragFloat("Blend Out Time", &EditingMontage.BlendOutTime, 0.01f, 0.0f, 5.0f);
 	ImGui::Checkbox("Loop Montage", &EditingMontage.bLoop);
 
+	float MaxSegmentEnd = 0.0f;
+	for (const FAnimMontageSegment& Seg : EditingMontage.Segments)
+		MaxSegmentEnd = std::max(MaxSegmentEnd, Seg.EndTime);
 	UAnimSequence* Seq = !EditingMontage.SequencePath.empty() ? UAssetManager::LoadAnimSequence(EditingMontage.SequencePath) : nullptr;
-	const float TotalLength = (Seq && Seq->GetDataModel() && Seq->GetDataModel()->PlayLength > 0.0f)
+	const float LegacyLength = (Seq && Seq->GetDataModel() && Seq->GetDataModel()->PlayLength > 0.0f)
 		? Seq->GetDataModel()->PlayLength : 1.0f;
+	const float TotalLength = MaxSegmentEnd > 0.0f ? MaxSegmentEnd : LegacyLength;
 
 	ImGui::Separator();
 	ImGui::Text("Timeline (Length: %.3fs)", TotalLength);
@@ -1822,9 +1866,26 @@ void FAnimGraphEditorPanel::DrawMontageEditorWindow()
 	const float RowH = TimelineSize.y / 3.0f;
 
 	// 시퀀스 트랙과 블렌드 영역 표시
-	Draw->AddRectFilled({ TimelineOrigin.x, TimelineOrigin.y + 2 }, { TimelineOrigin.x + TimelineSize.x, TimelineOrigin.y + RowH - 2 }, IM_COL32(52, 74, 62, 255), 3.0f);
-	Draw->AddText({ TimelineOrigin.x + 8, TimelineOrigin.y + 6 }, IM_COL32_WHITE,
-		EditingMontage.SequencePath.empty() ? "No Sequence" : FbxPath::FromString(EditingMontage.SequencePath).stem().string().c_str());
+	if (EditingMontage.Segments.empty())
+	{
+		Draw->AddRectFilled({ TimelineOrigin.x, TimelineOrigin.y + 2 }, { TimelineOrigin.x + TimelineSize.x, TimelineOrigin.y + RowH - 2 }, IM_COL32(52, 74, 62, 255), 3.0f);
+		Draw->AddText({ TimelineOrigin.x + 8, TimelineOrigin.y + 6 }, IM_COL32_WHITE,
+			EditingMontage.SequencePath.empty() ? "No Sequence" : FbxPath::FromString(EditingMontage.SequencePath).stem().string().c_str());
+	}
+	else
+	{
+		for (size_t Idx = 0; Idx < EditingMontage.Segments.size(); ++Idx)
+		{
+			const FAnimMontageSegment& Seg = EditingMontage.Segments[Idx];
+			const float X0 = TimelineOrigin.x + std::clamp(Seg.StartTime / TotalLength, 0.0f, 1.0f) * TimelineSize.x;
+			const float X1 = TimelineOrigin.x + std::clamp(Seg.EndTime / TotalLength, 0.0f, 1.0f) * TimelineSize.x;
+			const ImU32 Fill = Idx % 2 == 0 ? IM_COL32(52, 92, 70, 255) : IM_COL32(44, 78, 60, 255);
+			Draw->AddRectFilled({ X0, TimelineOrigin.y + 2 }, { std::max(X0 + 4.0f, X1), TimelineOrigin.y + RowH - 2 }, Fill, 3.0f);
+			Draw->AddRect({ X0, TimelineOrigin.y + 2 }, { std::max(X0 + 4.0f, X1), TimelineOrigin.y + RowH - 2 }, IM_COL32(110, 165, 130, 255), 3.0f);
+			Draw->AddText({ X0 + 6, TimelineOrigin.y + 6 }, IM_COL32_WHITE,
+				FbxPath::FromString(Seg.SequencePath).stem().string().c_str());
+		}
+	}
 
 	// 섹션 트랙 표시
 	for (const auto& Sec : EditingMontage.Sections)

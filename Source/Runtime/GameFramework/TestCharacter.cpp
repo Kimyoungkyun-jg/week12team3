@@ -1,8 +1,10 @@
 #include "EnginePCH.h"
 #include "GameFramework/TestCharacter.h"
 #include "Animation/AnimGraphInstance.h"
+#include "Animation/AnimNotify.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/CharacterMovementComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Components/ScriptComponent.h"
 #include "GameFramework/Actor/RifleActor.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -11,7 +13,9 @@
 #include "Camera/PlayerCameraManager.h"
 #include "GameFramework/PlayerController.h"
 #include "UI/UserWidget.h"
+#include "Asset/AnimSequence.h"
 #include "Asset/AssetManager.h"
+#include "Particles/ParticleSystem.h"
 #include "Render/SkeletalMesh.h"
 #include "Engine/World.h"
 
@@ -45,6 +49,53 @@ namespace
 			RifleRight * GripOffset.Y + RifleUp * GripOffset.Z);
 		EquippedRifle->GetRootComponent()->SetWorldTransform(RifleWorld, false);
 	}
+
+	void EnsureDashAnimationSettings()
+	{
+		UAnimSequence* Sequence = UAssetManager::LoadAnimSequence("Models/UnrealModel/AS_MM_Dash.fbxbin");
+		if (!Sequence || !Sequence->GetDataModel()) return;
+		bool bNeedSave = false;
+		if (!Sequence->bEnableRootMotion || Sequence->bForceRootLock ||
+			Sequence->RootMotionRootLock != ERootMotionRootLock::AnimFirstFrame)
+		{
+			// 대시 클립의 루트 모션을 켜서 캡슐이 함께 이동하도록 한다
+			Sequence->bEnableRootMotion = true;
+			Sequence->bForceRootLock = false;
+			Sequence->RootMotionRootLock = ERootMotionRootLock::AnimFirstFrame;
+			bNeedSave = true;
+		}
+		bool bHasDashRibbon = false;
+		for (const FAnimNotifyEvent& Event : Sequence->Notifies)
+		{
+			if (Event.Name == "DashRibbon" && Event.IsState())
+			{
+				bHasDashRibbon = true;
+				break;
+			}
+		}
+		if (!bHasDashRibbon)
+		{
+			const float Length = Sequence->GetDataModel()->PlayLength;
+			const float Start = std::min(0.03f, Length);
+			const float Duration = std::max(0.05f, std::min(0.78f, Length) - Start);
+			UAnimNotifyState_ParticleEffect* Notify = Cast<UAnimNotifyState_ParticleEffect>(
+				Sequence->AddNotifyState("DashRibbon", "UAnimNotifyState_ParticleEffect", Start, Duration));
+			if (Notify)
+			{
+				Notify->ComponentName = "DashRibbonComponent";
+				Notify->ParticlePath = "Assets/Particles/DashRibbon.particle";
+				Notify->BoneName = "ball_l";
+				Notify->SecondBoneName = "head";
+				Notify->BaseParameterName = "RibbonBase";
+				Notify->TipParameterName = "RibbonTip";
+				Notify->BoneOffset = FVector(0.0f, 0.0f, 0.0f);
+				Notify->FadeOutDuration = 0.2f;
+				bNeedSave = true;
+			}
+		}
+		if (bNeedSave && !UAssetManager::SaveAnimSequence(*Sequence))
+			HTR_LOG(Warning, "Failed to save dash settings to AS_MM_Dash.fbxbin");
+	}
 }
 
 ATestCharacter::ATestCharacter()
@@ -69,6 +120,16 @@ ATestCharacter::ATestCharacter()
 	SpringArm->CameraLagSpeed = 12.0f;
 	SpringArm->bDrawDebug = false;
 	GetCameraComponent()->SetFieldOfView(NormalFOV);
+	DashRibbonComponent = CreateDefaultSubobject<UParticleSystemComponent>("DashRibbonComponent");
+	DashRibbonComponent->SetupAttachmentToSocket(SkeletalMeshComponent, "head", EAttachmentRule::KeepRelative);
+	if (UParticleSystem* DashTemplate = UParticleSystem::LoadFromFile("Assets/Particles/DashRibbon.particle", DashRibbonComponent))
+	{
+		DashRibbonComponent->TemplatePath = "Assets/Particles/DashRibbon.particle";
+		DashRibbonComponent->SetTemplate(DashTemplate);
+	}
+	DashRibbonComponent->bPreviewInEditor = false;
+	DashRibbonComponent->SetVisibility(false);
+	DashRibbonComponent->Deactivate();
 	UScriptComponent* TuningScript = CreateDefaultSubobject<UScriptComponent>("CameraTuningScript");
 	TuningScript->SetScriptPath("Assets/Scripts/TestCharacterTuning.lua");
 }
@@ -78,6 +139,14 @@ void ATestCharacter::BeginPlay()
 	Super::BeginPlay();
 	UWorld* World = GetWorld();
 	USkeletalMeshComponent* MeshComponent = GetSkeletalMeshComponent();
+	EnsureDashAnimationSettings();
+	if (DashRibbonComponent)
+	{
+		DashRibbonComponent->SetupAttachmentToSocket(MeshComponent, "head", EAttachmentRule::KeepRelative);
+		DashRibbonComponent->SetVisibility(false);
+		DashRibbonComponent->Deactivate();
+		DashRibbonComponent->MarkTransformDirty();
+	}
 	if (World && World->IsGameWorld() && MeshComponent &&
 		!MeshComponent->SetAnimGraphPath(GetAnimationGraphPath()))
 		HTR_LOG(Error, "Failed to assign rifleanimgraph.animgraph to ATestCharacter in BeginPlay");
@@ -233,4 +302,13 @@ void ATestCharacter::Jump()
 {
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	if (!bJumpLocked && !bAttackLocked && Movement && Movement->CanJump()) ACharacter::Jump();
+}
+
+void ATestCharacter::Dash()
+{
+	USkeletalMeshComponent* MeshComponent = GetSkeletalMeshComponent();
+	UAnimGraphInstance* AnimGraph = Cast<UAnimGraphInstance>(MeshComponent ? MeshComponent->GetAnimInstance() : nullptr);
+	if (AnimGraph && AnimGraph->IsPlayingMontage("FullBody")) return;
+	// 전신 슬롯 대시 몽타주를 실행한다
+	PlayAnimMontage("Assets/Animations/Dash.animmontage");
 }

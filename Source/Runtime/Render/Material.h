@@ -17,7 +17,8 @@ enum class EMaterialUsage : uint32
 	StaticMesh = 1u << 0,
 	SkeletalMesh = 1u << 1,
 	ParticleSprite = 1u << 2,
-	ParticleMesh = 1u << 3
+	ParticleMesh = 1u << 3,
+	ParticleBeamTrail = 1u << 4
 };
 
 enum class EMaterialExpressionType : uint8

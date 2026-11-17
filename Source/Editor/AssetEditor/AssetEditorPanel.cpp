@@ -150,7 +150,30 @@ void FAssetEditorPanel::Release()
 
 void FAssetEditorPanel::SaveIfDirty()
 {
-	if (IsOpen() && bDirty) SaveMaterial();
+	if (IsOpen() && bDirty) SaveCurrentAsset();
+}
+
+void FAssetEditorPanel::SaveCurrentAsset()
+{
+	if (Cast<USkeleton>(Asset))
+		SaveSkeletonAsset();
+	else
+		SaveMaterial();
+}
+
+void FAssetEditorPanel::SaveSkeletonAsset()
+{
+	USkeleton* Skeleton = Cast<USkeleton>(Asset);
+	if (!Skeleton) return;
+	if (UAssetManager::SaveSkeleton(*Skeleton))
+	{
+		bDirty = false;
+		Status = "Saved";
+	}
+	else
+	{
+		Status = "Failed to save skeleton.";
+	}
 }
 
 void FAssetEditorPanel::OpenAsset(const FString& InPath)
@@ -161,10 +184,10 @@ void FAssetEditorPanel::OpenAsset(const FString& InPath)
 	if (!Loaded) { HTR_LOG(Warning, "Cannot preview asset {}: {}", InPath, Error); return; }
 	if (bDirty && Asset && Path != InPath)
 	{
-		SaveMaterial();
+		SaveCurrentAsset();
 		if (bDirty) return;
 	}
-	Release(); Path = InPath; Asset = Loaded; Status.clear(); bDirty = false; SetOpen(true);
+	Release(); Path = InPath; Asset = Loaded; Status.clear(); bDirty = false; NewSocketBoneIndex = 0; SetOpen(true);
 	UStaticMesh* Mesh = Cast<UStaticMesh>(Asset);
 	UMaterialInterface* Material = Cast<UMaterialInterface>(Asset);
 	if (Material)
@@ -274,7 +297,7 @@ void FAssetEditorPanel::OnRender()
 	const FString Title = (Asset ? FbxPath::ToString(FbxPath::FromString(Path).filename()) : FString(GetPanelName())) + "###ImportedAssetEditor";
 	bVisible = BeginPanel(Title.c_str());
 	bFocused = bVisible && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-	if (bFocused && ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyAlt && ImGui::IsKeyPressed(ImGuiKey_S, false)) SaveMaterial();
+	if (bFocused && ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyAlt && ImGui::IsKeyPressed(ImGuiKey_S, false)) SaveCurrentAsset();
 	if (bVisible && !Asset)
 	{
 		ImGui::TextUnformatted("No asset is open.");
@@ -383,8 +406,90 @@ void FAssetEditorPanel::OnRender()
 		}
 		}
 
-		if (auto* Skeleton = Cast<USkeleton>(Asset))
+		if (USkeleton* Skeleton = Cast<USkeleton>(Asset))
 		{
+			if (ImGui::Button("Save Skeleton")) SaveSkeletonAsset();
+			ImGui::SameLine();
+			ImGui::TextUnformatted(bDirty ? "* Modified" : Status.c_str());
+
+			ImGui::SeparatorText("Sockets");
+			const int32 BoneCount = Skeleton->RefSkeleton.GetNum();
+			if (NewSocketBoneIndex < 0 || NewSocketBoneIndex >= BoneCount)
+				NewSocketBoneIndex = 0;
+			ImGui::InputText("Socket Name", NewSocketName, sizeof(NewSocketName));
+			if (BoneCount > 0)
+			{
+				const char* PreviewBone = Skeleton->RefSkeleton.RefBoneInfo[NewSocketBoneIndex].Name.c_str();
+				if (ImGui::BeginCombo("Attach Bone", PreviewBone))
+				{
+					for (int32 I = 0; I < BoneCount; ++I)
+					{
+						if (ImGui::Selectable(Skeleton->RefSkeleton.RefBoneInfo[I].Name.c_str(), I == NewSocketBoneIndex))
+							NewSocketBoneIndex = I;
+					}
+					ImGui::EndCombo();
+				}
+				if (ImGui::Button("Add Socket"))
+				{
+					FSkeletalMeshSocket NewSocket;
+					NewSocket.SocketName = NewSocketName;
+					NewSocket.BoneName = Skeleton->RefSkeleton.RefBoneInfo[NewSocketBoneIndex].Name;
+					if (Skeleton->AddSocket(NewSocket))
+					{
+						bDirty = true;
+						Status.clear();
+					}
+					else
+					{
+						Status = "Duplicate or invalid socket name.";
+					}
+				}
+			}
+
+			int32 PendingRemoveIndex = -1;
+			for (int32 I = 0; I < Skeleton->Sockets.Num(); ++I)
+			{
+				FSkeletalMeshSocket& Socket = Skeleton->Sockets[I];
+				ImGui::PushID(I);
+				const FString Header = Socket.SocketName + " (" + Socket.BoneName + ")###Socket_" + std::to_string(I);
+				if (ImGui::TreeNode(Header.c_str()))
+				{
+					if (ImGui::BeginCombo("Parent Bone", Socket.BoneName.c_str()))
+					{
+						for (int32 B = 0; B < BoneCount; ++B)
+						{
+							const FString& Candidate = Skeleton->RefSkeleton.RefBoneInfo[B].Name;
+							if (ImGui::Selectable(Candidate.c_str(), Socket.BoneName == Candidate))
+							{
+								Socket.BoneName = Candidate;
+								bDirty = true;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					bDirty |= ImGui::DragFloat3("Location", &Socket.RelativeLocation.X, 0.01f);
+					float Euler[3] = { Socket.RelativeRotation.Roll, Socket.RelativeRotation.Pitch, Socket.RelativeRotation.Yaw };
+					if (ImGui::DragFloat3("Rotation", Euler, 0.5f))
+					{
+						Socket.RelativeRotation.Roll = Euler[0];
+						Socket.RelativeRotation.Pitch = Euler[1];
+						Socket.RelativeRotation.Yaw = Euler[2];
+						bDirty = true;
+					}
+					bDirty |= ImGui::DragFloat3("Scale", &Socket.RelativeScale.X, 0.01f);
+					if (ImGui::Button("Remove Socket"))
+						PendingRemoveIndex = I;
+					ImGui::TreePop();
+				}
+				ImGui::PopID();
+			}
+			if (PendingRemoveIndex >= 0)
+			{
+				Skeleton->Sockets.RemoveAt(PendingRemoveIndex, 1);
+				bDirty = true;
+			}
+
+			ImGui::SeparatorText("Bones");
 			ImGui::Text("Bones: %d", Skeleton->RefSkeleton.GetNum());
 			for (int I = 0; I < Skeleton->RefSkeleton.GetNum(); ++I)
 				ImGui::Text("%d  %s  (parent %d)", I, Skeleton->RefSkeleton.RefBoneInfo[I].Name.c_str(), Skeleton->RefSkeleton.RefBoneInfo[I].ParentIndex);

@@ -2,6 +2,7 @@
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/SwordCharacter.h"
 #include "GameFramework/TestCharacter.h"
 #include "GameFramework/DefaultPawn.h"
 #include "Camera/PlayerCameraManager.h" 
@@ -70,7 +71,7 @@ void APlayerController::Possess(APawn* InPawn)
 		PossessedPawn->PossessedBy(this);
 		ControlRotation = PossessedPawn->GetActorRotation();
 		// 기본 폰과 테스트 캐릭터는 UE PIE처럼 시작하자마자 마우스로 시점을 돌린다.
-		if (Cast<ADefaultPawn>(PossessedPawn) || Cast<ATestCharacter>(PossessedPawn))
+		if (Cast<ADefaultPawn>(PossessedPawn) || Cast<ACharacter>(PossessedPawn))
 			SetCursorMode(ECursorMode::Locked);
 	}
 	if (PlayerCameraManager) PlayerCameraManager->SetViewTarget(PossessedPawn);
@@ -112,9 +113,25 @@ void APlayerController::InputKey(int32 Key, bool bDown)
 		(!GetWorld()->GetGameMode() || GetWorld()->GetGameMode()->AllowsPlayerControllerInput()))
 		Character->Attack();
 	if (Key == static_cast<int32>(EKeyCode::LButton) && bJustPressed &&
-		Cast<ATestCharacter>(PossessedPawn) && GetWorld() && !GetWorld()->IsPaused() &&
+		Character && GetWorld() && !GetWorld()->IsPaused() &&
 		(!GetWorld()->GetGameMode() || GetWorld()->GetGameMode()->AllowsPlayerControllerInput()))
 		Character->Attack();
+	if ((Key == static_cast<int32>(EKeyCode::Shift) ||
+		Key == static_cast<int32>(EKeyCode::LShift) ||
+		Key == static_cast<int32>(EKeyCode::RShift)) && bJustPressed &&
+		GetWorld() && !GetWorld()->IsPaused() &&
+		(!GetWorld()->GetGameMode() || GetWorld()->GetGameMode()->AllowsPlayerControllerInput()))
+	{
+		if (ATestCharacter* TestCharacter = Cast<ATestCharacter>(PossessedPawn))
+			TestCharacter->Dash();
+	}
+	if (Key == static_cast<int32>(EKeyCode::R) && bJustPressed &&
+		GetWorld() && !GetWorld()->IsPaused() &&
+		(!GetWorld()->GetGameMode() || GetWorld()->GetGameMode()->AllowsPlayerControllerInput()))
+	{
+		if (ASwordCharacter* SwordCharacter = Cast<ASwordCharacter>(PossessedPawn))
+			SwordCharacter->CastBeam();
+	}
 	if (!bJustPressed || !PlayerCameraManager) return;
 
 	if (Key == static_cast<int32>(EKeyCode::F6))

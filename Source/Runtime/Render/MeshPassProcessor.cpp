@@ -145,6 +145,10 @@ namespace
 		case EPSOType::Particle_MeshAdditive:
 			return EMaterialUsage::ParticleMesh;
 
+		case EPSOType::Particle_BeamTrailTranslucent:
+		case EPSOType::Particle_BeamTrailAdditive:
+			return EMaterialUsage::ParticleBeamTrail;
+
 		case EPSOType::SkeletalMesh_GBuffer:
 			return EMaterialUsage::SkeletalMesh;
 
@@ -350,6 +354,10 @@ namespace
 			if (Batch.Material && Batch.Material->GetBlendState() == EBlendState::Additive)
 				return EPSOType::Particle_MeshAdditive;
 			return EPSOType::Particle_MeshTranslucent;
+		case EVertexFactoryType::ParticleBeamTrail:
+			if (Batch.Material && Batch.Material->GetBlendState() == EBlendState::Additive)
+				return EPSOType::Particle_BeamTrailAdditive;
+			return EPSOType::Particle_BeamTrailTranslucent;
 		default:
 			return EPSOType::Particle_Instanced;
 		}
@@ -374,7 +382,7 @@ namespace
 		FParticleMaterialConstants Constants{
 			Material.BaseColor,
 			bHasTexture ? 1.0f : 0.0f,
-			{ 0.0f, 0.0f, 0.0f }
+			{ Material.BlendState == EBlendState::Additive ? 1.0f : 0.0f, 0.0f, 0.0f }
 		};
 		std::memcpy(MaterialCB.Data.data(), &Constants, sizeof(Constants));
 		MaterialCB.DataSize = sizeof(Constants);
@@ -445,6 +453,59 @@ namespace
 			}
 			Cmd.ShaderResources.Add({ 1, EShaderBindFlagBits::Vertex, nullptr, InstanceBuffer });
 			Cmd.ConstantBuffers.Add(BatchCB);
+			Cmd.Material = Batch.Material;
+			Cmd.bUsesGPUScene = false;
+			Cmd.bIsParticle = true;
+			Cmd.bReceiveDecal = false;
+			Cmd.Proxy = Element.Proxy;
+			FinalizeCommandKeys(Cmd, Batch.Material->GetSortID(), Batch.MeshSortID, Batch.LODIndex, SortKey);
+			OutCommands.Add(std::move(Cmd));
+		}
+	}
+
+	void BuildParticleBeamTrailCommands(const FMeshBatch& Batch, const FMeshElementCollector* Collector,
+		uint64 SortKey, TArray<FMeshDrawCommand>& OutCommands)
+	{
+		if (!Batch.Material || !Collector)
+			return;
+
+		FVertexBuffer* VB = ResolveBatchVertexBuffer(Batch.VertexFactory, Collector);
+		if (!VB)
+			return;
+
+		const EPSOType PSOType = ResolveParticlePSO(Batch);
+		FPipelineState* PSO = FRenderResourceManager::GetPSO(PSOType);
+		if (!PSO || !PSO->Shader || !PSO->Shader->VertexShader || !PSO->Shader->PixelShader)
+			return;
+
+		FMaterialRenderProxy Material{};
+		Batch.Material->GetRenderProxy(Material);
+		FShaderProgram* GraphShader = FindGraphShader(Material, PSOType);
+
+		for (const FMeshBatchElement& Element : Batch.Elements)
+		{
+			if (Element.IndexCount == 0)
+				continue;
+			FIndexBuffer* IB = ResolveElementIndexBuffer(Element, Batch.VertexFactory, Collector);
+			if (!IB)
+				continue;
+
+			FMeshDrawCommand Cmd{};
+			Cmd.Pipeline = *PSO;
+			Cmd.VertexBuffer = VB;
+			Cmd.IndexBuffer = IB;
+			Cmd.FirstIndex = Element.FirstIndex;
+			Cmd.IndexCount = Element.IndexCount;
+			Cmd.BaseVertexLocation = Element.BaseVertexLocation;
+			Cmd.InstanceCount = 0;
+			Cmd.Sampler = Material.SamplerState;
+			Cmd.SamplerStages = EShaderBindFlagBits::Pixel;
+			AppendParticleMaterialBindings(Material, Cmd);
+			if (GraphShader)
+			{
+				Cmd.Pipeline.Shader = GraphShader;
+				AppendGraphBindings(Material, Cmd.ShaderResources, Cmd.ConstantBuffers);
+			}
 			Cmd.Material = Batch.Material;
 			Cmd.bUsesGPUScene = false;
 			Cmd.bIsParticle = true;
@@ -749,6 +810,12 @@ bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const
 	if (Batch.VertexFactory.Type == EVertexFactoryType::ParticleGpuSprite)
 	{
 		BuildParticleGpuCommands(Batch, Collector, SortKey, OutCommands);
+		return true;
+	}
+
+	if (Batch.VertexFactory.Type == EVertexFactoryType::ParticleBeamTrail)
+	{
+		BuildParticleBeamTrailCommands(Batch, Collector, SortKey, OutCommands);
 		return true;
 	}
 

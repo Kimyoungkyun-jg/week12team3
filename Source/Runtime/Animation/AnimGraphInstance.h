@@ -6,6 +6,8 @@
 #include <vector>
 #include "AnimGraphInstance.generated.h"
 
+class UAnimNotifyState;
+
 UCLASS()
 class UAnimGraphInstance : public UAnimInstance
 {
@@ -35,6 +37,7 @@ public:
 	const FString& GetLastTriggeredNotify() const { return LastTriggeredNotify; }
 	void SetOnMontageNotify(std::function<void(const FString&)> InCallback) { OnMontageNotify = std::move(InCallback); }
 	bool EvaluateSlotPose(const FString& SlotName, const USkeleton* Skeleton, TArray<FAnimBoneTransform>& InOutPose);
+	bool ConsumeRootMotion(FMatrix& OutDelta) override;
 protected:
 	void NativeInitializeAnimation() override;
 	void NativeUpdateAnimation(float DeltaSeconds) override;
@@ -61,11 +64,26 @@ private:
 		float* Alpha = nullptr;
 		EAnimGraphInput Input = EAnimGraphInput::Constant;
 	};
+	struct FActiveMontageSegment
+	{
+		UAnimSequence* Sequence = nullptr;
+		float StartTime = 0.0f;
+		float EndTime = 0.0f;
+		float AnimStartOffset = 0.0f;
+		float PlayRate = 1.0f;
+	};
+	static float ResolveSegmentRate(const FActiveMontageSegment& Segment);
+	static float MapToSegmentLocalTime(const FActiveMontageSegment& Segment, float MontageTime);
+	static const FActiveMontageSegment* ResolveActiveSegment(
+		const std::vector<FActiveMontageSegment>& Segments, float MontageTime, float& OutLocalTime);
 	struct FActiveMontage
 	{
 		FString Path;
 		FAnimMontageAsset Asset;
 		UAnimSequence* Sequence = nullptr;
+		std::vector<FActiveMontageSegment> Segments;
+		std::vector<UAnimNotifyState*> NotifyStates;
+		float TotalLength = 0.0f;
 		float Position = 0.0f;
 		float PlayRate = 1.0f;
 		float ElapsedTime = 0.0f;
@@ -109,6 +127,8 @@ private:
 	bool bPreviewFalling = false;
 	bool bPreviewAimPitchOverride = false;
 	bool bIsAiming = false;
+	FMatrix PendingMontageRootMotion = FMatrix::Identity;
+	bool bHasPendingMontageRootMotion = false;
 	float InputValue(EAnimGraphInput Input, float Constant = 0.0f) const;
 	void UpdateMontages(float DeltaSeconds);
 };

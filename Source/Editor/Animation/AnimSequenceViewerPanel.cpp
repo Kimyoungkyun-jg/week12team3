@@ -8,6 +8,7 @@
 #include "Editor/HitoriEd/EditorResourcePaths.h"
 #include "Editor/EditorUI/EditorUIScale.h"
 #include "Serialization/StructuredArchive.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Components/SkeletalMeshDebugComponent.h"
 #include "Asset/AssetManager.h"
 #include "Asset/FbxImporter/FbxPath.h"
@@ -28,6 +29,33 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+
+namespace
+{
+	void TickPreviewParticles(USkeletalMeshDebugComponent* Mesh, float DeltaTime)
+	{
+		if (!Mesh || !Mesh->GetOwner() || DeltaTime <= 0.0f) return;
+		for (UActorComponent* Comp : Mesh->GetOwner()->GetComponents())
+		{
+			if (UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp))
+				ParticleComp->TickComponent(DeltaTime);
+		}
+	}
+
+	void ResetPreviewParticles(USkeletalMeshDebugComponent* Mesh)
+	{
+		if (!Mesh || !Mesh->GetOwner()) return;
+		for (UActorComponent* Comp : Mesh->GetOwner()->GetComponents())
+		{
+			if (UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp))
+			{
+				ParticleComp->ResetParticles();
+				ParticleComp->SetVisibility(false);
+				ParticleComp->Deactivate();
+			}
+		}
+	}
+}
 
 namespace
 {
@@ -245,6 +273,7 @@ void FAnimSequenceViewerPanel::Tick(float DeltaTime)
 	}
 	PreviewWorld->Tick(bPlaying ? DeltaTime : 0.0f);
 	if (MeshComponent) MeshComponent->TickComponent(bPlaying ? DeltaTime : 0.0f);
+	TickPreviewParticles(MeshComponent, bPlaying ? DeltaTime * PreviewRate : 0.0f);
 	if (auto* Player = MeshComponent ? Cast<UAnimSingleNodeInstance>(MeshComponent->GetAnimInstance()) : nullptr)
 		if (bPlaying && !Player->IsPlaying()) bPlaying = false;
 }
@@ -376,19 +405,25 @@ void FAnimSequenceViewerPanel::DrawTimeline()
 		ImVec2(HeadX, RulerStart.y + EditorUIScale::Px(25.0f)), ImGui::GetColorU32(ImGuiCol_PlotLines), 2.0f);
 	if (Player && ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
 	{
+		const float PrevPos = Player->GetPosition();
 		Frame = std::clamp(static_cast<int>(std::round((ImGui::GetMousePos().x - RulerStart.x) /
 			RulerWidth * Model->NumberOfFrames)), 0, Model->NumberOfFrames);
-		Player->SetPosition(Frame / FramesPerSecond);
+		const float NewPos = Frame / FramesPerSecond;
+		if (NewPos < PrevPos) ResetPreviewParticles(MeshComponent);
+		Player->SetPosition(NewPos);
 		MeshComponent->TickComponent(0.0f);
 	}
 	DrawNotifyTrack(RulerWidth);
 	ImGui::SetNextItemWidth(-1);
 	if (ImGui::SliderInt("##Frame", &Frame, 0, Model->NumberOfFrames) && Player)
 	{
-		Player->SetPosition(Frame / FramesPerSecond);
+		const float PrevPos = Player->GetPosition();
+		const float NewPos = Frame / FramesPerSecond;
+		if (NewPos < PrevPos) ResetPreviewParticles(MeshComponent);
+		Player->SetPosition(NewPos);
 		if (MeshComponent) MeshComponent->TickComponent(0.0f);
 	}
-	if (ImGui::Button("|<") && Player) { Player->SetPosition(0.0f); MeshComponent->TickComponent(0.0f); }
+	if (ImGui::Button("|<") && Player) { Player->SetPosition(0.0f); ResetPreviewParticles(MeshComponent); MeshComponent->TickComponent(0.0f); }
 	ImGui::SameLine();
 	if (ImGui::Button(bPlaying ? "Pause" : "Play") && Player)
 	{

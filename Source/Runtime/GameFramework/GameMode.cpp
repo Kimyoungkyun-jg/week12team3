@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "GameFramework/GameMode.h"
 #include "GameFramework/DefaultPawn.h"
+#include "GameFramework/SwordCharacter.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/GameHUD.h"
 #include "GameFramework/Actor/PlayerStart.h"
@@ -8,7 +9,7 @@
 #include "Engine/Level.h"
 #include "Camera/CameraActor.h"
 
-UClass* AGameMode::GetDefaultPawnClass() const { return ADefaultPawn::StaticClass(); }
+UClass* AGameMode::GetDefaultPawnClass() const { return ASwordCharacter::StaticClass(); }
 UClass* AGameMode::GetPlayerControllerClass() const { return APlayerController::StaticClass(); }
 UClass* AGameMode::GetHUDClass() const { return AGameHUD::StaticClass(); }
 

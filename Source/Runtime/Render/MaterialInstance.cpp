@@ -276,24 +276,24 @@ void UMaterialInstance::Serialize(FStructuredArchive::FRecord Record)
 	FVector4 LegacyBaseColor = FVector4(1, 1, 1, 1);
 	FString LegacyTexturePath;
 
-	if (Ar.IsLoading())
+	if (Ar.IsLoading() && Ar.IsTextFormat())
 	{
-		if (auto Slot = Record.TryEnterField("OverrideBaseColor", false))
+		if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("OverrideBaseColor", false))
 		{
 			Slot.GetValue() << bLegacyOverrideBaseColor;
 		}
 
-		if (auto Slot = Record.TryEnterField("OverrideTexture0", false))
+		if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("OverrideTexture0", false))
 		{
 			Slot.GetValue() << bLegacyOverrideTexture0;
 		}
 
-		if (auto Slot = Record.TryEnterField("BaseColorOverride", false))
+		if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("BaseColorOverride", false))
 		{
 			Slot.GetValue() << LegacyBaseColor;
 		}
 
-		if (auto Slot = Record.TryEnterField("Texture0Override", false))
+		if (TOptional<FStructuredArchive::FSlot> Slot = Record.TryEnterField("Texture0Override", false))
 		{
 			Slot.GetValue() << LegacyTexturePath;
 		}

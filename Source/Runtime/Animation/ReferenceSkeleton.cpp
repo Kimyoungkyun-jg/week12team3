@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "Animation/ReferenceSkeleton.h"
+#include "Animation/Skeleton.h"
 #include "Render/SkeletalMeshData.h"
 #include <cmath>
 #include <unordered_set>
@@ -85,5 +86,69 @@ bool FReferenceSkeleton::FillComponentSpaceTransforms(const TArray<FBoneTransfor
 			OutComponentSpace[Index] = OutComponentSpace[Index] * OutComponentSpace[Parent];
 		}
 	}
+	return true;
+}
+
+FMatrix FSkeletalMeshSocket::GetSocketLocalMatrix() const
+{
+	const FTransform LocalTransform(RelativeRotation, RelativeLocation, RelativeScale);
+	return LocalTransform.GetLocalMatrix();
+}
+
+int32 USkeleton::FindSocketIndex(const FString& SocketName) const
+{
+	if (SocketName.empty())
+	{
+		return INDEX_NONE;
+	}
+	for (int32 Index = 0; Index < Sockets.Num(); ++Index)
+	{
+		if (Sockets[Index].SocketName == SocketName)
+		{
+			return Index;
+		}
+	}
+	return INDEX_NONE;
+}
+
+const FSkeletalMeshSocket* USkeleton::FindSocket(const FString& SocketName) const
+{
+	const int32 Index = FindSocketIndex(SocketName);
+	return Index != INDEX_NONE ? &Sockets[Index] : nullptr;
+}
+
+FSkeletalMeshSocket* USkeleton::FindMutableSocket(const FString& SocketName)
+{
+	const int32 Index = FindSocketIndex(SocketName);
+	return Index != INDEX_NONE ? &Sockets[Index] : nullptr;
+}
+
+bool USkeleton::HasSocket(const FString& SocketName) const
+{
+	return FindSocketIndex(SocketName) != INDEX_NONE;
+}
+
+bool USkeleton::AddSocket(const FSkeletalMeshSocket& NewSocket)
+{
+	if (NewSocket.SocketName.empty() || NewSocket.BoneName.empty() || HasSocket(NewSocket.SocketName))
+	{
+		return false;
+	}
+	if (RefSkeleton.FindBoneIndex(NewSocket.BoneName) < 0)
+	{
+		return false;
+	}
+	Sockets.Add(NewSocket);
+	return true;
+}
+
+bool USkeleton::RemoveSocket(const FString& SocketName)
+{
+	const int32 Index = FindSocketIndex(SocketName);
+	if (Index == INDEX_NONE)
+	{
+		return false;
+	}
+	Sockets.RemoveAt(Index, 1);
 	return true;
 }

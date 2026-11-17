@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Asset/AnimNotifyEvent.h"
+#include "Math/Vector.h"
 #include "UObject/Object.h"
 #include "AnimNotify.generated.h"
 
@@ -111,6 +112,47 @@ public:
 	// 켜면 NotifyTick마다 로그를 남긴다 (로그가 많아지므로 확인할 때만 켠다)
 	UPROPERTY(EditAnywhere)
 	bool bLogTick = false;
+
+	void NotifyBegin(const FAnimNotifyContext& Context) override;
+	void NotifyTick(const FAnimNotifyContext& Context) override;
+	void NotifyEnd(const FAnimNotifyContext& Context) override;
+	bool CanTriggerInEditorWorld() const override { return true; }
+};
+
+UCLASS()
+class UAnimNotifyState_ParticleEffect : public UAnimNotifyState
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditAnywhere)
+	FString ComponentName;
+
+	UPROPERTY(EditAnywhere)
+	FString ParticlePath;
+
+	UPROPERTY(EditAnywhere)
+	FString BoneName;
+
+	UPROPERTY(EditAnywhere)
+	FString SecondBoneName;
+
+	UPROPERTY(EditAnywhere)
+	FString BaseParameterName = "RibbonBase";
+
+	UPROPERTY(EditAnywhere)
+	FString TipParameterName = "RibbonTip";
+
+	UPROPERTY(EditAnywhere)
+	FVector BoneOffset = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere)
+	bool bFollowBoneRotation = true;
+
+	UPROPERTY(EditAnywhere)
+	bool bLoopDuringState = true;
+
+	UPROPERTY(EditAnywhere)
+	float FadeOutDuration = 0.35f;
 
 	void NotifyBegin(const FAnimNotifyContext& Context) override;
 	void NotifyTick(const FAnimNotifyContext& Context) override;

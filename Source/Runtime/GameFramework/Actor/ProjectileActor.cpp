@@ -3,9 +3,12 @@
 #include "GameFramework/Actor/ZombieActor.h"
 #include "GameFramework/Actor/StaticMeshActor.h"
 #include "GameFramework/Actor/DecalActor.h"
+#include "GameFramework/Actor/ParticleSystemActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/PointLightComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Components/ProjectileMovementComponent.h"
+#include "Particles/ParticleSystem.h"
 #include "Asset/AssetManager.h"
 #include "Collision/HitResult.h"
 #include "Collision/Ray.h"
@@ -81,11 +84,43 @@ void AProjectileActor::BeginPlay()
 {
     Super::BeginPlay();
     ProjectileMovementComponent->OnProjectileImpact.AddDynamic(this, &AProjectileActor::HandleProjectileImpact);
+	EnsureBloodParticleActor();
     if (bInFlight)
     {
         ProjectileMovementComponent->Activate(true);
         PrimaryActorTick.SetTickFunctionEnable(true);
     }
+}
+
+void AProjectileActor::EndPlay()
+{
+	if (IsValid(BloodParticleActor) && !BloodParticleActor->IsActorBeingDestroyed())
+		BloodParticleActor->Destroy();
+	BloodParticleActor = nullptr;
+	Super::EndPlay();
+}
+
+void AProjectileActor::EnsureBloodParticleActor()
+{
+	UWorld* World = GetWorld();
+	if (!World || !World->IsGameWorld() || IsValid(BloodParticleActor)) return;
+	BloodParticleActor = Cast<AParticleSystemActor>(World->SpawnActor(AParticleSystemActor::StaticClass()));
+	if (!BloodParticleActor) return;
+	if (!BloodParticleActor->HasBegunPlay())
+		BloodParticleActor->BeginPlay();
+	if (UParticleSystemComponent* BloodComp = BloodParticleActor->GetParticleSystemComponent())
+	{
+		if (UParticleSystem* BloodTemplate = UParticleSystem::LoadFromFile("Assets/Particles/BloodSplatter.particle", BloodComp))
+		{
+			BloodComp->TemplatePath = "Assets/Particles/BloodSplatter.particle";
+			BloodComp->SetTemplate(BloodTemplate);
+		}
+		// 매 타격마다 파괴하지 않고 완료 후 자동 비활성화된 뒤 재사용한다
+		BloodComp->bAutoDestroy = false;
+		BloodComp->bPreviewInEditor = false;
+		BloodComp->SetVisibility(false);
+		BloodComp->Deactivate();
+	}
 }
 
 void AProjectileActor::Launch(const FVector& Position, const FVector& Direction, bool bUseStaticMesh)
@@ -168,6 +203,24 @@ void AProjectileActor::HandleProjectileImpact(AActor* OtherActor, const FHitResu
         {
             Zombie->ReactToHit();
             if (!Zombie->IsDead()) Zombie->LaunchCharacter(-Hit.ImpactNormal, 10.0f);
+			EnsureBloodParticleActor();
+			if (IsValid(BloodParticleActor))
+			{
+				// 미리 만들어 둔 혈흔 액터를 타격 지점으로 옮겨 다시 활성화한다
+				FVector OutNormal = Hit.ImpactNormal;
+				if (OutNormal.SizeSquared() <= SMALL_NUMBER)
+					OutNormal = -ProjectileMovementComponent->Velocity.GetSafeNormal();
+				if (OutNormal.SizeSquared() <= SMALL_NUMBER)
+					OutNormal = FVector(1.0f, 0.0f, 0.0f);
+				FRotator BloodRotation;
+				BloodRotation.LookDirection(OutNormal.GetSafeNormal());
+				if (UParticleSystemComponent* BloodComp = BloodParticleActor->GetParticleSystemComponent())
+				{
+					BloodComp->SetWorldLocationAndRotation(Hit.ImpactPoint, BloodRotation, false);
+					BloodComp->SetVisibility(true);
+					BloodComp->Activate(true);
+				}
+			}
         }
         ReturnToPool();
     }
@@ -208,11 +261,10 @@ void AProjectileActor::HandleProjectileImpact(AActor* OtherActor, const FHitResu
                 UDecalComponent* Component = Decal->GetDecalComponent();
                 FRotator Rotation;
                 Rotation.LookDirection(-SurfaceNormal);
-                Component->SetWorldLocationAndRotation(
-                    ImpactPoint - SurfaceNormal * 0.02f, Rotation, false);
-                Component->SetWorldScale3D(FVector(0.4f, 0.45f, 0.3f));
+				// 비균일 스케일된 벽·바닥에 붙어 투영 박스가 찌그러지지 않도록 월드 좌표에 직접 배치한다
+				Component->SetWorldLocationAndRotation(ImpactPoint, Rotation, false);
+				Component->SetWorldScale3D(FVector(0.4f, 0.45f, 0.45f));
                 Component->SetDecalMaterial(BulletMaterial);
-                Decal->AttachToActor(StaticMesh, EAttachmentRule::KeepWorld);
                 Decal->SetTemporaryLifetime(20.0f);
             }
         }

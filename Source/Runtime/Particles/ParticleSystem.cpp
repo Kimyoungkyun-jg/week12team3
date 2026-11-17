@@ -635,6 +635,116 @@ void UParticleModuleRotationRateOverLife::CompileModules(FParticleEmitterBuildIn
 	CompileFloatToAtlasChannel(RotationRateScale, OutBuildInfo.RotationRateScale);
 }
 
+UParticleModuleTypeDataBeam::UParticleModuleTypeDataBeam()
+{
+	UDistributionFloatConstant* FactorDist = NewObject<UDistributionFloatConstant>(this);
+	FactorDist->Constant = 1.0f;
+	TaperFactor = FactorDist;
+
+	UDistributionFloatConstantCurve* ScaleDist = NewObject<UDistributionFloatConstantCurve>(this);
+	ScaleDist->Curve->Reset();
+	ScaleDist->Curve->AddKey(0.0f, 1.0f);
+	ScaleDist->Curve->AddKey(1.0f, 1.0f);
+	TaperScale = ScaleDist;
+}
+
+void UParticleModuleTypeDataBeam::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (TaperFactor)
+		TaperFactor->CollectCurves("TaperFactor", FColor(160, 220, 255, 255), OutCurves);
+	if (TaperScale)
+		TaperScale->CollectCurves("TaperScale", FColor(255, 210, 120, 255), OutCurves);
+}
+
+void UParticleModuleTypeDataBeam::InvalidateDistributions() const
+{
+	if (TaperFactor) TaperFactor->InvalidateLookupTable();
+	if (TaperScale) TaperScale->InvalidateLookupTable();
+}
+
+UParticleModuleBeamSource::UParticleModuleBeamSource()
+{
+	UDistributionVectorConstant* SourceDist = NewObject<UDistributionVectorConstant>(this);
+	SourceDist->Constant = FVector::ZeroVector;
+	Source = SourceDist;
+
+	UDistributionVectorConstant* TangentDist = NewObject<UDistributionVectorConstant>(this);
+	TangentDist->Constant = FVector(1.0f, 0.0f, 0.0f);
+	SourceTangent = TangentDist;
+
+	UDistributionFloatConstant* StrengthDist = NewObject<UDistributionFloatConstant>(this);
+	StrengthDist->Constant = 1.0f;
+	SourceStrength = StrengthDist;
+}
+
+void UParticleModuleBeamSource::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (Source)
+		Source->CollectCurves("BeamSource", FColor(120, 220, 255, 255), OutCurves);
+	if (SourceTangent)
+		SourceTangent->CollectCurves("SourceTangent", FColor(180, 255, 180, 255), OutCurves);
+	if (SourceStrength)
+		SourceStrength->CollectCurves("SourceStrength", FColor(255, 200, 120, 255), OutCurves);
+}
+
+void UParticleModuleBeamSource::InvalidateDistributions() const
+{
+	if (Source) Source->InvalidateLookupTable();
+	if (SourceTangent) SourceTangent->InvalidateLookupTable();
+	if (SourceStrength) SourceStrength->InvalidateLookupTable();
+}
+
+UParticleModuleBeamTarget::UParticleModuleBeamTarget()
+{
+	UDistributionVectorConstant* TargetDist = NewObject<UDistributionVectorConstant>(this);
+	TargetDist->Constant = FVector(3.0f, 0.0f, 0.0f);
+	Target = TargetDist;
+
+	UDistributionVectorConstant* TangentDist = NewObject<UDistributionVectorConstant>(this);
+	TangentDist->Constant = FVector(-1.0f, 0.0f, 0.0f);
+	TargetTangent = TangentDist;
+
+	UDistributionFloatConstant* StrengthDist = NewObject<UDistributionFloatConstant>(this);
+	StrengthDist->Constant = 1.0f;
+	TargetStrength = StrengthDist;
+}
+
+void UParticleModuleBeamTarget::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (Target)
+		Target->CollectCurves("BeamTarget", FColor(255, 140, 140, 255), OutCurves);
+	if (TargetTangent)
+		TargetTangent->CollectCurves("TargetTangent", FColor(255, 200, 140, 255), OutCurves);
+	if (TargetStrength)
+		TargetStrength->CollectCurves("TargetStrength", FColor(255, 230, 120, 255), OutCurves);
+}
+
+void UParticleModuleBeamTarget::InvalidateDistributions() const
+{
+	if (Target) Target->InvalidateLookupTable();
+	if (TargetTangent) TargetTangent->InvalidateLookupTable();
+	if (TargetStrength) TargetStrength->InvalidateLookupTable();
+}
+
+UParticleModuleBeamNoise::UParticleModuleBeamNoise()
+{
+	UDistributionVectorUniform* RangeDist = NewObject<UDistributionVectorUniform>(this);
+	RangeDist->Min = FVector(-0.25f, -0.25f, -0.25f);
+	RangeDist->Max = FVector(0.25f, 0.25f, 0.25f);
+	NoiseRange = RangeDist;
+}
+
+void UParticleModuleBeamNoise::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (NoiseRange)
+		NoiseRange->CollectCurves("NoiseRange", FColor(170, 150, 255, 255), OutCurves);
+}
+
+void UParticleModuleBeamNoise::InvalidateDistributions() const
+{
+	if (NoiseRange) NoiseRange->InvalidateLookupTable();
+}
+
 UParticleLODLevel::~UParticleLODLevel()
 {
 	BuildInfo.ReleaseAtlasHandles();

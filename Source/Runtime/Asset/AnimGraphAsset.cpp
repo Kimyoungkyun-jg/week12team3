@@ -461,6 +461,14 @@ bool FAnimMontageAsset::Validate(FString& Error) const
 	if (!std::isfinite(PlayRate) || PlayRate <= 0.0f) { Error = "Invalid montage play rate."; return false; }
 	if (!std::isfinite(BlendInTime) || BlendInTime < 0.0f || !std::isfinite(BlendOutTime) || BlendOutTime < 0.0f)
 	{ Error = "Invalid montage blend time."; return false; }
+	for (const FAnimMontageSegment& Seg : Segments)
+	{
+		if (Seg.SequencePath.empty() || !std::isfinite(Seg.StartTime) || !std::isfinite(Seg.EndTime) ||
+			!std::isfinite(Seg.AnimStartOffset) || !std::isfinite(Seg.PlayRate) ||
+			Seg.StartTime < 0.0f || Seg.EndTime <= Seg.StartTime ||
+			Seg.AnimStartOffset < 0.0f || Seg.PlayRate <= 0.0f)
+		{ Error = "Invalid montage segment."; return false; }
+	}
 	for (const auto& Sec : Sections)
 	{
 		if (Sec.Name.empty() || !std::isfinite(Sec.StartTime) || !std::isfinite(Sec.EndTime) ||
@@ -469,7 +477,8 @@ bool FAnimMontageAsset::Validate(FString& Error) const
 	}
 	for (const auto& Notify : Notifies)
 	{
-		if (Notify.Name.empty() || !std::isfinite(Notify.Time) || Notify.Time < 0.0f)
+		if (Notify.Name.empty() || !std::isfinite(Notify.Time) || Notify.Time < 0.0f ||
+			!std::isfinite(Notify.Duration) || Notify.Duration < 0.0f)
 		{ Error = "Invalid montage notify."; return false; }
 	}
 	Error.clear();
@@ -493,6 +502,24 @@ bool FAnimMontageAsset::Load(const FString& Path, FAnimMontageAsset& Out, FStrin
 	if (Data.contains("BlendInTime") && !ReadFloat(Data, "BlendInTime", Loaded.BlendInTime)) { Error = "Invalid BlendInTime."; return false; }
 	if (Data.contains("BlendOutTime") && !ReadFloat(Data, "BlendOutTime", Loaded.BlendOutTime)) { Error = "Invalid BlendOutTime."; return false; }
 	if (Data.contains("Loop") && Data["Loop"].is_boolean()) Loaded.bLoop = Data["Loop"].get<bool>();
+	if (Data.contains("Segments") && Data["Segments"].is_array())
+	{
+		for (const json& Item : Data["Segments"])
+		{
+			FAnimMontageSegment Seg;
+			if (!Item.is_object() || !Item.contains("Sequence") || !Item["Sequence"].is_string() ||
+				!ReadFloat(Item, "StartTime", Seg.StartTime) || !ReadFloat(Item, "EndTime", Seg.EndTime))
+			{ Error = "Invalid segment entry."; return false; }
+			Seg.SequencePath = Item["Sequence"].get<FString>();
+			if (Item.contains("AnimStartOffset") && !ReadFloat(Item, "AnimStartOffset", Seg.AnimStartOffset))
+			{ Error = "Invalid segment offset."; return false; }
+			if (Item.contains("PlayRate") && !ReadFloat(Item, "PlayRate", Seg.PlayRate))
+			{ Error = "Invalid segment play rate."; return false; }
+			Loaded.Segments.push_back(std::move(Seg));
+		}
+		if (Loaded.SequencePath.empty() && !Loaded.Segments.empty())
+			Loaded.SequencePath = Loaded.Segments[0].SequencePath;
+	}
 	if (Data.contains("Sections") && Data["Sections"].is_array())
 	{
 		for (const auto& Item : Data["Sections"])
@@ -516,6 +543,17 @@ bool FAnimMontageAsset::Load(const FString& Path, FAnimMontageAsset& Out, FStrin
 				!ReadFloat(Item, "Time", Notify.Time))
 			{ Error = "Invalid notify entry."; return false; }
 			Notify.Name = Item["Name"].get<FString>();
+			if (Item.contains("Duration") && !ReadFloat(Item, "Duration", Notify.Duration))
+			{ Error = "Invalid notify duration."; return false; }
+			if (Item.contains("ClassName") && Item["ClassName"].is_string())
+				Notify.ClassName = Item["ClassName"].get<FString>();
+			if (Item.contains("Properties"))
+			{
+				if (Item["Properties"].is_object())
+					Notify.Properties = Item["Properties"].dump(-1, ' ', false, json::error_handler_t::replace);
+				else if (Item["Properties"].is_string())
+					Notify.Properties = Item["Properties"].get<FString>();
+			}
 			Loaded.Notifies.push_back(std::move(Notify));
 		}
 	}
@@ -529,18 +567,30 @@ bool FAnimMontageAsset::Save(const FString& Path, FString& Error) const
 	if (!Validate(Error)) return false;
 	const fs::path File = ResolveAssetPathWithExt(Path, ".animmontage");
 	if (File.empty()) { Error = "Invalid AnimMontage path."; return false; }
+	const FString PrimarySequence = !Segments.empty() ? Segments[0].SequencePath : SequencePath;
 	json Data = {
 		{ "Version", 1 },
 		{ "Skeleton", SkeletonPath },
-		{ "Sequence", SequencePath },
+		{ "Sequence", PrimarySequence },
 		{ "Slot", SlotName },
 		{ "PlayRate", PlayRate },
 		{ "BlendInTime", BlendInTime },
 		{ "BlendOutTime", BlendOutTime },
 		{ "Loop", bLoop },
+		{ "Segments", json::array() },
 		{ "Sections", json::array() },
 		{ "Notifies", json::array() }
 	};
+	for (const FAnimMontageSegment& Seg : Segments)
+	{
+		Data["Segments"].push_back({
+			{ "Sequence", Seg.SequencePath },
+			{ "StartTime", Seg.StartTime },
+			{ "EndTime", Seg.EndTime },
+			{ "AnimStartOffset", Seg.AnimStartOffset },
+			{ "PlayRate", Seg.PlayRate }
+		});
+	}
 	for (const auto& Sec : Sections)
 	{
 		Data["Sections"].push_back({
@@ -552,10 +602,20 @@ bool FAnimMontageAsset::Save(const FString& Path, FString& Error) const
 	}
 	for (const auto& Notify : Notifies)
 	{
-		Data["Notifies"].push_back({
+		json Entry = {
 			{ "Name", Notify.Name },
 			{ "Time", Notify.Time }
-		});
+		};
+		if (Notify.Duration > 0.0f)
+			Entry["Duration"] = Notify.Duration;
+		if (!Notify.ClassName.empty())
+			Entry["ClassName"] = Notify.ClassName;
+		if (!Notify.Properties.empty())
+		{
+			json Parsed = json::parse(Notify.Properties, nullptr, false);
+			Entry["Properties"] = Parsed.is_object() ? Parsed : json(Notify.Properties);
+		}
+		Data["Notifies"].push_back(std::move(Entry));
 	}
 	std::error_code Ec;
 	fs::create_directories(File.parent_path(), Ec);

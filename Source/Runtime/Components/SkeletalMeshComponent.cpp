@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Animation/Skeleton.h"
 #include "Render/RenderCommand.h"
 #include "Render/RenderResourceManager.h"
 #include "Render/MeshBatch.h"
@@ -62,6 +63,35 @@ namespace
 		const float G = std::clamp(W < 0.5f ? 4.0f * W : 4.0f - 4.0f * W, 0.0f, 1.0f);
 		const float B = std::clamp(2.0f - 4.0f * W, 0.0f, 1.0f);
 		return FVector4(R, G, B, 1.0f);
+	}
+
+	void ExtractMatrixBasis(const FMatrix& Matrix, FQuat* OutRotation, FVector* OutScale)
+	{
+		FVector Axes[3] = {
+			FVector(Matrix[0][0], Matrix[0][1], Matrix[0][2]),
+			FVector(Matrix[1][0], Matrix[1][1], Matrix[1][2]),
+			FVector(Matrix[2][0], Matrix[2][1], Matrix[2][2])
+		};
+		FVector Scale(Axes[0].Size(), Axes[1].Size(), Axes[2].Size());
+		if (Axes[0].Dot(Axes[1].Cross(Axes[2])) < 0.0f)
+			Scale.X = -Scale.X;
+		if (OutScale)
+			*OutScale = Scale;
+		if (OutRotation)
+		{
+			FMatrix RotMat = FMatrix::Identity;
+			for (int32 Axis = 0; Axis < 3; ++Axis)
+			{
+				if (std::fabs(Scale.V[Axis]) > SMALL_NUMBER)
+					RotMat.SetAxis(Axis, Axes[Axis] / Scale.V[Axis]);
+			}
+			const float Horizontal = std::sqrt(RotMat[0][0] * RotMat[0][0] + RotMat[0][1] * RotMat[0][1]);
+			const FRotator Rot = Horizontal > 1.0e-6f
+				? MatrixToRotator(RotMat)
+				: FRotator(FMath::RadiansToDegrees(std::atan2(-RotMat[0][2], Horizontal)),
+					FMath::RadiansToDegrees(std::atan2(-RotMat[1][0], RotMat[1][1])), 0.0f);
+			*OutRotation = Rot.Quaternion();
+		}
 	}
 }
 
@@ -307,6 +337,74 @@ void USkeletalMeshComponent::SetGlobalBoneTransforms(const TArray<FMatrix>& InGl
 	GlobalBoneTransforms = InGlobalTransforms;
 	bGlobalBoneTransformsOverridden = true;
 	bSkinningMatricesDirty = true;
+}
+
+bool USkeletalMeshComponent::DoesSocketExist(const FString& InSocketName) const
+{
+	if (!SkeletalMesh || InSocketName.empty()) return false;
+	if (SkeletalMesh->Skeleton && SkeletalMesh->Skeleton->HasSocket(InSocketName)) return true;
+	return SkeletalMesh->RefSkeleton.FindBoneIndex(InSocketName) >= 0;
+}
+
+FMatrix USkeletalMeshComponent::GetSocketWorldMatrix(const FString& InSocketName) const
+{
+	const FMatrix ComponentWorld = GetWorldMatrix();
+	if (!SkeletalMesh || InSocketName.empty()) return ComponentWorld;
+
+	FMatrix LocalToBone = FMatrix::Identity;
+	int32 BoneIndex = -1;
+	if (SkeletalMesh->Skeleton)
+	{
+		if (const FSkeletalMeshSocket* Socket = SkeletalMesh->Skeleton->FindSocket(InSocketName))
+		{
+			BoneIndex = SkeletalMesh->RefSkeleton.FindBoneIndex(Socket->BoneName);
+			if (BoneIndex >= 0) LocalToBone = Socket->GetSocketLocalMatrix();
+		}
+	}
+	if (BoneIndex < 0)
+		BoneIndex = SkeletalMesh->RefSkeleton.FindBoneIndex(InSocketName);
+	if (BoneIndex < 0) return ComponentWorld;
+
+	FMatrix BoneComponentSpace = FMatrix::Identity;
+	if (GlobalBoneTransforms.IsValidIndex(BoneIndex))
+		BoneComponentSpace = GlobalBoneTransforms[BoneIndex];
+	else if (SkeletalMesh->MeshData.Bones.IsValidIndex(BoneIndex))
+		BoneComponentSpace = SkeletalMesh->MeshData.Bones[BoneIndex].GlobalBindPose;
+
+	return (LocalToBone * BoneComponentSpace) * ComponentWorld;
+}
+
+FQuat USkeletalMeshComponent::GetSocketWorldRotationQuat(const FString& InSocketName) const
+{
+	if (InSocketName.empty()) return GetWorldRotationQuat();
+	FQuat OutRotation;
+	ExtractMatrixBasis(GetSocketWorldMatrix(InSocketName), &OutRotation, nullptr);
+	return OutRotation;
+}
+
+FVector USkeletalMeshComponent::GetSocketWorldScale3D(const FString& InSocketName) const
+{
+	if (InSocketName.empty()) return GetWorldScale3D();
+	FVector OutScale;
+	ExtractMatrixBasis(GetSocketWorldMatrix(InSocketName), nullptr, &OutScale);
+	return OutScale;
+}
+
+FTransform USkeletalMeshComponent::GetSocketTransform(const FString& InSocketName) const
+{
+	const FMatrix WorldMat = GetSocketWorldMatrix(InSocketName);
+	FQuat Rot;
+	FVector Scale;
+	ExtractMatrixBasis(WorldMat, &Rot, &Scale);
+	return FTransform(Rot.ToFRotator(), FVector(WorldMat[3][0], WorldMat[3][1], WorldMat[3][2]), Scale);
+}
+
+void USkeletalMeshComponent::GetSocketNames(TArray<FString>& OutSocketNames) const
+{
+	OutSocketNames.Reset();
+	if (!SkeletalMesh || !SkeletalMesh->Skeleton) return;
+	for (const FSkeletalMeshSocket& Socket : SkeletalMesh->Skeleton->Sockets)
+		OutSocketNames.Add(Socket.SocketName);
 }
 
 void USkeletalMeshComponent::SetBoneWeightHeatmap(bool bEnable, int32 BoneIndex)
