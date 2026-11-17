@@ -311,7 +311,7 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 
 void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 {
-	if (!ImGui::BeginChild("ParticleEmitters", ImVec2(Width, Height), ImGuiChildFlags_Borders, ImGuiWindowFlags_HorizontalScrollbar))
+	if (!ImGui::BeginChild("ParticleEmitters", ImVec2(Width, Height), ImGuiChildFlags_Borders))
 	{
 		ImGui::EndChild();
 		return;
@@ -339,8 +339,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 	}
 
 	const TArray<UParticleEmitter*>& Emitters = EditingSystem->GetEmitters();
-	const float ColumnWidth = EditorUIScale::Px(190.0f);
-	const float ColumnHeight = std::max(EditorUIScale::Px(80.0f), ImGui::GetContentRegionAvail().y);
+	const float ColumnWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
 
 	UParticleEmitter* EmitterToRemove = nullptr;
 	for (int32 EmitterIdx = 0; EmitterIdx < static_cast<int32>(Emitters.Num()); ++EmitterIdx)
@@ -348,18 +347,27 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 		UParticleEmitter* Emitter = Emitters[EmitterIdx];
 		if (!Emitter) continue;
 
-		if (EmitterIdx > 0) ImGui::SameLine();
 		ImGui::PushID(Emitter);
 
 		const bool bEmitterSelected = (SelectedEmitter == Emitter && SelectedModule == nullptr);
-		if (ImGui::BeginChild("EmitterCol", ImVec2(ColumnWidth, ColumnHeight), ImGuiChildFlags_Borders))
+		const ImGuiTreeNodeFlags EmitterFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | (bEmitterSelected ? ImGuiTreeNodeFlags_Selected : 0);
+
+		const bool bEmitterExpanded = ImGui::TreeNodeEx("EmitterNode", EmitterFlags, "%s", Emitter->EmitterName.c_str());
+
+		if (ImGui::IsItemClicked())
 		{
-			UParticleLODLevel* LOD = !Emitter->GetLODLevels().IsEmpty() ? Emitter->GetLODLevels()[0] : nullptr;
-			if (ImGui::Selectable(Emitter->EmitterName.c_str(), bEmitterSelected, 0, ImVec2(ColumnWidth - EditorUIScale::Px(44.0f), 0.0f)))
+			SelectedEmitter = Emitter;
+			SelectedModule = nullptr;
+		}
+
+		if (bEmitterExpanded)
+		{
+			if (ImGui::SmallButton("Remove Emitter"))
 			{
-				SelectedEmitter = Emitter;
-				SelectedModule = nullptr;
+				EmitterToRemove = Emitter;
 			}
+
+			UParticleLODLevel* LOD = !Emitter->GetLODLevels().IsEmpty() ? Emitter->GetLODLevels()[0] : nullptr;
 			ImGui::SameLine();
 			if (ImGui::SmallButton("X"))
 				EmitterToRemove = Emitter;
@@ -473,8 +481,9 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					ImGui::EndPopup();
 				}
 			}
+			ImGui::TreePop();
 		}
-		ImGui::EndChild();
+
 		ImGui::PopID();
 	}
 
@@ -881,8 +890,10 @@ void FParticleSystemEditorPanel::OnRender()
 		ImGui::SetNextWindowFocus();
 		bFocusRequested = false;
 	}
+
 	const FString Title = (EditingSystem ? FbxPath::ToString(FbxPath::FromString(AssetPath).filename()) : FString(GetPanelName())) + "###ParticleSystemEditor";
 	bVisible = BeginPanel(Title.c_str(), ImGuiWindowFlags_MenuBar);
+
 	if (!bVisible)
 	{
 		ImGui::End();
@@ -891,7 +902,6 @@ void FParticleSystemEditorPanel::OnRender()
 
 	RenderMenuBar();
 	RenderToolbar();
-
 	if (!EditingSystem)
 	{
 		ImGui::TextUnformatted("No Particle System is open.");
@@ -900,50 +910,118 @@ void FParticleSystemEditorPanel::OnRender()
 		return;
 	}
 
-	const ImVec2 Avail = ImGui::GetContentRegionAvail();
+	const ImVec2 Available = ImGui::GetContentRegionAvail();
+
 	const float SplitterThickness = EditorUIScale::Px(6.0f);
-	const float UsableHeight = std::max(EditorUIScale::Px(260.0f), Avail.y - SplitterThickness);
-	const float LeftWidth = std::max(EditorUIScale::Px(240.0f), Avail.x * 0.36f);
-	const float MinPaneHeight = EditorUIScale::Px(120.0f);
-	const float TopHeight = std::clamp(UsableHeight * TopSplitRatio, MinPaneHeight, UsableHeight - MinPaneHeight);
-	const float BottomHeight = std::max(MinPaneHeight, UsableHeight - TopHeight);
+	const float MinMainHeight = EditorUIScale::Px(220.0f);
+	const float MinCurveHeight = EditorUIScale::Px(130.0f);
 
-	if (ImGui::BeginTable("ParticleEditorTop", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_NoSavedSettings))
+	const float MaximumCurveHeight = bShowCurveEditor
+		? std::max(0.0f, Available.y - MinMainHeight - SplitterThickness)
+		: 0.0f;
+
+	const float CurveHeight = bShowCurveEditor
+		? std::clamp(Available.y * CurvePanelRatio, std::min(MinCurveHeight, MaximumCurveHeight), MaximumCurveHeight)
+		: 0.0f;
+
+	const bool bCanResizeCurve = bShowCurveEditor && MaximumCurveHeight > 0.0f;
+	const float ActiveSplitterHeight = bCanResizeCurve ? SplitterThickness : 0.0f;
+	const float MainHeight = std::max(0.0f, Available.y - CurveHeight - ActiveSplitterHeight);
+
+	const float EmitterWidth = std::clamp(Available.x * 0.23f, EditorUIScale::Px(200.0f), EditorUIScale::Px(320.0f));
+	const float DetailsWidth = std::clamp(Available.x * 0.24f, EditorUIScale::Px(220.0f), EditorUIScale::Px(340.0f));
+
+	int32 VisibleColumnCount = 0;
+	if (bShowEmitters)
 	{
-		ImGui::TableSetupColumn("Left", ImGuiTableColumnFlags_WidthFixed, LeftWidth);
-		ImGui::TableSetupColumn("Right", ImGuiTableColumnFlags_WidthStretch);
+		++VisibleColumnCount;
+	}
+	if (bShowViewport)
+	{
+		++VisibleColumnCount;
+	}
+	if (bShowDetails)
+	{
+		++VisibleColumnCount;
+	}
 
-		ImGui::TableNextRow();
-		ImGui::TableSetColumnIndex(0);
-		if (bShowViewport) RenderViewportPanel(0.0f, TopHeight);
+	const bool bEmitterStretch = bShowEmitters && !bShowViewport && !bShowDetails;
+	const bool bDetailsStretch = bShowDetails && !bShowViewport;
 
-		ImGui::TableSetColumnIndex(1);
-		if (bShowEmitters) RenderEmittersPanel(0.0f, TopHeight);
+	if (VisibleColumnCount > 0 && ImGui::BeginTable("ParticleEditorMain", VisibleColumnCount, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
+	{
+		if (bShowEmitters)
+		{
+			if (bEmitterStretch)
+			{
+				ImGui::TableSetupColumn("Emitters", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+			}
+			else
+			{
+				ImGui::TableSetupColumn("Emitters", ImGuiTableColumnFlags_WidthFixed, EmitterWidth);
+			}
+		}
+
+		if (bShowViewport)
+		{
+			ImGui::TableSetupColumn("Preview", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		}
+
+		if (bShowDetails)
+		{
+			if (bDetailsStretch)
+			{
+				ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+			}
+			else
+			{
+				ImGui::TableSetupColumn("Details", ImGuiTableColumnFlags_WidthFixed, DetailsWidth);
+			}
+		}
+
+		ImGui::TableNextRow(ImGuiTableRowFlags_None, MainHeight);
+
+		int32 ColumnIndex = 0;
+
+		if (bShowEmitters)
+		{
+			ImGui::TableSetColumnIndex(ColumnIndex++);
+			RenderEmittersPanel(0.0f, 0.0f);
+		}
+
+		if (bShowViewport)
+		{
+			ImGui::TableSetColumnIndex(ColumnIndex++);
+			RenderViewportPanel(0.0f, 0.0f);
+		}
+
+		if (bShowDetails)
+		{
+			ImGui::TableSetColumnIndex(ColumnIndex++);
+			RenderDetailsPanel(0.0f, 0.0f);
+		}
 
 		ImGui::EndTable();
 	}
 
-	ImGui::InvisibleButton("##HSplitter", ImVec2(-1.0f, SplitterThickness));
-	if (ImGui::IsItemHovered() || ImGui::IsItemActive())
-		ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
-	if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+	if (bCanResizeCurve)
 	{
-		TopSplitRatio = std::clamp(TopSplitRatio + ImGui::GetIO().MouseDelta.y / UsableHeight, 0.2f, 0.8f);
+		ImGui::InvisibleButton("##ParticleCurveSplitter", ImVec2(-1.0f, SplitterThickness));
+
+		if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+		{
+			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+		}
+
+		if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+		{
+			CurvePanelRatio = std::clamp(CurvePanelRatio - ImGui::GetIO().MouseDelta.y / std::max(1.0f, Available.y), 0.15f, 0.50f);
+		}
 	}
 
-	if (ImGui::BeginTable("ParticleEditorBottom", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_NoSavedSettings))
+	if (bShowCurveEditor && CurveHeight > 0.0f)
 	{
-		ImGui::TableSetupColumn("Left", ImGuiTableColumnFlags_WidthFixed, LeftWidth);
-		ImGui::TableSetupColumn("Right", ImGuiTableColumnFlags_WidthStretch);
-
-		ImGui::TableNextRow();
-		ImGui::TableSetColumnIndex(0);
-		if (bShowDetails) RenderDetailsPanel(0.0f, BottomHeight);
-
-		ImGui::TableSetColumnIndex(1);
-		if (bShowCurveEditor) RenderCurveEditorPanel(0.0f, BottomHeight);
-
-		ImGui::EndTable();
+		RenderCurveEditorPanel(0.0f, CurveHeight);
 	}
 
 	ImGui::End();

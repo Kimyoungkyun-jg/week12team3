@@ -50,7 +50,7 @@ private:
 
 	float CameraSpeed = 1.0f;
 	float SimSpeed = 1.0f;
-	float TopSplitRatio = 0.56f;
+	float CurvePanelRatio = 0.26f;
 	int32 SelectedCurveTrackIndex = 0;
 	int32 SelectedCurveKeyId = -1;
 	bool bPaused = false;
