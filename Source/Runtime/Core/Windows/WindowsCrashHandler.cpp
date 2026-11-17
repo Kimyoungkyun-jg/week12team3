@@ -10,8 +10,11 @@
 
 namespace
 {
-	std::filesystem::path DumpPath;
+	std::wstring CrashDirectory;
+	std::wstring DumpPath;
 	std::wstring PowerShellPath;
+	std::wstring PublishCommandPrefix;
+	std::wstring PublishCommandSuffix;
 	std::wstring PublishCommandLine;
 	volatile LONG DumpStarted = 0;
 
@@ -25,6 +28,17 @@ namespace
 	LONG WINAPI HandleUnhandledException(LPEXCEPTION_POINTERS ExceptionPointers)
 	{
 		if (InterlockedCompareExchange(&DumpStarted, 1, 0) != 0)
+		{
+			return EXCEPTION_EXECUTE_HANDLER;
+		}
+
+		SYSTEMTIME Time{};
+		GetLocalTime(&Time);
+		if (swprintf_s(DumpPath.data(), DumpPath.size() + 1,
+				L"%ls\\Hitori-%04u-%02u-%02u_%02u-%02u-%lu.dmp",
+				CrashDirectory.c_str(),
+				unsigned(Time.wYear), unsigned(Time.wMonth), unsigned(Time.wDay),
+				unsigned(Time.wHour), unsigned(Time.wMinute), GetCurrentProcessId()) < 0)
 		{
 			return EXCEPTION_EXECUTE_HANDLER;
 		}
@@ -47,7 +61,7 @@ namespace
 			GetCurrentProcess(),
 			GetCurrentProcessId(),
 			DumpFile,
-			MiniDumpNormal,
+			static_cast<MINIDUMP_TYPE>(MiniDumpNormal | MiniDumpWithThreadInfo),
 			&ExceptionInfo,
 			nullptr,
 			nullptr);
@@ -58,7 +72,9 @@ namespace
 
 		if (Written)
 		{
-			if (!PublishCommandLine.empty())
+			if (!PublishCommandLine.empty() &&
+				swprintf_s(PublishCommandLine.data(), PublishCommandLine.size() + 1, L"%ls%ls%ls",
+					PublishCommandPrefix.c_str(), DumpPath.c_str(), PublishCommandSuffix.c_str()) >= 0)
 			{
 				STARTUPINFOW StartupInfo{};
 				StartupInfo.cb = sizeof(StartupInfo);
@@ -109,16 +125,8 @@ void WindowsCrashHandler::Install(const std::filesystem::path& ExecutablePath)
 		return;
 	}
 
-	SYSTEMTIME Time{};
-	GetSystemTime(&Time);
-
-	wchar_t FileName[96]{};
-	swprintf_s(FileName, L"Hitori-%04u%02u%02u-%02u%02u%02u-%03u-%lu.dmp",
-		unsigned(Time.wYear), unsigned(Time.wMonth), unsigned(Time.wDay),
-		unsigned(Time.wHour), unsigned(Time.wMinute), unsigned(Time.wSecond),
-		unsigned(Time.wMilliseconds), GetCurrentProcessId());
-
-	DumpPath = CrashDir / FileName;
+	CrashDirectory = CrashDir.wstring();
+	DumpPath.resize(CrashDirectory.size() + 96);
 
 	const auto ScriptPath = ExecutablePath.parent_path() / L"PublishCrash.ps1";
 
@@ -134,12 +142,13 @@ void WindowsCrashHandler::Install(const std::filesystem::path& ExecutablePath)
 			L"WindowsPowerShell\\v1.0\\powershell.exe")
 							 .wstring();
 
-		PublishCommandLine =
+		PublishCommandPrefix =
 			L"\"" + PowerShellPath +
 			L"\" -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File \"" +
 			ScriptPath.wstring() +
-			L"\" -DumpPath \"" + DumpPath.wstring() +
-			L"\" -PdbPath \"" + PdbPath.wstring() + L"\"";
+			L"\" -DumpPath \"";
+		PublishCommandSuffix = L"\" -PdbPath \"" + PdbPath.wstring() + L"\"";
+		PublishCommandLine.resize(PublishCommandPrefix.size() + DumpPath.size() + PublishCommandSuffix.size());
 	}
 
 	SetUnhandledExceptionFilter(&HandleUnhandledException);
