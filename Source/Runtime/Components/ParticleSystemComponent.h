@@ -97,11 +97,13 @@ struct FParticleEmitterInstance
 	uint32 GetModuleDataOffset(const UParticleModule* Module) const;
 	void Resize(int32 NewMaxActiveParticles);
 	void SetLODLevel(int32 NewLODIndex);
-	void Tick(float DeltaTime, const FVector& Origin);
+	void Tick(float DeltaTime, const FVector& Origin, const FParticleTickContext &Context);
 	void Reset();
 	bool HasCompleted() const;
 	bool IsGpuEmitter() const;
 };
+
+DECLARE_DELEGATE(FParticleCollisionSignature, const FParticleEventCollideData&);
 
 UCLASS()
 class UParticleSystemComponent : public UPrimitiveComponent
@@ -144,6 +146,8 @@ public:
 	void PushRenderStateToProxy() override;
 	FParticleDynamicData BuildDynamicData();
 
+	void AddCollisionEvent(const FParticleEventCollideData& Event);
+
 	UPROPERTY()
 	FString TemplatePath;
 	UPROPERTY(EditAnywhere)
@@ -152,6 +156,8 @@ public:
 	bool bAutoDestroy = false;
 	UPROPERTY(EditAnywhere)
 	float CustomTimeDilation = 1.0f;
+	
+	FParticleCollisionSignature OnParticleCollision;
 
 private:
 	void LoadTemplateIfNeeded();
@@ -166,4 +172,6 @@ private:
 	float FadeOutElapsed = 0.0f;
 	bool bFadingOut = false;
 	int32 ForcedLODIndex = -1;
+
+	TArray<FParticleEventCollideData> CollisionEvents;
 };

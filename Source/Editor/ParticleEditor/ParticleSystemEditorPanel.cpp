@@ -1812,7 +1812,9 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 							{ "Beam Source", "Beam", UParticleModuleBeamSource::StaticClass() },
 							{ "Beam Target", "Beam", UParticleModuleBeamTarget::StaticClass() },
 							{ "Beam Noise", "Beam", UParticleModuleBeamNoise::StaticClass() },
-							{ "Spawn Per Unit", "Ribbon", UParticleModuleSpawnPerUnit::StaticClass() }
+							{ "Spawn Per Unit", "Ribbon", UParticleModuleSpawnPerUnit::StaticClass() },
+							{ "Collision", "Collision", UParticleModuleCollision::StaticClass() },
+							{ "Event Generator", "Event", UParticleModuleEventGenerator::StaticClass() }
 						};
 
 						FString SearchQuery = ModuleSearchText;
@@ -2322,6 +2324,24 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			if (!Sub->bUseLinearOverLife)
 				DrawDistributionFloat("SubImage Index", Sub->SubImageIndex, Sub, 0.0f, 0.1f, 0.0f, 256.0f);
 			if (bChanged) { MarkSelectedLODBuildDirty(); MarkAssetModified(); }
+		}
+		else if (auto* Collision = Cast<UParticleModuleCollision>(SelectedModule))
+		{
+			ImGui::DragFloat("Restitution Min", &Collision->RestitutionMin, 0.01f, 0.0f, 1.0f);
+			ImGui::DragFloat("Restitution Max", &Collision->RestitutionMax, 0.01f, 0.0f, 1.0f);
+			ImGui::DragFloat("Friction Min", &Collision->FrictionMin, 0.01f, 0.0f, 1.0f);
+			ImGui::DragFloat("Friction Max", &Collision->FrictionMax, 0.01f, 0.0f, 1.0f);
+			ImGui::DragInt("Max Collisions", &Collision->MaxCollisions, 1.0f, 0, 1000);
+			ImGui::DragFloat("Collision Radius", &Collision->CollisionRadius, 0.01f, 0.0f, 100.0f);
+		}
+		else if (auto* EventGen = Cast<UParticleModuleEventGenerator>(SelectedModule))
+		{
+			char EventNameBuf[128] = {};
+			strncpy_s(EventNameBuf, EventGen->EventName.c_str(), _TRUNCATE);
+			if (ImGui::InputText("Event Name", EventNameBuf, sizeof(EventNameBuf)))
+				EventGen->EventName = EventNameBuf;
+			// 0이면 TickCollision의 나머지 연산이 0으로 나누게 되므로 하한을 1로 막는다.
+			ImGui::DragInt("Event Frequency", &EventGen->EventFrequency, 1.0f, 1, 1000);
 		}
 		else if (auto* SrcMod = Cast<UParticleModuleBeamSource>(SelectedModule))
 		{

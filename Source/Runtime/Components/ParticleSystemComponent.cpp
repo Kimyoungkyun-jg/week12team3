@@ -1065,7 +1065,7 @@ bool FParticleEmitterInstance::HasCompleted() const
 	return EmitterTime >= static_cast<double>(Required->EmitterDuration) && ActiveParticles == 0;
 }
 
-void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
+void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, const FParticleTickContext& Context)
 {
 	if (!CurrentLODLevel || !CurrentLODLevel->bEnabled || !CurrentLODLevel->EffectiveTypeData ||
 		!CurrentLODLevel->EffectiveRequired || !CurrentLODLevel->EffectiveSpawn ||
@@ -1081,6 +1081,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 		EmitterType != EParticleEmitterType::Ribbon) return;
 	UParticleModuleRequired* Required = CurrentLODLevel->EffectiveRequired;
 	const bool bIsGpu = (EmitterType == EParticleEmitterType::GpuSprite);
+	const UParticleModuleEventGenerator* EventGenerator = nullptr;
 	const bool bIsBeam = (EmitterType == EParticleEmitterType::Beam);
 	const bool bIsRibbon = (EmitterType == EParticleEmitterType::Ribbon);
 	const UParticleModuleTypeDataBeam* BeamType = bIsBeam ? Cast<UParticleModuleTypeDataBeam>(CurrentLODLevel->EffectiveTypeData) : nullptr;
@@ -1112,6 +1113,15 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 			Resize(std::min(4, MaxAllowed));
 		if (!ParticleData || !ParticleIndices || MaxActiveParticles <= 0) return;
 
+		for (auto& Module : CurrentLODLevel->Modules)
+		{
+			if (UParticleModuleEventGenerator* Event = Cast<UParticleModuleEventGenerator>(Module))
+			{
+				EventGenerator = Event;
+				break;
+			}
+		}
+
 		// 살아 있는 파티클은 방출이 끝난 뒤에도 수명이 다할 때까지 갱신한다.
 		for (int32 Index = 0; Index < ActiveParticles;)
 		{
@@ -1129,6 +1139,11 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin)
 			{
 				if (!Module) continue;
 				Module->Update(Particle, DeltaTime, GetModuleDataOffset(Module), InstanceParameters);
+
+				if (const UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
+				{
+					Collision->TickCollision(Particle, DeltaTime, GetModuleDataOffset(Module), Context, EventGenerator);
+				}
 			}
 			if (bIsBeam && BeamType && TypeDataOffset > 0)
 			{
@@ -1831,6 +1846,11 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 	return Data;
 }
 
+void UParticleSystemComponent::AddCollisionEvent(const FParticleEventCollideData& Event)
+{
+	CollisionEvents.Add(Event);
+}
+
 void UParticleSystemComponent::BeginPlay()
 {
 	Super::BeginPlay();
@@ -2225,6 +2245,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	{
 		for (FParticleEmitterInstance& Instance : EmitterInstances)
 			Instance.LastGpuDeltaTime = 0.0f;
+		CollisionEvents.Reset();
 		return;
 	}
 	if (bFadingOut && FadeOutDuration > 0.0f)
@@ -2235,12 +2256,22 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	const FVector Origin = GetWorldLocation();
 	const FVector UpAxis = GetWorldRotationQuat().RotateVector(FVector(0.0f, 0.0f, 1.0f));
 	const FMatrix WorldToLocal = GetWorldMatrix().Inverse();
+	FParticleTickContext Context;
+	Context.World = GetWorld();
+	Context.ComponentToWorld = GetWorldMatrix();
+	Context.Component = this;
 	for (FParticleEmitterInstance& Instance : EmitterInstances)
 	{
 		Instance.EmitterUpAxis = UpAxis;
 		Instance.EmitterWorldToLocal = WorldToLocal;
-		Instance.Tick(ScaledDeltaTime, Origin);
+		Instance.Tick(ScaledDeltaTime, Origin, Context);
 	}
+
+	for (auto& Event : CollisionEvents)
+	{
+		OnParticleCollision.Broadcast(Event);
+	}
+	CollisionEvents.Reset();
 	MarkRenderStateDirty();
 	if (HasCompleted())
 	{

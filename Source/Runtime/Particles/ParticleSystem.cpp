@@ -1,4 +1,6 @@
 #include "EnginePCH.h"
+#include "Engine/World.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Particles/ParticleSystem.h"
 #include "UObject/Class.h"
 #include "UObject/Casts.h"
@@ -1338,4 +1340,65 @@ UParticleSystem* UParticleSystem::LoadFromFile(const FString& Path, UObject* Out
 		return nullptr;
 	System->PrepareLODModules();
 	return System;
+}
+
+void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, 
+	const FParticleTickContext& Context, const UParticleModuleEventGenerator * EventGenerator) const
+{
+	if (Offset == 0)
+	{
+		return;
+	}
+
+	FParticleCollisionPayload& Payload = *reinterpret_cast<FParticleCollisionPayload*>(reinterpret_cast<uint8*>(&Particle) + Offset);
+	if (Payload.CollisionCount >= MaxCollisions)
+	{
+		return;
+	}
+
+	FVector MoveDelta = Particle.Velocity * DeltaTime;
+	float MoveDist = MoveDelta.Length();
+	if (MoveDist < 0.001f)
+	{
+		return;
+	}
+
+	FVector PrevLocation = Particle.Location - MoveDelta;
+	FRay WorldRay;
+	WorldRay.Origin = PrevLocation;
+	WorldRay.Direction = MoveDelta.Normalized();
+
+	FHitResult Hit;
+	Context.World->SweepSingle(WorldRay, MoveDist, CollisionRadius, Hit, Context.Component->GetOwner());
+	if (Hit.bBlockingHit)
+	{
+		Particle.Location = Hit.ImpactPoint + Hit.ImpactNormal * 0.001f;
+
+		float VDotNormal = Particle.Velocity.Dot(Hit.ImpactNormal);
+		if (VDotNormal > 0)
+		{
+			return;
+		}
+
+		FVector ProjectedNormal = Hit.ImpactNormal * (-VDotNormal);
+		FVector Vt = Particle.Velocity + ProjectedNormal;
+		Vt *= (1 - FrictionMax);
+		Vt += ProjectedNormal * RestitutionMax;
+
+		Particle.Velocity = Vt;
+		Payload.CollisionCount++;
+
+		if (EventGenerator==nullptr || Payload.CollisionCount % std::max(1,EventGenerator->EventFrequency) != 0)
+		{
+			return;
+		}
+
+		FParticleEventCollideData Event;
+		Event.EventName = EventGenerator->EventName;
+		Event.Location = Hit.Location;
+		Event.Normal = Hit.ImpactNormal;
+		Event.Velocity = Vt;
+		Event.Component = Hit.HitComponent;
+		Context.Component->AddCollisionEvent(Event);
+	}
 }

@@ -1,0 +1,206 @@
+{
+    "Class": "UParticleSystem",
+    "Object": {
+        "Properties": {
+            "Emitters": [
+                {
+                    "Class": "UParticleEmitter",
+                    "Value": {
+                        "Properties": {
+                            "EmitterName": "Hit Spark",
+                            "LODLevels": [
+                                {
+                                    "Class": "UParticleLODLevel",
+                                    "Value": {
+                                        "Properties": {
+                                            "Level": 0,
+                                            "Modules": [
+                                                {
+                                                    "Class": "UParticleModuleLifetime",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "LODSlotId": 1,
+                                                            "Lifetime": {
+                                                                "Class": "UDistributionFloatUniform",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Max": 0.22,
+                                                                        "Min": 0.12
+                                                                    }
+                                                                }
+                                                            },
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleSize",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "LODSlotId": 2,
+                                                            "StartSize": {
+                                                                "Class": "UDistributionVectorUniform",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Max": {
+                                                                            "X": 0.8,
+                                                                            "Y": 0.8,
+                                                                            "Z": 0.8
+                                                                        },
+                                                                        "Min": {
+                                                                            "X": 0.35,
+                                                                            "Y": 0.35,
+                                                                            "Z": 0.35
+                                                                        },
+                                                                        "bLockAxes": true
+                                                                    }
+                                                                }
+                                                            },
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleVelocity",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "LODSlotId": 3,
+                                                            "StartVelocity": {
+                                                                "Class": "UDistributionVectorUniform",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Max": {
+                                                                            "X": 3.0,
+                                                                            "Y": 3.0,
+                                                                            "Z": 0.5
+                                                                        },
+                                                                        "Min": {
+                                                                            "X": -3.0,
+                                                                            "Y": -3.0,
+                                                                            "Z": -4.0
+                                                                        },
+                                                                        "bLockAxes": false
+                                                                    }
+                                                                }
+                                                            },
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleColor",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "LODSlotId": 4,
+                                                            "StartAlpha": {
+                                                                "Class": "UDistributionFloatConstant",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Constant": 1.0
+                                                                    }
+                                                                }
+                                                            },
+                                                            "StartColor": {
+                                                                "Class": "UDistributionVectorConstant",
+                                                                "Value": {
+                                                                    "Properties": {
+                                                                        "Constant": {
+                                                                            "X": 1.0,
+                                                                            "Y": 0.35,
+                                                                            "Z": 0.25
+                                                                        }
+                                                                    }
+                                                                }
+                                                            },
+                                                            "bEnabled": true
+                                                        }
+                                                    }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleSubUV",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "LODSlotId": 5,
+                                                            "PlayRate": 1.0,
+                                                            "SubImagesHorizontal": 8,
+                                                            "SubImagesVertical": 8,
+                                                            "bEnabled": true,
+                                                            "bUseLinearOverLife": true
+                                                        }
+                                                    }
+                                                }
+                                            ],
+                                            "RequiredModule": {
+                                                "Class": "UParticleModuleRequired",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "EmitterDuration": 0.07999999821186066,
+                                                        "LODSlotId": 0,
+                                                        "Material": "SubUVMaterial",
+                                                        "MaxParticles": 16,
+                                                        "bEnabled": true,
+                                                        "bLooping": false,
+                                                        "bUseLocalSpace": false
+                                                    }
+                                                }
+                                            },
+                                            "SpawnModule": {
+                                                "Class": "UParticleModuleSpawn",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "Bursts": [
+                                                            {
+                                                                "Count": 10,
+                                                                "Time": 0.0
+                                                            }
+                                                        ],
+                                                        "LODSlotId": 0,
+                                                        "Rate": 0.0,
+                                                        "bEnabled": true
+                                                    }
+                                                }
+                                            },
+                                            "TypeDataModule": {
+                                                "Class": "UParticleModuleTypeDataSprite",
+                                                "Value": {
+                                                    "Properties": {
+                                                        "LODSlotId": 0,
+                                                        "bEnabled": true
+                                                    }
+                                                }
+                                            },
+                                            "bEnabled": true
+                                        }
+                                    }
+                                }
+                            ],
+                            "PlayRate": 1.0,
+                            "bInheritLODModules": true,
+                            "bIsSolo": false
+                        }
+                    }
+                }
+            ],
+            "FixedBoundsMax": {
+                "X": 100.0,
+                "Y": 100.0,
+                "Z": 100.0
+            },
+            "FixedBoundsMin": {
+                "X": -100.0,
+                "Y": -100.0,
+                "Z": -100.0
+            },
+            "LODDistances": [
+                0.0
+            ],
+            "PlayRate": 1.0,
+            "SecondsBeforeInactive": 1.0,
+            "UpdateTimeFPS": 240.0,
+            "WarmupTickRate": 1.0,
+            "WarmupTime": 0.0,
+            "bUseFixedRelativeBoundingBox": false
+        }
+    },
+    "Version": 1
+}
