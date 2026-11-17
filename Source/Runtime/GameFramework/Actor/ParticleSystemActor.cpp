@@ -6,7 +6,7 @@ AParticleSystemActor::AParticleSystemActor()
 	ParticleSystemComponent = CreateDefaultSubobject<UParticleSystemComponent>("ParticleSystemComponent");
 	SetRootComponent(ParticleSystemComponent);
 
-	UParticleSystem* System = NewObject<UParticleSystem>(ParticleSystemComponent);
+	/*UParticleSystem* System = NewObject<UParticleSystem>(ParticleSystemComponent);
 	UParticleLODLevel* LOD = System->AddEmitter()->AddLODLevel();
 	LOD->AddModule(UParticleModuleLifetime::StaticClass());
 	LOD->AddModule(UParticleModuleLocation::StaticClass());
@@ -18,5 +18,5 @@ AParticleSystemActor::AParticleSystemActor()
 	}
 	LOD->AddModule(UParticleModuleColor::StaticClass());
 	LOD->AddModule(UParticleModuleSize::StaticClass());
-	ParticleSystemComponent->SetTemplate(System);
+	ParticleSystemComponent->SetTemplate(System);*/
 }

@@ -35,20 +35,55 @@ else
 
 $debuggerArgs = @('-z', $dump.FullName, '-y', $symbolPath)
 
-$reportFolder = Join-Path $dump.DirectoryName $dump.BaseName
-$sourceRoot = Join-Path $reportFolder 'Source'
-
-if (Test-Path -LiteralPath $sourceRoot -PathType Container) 
+$buildIdName = $dump.BaseName + '.build-id.txt'
+$buildIdFile = @(
+    (Join-Path $dump.DirectoryName $buildIdName)
+    (Join-Path (Join-Path $symbolStore 'Crashes') $buildIdName)
+) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+$sourceRoots = @()
+if ($buildIdFile)
 {
-    $sourceFolders = @($sourceRoot)
-    $sourceFolders += Get-ChildItem -LiteralPath $sourceRoot -Directory -Recurse |
-        Select-Object -ExpandProperty FullName
+    $buildId = (Get-Content -LiteralPath $buildIdFile -Raw).Trim()
+    if ($buildId -match '^[0-9a-fA-F]{64}$') 
+    {
+        $imageFolder = Join-Path (Join-Path $symbolStore 'Builds') $buildId
+        $buildSourceRoot = Join-Path (Join-Path $symbolStore 'Sources') $buildId
+        $sourceRoots += $buildSourceRoot
+        if (Test-Path -LiteralPath $imageFolder -PathType Container) 
+        {
+            $debuggerArgs += @('-i', $imageFolder)
+        }
+        else 
+        {
+            Write-Warning "Image folder not found: $imageFolder"
+        }
+    }
+    else 
+    {
+        Write-Warning "Invalid build ID: $buildIdFile"
+    }
+}
+else 
+{
+    Write-Warning "Build ID file not found: $buildIdName"
+}
 
+$sourceFolders = foreach ($sourceRoot in $sourceRoots)
+{
+    if (Test-Path -LiteralPath $sourceRoot -PathType Container)
+    {
+        $sourceRoot
+        Get-ChildItem -LiteralPath $sourceRoot -Directory -Recurse | Select-Object -ExpandProperty FullName
+    }
+}
+
+if ($sourceFolders)
+{
     $debuggerArgs += @('-srcpath', ($sourceFolders -join ';'))
 }
 else 
 {
-    Write-Warning "Source folder not found: $sourceRoot"
+    Write-Warning "Source folders not found: $($sourceRoots -join '; ')"
 }
 
 $debuggerArgs += @('-c', '.ecxr; k')
