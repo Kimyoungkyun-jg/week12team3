@@ -35,18 +35,21 @@ namespace
 			return nullptr;
 		}
 
-		constexpr float DefaultSpawnRates[] = { 10.0f, 6.0f, 2.0f };
-		for (float SpawnRate : DefaultSpawnRates)
+		Emitter->EnableModuleInheritance();
+		const int32 LODCount = System->GetLODCount();
+		UParticleLODLevel* Base = Emitter->AddLODLevel();
+		Base->GetOrCreateRequired()->Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");
+		Base->GetOrCreateSpawn()->Rate = 10.0f;
+		Base->AddModule(UParticleModuleLifetime::StaticClass());
+		Base->AddModule(UParticleModuleSize::StaticClass());
+		Base->AddModule(UParticleModuleVelocity::StaticClass());
+		Base->AddModule(UParticleModuleColor::StaticClass());
+		for (int32 Index = 1; Index < LODCount; ++Index)
 		{
 			UParticleLODLevel* LOD = Emitter->AddLODLevel();
-			LOD->GetOrCreateRequired()->Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");
-			LOD->GetOrCreateSpawn()->Rate = SpawnRate;
-
-			LOD->AddModule(UParticleModuleLifetime::StaticClass());
-			LOD->AddModule(UParticleModuleSize::StaticClass());
-			LOD->AddModule(UParticleModuleVelocity::StaticClass());
-			LOD->AddModule(UParticleModuleColor::StaticClass());
+			LOD->GetOrCreateSpawn()->Rate = Index == 1 ? 6.0f : 2.0f;
 		}
+		Emitter->CacheEmitterModuleInfo();
 		return Emitter;
 	}
 
@@ -90,14 +93,35 @@ void FParticleSystemEditorPanel::Release()
 
 void FParticleSystemEditorPanel::CreateDefaultSystem()
 {
-	if (!AddDefaultEmitter(EditingSystem))
-	{
-		return;
-	}
-
+	if (!EditingSystem) return;
 	EditingSystem->LODDistances.Add(0.0f);
 	EditingSystem->LODDistances.Add(20.0f);
 	EditingSystem->LODDistances.Add(30.0f);
+	AddDefaultEmitter(EditingSystem);
+}
+
+void FParticleSystemEditorPanel::SelectLOD(int32 Index)
+{
+	SelectedLODIndex = Index;
+	SelectedModule = nullptr;
+	SelectedCurveTrackIndex = 0;
+	SelectedCurveKeyId = -1;
+	if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+		PreviewActor->GetParticleSystemComponent()->SetForcedLOD(Index);
+}
+
+void FParticleSystemEditorPanel::RefreshPreview()
+{
+	if (!PreviewActor || !PreviewActor->GetParticleSystemComponent()) return;
+	UParticleSystemComponent* Component = PreviewActor->GetParticleSystemComponent();
+	Component->SetTemplate(EditingSystem);
+	Component->SetForcedLOD(SelectedLODIndex);
+}
+
+bool FParticleSystemEditorPanel::CanEditSelectedModule() const
+{
+	const UParticleLODLevel* LOD = GetEditableLOD(SelectedEmitter, SelectedLODIndex);
+	return LOD && LOD->OwnsModule(SelectedModule);
 }
 
 void FParticleSystemEditorPanel::OpenAsset(const FString& InPath)
@@ -128,8 +152,7 @@ void FParticleSystemEditorPanel::OpenAsset(const FString& InPath)
 
 	PreviewWorld = UWorld::CreateWorld(EWorldType::Editor, false);
 	PreviewActor = PreviewWorld->SpawnActor<AParticleSystemActor>();
-	if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-		PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+	RefreshPreview();
 
 	auto* Sun = PreviewWorld->SpawnActor<ADirectionalLightActor>();
 	Sun->GetBillboardComponent()->SetVisibility(false);
@@ -343,8 +366,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 		{
 			SelectedEmitter = NewEmitter;
 			SelectedModule = nullptr;
-			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-				PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+			RefreshPreview();
 		}
 	}
 	ImGui::Separator();
@@ -357,69 +379,62 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 
 	const TArray<UParticleEmitter*>& Emitters = EditingSystem->GetEmitters();
 
-	int32 MaxLODCount = 0;
-	for (UParticleEmitter* Emitter : Emitters)
+	const int32 LODCount = EditingSystem->GetLODCount();
+	if (SelectedLODIndex < 0 || SelectedLODIndex >= LODCount) SelectLOD(0);
+
+	const FString CurrentLabel = "LOD " + std::to_string(SelectedLODIndex);
+	ImGui::SetNextItemWidth(EditorUIScale::Px(100.0f));
+	if (ImGui::BeginCombo("##ParticleLOD", CurrentLabel.c_str()))
 	{
-		if (Emitter)
+		for (int32 Index = 0; Index < LODCount; ++Index)
 		{
-			MaxLODCount = std::max(
-				MaxLODCount,
-				static_cast<int32>(Emitter->GetLODLevels().Num()));
+			const FString Label = "LOD " + std::to_string(Index);
+			const bool bSelected = Index == SelectedLODIndex;
+			if (ImGui::Selectable(Label.c_str(), bSelected) && !bSelected) SelectLOD(Index);
+			if (bSelected) ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	ImGui::SameLine();
+	if (ImGui::SmallButton("LOD Actions")) ImGui::OpenPopup("LODActions");
+	if (ImGui::BeginPopup("LODActions"))
+	{
+		int32 InsertIndex = -1;
+		if (ImGui::MenuItem("Insert before", nullptr, false, SelectedLODIndex > 0))
+			InsertIndex = SelectedLODIndex;
+		if (ImGui::MenuItem("Insert after")) InsertIndex = SelectedLODIndex + 1;
+		const bool bDelete = ImGui::MenuItem("Delete LOD", nullptr, false, SelectedLODIndex > 0);
+		ImGui::EndPopup();
+
+		if (InsertIndex >= 0)
+		{
+			if (EditingSystem->InsertLOD(InsertIndex))
+			{
+				SelectLOD(InsertIndex);
+				RefreshPreview();
+			}
+			else StatusMessage = "Could not insert a LOD between these distances.";
+		}
+		if (bDelete && EditingSystem->RemoveLOD(SelectedLODIndex))
+		{
+			SelectLOD(std::min(SelectedLODIndex, EditingSystem->GetLODCount() - 1));
+			RefreshPreview();
 		}
 	}
 
-	// LOD 개수가 줄어든 경우 선택을 초기화
-	if (SelectedLODIndex < 0 || SelectedLODIndex >= MaxLODCount)
+	if (SelectedLODIndex > 0)
 	{
-		SelectedLODIndex = 0;
-		SelectedModule = nullptr;
-	}
-
-	if (MaxLODCount > 0)
-	{
-		const FString CurrentLabel = "LOD " + std::to_string(SelectedLODIndex);
+		float Distance = EditingSystem->GetLODDistance(SelectedLODIndex);
+		ImGui::SameLine();
 		ImGui::SetNextItemWidth(EditorUIScale::Px(100.0f));
-
-		if (ImGui::BeginCombo("##ParticleLOD", CurrentLabel.c_str()))
+		if (ImGui::InputFloat("Start Distance", &Distance, 0.0f, 0.0f, "%.3f", ImGuiInputTextFlags_EnterReturnsTrue))
 		{
-			for (int32 Index = 0; Index < MaxLODCount; ++Index)
-			{
-				const FString Label = "LOD " + std::to_string(Index);
-				const bool bSelected = Index == SelectedLODIndex;
-
-				if (ImGui::Selectable(Label.c_str(), bSelected) && !bSelected)
-				{
-					SelectedLODIndex = Index;
-					SelectedModule = nullptr;
-				}
-
-				if (bSelected)
-				{
-					ImGui::SetItemDefaultFocus();
-				}
-			}
-			ImGui::EndCombo();
+			if (!EditingSystem->SetLODDistance(SelectedLODIndex, Distance))
+				StatusMessage = "Start distance must be between adjacent LOD distances.";
 		}
-		if ((SelectedLODIndex == 1 || SelectedLODIndex == 2) && GetEditableLOD(SelectedEmitter, SelectedLODIndex))
-		{
-			ImGui::SameLine();
-
-			if (ImGui::SmallButton("Copy from LOD 0"))
-			{
-				const float SpawnRateScale = SelectedLODIndex == 1 ? 0.6f : 0.2f;
-
-				if (SelectedEmitter->CopyLOD0(SelectedLODIndex, SpawnRateScale))
-				{
-					SelectedModule = nullptr;
-					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-					{
-						PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
-					}
-				}
-			}
-		}
-		ImGui::Separator();
 	}
+	ImGui::Separator();
 
 	const float ColumnWidth = EditorUIScale::Px(190.0f);
 	const float ColumnHeight = std::max(EditorUIScale::Px(80.0f), ImGui::GetContentRegionAvail().y);
@@ -450,13 +465,17 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 
 			if (LOD)
 			{
-				ImGui::Checkbox("Enabled", &LOD->bEnabled);
+				if (ImGui::Checkbox("Enabled", &LOD->bEnabled) && PreviewActor && PreviewActor->GetParticleSystemComponent())
+					PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
 				ImGui::SameLine();
 				ImGui::Checkbox("S", &Emitter->bIsSolo);
-				UParticleModuleTypeDataBase* TypeData = LOD->GetOrCreateTypeData();
+				const bool bInheritedLayout = SelectedLODIndex > 0 && Emitter->UsesModuleInheritance();
+				if (SelectedLODIndex > 0 && !bInheritedLayout) ImGui::TextDisabled("Legacy LOD");
+				UParticleModuleTypeDataBase* TypeData = LOD->EffectiveTypeData;
 				const EParticleEmitterType CurType = TypeData ? TypeData->GetEmitterType() : EParticleEmitterType::Sprite;
 				int TypeIdx = (CurType == EParticleEmitterType::GpuSprite) ? 1 : (CurType == EParticleEmitterType::Mesh ? 2 : 0);
 				ImGui::SetNextItemWidth(-1.0f);
+				ImGui::BeginDisabled(!LOD->OwnsModule(TypeData));
 				if (ImGui::Combo("##EmitterType", &TypeIdx, "Sprite\0GPU Sprite\0Mesh\0"))
 				{
 					UClass* TargetClass = UParticleModuleTypeDataSprite::StaticClass();
@@ -464,40 +483,85 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 						TargetClass = UParticleModuleTypeDataGpuSprite::StaticClass();
 					else if (TypeIdx == 2)
 						TargetClass = UParticleModuleTypeDataMesh::StaticClass();
-					const bool bWasTypeDataSelected = (SelectedModule == TypeData);
+					const bool bWasTypeDataSelected = SelectedEmitter == Emitter && SelectedModule == TypeData;
 					UParticleModuleTypeDataBase* NewTypeData = LOD->SetTypeData(TargetClass);
 					if (auto* NewMeshType = Cast<UParticleModuleTypeDataMesh>(NewTypeData))
 					{
 						if (!NewMeshType->Mesh)
 							NewMeshType->Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Cube");
-						LOD->GetOrCreateRequired()->Material = nullptr;
+						if (LOD->RequiredModule) LOD->RequiredModule->Material = nullptr;
 					}
 					if (bWasTypeDataSelected)
 						SelectedModule = NewTypeData;
-					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-						PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+					RefreshPreview();
 				}
+				ImGui::EndDisabled();
 				ImGui::Separator();
 
-				auto DrawModuleRow = [&](UParticleModule* Mod, const ImVec4& TintColor, bool bRemovable)
+				UParticleModule* DuplicateSlot = nullptr;
+				UParticleModule* SlotToInherit = nullptr;
+				bool bDuplicateFromHighest = false;
+				int32 MoveFrom = -1;
+				int32 MoveTo = -1;
+				auto DrawModuleRow = [&](UParticleModule* Mod, const ImVec4& TintColor, int32 ModuleIndex)
 				{
 					if (!Mod) return false;
 					bool bDeleteRequested = false;
+					ImGui::PushID(LOD);
 					ImGui::PushID(Mod);
 					ImGui::PushStyleColor(ImGuiCol_Header, TintColor);
-					const bool bSelected = (SelectedModule == Mod);
+					const bool bOwned = LOD->OwnsModule(Mod);
+					const bool bSelected = SelectedEmitter == Emitter && SelectedModule == Mod;
+					ImGui::BeginDisabled(!bOwned);
 					if (ImGui::Checkbox("##En", &Mod->bEnabled))
 					{
 						if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 							PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
 					}
+					ImGui::EndDisabled();
 					ImGui::SameLine();
-					if (ImGui::Selectable(Mod->GetDisplayName(), bSelected, 0, ImVec2(ColumnWidth - EditorUIScale::Px(78.0f), 0.0f)))
+					const FString CardLabel = FString(Mod->GetDisplayName()) + (bOwned ? "" : " (Inherited)");
+					if (ImGui::Selectable(CardLabel.c_str(), bSelected, 0, ImVec2(ColumnWidth - EditorUIScale::Px(78.0f), 0.0f)))
 					{
 						SelectedEmitter = Emitter;
 						SelectedModule = Mod;
+						SelectedCurveTrackIndex = 0;
+						SelectedCurveKeyId = -1;
 					}
-					if (bRemovable)
+					if ((bInheritedLayout || ModuleIndex >= 0) && ImGui::BeginPopupContextItem("ModuleActions"))
+					{
+						if (bInheritedLayout)
+						{
+							if (ImGui::MenuItem("Duplicate from Highest"))
+							{
+								DuplicateSlot = Mod;
+								bDuplicateFromHighest = true;
+							}
+							if (ImGui::MenuItem("Duplicate from Higher"))
+							{
+								DuplicateSlot = Mod;
+								bDuplicateFromHighest = false;
+							}
+							if (ImGui::MenuItem("Inherit from Higher", nullptr, false, bOwned))
+								SlotToInherit = Mod;
+						}
+						else if (ModuleIndex >= 0)
+						{
+							if (ImGui::MenuItem("Move Up", nullptr, false, ModuleIndex > 0))
+							{
+								MoveFrom = ModuleIndex;
+								MoveTo = ModuleIndex - 1;
+							}
+							if (ImGui::MenuItem("Move Down", nullptr, false,
+								ModuleIndex + 1 < static_cast<int32>(LOD->Modules.Num())))
+							{
+								MoveFrom = ModuleIndex;
+								MoveTo = ModuleIndex + 1;
+							}
+						}
+						ImGui::EndPopup();
+					}
+					if (ModuleIndex >= 0 && !bInheritedLayout)
 					{
 						ImGui::SameLine();
 						if (ImGui::SmallButton("-"))
@@ -505,27 +569,58 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					}
 					ImGui::PopStyleColor();
 					ImGui::PopID();
+					ImGui::PopID();
 					return bDeleteRequested;
 				};
 
-				DrawModuleRow(LOD->GetOrCreateTypeData(), ImVec4(0.32f, 0.45f, 0.30f, 0.65f), false);
-				DrawModuleRow(LOD->GetOrCreateRequired(), ImVec4(0.55f, 0.50f, 0.20f, 0.65f), false);
-				DrawModuleRow(LOD->GetOrCreateSpawn(), ImVec4(0.60f, 0.25f, 0.25f, 0.65f), false);
+				DrawModuleRow(LOD->EffectiveTypeData, ImVec4(0.32f, 0.45f, 0.30f, 0.65f), -1);
+				DrawModuleRow(LOD->EffectiveRequired, ImVec4(0.55f, 0.50f, 0.20f, 0.65f), -1);
+				DrawModuleRow(LOD->EffectiveSpawn, ImVec4(0.60f, 0.25f, 0.25f, 0.65f), -1);
 
 				UParticleModule* ModuleToRemove = nullptr;
-				for (UParticleModule* Mod : LOD->Modules)
+				for (uint32 Index = 0; Index < LOD->EffectiveModules.Num(); ++Index)
 				{
-					if (DrawModuleRow(Mod, ImVec4(0.22f, 0.35f, 0.50f, 0.65f), true))
-						ModuleToRemove = Mod;
+					UParticleModule* Module = LOD->EffectiveModules[Index];
+					if (DrawModuleRow(Module, ImVec4(0.22f, 0.35f, 0.50f, 0.65f), static_cast<int32>(Index)))
+						ModuleToRemove = Module;
 				}
+				if (DuplicateSlot)
+				{
+					if (UParticleModule* Copy = Emitter->DuplicateLODModule(SelectedLODIndex, DuplicateSlot, bDuplicateFromHighest))
+					{
+						SelectedEmitter = Emitter;
+						SelectedModule = Copy;
+						SelectedCurveTrackIndex = 0;
+						SelectedCurveKeyId = -1;
+						RefreshPreview();
+					}
+				}
+				if (SlotToInherit && Emitter->InheritLODModule(SelectedLODIndex, SlotToInherit))
+				{
+					if (SelectedModule == SlotToInherit)
+					{
+						SelectedModule = nullptr;
+						SelectedCurveTrackIndex = 0;
+						SelectedCurveKeyId = -1;
+					}
+					RefreshPreview();
+				}
+				if (MoveFrom >= 0 && LOD->MoveModule(MoveFrom, MoveTo)) RefreshPreview();
 				if (ModuleToRemove)
 				{
-					if (SelectedModule == ModuleToRemove) SelectedModule = nullptr;
-					LOD->RemoveModule(ModuleToRemove);
+					if (SelectedModule == ModuleToRemove)
+					{
+						SelectedModule = nullptr;
+						SelectedCurveTrackIndex = 0;
+						SelectedCurveKeyId = -1;
+					}
+					if (SelectedLODIndex == 0) Emitter->RemoveBaseModule(ModuleToRemove);
+					else LOD->RemoveModule(ModuleToRemove);
 					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 						PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
 				}
 
+				ImGui::BeginDisabled(bInheritedLayout);
 				if (ImGui::Button("+ Add Module", ImVec2(-1.0f, 0.0f)))
 					ImGui::OpenPopup("AddModulePopup");
 
@@ -539,6 +634,8 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 							{
 								SelectedEmitter = Emitter;
 								SelectedModule = Added;
+								SelectedCurveTrackIndex = 0;
+								SelectedCurveKeyId = -1;
 								if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 									PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
 							}
@@ -556,6 +653,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					AddModItem("SubImage Index", UParticleModuleSubUV::StaticClass());
 					ImGui::EndPopup();
 				}
+				ImGui::EndDisabled();
 			}
 		}
 		ImGui::EndChild();
@@ -570,8 +668,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 			SelectedModule = nullptr;
 		}
 		EditingSystem->RemoveEmitter(EmitterToRemove);
-		if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-			PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+		RefreshPreview();
 	}
 
 	ImGui::EndChild();
@@ -591,9 +688,11 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 	auto DrawTypeDataMeshPicker = [&](UParticleLODLevel* LOD, UParticleModuleTypeDataMesh* MeshType)
 	{
 		if (!LOD || !MeshType) return;
-		if (FContentDrawerPanel::DrawStaticMeshPicker("Static Mesh", MeshType->Mesh, "(None)"))
+		UStaticMesh* Mesh = MeshType->Mesh;
+		if (FContentDrawerPanel::DrawStaticMeshPicker("Static Mesh", Mesh, "(None)") && LOD->OwnsModule(MeshType))
 		{
-			LOD->GetOrCreateRequired()->Material = nullptr;
+			MeshType->Mesh = Mesh;
+			if (LOD->RequiredModule) LOD->RequiredModule->Material = nullptr;
 			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 				PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
 		}
@@ -602,6 +701,7 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 	if (SelectedModule)
 	{
 		ImGui::Text("Module: %s", SelectedModule->GetDisplayName());
+		ImGui::BeginDisabled(!CanEditSelectedModule());
 		if (ImGui::Checkbox("Enabled", &SelectedModule->bEnabled))
 		{
 			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
@@ -612,7 +712,7 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		if (auto* MeshType = Cast<UParticleModuleTypeDataMesh>(SelectedModule))
 		{
 			UParticleLODLevel* OwnerLOD = GetEditableLOD(SelectedEmitter, SelectedLODIndex);
-			if (OwnerLOD && OwnerLOD->TypeDataModule == MeshType)
+			if (OwnerLOD && OwnerLOD->EffectiveTypeData == MeshType)
 			{
 				DrawTypeDataMeshPicker(OwnerLOD, MeshType);
 			}
@@ -624,33 +724,16 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			ImGui::Checkbox("Looping", &Req->bLooping);
 			ImGui::Checkbox("Use Local Space", &Req->bUseLocalSpace);
 
-			UParticleLODLevel* OwnerLOD = nullptr;
-			if (EditingSystem)
-			{
-				for (UParticleEmitter* Emitter : EditingSystem->GetEmitters())
-				{
-					if (!Emitter)
-						continue;
-					for (UParticleLODLevel* LOD : Emitter->GetLODLevels())
-					{
-						if (LOD && LOD->RequiredModule == Req)
-						{
-							OwnerLOD = LOD;
-							break;
-						}
-					}
-					if (OwnerLOD)
-						break;
-				}
-			}
-
-			const bool bMeshEmitter = OwnerLOD && Cast<UParticleModuleTypeDataMesh>(OwnerLOD->TypeDataModule);
+			const UParticleLODLevel* OwnerLOD = GetEditableLOD(SelectedEmitter, SelectedLODIndex);
+			const bool bMeshEmitter = OwnerLOD && Cast<UParticleModuleTypeDataMesh>(OwnerLOD->EffectiveTypeData);
 			const uint32 UsageFlag = static_cast<uint32>(bMeshEmitter ? EMaterialUsage::ParticleMesh : EMaterialUsage::ParticleSprite);
 			UMaterial* FallbackMaterial = (!Req->Material && !bMeshEmitter)
 				? UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial")
 				: nullptr;
-			if (FContentDrawerPanel::DrawMaterialPicker("Material", Req->Material, "(Default)", FallbackMaterial, UsageFlag))
+			UMaterialInterface* Material = Req->Material;
+			if (FContentDrawerPanel::DrawMaterialPicker("Material", Material, "(Default)", FallbackMaterial, UsageFlag) && CanEditSelectedModule())
 			{
+				Req->Material = Material;
 				if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 					PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();
 			}
@@ -764,6 +847,7 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			ImGui::Checkbox("Linear Over Life", &Sub->bUseLinearOverLife);
 			ImGui::DragFloat("Play Rate", &Sub->PlayRate, 0.05f, 0.0f, 20.0f);
 		}
+		ImGui::EndDisabled();
 	}
 	else if (SelectedEmitter)
 	{
@@ -775,9 +859,11 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		ImGui::DragFloat("Play Rate", &SelectedEmitter->PlayRate, 0.05f, 0.0f, 20.0f);
 		if (UParticleLODLevel* LOD = GetEditableLOD(SelectedEmitter, SelectedLODIndex))
 		{
-			if (auto* MeshType = Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule))
+			if (auto* MeshType = Cast<UParticleModuleTypeDataMesh>(LOD->EffectiveTypeData))
 			{
+				ImGui::BeginDisabled(!LOD->OwnsModule(MeshType));
 				DrawTypeDataMeshPicker(LOD, MeshType);
+				ImGui::EndDisabled();
 			}
 		}
 	}
@@ -826,7 +912,9 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 			if (bActive) ImGui::PopStyleColor();
 		}
 
-		UCurveFloat* ActiveCurve = Tracks[SelectedCurveTrackIndex].Curve;
+		const bool bCanEditCurve = CanEditSelectedModule();
+		if (!bCanEditCurve) ImGui::TextDisabled("Inherited curve");
+		UCurveFloat* ActiveCurve = bCanEditCurve ? Tracks[SelectedCurveTrackIndex].Curve : nullptr;
 		if (ActiveCurve)
 		{
 			ImGui::SameLine();

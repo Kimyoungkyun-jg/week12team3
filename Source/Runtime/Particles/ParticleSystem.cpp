@@ -6,6 +6,45 @@
 #include <algorithm>
 #include <cmath>
 
+namespace
+{
+	UParticleModule* FindLODModule(const TArray<UParticleModule*>& Modules, int32 SlotId)
+	{
+		for (UParticleModule* Module : Modules)
+		{
+			if (Module && Module->LODSlotId == SlotId)
+			{
+				return Module;
+			}
+		}
+		return nullptr;
+	}
+
+	bool HasMatchingModuleSlots(const UParticleLODLevel& Base, const UParticleLODLevel& Other)
+	{
+		if (Base.Modules.Num() != Other.Modules.Num())
+		{
+			return false;
+		}
+		for (uint32 Index = 0; Index < Base.Modules.Num(); ++Index)
+		{
+			const UParticleModule* Module = Base.Modules[Index];
+			if (!Module || !Other.Modules[Index] || Module->GetClass() != Other.Modules[Index]->GetClass())
+			{
+				return false;
+			}
+			for (uint32 Prior = 0; Prior < Index; ++Prior)
+			{
+				if (Base.Modules[Prior]->GetClass() == Module->GetClass())
+				{
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+}
+
 FColor FParticleInstanceParameters::GetColor(const FString& Name, const FColor& Default) const
 {
 	if (Name.empty()) return Default;
@@ -266,8 +305,21 @@ UParticleModule* UParticleLODLevel::AddModule(UClass* ModuleClass)
 		ModuleClass->IsChildOf(UParticleModuleRequired::StaticClass()) ||
 		ModuleClass->IsChildOf(UParticleModuleSpawn::StaticClass()) ||
 		ModuleClass->IsChildOf(UParticleModuleTypeDataBase::StaticClass())) return nullptr;
+
 	UParticleModule* Module = NewObject<UParticleModule>(this, ModuleClass);
-	if (Module) Modules.Add(Module);
+	if (Module)
+	{
+		int32 SlotId = 1;
+		for (const UParticleModule* Existing : Modules)
+		{
+			if (Existing)
+			{
+				SlotId = std::max(SlotId, Existing->LODSlotId + 1);
+			}
+		}
+		Module->LODSlotId = SlotId;
+		Modules.Add(Module);
+	}
 	return Module;
 }
 
@@ -296,54 +348,252 @@ bool UParticleLODLevel::MoveModule(int32 FromIndex, int32 ToIndex)
 	return true;
 }
 
-UParticleLODLevel* UParticleEmitter::AddLODLevel()
+bool UParticleLODLevel::OwnsModule(const UParticleModule* Module) const
 {
-	UParticleLODLevel* LOD = NewObject<UParticleLODLevel>(this);
-	LOD->Level = static_cast<int32>(LODLevels.Num());
-	LOD->GetOrCreateRequired();
-	LOD->GetOrCreateSpawn();
-	LOD->GetOrCreateTypeData();
-	LODLevels.Add(LOD);
-	return LOD;
+	if (!Module)
+	{
+		return false;
+	}
+	
+	if (Module == RequiredModule || Module == SpawnModule || Module == TypeDataModule)
+	{
+		return true;
+	}
+
+	for (const UParticleModule* Owned : Modules)
+	{
+
+		if (Owned == Module)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
-bool UParticleEmitter::CopyLOD0(int32 TargetIndex, float SpawnRateScale)
+void UParticleEmitter::EnableModuleInheritance()
 {
-	if (TargetIndex <= 0 || TargetIndex >= static_cast<int32>(LODLevels.Num()) || !LODLevels[0])
+	if (bInheritLODModules)
+	{
+		return;
+	}
+
+	if (!LODLevels.IsEmpty())
+	{
+		if (!LODLevels[0])
+		{
+			return;
+		}
+
+		for (uint32 Index = 1; Index < LODLevels.Num(); ++Index)
+		{
+			if (!LODLevels[Index] || !HasMatchingModuleSlots(*LODLevels[0], *LODLevels[Index]))
+			{
+				return;
+			}
+
+			for (UParticleLODLevel* LOD : LODLevels)
+			{
+				LOD->GetOrCreateRequired();
+				LOD->GetOrCreateSpawn();
+				LOD->GetOrCreateTypeData();
+				for (uint32 Index = 0; Index < LOD->Modules.Num(); ++Index)
+				{
+					if (LOD->Modules[Index])
+					{
+						LOD->Modules[Index]->LODSlotId = static_cast<int32>(Index) + 1;
+					}
+				}
+			}
+		}
+		bInheritLODModules = true;
+	}
+}
+
+UParticleLODLevel* UParticleEmitter::AddLODLevel()
+{
+	InsertLODLevel(static_cast<int32>(LODLevels.Num()));
+	return LODLevels[LODLevels.Num() - 1];
+}
+
+void UParticleEmitter::InsertLODLevel(int32 Index)
+{
+	UParticleLODLevel* Previous = Index > 0
+							? LODLevels[Index - 1]
+							: nullptr;
+	UParticleLODLevel* LOD = !bInheritLODModules && Previous
+						? Cast<UParticleLODLevel>(StaticDuplicateObject(Previous, this))
+						: nullptr;
+	if (!LOD)
+	{
+		LOD = NewObject<UParticleLODLevel>(this);
+	}
+
+	if (!bInheritLODModules || Index == 0)
+	{
+		LOD->GetOrCreateRequired();
+		LOD->GetOrCreateSpawn();
+		LOD->GetOrCreateTypeData();
+	}
+
+	if (Previous)
+	{
+		LOD->bEnabled = Previous->bEnabled;
+	}
+	LODLevels.Insert(LOD, Index);
+	for (uint32 Level = Index; Level < LODLevels.Num(); ++Level)
+	{
+		if (LODLevels[Level])
+		{
+			LODLevels[Level]->Level = static_cast<int32>(Level);
+		}
+	}
+}
+
+void UParticleEmitter::RemoveLODLevel(int32 Index)
+{
+	if (Index <= 0 || static_cast<uint32>(Index) >= LODLevels.Num())
+	{
+		return;
+	}
+	LODLevels.RemoveAt(Index);
+
+	for (uint32 Level = Index; Level < LODLevels.Num(); ++Level)
+	{
+		if (LODLevels[Level])
+		{
+			LODLevels[Level]->Level = static_cast<int32>(Level);
+		}
+	}
+}
+
+bool UParticleEmitter::RemoveBaseModule(UParticleModule* Module)
+{
+	if (!Module || LODLevels.IsEmpty() || !LODLevels[0] || !LODLevels[0]->RemoveModule(Module))
 	{
 		return false;
 	}
-
-	UParticleLODLevel* Copy = Cast<UParticleLODLevel>(StaticDuplicateObject(LODLevels[0], this));
-
-	if (!Copy)
+	
+	if (bInheritLODModules)
 	{
-		return false;
+		for (uint32 Index = 1; Index < LODLevels.Num(); ++Index)
+		{
+			UParticleLODLevel* LOD = LODLevels[Index];
+			if (LOD)
+			{
+				LOD->RemoveModule(FindLODModule(LOD->Modules, Module->LODSlotId));
+			}
+		}
+	}
+	return true;
+}
+
+UParticleModule* UParticleEmitter::DuplicateLODModule(int32 TargetIndex, const UParticleModule* Slot, bool bFromHighest)
+{
+	if (!bInheritLODModules || !Slot || TargetIndex <= 0 || static_cast<uint32>(TargetIndex) >= LODLevels.Num()) return nullptr;
+	UParticleLODLevel* Target = LODLevels[TargetIndex];
+	UParticleLODLevel* Source = LODLevels[bFromHighest ? 0 : TargetIndex - 1];
+	if (!Target || !Source) return nullptr;
+
+	if (Slot == Target->EffectiveRequired)
+	{
+		if (!Source->EffectiveRequired) return nullptr;
+		if (auto* Copy = Cast<UParticleModuleRequired>(StaticDuplicateObject(Source->EffectiveRequired, Target)))
+			return Target->RequiredModule = Copy;
+		return nullptr;
+	}
+	if (Slot == Target->EffectiveSpawn)
+	{
+		if (!Source->EffectiveSpawn) return nullptr;
+		if (auto* Copy = Cast<UParticleModuleSpawn>(StaticDuplicateObject(Source->EffectiveSpawn, Target)))
+			return Target->SpawnModule = Copy;
+		return nullptr;
+	}
+	if (Slot == Target->EffectiveTypeData)
+	{
+		if (!Source->EffectiveTypeData) return nullptr;
+		if (auto* Copy = Cast<UParticleModuleTypeDataBase>(StaticDuplicateObject(Source->EffectiveTypeData, Target)))
+			return Target->TypeDataModule = Copy;
+		return nullptr;
 	}
 
-	Copy->Level = TargetIndex;
-	Copy->GetOrCreateSpawn()->Rate *= SpawnRateScale;
+	UParticleModule* Original = FindLODModule(Source->EffectiveModules, Slot->LODSlotId);
+	if (!Original) return nullptr;
+	UParticleModule* Copy = Cast<UParticleModule>(StaticDuplicateObject(Original, Target));
+	if (!Copy) return nullptr;
+	Copy->LODSlotId = Slot->LODSlotId;
+	for (UParticleModule*& Override : Target->Modules)
+	{
+		if (Override && Override->LODSlotId == Copy->LODSlotId)
+		{
+			Override = Copy;
+			return Copy;
+		}
+	}
+	Target->Modules.Add(Copy);
+	return Copy;
+}
 
-	LODLevels[TargetIndex] = Copy;
-	CacheEmitterModuleInfo();
+bool UParticleEmitter::InheritLODModule(int32 TargetIndex, UParticleModule* Module)
+{
+	if (!bInheritLODModules || !Module || TargetIndex <= 0 || static_cast<uint32>(TargetIndex) >= LODLevels.Num()) return false;
+	UParticleLODLevel* Target = LODLevels[TargetIndex];
+	if (!Target) return false;
+	if (Target->RequiredModule == Module) Target->RequiredModule = nullptr;
+	else if (Target->SpawnModule == Module) Target->SpawnModule = nullptr;
+	else if (Target->TypeDataModule == Module) Target->TypeDataModule = nullptr;
+	else return Target->RemoveModule(Module);
 	return true;
 }
 
 void UParticleEmitter::CacheEmitterModuleInfo()
 {
+	UParticleLODLevel* Previous = nullptr;
 	for (UParticleLODLevel* LOD : LODLevels)
 	{
 		if (!LOD) continue;
+		if (bInheritLODModules && Previous)
+		{
+			LOD->EffectiveRequired = LOD->RequiredModule ? LOD->RequiredModule : Previous->EffectiveRequired;
+			LOD->EffectiveSpawn = LOD->SpawnModule ? LOD->SpawnModule : Previous->EffectiveSpawn;
+			LOD->EffectiveTypeData = LOD->TypeDataModule ? LOD->TypeDataModule : Previous->EffectiveTypeData;
+			LOD->EffectiveModules.Reset();
+			for (UParticleModule* Inherited : Previous->EffectiveModules)
+			{
+				if (!Inherited)
+				{
+					continue;
+				}
+				UParticleModule* Override = FindLODModule(LOD->Modules, Inherited->LODSlotId);
+				LOD->EffectiveModules.Add(Override ? Override : Inherited);
+			}
+		}
+		else
+		{
+			LOD->EffectiveRequired = LOD->GetOrCreateRequired();
+			LOD->EffectiveSpawn = LOD->GetOrCreateSpawn();
+			LOD->EffectiveTypeData = LOD->GetOrCreateTypeData();
+			LOD->EffectiveModules = LOD->Modules;
+		}
 		LOD->SpawnModules.Reset();
 		LOD->UpdateModules.Reset();
-		for (UParticleModule* Module : LOD->Modules)
+		for (UParticleModule* Module : LOD->EffectiveModules)
 		{
-			if (!Module || !Module->bEnabled) continue;
+			if (!Module || !Module->bEnabled)
+			{
+				continue;
+			}
+
 			if (Module->RunsOnSpawn())
+			{
 				LOD->SpawnModules.Add(Module);
+			}
 			if (Module->RunsOnUpdate())
+			{
 				LOD->UpdateModules.Add(Module);
+			}
 		}
+		Previous = LOD;
 	}
 }
 
@@ -354,9 +604,129 @@ UParticleEmitter* UParticleSystem::AddEmitter()
 	return Emitter;
 }
 
+int32 UParticleSystem::GetLODCount() const
+{
+	int32 Count = std::max(1, static_cast<int32>(LODDistances.Num()));
+	for (const UParticleEmitter* Emitter : Emitters)
+	{
+		if (Emitter)
+		{
+			Count = std::max(Count, static_cast<int32>(Emitter->GetLODLevels().Num()));
+		}
+	}
+	return Count;
+}
+
+float UParticleSystem::GetLODDistance(int32 Index) const
+{
+	const int32 Last = static_cast<int32>(LODDistances.Num()) - 1;
+	if (Last < 0)
+	{
+		return 10.0f * Index;
+	}
+	
+	return Index <= Last 
+		? LODDistances[Index] 
+		: LODDistances[Last] + 10.0f * (Index - Last);
+}
+
+void UParticleSystem::FillMissingLODDistances()
+{
+	const int32 Count = GetLODCount();
+	while (static_cast<int32>(LODDistances.Num()) < Count)
+	{
+		LODDistances.Add(GetLODDistance(static_cast<int32>(LODDistances.Num())));
+	}
+}
+
+bool UParticleSystem::SetLODDistance(int32 Index, float Distance)
+{
+	const int32 Count = GetLODCount();
+	if (Index <= 0 || Index >= Count || !std::isfinite(Distance) || Distance <= 0.0f)
+	{
+		return false;
+	}
+	if (Distance <= GetLODDistance(Index - 1))
+	{
+		return false;
+	}
+	if (Index + 1 < Count && Distance >= GetLODDistance(Index + 1))
+	{
+		return false;
+	}
+
+	FillMissingLODDistances();
+	LODDistances[Index] = Distance;
+	return true;
+}
+
+bool UParticleSystem::InsertLOD(int32 Index)
+{
+	const int32 Count = GetLODCount();
+	if (Index <= 0 || Index > Count)
+	{
+		return false;
+	}
+
+	const float Lower = GetLODDistance(Index - 1);
+	const float Upper = GetLODDistance(Index);
+	const float Distance = Index == Count 
+						? Upper 
+						: Lower + (Upper - Lower) * 0.5f;
+	if (!std::isfinite(Distance) || Distance <= Lower || Distance >= Upper)
+	{
+		return false;
+	}
+
+	FillMissingLODDistances();
+	for (UParticleEmitter* Emitter : Emitters)
+	{
+		if (!Emitter)
+		{
+			continue;
+		}
+		
+		while (static_cast<int32>(Emitter->GetLODLevels().Num()) < Count)
+		{
+			Emitter->AddLODLevel();
+		}
+		Emitter->InsertLODLevel(Index);
+		Emitter->CacheEmitterModuleInfo();
+	}
+	LODDistances.Insert(Distance, Index);
+	return true;
+}
+
+bool UParticleSystem::RemoveLOD(int32 Index)
+{
+	const int32 Count = GetLODCount();
+	if (Index <= 0 || Index >= Count) return false;
+	FillMissingLODDistances();
+	for (UParticleEmitter* Emitter : Emitters)
+	{
+		if (!Emitter)
+		{
+			continue;
+		}
+
+		while (static_cast<int32>(Emitter->GetLODLevels().Num()) < Count)
+		{
+			Emitter->AddLODLevel();
+		}
+		Emitter->RemoveLODLevel(Index);
+		Emitter->CacheEmitterModuleInfo();
+	}
+	LODDistances.RemoveAt(Index);
+	return true;
+}
+
 bool UParticleSystem::RemoveEmitter(UParticleEmitter* Emitter)
 {
-	if (!Emitter) return false;
+	if (!Emitter)
+	{
+		return false;
+	}
+
 	for (uint32 Index = 0; Index < Emitters.Num(); ++Index)
 	{
 		if (Emitters[Index] == Emitter)
@@ -376,5 +746,19 @@ bool UParticleSystem::SaveToFile(const FString& Path)
 UParticleSystem* UParticleSystem::LoadFromFile(const FString& Path, UObject* Outer)
 {
 	UParticleSystem* System = NewObject<UParticleSystem>(Outer);
-	return FJsonArchive::LoadObject(System, Path) ? System : nullptr;
+	if (!FJsonArchive::LoadObject(System, Path))
+	{
+		return nullptr;
+	}
+	
+	for (UParticleEmitter* Emitter : System->Emitters)
+	{
+		if (!Emitter)
+		{
+			continue;
+		}
+		Emitter->EnableModuleInheritance();
+		Emitter->CacheEmitterModuleInfo();
+	}
+	return System;
 }

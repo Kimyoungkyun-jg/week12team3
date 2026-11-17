@@ -102,6 +102,7 @@ public:
 	const TArray<FParticleEmitterInstance>& GetEmitterInstances() const { return EmitterInstances; }
 	TArray<FParticleEmitterInstance>& GetEmitterInstancesMutable() { return EmitterInstances; }
 	void UpdateLOD(float Distance);
+	void SetForcedLOD(int32 Index);
 	void UpdateEmitterStrides();
 	void ResetParticles();
 	void SetColorParameter(const FString& Name, const FColor& Value);
@@ -139,4 +140,5 @@ private:
 	TArray<FParticleSysParam> InstanceParamList;
 	FParticleInstanceParameters InstanceParameters;
 	FString LoadedTemplatePath;
+	int32 ForcedLODIndex = -1;
 };

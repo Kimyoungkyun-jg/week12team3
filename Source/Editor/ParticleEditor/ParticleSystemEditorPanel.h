@@ -31,6 +31,9 @@ public:
 private:
 	void CreateDefaultSystem();
 	void SaveAsset();
+	void SelectLOD(int32 Index);
+	void RefreshPreview();
+	bool CanEditSelectedModule() const;
 	void RenderMenuBar();
 	void RenderToolbar();
 	void RenderViewportPanel(float Width, float Height);
