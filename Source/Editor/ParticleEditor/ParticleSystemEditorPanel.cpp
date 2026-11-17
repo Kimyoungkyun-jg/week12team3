@@ -642,6 +642,24 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			ImGui::Checkbox("Linear Over Life", &Sub->bUseLinearOverLife);
 			ImGui::DragFloat("Play Rate", &Sub->PlayRate, 0.05f, 0.0f, 20.0f);
 		}
+		else if (auto* Collision = Cast<UParticleModuleCollision>(SelectedModule))
+		{
+			ImGui::DragFloat("Restitution Min", &Collision->RestitutionMin, 0.01f, 0.0f, 1.0f);
+			ImGui::DragFloat("Restitution Max", &Collision->RestitutionMax, 0.01f, 0.0f, 1.0f);
+			ImGui::DragFloat("Friction Min", &Collision->FrictionMin, 0.01f, 0.0f, 1.0f);
+			ImGui::DragFloat("Friction Max", &Collision->FrictionMax, 0.01f, 0.0f, 1.0f);
+			ImGui::DragInt("Max Collisions", &Collision->MaxCollisions, 1.0f, 0, 1000);
+			ImGui::DragFloat("Collision Radius", &Collision->CollisionRadius, 0.01f, 0.0f, 100.0f);
+		}
+		else if (auto* EventGen = Cast<UParticleModuleEventGenerator>(SelectedModule))
+		{
+			char EventNameBuf[128] = {};
+			strncpy_s(EventNameBuf, EventGen->EventName.c_str(), _TRUNCATE);
+			if (ImGui::InputText("Event Name", EventNameBuf, sizeof(EventNameBuf)))
+				EventGen->EventName = EventNameBuf;
+			// 0이면 TickCollision의 나머지 연산이 0으로 나누게 되므로 하한을 1로 막는다.
+			ImGui::DragInt("Event Frequency", &EventGen->EventFrequency, 1.0f, 1, 1000);
+		}
 	}
 	else if (SelectedEmitter)
 	{
