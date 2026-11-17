@@ -12,8 +12,9 @@
                             "Name": "ParticleSystemComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CustomTimeDilation": 1.0,
-                                "TemplatePath": "Assets/Particles/SimpleParticles.particle",
+                                "TemplatePath": "Assets/Particles/CollisionTest.particle",
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
@@ -59,6 +60,7 @@
                             "OverrideMaterials": [],
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "StaticMesh": "Cube",
                                 "Transform": {
                                     "Location": {
@@ -112,6 +114,7 @@
                             "Name": "EffectComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CustomTimeDilation": 1.0,
                                 "TemplatePath": "Assets/Particles/HitParticles.particle",
                                 "Transform": {
@@ -157,7 +160,7 @@
             "GameModeClassName": "AGameMode",
             "HUDClassName": "",
             "PlayerControllerClassName": "",
-            "PlayerPawnClassName": ""
+            "PlayerPawnClassName": "ADefaultPawn"
         }
     }
 }
