@@ -25,6 +25,32 @@
 #include <algorithm>
 #include <filesystem>
 
+namespace
+{
+	UParticleEmitter* AddDefaultEmitter(UParticleSystem* System)
+	{
+		UParticleEmitter* Emitter = System ? System->AddEmitter() : nullptr;
+		if (!Emitter)
+		{
+			return nullptr;
+		}
+
+		constexpr float DefaultSpawnRates[] = { 10.0f, 6.0f, 2.0f };
+		for (float SpawnRate : DefaultSpawnRates)
+		{
+			UParticleLODLevel* LOD = Emitter->AddLODLevel();
+			LOD->GetOrCreateRequired()->Material = UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial");
+			LOD->GetOrCreateSpawn()->Rate = SpawnRate;
+
+			LOD->AddModule(UParticleModuleLifetime::StaticClass());
+			LOD->AddModule(UParticleModuleSize::StaticClass());
+			LOD->AddModule(UParticleModuleVelocity::StaticClass());
+			LOD->AddModule(UParticleModuleColor::StaticClass());
+		}
+		return Emitter;
+	}
+}
+
 FParticleSystemEditorPanel::FParticleSystemEditorPanel() = default;
 FParticleSystemEditorPanel::~FParticleSystemEditorPanel() { Release(); }
 
@@ -47,15 +73,14 @@ void FParticleSystemEditorPanel::Release()
 
 void FParticleSystemEditorPanel::CreateDefaultSystem()
 {
-	if (!EditingSystem) return;
-	UParticleEmitter* Emitter = EditingSystem->AddEmitter();
-	if (!Emitter) return;
-	UParticleLODLevel* LOD = Emitter->AddLODLevel();
-	if (!LOD) return;
-	LOD->AddModule(UParticleModuleLifetime::StaticClass());
-	LOD->AddModule(UParticleModuleSize::StaticClass());
-	LOD->AddModule(UParticleModuleVelocity::StaticClass());
-	LOD->AddModule(UParticleModuleColor::StaticClass());
+	if (!AddDefaultEmitter(EditingSystem))
+	{
+		return;
+	}
+
+	EditingSystem->LODDistances.Add(0.0f);
+	EditingSystem->LODDistances.Add(20.0f);
+	EditingSystem->LODDistances.Add(50.0f);
 }
 
 void FParticleSystemEditorPanel::OpenAsset(const FString& InPath)
@@ -527,7 +552,32 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			ImGui::Checkbox("Looping", &Req->bLooping);
 			ImGui::Checkbox("Use Local Space", &Req->bUseLocalSpace);
 
-			if (FContentDrawerPanel::DrawMaterialPicker("Material", Req->Material, "(Default)"))
+			UParticleLODLevel* OwnerLOD = nullptr;
+			if (EditingSystem)
+			{
+				for (UParticleEmitter* Emitter : EditingSystem->GetEmitters())
+				{
+					if (!Emitter)
+						continue;
+					for (UParticleLODLevel* LOD : Emitter->GetLODLevels())
+					{
+						if (LOD && LOD->RequiredModule == Req)
+						{
+							OwnerLOD = LOD;
+							break;
+						}
+					}
+					if (OwnerLOD)
+						break;
+				}
+			}
+
+			const bool bMeshEmitter = OwnerLOD && Cast<UParticleModuleTypeDataMesh>(OwnerLOD->TypeDataModule);
+			const uint32 UsageFlag = static_cast<uint32>(bMeshEmitter ? EMaterialUsage::ParticleMesh : EMaterialUsage::ParticleSprite);
+			UMaterial* FallbackMaterial = (!Req->Material && !bMeshEmitter)
+				? UAssetManager::GetAssetByPath<UMaterial>("SubUVMaterial")
+				: nullptr;
+			if (FContentDrawerPanel::DrawMaterialPicker("Material", Req->Material, "(Default)", FallbackMaterial, UsageFlag))
 			{
 				if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 					PreviewActor->GetParticleSystemComponent()->MarkRenderStateDirty();

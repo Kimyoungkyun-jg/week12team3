@@ -57,8 +57,6 @@ public:
 	void SetBoneWeightHeatmap(bool bEnable, int32 BoneIndex);
 	bool IsBoneWeightHeatmapEnabled() const { return bBoneWeightHeatmap; }
 
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext) override;
-
 	virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
 	FVertexBuffer* GetSkinnedVertexBuffer() const { return SkinnedVertexBuffer.get(); }
 	FVertexBuffer* GetSkinnedVertexBuffer(uint32 LOD);

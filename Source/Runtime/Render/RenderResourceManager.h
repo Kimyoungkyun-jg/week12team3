@@ -17,8 +17,8 @@ enum class EPSOType : uint8
 	Outline_Mask,            
 	Outline_Draw,
 	StaticMesh_GBuffer,
-	DeferredLighting,
-	DeferredPointLighting,      // 이전 재질 파일의 PSOType 숫자와 호환을 위해 ID 유지
+	Reserved_10,
+	Reserved_11,
 	ToneMap,
 	Reserved_13,                // 삭제된 FireBall 자리. 씬 파일의 PSOType 숫자(Billboard=14 등)가 밀리지 않게 남긴다
 	Billboard,
@@ -38,8 +38,11 @@ enum class EPSOType : uint8
 	Particle_MeshOpaque,
 	Particle_MeshTranslucent,
 	Particle_MeshAdditive,
+	Particle_Sprite,
+	SkeletalMesh_GBuffer,
 	Count
 };
+class UMaterial;
 
 class FRenderResourceManager
 {
@@ -62,9 +65,11 @@ public:
 
 	static FPipelineState* GetPSO(const EPSOType& InType);
 	static FShaderProgram* GetForwardShaderProgram(EReflectionModel Reflection, EShadingModel Shading, bool bGPUSkinning = false, bool bUnlit = false);
+	static FShaderProgram* GetMaterialGraphShaderProgram(const UMaterial& Material, EPSOType TargetPSO, EReflectionModel Reflection, bool bUnlit, bool bGPUSkinning, FString& OutError);
 	static FShaderProgram* GetWorldNormalShaderProgram(bool bGPUSkinning);
+	static FShaderProgram* GetDepthPrepassShaderProgram(bool bGPUSkinning);
 	static FShaderProgram* GetTranslucentShaderProgram(bool bGPUSkinning);
-	static FShaderProgram* GetShadowDepthShaderProgram();
+	static FShaderProgram* GetSkeletalMeshGBufferShaderProgram(bool bGPUSkinning);
 	static FShaderProgram* GetGPUSkinningShadowDepthShaderProgram();
 	static FComputeShader* GetComputeShader(const FString& InPath, const FString& EntryPoint);
 private:
@@ -76,6 +81,7 @@ private:
 	TMap<FString, TUniquePtr<FVertexShader>> VertexShaderMap;
 	TMap<FString, TUniquePtr<FPixelShader>>  PixelShaderMap;
 	TMap<FString, TUniquePtr<FShaderProgram>> ShaderProgramMap;
+	TMap<FString, FString> MaterialGraphErrorMap;
 
 	TMap<EPSOType, TUniquePtr<FPipelineState>> PipelineStateMap;
 };

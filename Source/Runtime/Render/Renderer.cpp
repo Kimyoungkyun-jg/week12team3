@@ -4,6 +4,7 @@
 #include "Render/GpuProfiler.h"
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <unordered_map>
 
 #include "Render/SkyboxRenderer.h"
@@ -16,8 +17,55 @@
 
 namespace
 {
-	constexpr uint32 PerObjectSlotConstants = 16;
-	constexpr uint32 MinPerObjectSlots = 1024;
+	constexpr uint32 MinInstanceIdCapacity = 256;
+	constexpr uint32 CommandSlotBufferBytes = 512;
+
+	bool HasResourceSlot(const TArray<FMeshDrawShaderResource>& Resources, uint32 Slot, EShaderBindFlagBits Stages)
+	{
+		for (const FMeshDrawShaderResource& Entry : Resources)
+		{
+			if (Entry.Slot == Slot && Entry.Stages == Stages)
+				return true;
+		}
+		return false;
+	}
+
+	bool HasSameBoundResource(const TArray<FMeshDrawShaderResource>& Bound, const FMeshDrawShaderResource& Next)
+	{
+		for (const FMeshDrawShaderResource& Entry : Bound)
+		{
+			if (Entry.Slot == Next.Slot && Entry.Stages == Next.Stages &&
+				Entry.Texture == Next.Texture && Entry.StructuredBuffer == Next.StructuredBuffer)
+				return true;
+		}
+		return false;
+	}
+
+	bool HasStructuredBuffer(const TArray<FMeshDrawShaderResource>& Resources)
+	{
+		for (const FMeshDrawShaderResource& Entry : Resources)
+		{
+			if (Entry.StructuredBuffer != nullptr)
+				return true;
+		}
+		return false;
+	}
+
+	bool HasSameConstantBufferBytes(const FMeshDrawCommand* Prev, const FMeshDrawCommand& Next)
+	{
+		if (!Prev || Prev->ConstantBuffers.Num() != Next.ConstantBuffers.Num())
+			return false;
+		for (int32 i = 0; i < Next.ConstantBuffers.Num(); ++i)
+		{
+			const FMeshDrawConstantBuffer& A = Prev->ConstantBuffers[i];
+			const FMeshDrawConstantBuffer& B = Next.ConstantBuffers[i];
+			if (A.Slot != B.Slot || A.Stages != B.Stages || A.DataSize != B.DataSize)
+				return false;
+			if (A.DataSize > 0 && std::memcmp(A.Data.data(), B.Data.data(), A.DataSize) != 0)
+				return false;
+		}
+		return true;
+	}
 }
 
 FRenderer::FRenderer() = default;
@@ -25,78 +73,143 @@ FRenderer::~FRenderer() = default;
 
 bool FRenderer::Init()
 {
-	bUsePerObjectSlots = RenderCommand::SupportsConstantBufferOffsets();
-	ObjectCB = RenderCommand::CreateConstantBuffer(sizeof(FForwardObjectConstants));
-	ViewCB = RenderCommand::CreateConstantBuffer(sizeof(FMatrix));
-	MaterialCB = RenderCommand::CreateConstantBuffer(sizeof(FForwardMaterialConstants));
-	if (!ObjectCB || !ViewCB || !MaterialCB) return false;
+	for (uint32 i = 0; i < MaxCommandSlotCBs; ++i)
+	{
+		CommandSlotCBs[i] = RenderCommand::CreateConstantBuffer(CommandSlotBufferBytes);
+		if (!CommandSlotCBs[i])
+			return false;
+	}
+	ViewCB = RenderCommand::CreateConstantBuffer(sizeof(FViewConstants));
+	DrawBatchCB = RenderCommand::CreateConstantBuffer(sizeof(FDrawBatchConstants));
+	if (!ViewCB || !DrawBatchCB)
+		return false;
 	GPUOcclusion.Init();
 	return true;
 }
 
-void FRenderer::UploadViewMatrix(const FMatrix& ViewProjection)
+void FRenderer::UploadViewConstants(const FMatrix& ViewProjection, const FMatrix& ViewMatrix,
+	const FMatrix& ProjectionMatrix, float TotalTime)
 {
-	RenderCommand::UpdateBufferData(ViewCB.get(), &ViewProjection, sizeof(ViewProjection));
+	FViewConstants Constants{};
+	Constants.VP = ViewProjection;
+	Constants.View = ViewMatrix;
+	Constants.Projection = ProjectionMatrix;
+	Constants.ViewTimeParams = FVector4(TotalTime, 0.0f, 0.0f, 0.0f);
+	RenderCommand::UpdateBufferData(ViewCB.get(), &Constants, sizeof(Constants));
 }
 
-void FRenderer::BindBatch(const FMeshDrawBatch& Batch)
+void FRenderer::EnsureInstanceIdCapacity(uint32 Count)
 {
-	RenderCommand::BindPipelineState(Batch.Pipeline);
-	if (Batch.bForceWireframe)
-		RenderCommand::SetRasterizerState(ERasterizerState::Wireframe);
-	
-	RenderCommand::BindVertexBuffer(Batch.VertexBuffer);
-	RenderCommand::BindIndexBuffer(Batch.IndexBuffer);
-	RenderCommand::BindShaderResource(16, Batch.SkinningMatricesBuffer, EShaderBindFlagBits::Vertex);
-	
-	if (Batch.bBindViewConstants)
-		RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex);
-	for (uint32 Index = 0; Index < Batch.Textures.Num(); ++Index)
-		RenderCommand::BindShaderResource(Index, Batch.Textures[Index].Texture,
-			Batch.Textures[Index].Stages);
-	
-	RenderCommand::BindSamplerState(0, Batch.Sampler, Batch.SamplerStages);
-	
-	if (Batch.MaterialDataSize)
+	if (Count <= InstanceIdCapacity)
+		return;
+	uint32 NewCap = std::max(InstanceIdCapacity * 2u, MinInstanceIdCapacity);
+	while (NewCap < Count)
+		NewCap *= 2u;
+	InstanceIdBuffer = RenderCommand::CreateDynamicStructuredBuffer(NewCap, sizeof(uint32));
+	InstanceIdCapacity = InstanceIdBuffer ? NewCap : 0;
+}
+
+void FRenderer::UnbindUnusedResources(const TArray<FMeshDrawShaderResource>& NextResources,
+	TArray<FMeshDrawShaderResource>& InOutBoundResources)
+{
+	for (const FMeshDrawShaderResource& Prev : InOutBoundResources)
 	{
-		RenderCommand::UpdateBufferData(MaterialCB.get(), Batch.MaterialData.data(), Batch.MaterialDataSize);
-		RenderCommand::BindConstantBuffer(Batch.MaterialSlot, MaterialCB.get(), Batch.MaterialStages);
+		if (!HasResourceSlot(NextResources, Prev.Slot, Prev.Stages))
+			RenderCommand::UnbindShaderResources(Prev.Slot, 1, Prev.Stages);
 	}
 }
 
-void FRenderer::BindObject(const FMeshDrawBatch& Batch, const FMeshDrawBatch::FItem& Item)
-{
-	if (Batch.bUseObjectSlots && bUsePerObjectSlots && PerObjectSlotCB &&
-		Item.ObjectSlot != InvalidObjectSlot)
-	{
-		RenderCommand::BindConstantBufferRange(Batch.ObjectBindingSlot, PerObjectSlotCB.get(),
-			Item.ObjectSlot * PerObjectSlotConstants, PerObjectSlotConstants, Batch.ObjectStages);
-	}
-	else
-	{
-		RenderCommand::UpdateBufferData(ObjectCB.get(), Item.ObjectData.data(), Item.ObjectDataSize);
-		RenderCommand::BindConstantBuffer(Batch.ObjectBindingSlot, ObjectCB.get(), Batch.ObjectStages);
-	}
-}
-
-void FRenderer::DrawMeshes(std::span<const FMeshDrawBatch> Batches,
+void FRenderer::SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> Commands,
+	const FStructuredBuffer* GPUSceneBuffer, uint32* OutDrawCalls,
 	const std::shared_ptr<FGpuTimingHistory>& SkeletalTiming, ESkinningMode MeasuredMode)
 {
-	uint32 PreviousTextureCount = 0;
+	if (Commands.empty())
+		return;
+
+	ScratchInstanceIds.Reset();
+	ScratchDrawRuns.Reset();
+	ScratchDrawRuns.Reserve(static_cast<int32>(Commands.size()));
+
+	const uint32 TotalCount = static_cast<uint32>(Commands.size());
+	for (uint32 i = 0; i < TotalCount; ++i)
+	{
+		const FVisibleMeshDrawCommand& Vis = Commands[i];
+		if (!Vis.Command)
+			continue;
+
+		const FMeshDrawCommand& Cmd = *Vis.Command;
+		if (Cmd.bUsesGPUScene && Cmd.InstanceCount == 0 && Vis.PrimitiveId != InvalidPrimitiveId)
+		{
+			const uint32 StartInstance = static_cast<uint32>(ScratchInstanceIds.Num());
+			ScratchInstanceIds.Add(Vis.PrimitiveId);
+			uint32 RunCount = 1;
+			while (i + RunCount < TotalCount && AreVisibleCommandsInstanceCompatible(Vis, Commands[i + RunCount])) // 바로 옆에 나란히 붙어 있는 완전히 같은 오브젝트들을 몇 개까지 하나의 DrawIndexedInstanced로 합칠 수 있는지
+			{
+				ScratchInstanceIds.Add(Commands[i + RunCount].PrimitiveId);
+				++RunCount;
+			}
+			ScratchDrawRuns.Add({ &Vis, StartInstance, RunCount, true });
+			i += RunCount - 1;
+		}
+		else
+		{
+			ScratchDrawRuns.Add({ &Vis, Cmd.StartInstanceLocation, Cmd.InstanceCount, false });
+		}
+	}
+
+	if (ScratchDrawRuns.IsEmpty())
+		return;
+
+	bool bBoundGPUScene = false;
+	if (!ScratchInstanceIds.IsEmpty())
+	{
+		EnsureInstanceIdCapacity(static_cast<uint32>(ScratchInstanceIds.Num()));
+		if (InstanceIdBuffer)
+		{
+			if (void* Mapped = RenderCommand::MapWriteDiscard(InstanceIdBuffer.get()))
+			{
+				std::memcpy(Mapped, ScratchInstanceIds.GetData(), ScratchInstanceIds.Num() * sizeof(uint32));
+				RenderCommand::Unmap(InstanceIdBuffer.get());
+			}
+			if (GPUSceneBuffer)
+				RenderCommand::BindShaderResource(17, GPUSceneBuffer, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+			RenderCommand::BindShaderResource(18, InstanceIdBuffer.get(), EShaderBindFlagBits::Vertex);
+			bBoundGPUScene = true;
+		}
+	}
+
+	RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+
 	using EScopeKind = FGpuProfiler::EScopeKind;
 	FGpuProfiler* Profiler = SkeletalTiming ? &FGpuProfiler::Get() : nullptr;
 	EScopeKind ActiveKind = EScopeKind::Pass;
 	int32 TimingHandle = -1;
-	for (const FMeshDrawBatch& Batch : Batches)
+
+	FShaderProgram* PrevShader = nullptr;
+	EPrimitiveTopology PrevTopology = static_cast<EPrimitiveTopology>(255);
+	ERasterizerState PrevRaster = static_cast<ERasterizerState>(255);
+	EBlendState PrevBlend = static_cast<EBlendState>(255);
+	EDepthStencilState PrevDepth = static_cast<EDepthStencilState>(255);
+	uint32 PrevStencil = 0xFFFFFFFFu;
+	FVertexBuffer* PrevVB = nullptr;
+	FIndexBuffer* PrevIB = nullptr;
+	ESamplerState PrevSampler = static_cast<ESamplerState>(255);
+	EShaderBindFlagBits PrevSamplerStages = EShaderBindFlagBits::None;
+	const FMeshDrawCommand* PrevCBCommand = nullptr;
+	TArray<FMeshDrawShaderResource> BoundResources;
+
+	for (const FDrawRun& Run : ScratchDrawRuns)
 	{
-		if (Profiler && !Batch.Items.IsEmpty())
+		const FVisibleMeshDrawCommand& Vis = *Run.Visible;
+		const FMeshDrawCommand& Cmd = *Vis.Command;
+
+		if (Profiler)
 		{
 			EScopeKind Kind = EScopeKind::Pass;
-			const bool bGpuSkinned = Batch.SkinningMatricesBuffer != nullptr || Batch.bComputeSkinned;
-			if (Batch.bSkeletalMesh && bGpuSkinned == (MeasuredMode != ESkinningMode::CPU))
+			const bool bGpuSkinned = Cmd.bComputeSkinned || (Cmd.bSkeletalMesh && HasStructuredBuffer(Cmd.ShaderResources));
+			if (Cmd.bSkeletalMesh && bGpuSkinned == (MeasuredMode != ESkinningMode::CPU))
 				Kind = bGpuSkinned ? EScopeKind::GpuSkinnedDraw : EScopeKind::SkeletalDraw;
 
-			// Group adjacent draws without changing their order or including static meshes.
 			if (Kind != ActiveKind)
 			{
 				Profiler->EndScope(TimingHandle);
@@ -104,67 +217,119 @@ void FRenderer::DrawMeshes(std::span<const FMeshDrawBatch> Batches,
 				ActiveKind = Kind;
 			}
 		}
-		BindBatch(Batch);
-		if (PreviousTextureCount > Batch.Textures.Num())
-			RenderCommand::UnbindShaderResources(static_cast<uint32>(Batch.Textures.Num()),
-				PreviousTextureCount - static_cast<uint32>(Batch.Textures.Num()),
-				EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
-		
-		PreviousTextureCount = static_cast<uint32>(Batch.Textures.Num());
 
-		// BindBatch(Batch)는 Pipeline의 기본 StencilRef를 바인딩한다.
-		uint32 CurrentStencilRef = Batch.Pipeline.StencilRef;
-		for (const FMeshDrawBatch::FItem& Item : Batch.Items)
+		FShaderProgram* Shader = Vis.ShaderOverride ? Vis.ShaderOverride : Cmd.Pipeline.Shader;
+		if (Shader != PrevShader)
 		{
-			const uint32 DesiredStencilRef =
-				Item.bOverrideStencilRef
-				? Item.StencilRef
-				: Batch.Pipeline.StencilRef;
+			RenderCommand::BindShaderProgram(Shader);
+			PrevShader = Shader;
+		}
+		if (Cmd.Pipeline.Topology != PrevTopology)
+		{
+			RenderCommand::SetPrimitiveTopology(Cmd.Pipeline.Topology);
+			PrevTopology = Cmd.Pipeline.Topology;
+		}
+		const ERasterizerState Raster = (Vis.bForceWireframe || Cmd.bForceWireframe)
+			? ERasterizerState::Wireframe : Cmd.Pipeline.RasterizerState;
+		if (Raster != PrevRaster)
+		{
+			RenderCommand::SetRasterizerState(Raster);
+			PrevRaster = Raster;
+		}
+		if (Cmd.Pipeline.BlendState != PrevBlend)
+		{
+			RenderCommand::SetBlendState(Cmd.Pipeline.BlendState);
+			PrevBlend = Cmd.Pipeline.BlendState;
+		}
+		const EDepthStencilState Depth = Vis.bHasDepthStencilOverride
+			? Vis.DepthStencilOverride : Cmd.Pipeline.DepthStencilState;
+		const uint32 Stencil = (Vis.bOverrideStencilRef || Cmd.bOverrideStencilRef)
+			? (Vis.bOverrideStencilRef ? Vis.StencilRef : Cmd.StencilRef) : Cmd.Pipeline.StencilRef;
+		if (Depth != PrevDepth || Stencil != PrevStencil)
+		{
+			RenderCommand::SetDepthStencilState(Depth, Stencil);
+			PrevDepth = Depth;
+			PrevStencil = Stencil;
+		}
 
-			if (DesiredStencilRef != CurrentStencilRef)
+		if (Cmd.VertexBuffer != PrevVB)
+		{
+			RenderCommand::BindVertexBuffer(Cmd.VertexBuffer);
+			PrevVB = Cmd.VertexBuffer;
+		}
+		if (Cmd.IndexBuffer != PrevIB)
+		{
+			RenderCommand::BindIndexBuffer(Cmd.IndexBuffer);
+			PrevIB = Cmd.IndexBuffer;
+		}
+		if (Cmd.Sampler != PrevSampler || Cmd.SamplerStages != PrevSamplerStages)
+		{
+			RenderCommand::BindSamplerState(0, Cmd.Sampler, Cmd.SamplerStages);
+			PrevSampler = Cmd.Sampler;
+			PrevSamplerStages = Cmd.SamplerStages;
+		}
+
+		UnbindUnusedResources(Cmd.ShaderResources, BoundResources);
+		for (const FMeshDrawShaderResource& Res : Cmd.ShaderResources)
+		{
+			if (HasSameBoundResource(BoundResources, Res))
+				continue;
+			if (Res.StructuredBuffer)
+				RenderCommand::BindShaderResource(Res.Slot, Res.StructuredBuffer, Res.Stages);
+			else
+				RenderCommand::BindShaderResource(Res.Slot, Res.Texture, Res.Stages);
+		}
+		BoundResources = Cmd.ShaderResources;
+
+		if (!HasSameConstantBufferBytes(PrevCBCommand, Cmd))
+		{
+			for (const FMeshDrawConstantBuffer& CB : Cmd.ConstantBuffers)
 			{
-				RenderCommand::SetDepthStencilState(
-					Batch.Pipeline.DepthStencilState,
-					DesiredStencilRef);
-				CurrentStencilRef = DesiredStencilRef;
+				if (CB.DataSize > 0 && CB.Slot < MaxCommandSlotCBs && CommandSlotCBs[CB.Slot])
+				{
+					FConstantBuffer* TargetCB = CommandSlotCBs[CB.Slot].get();
+					RenderCommand::UpdateBufferData(TargetCB, CB.Data.data(), CB.DataSize);
+					RenderCommand::BindConstantBuffer(CB.Slot, TargetCB, CB.Stages);
+				}
 			}
-			BindObject(Batch, Item);
-			RenderCommand::DrawIndexed(Item.IndexCount, Item.StartIndex);
+			PrevCBCommand = &Cmd;
+		}
+
+		if (Run.bGPUSceneInstanced)
+		{
+			FDrawBatchConstants BatchConstants{};
+			BatchConstants.StartInstance = Run.StartInstance;
+			RenderCommand::UpdateBufferData(DrawBatchCB.get(), &BatchConstants, sizeof(BatchConstants));
+			RenderCommand::BindConstantBuffer(5, DrawBatchCB.get(), EShaderBindFlagBits::Vertex);
+			RenderCommand::DrawIndexedInstanced(Cmd.IndexCount, Run.InstanceCount,
+				Cmd.FirstIndex, Cmd.BaseVertexLocation, 0);
+		}
+		else if (Run.InstanceCount > 0)
+		{
+			RenderCommand::DrawIndexedInstanced(Cmd.IndexCount, Run.InstanceCount,
+				Cmd.FirstIndex, Cmd.BaseVertexLocation, Run.StartInstance);
+		}
+		else
+		{
+			RenderCommand::DrawIndexed(Cmd.IndexCount, Cmd.FirstIndex, Cmd.BaseVertexLocation);
 		}
 	}
+
+	if (OutDrawCalls)
+		*OutDrawCalls += static_cast<uint32>(ScratchDrawRuns.Num());
+
+	const TArray<FMeshDrawShaderResource> EmptyResources{};
+	UnbindUnusedResources(EmptyResources, BoundResources);
+	RenderCommand::BindConstantBuffer(4, nullptr, EShaderBindFlagBits::Pixel);
+	if (bBoundGPUScene)
+	{
+		RenderCommand::UnbindShaderResources(17, 1, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+		RenderCommand::UnbindShaderResources(18, 1, EShaderBindFlagBits::Vertex);
+		RenderCommand::BindConstantBuffer(5, nullptr, EShaderBindFlagBits::Vertex);
+	}
+
 	if (Profiler)
 		Profiler->EndScope(TimingHandle);
-}
-
-void FRenderer::EnsurePerObjectSlotCapacity(uint32 SlotCount)
-{
-	if (SlotCount <= PerObjectSlotCapacity) return;
-	uint32 NewCapacity = std::max(PerObjectSlotCapacity * 2, MinPerObjectSlots);
-	while (NewCapacity < SlotCount) NewCapacity *= 2;
-	PerObjectSlotCB = RenderCommand::CreateConstantBuffer(NewCapacity * ObjectSlotBytes);
-	if (!PerObjectSlotCB || !PerObjectSlotCB->GetBuffer())
-	{
-		HTR_LOG(Warning, "Per-object constant buffer creation failed; using per-draw updates.");
-		PerObjectSlotCB.reset();
-		PerObjectSlotCapacity = 0;
-		return;
-	}
-	PerObjectSlotCapacity = NewCapacity;
-}
-
-uint8* FRenderer::BeginObjectConstants(uint32 MaxSlots)
-{
-	if (!bUsePerObjectSlots || MaxSlots == 0) return nullptr;
-	EnsurePerObjectSlotCapacity(MaxSlots);
-	if (!PerObjectSlotCB) { bUsePerObjectSlots = false; return nullptr; }
-	uint8* Destination = static_cast<uint8*>(RenderCommand::MapWriteDiscard(PerObjectSlotCB.get()));
-	if (!Destination) bUsePerObjectSlots = false;
-	return Destination;
-}
-
-void FRenderer::EndObjectConstants()
-{
-	if (PerObjectSlotCB) RenderCommand::Unmap(PerObjectSlotCB.get());
 }
 
 void FRenderer::InitScenePasses(const FString& SkyPanoramaPath)
@@ -182,7 +347,7 @@ void FRenderer::InitScenePasses(const FString& SkyPanoramaPath)
 	HeightFog->Init(this);
 	FXAA = MakeUnique<FFXAARenderer>();
 	FXAA->Init(this);
-	CameraOverlay = MakeUnique<FCameraOverlayRenderer>();   // FXAA->Init(this); 아래
+	CameraOverlay = MakeUnique<FCameraOverlayRenderer>();
 	CameraOverlay->Init(this);
 	ToneMapConstants = RenderCommand::CreateConstantBuffer(sizeof(FToneMapData));
 	SceneText = MakeUnique<FTextRenderer>();
@@ -194,14 +359,13 @@ void FRenderer::InitScenePasses(const FString& SkyPanoramaPath)
 		HTR_LOG(Error, "Projected decal renderer init failed");
 		ProjectedDecal.reset();
 	}
-
 }
 
-FOcclusionMeasureResult FRenderer::MeasureDrawVisibility(std::span<const FMeshDrawBatch> Batches)
+FOcclusionMeasureResult FRenderer::MeasureDrawVisibility(std::span<const FVisibleMeshDrawCommand> Commands,
+	const FStructuredBuffer* GPUSceneBuffer)
 {
 	FOcclusionMeasureResult Result;
-	uint32 Count = 0;
-	for (const FMeshDrawBatch& Batch : Batches) Count += static_cast<uint32>(Batch.Items.Num());
+	const uint32 Count = static_cast<uint32>(Commands.size());
 	if (!Count) return Result;
 	ID3D11Device* Device = FRenderDevice::Get()->GetDevice();
 	ID3D11DeviceContext* Context = FRenderDevice::Get()->GetContext();
@@ -222,53 +386,97 @@ FOcclusionMeasureResult FRenderer::MeasureDrawVisibility(std::span<const FMeshDr
 		if (FAILED(Device->CreateQuery(&Desc, Query.GetAddressOf()))) return Result;
 		OcclusionQueries.Add(std::move(Query));
 	}
-	uint32 QueryIndex = 0;
-	for (const FMeshDrawBatch& Batch : Batches)
+
+	ScratchInstanceIds.Reset();
+	ScratchInstanceIds.Reserve(Count);
+	for (const FVisibleMeshDrawCommand& Vis : Commands)
+		ScratchInstanceIds.Add(Vis.PrimitiveId);
+	EnsureInstanceIdCapacity(Count);
+	if (InstanceIdBuffer)
 	{
-		BindBatch(Batch);
+		if (void* Mapped = RenderCommand::MapWriteDiscard(InstanceIdBuffer.get()))
+		{
+			std::memcpy(Mapped, ScratchInstanceIds.GetData(), Count * sizeof(uint32));
+			RenderCommand::Unmap(InstanceIdBuffer.get());
+		}
+		if (GPUSceneBuffer)
+			RenderCommand::BindShaderResource(17, GPUSceneBuffer, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+		RenderCommand::BindShaderResource(18, InstanceIdBuffer.get(), EShaderBindFlagBits::Vertex);
+	}
+	RenderCommand::BindConstantBuffer(0, ViewCB.get(), EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+
+	TArray<FMeshDrawShaderResource> BoundResources;
+	uint32 QueryIndex = 0;
+	for (uint32 i = 0; i < Count; ++i)
+	{
+		const FVisibleMeshDrawCommand& Vis = Commands[i];
+		if (!Vis.Command)
+			continue;
+		const FMeshDrawCommand& Cmd = *Vis.Command;
+		FPipelineState Pipe = Cmd.Pipeline;
+		if (Vis.ShaderOverride)
+			Pipe.Shader = Vis.ShaderOverride;
+		RenderCommand::BindPipelineState(Pipe);
+		RenderCommand::BindVertexBuffer(Cmd.VertexBuffer);
+		RenderCommand::BindIndexBuffer(Cmd.IndexBuffer);
+		UnbindUnusedResources(Cmd.ShaderResources, BoundResources);
+		for (const FMeshDrawShaderResource& Res : Cmd.ShaderResources)
+		{
+			if (Res.StructuredBuffer)
+				RenderCommand::BindShaderResource(Res.Slot, Res.StructuredBuffer, Res.Stages);
+			else
+				RenderCommand::BindShaderResource(Res.Slot, Res.Texture, Res.Stages);
+		}
+		BoundResources = Cmd.ShaderResources;
+		FDrawBatchConstants Batch{ i, {} };
+		RenderCommand::UpdateBufferData(DrawBatchCB.get(), &Batch, sizeof(Batch));
+		RenderCommand::BindConstantBuffer(5, DrawBatchCB.get(), EShaderBindFlagBits::Vertex);
 		RenderCommand::SetBlendState(EBlendState::NoColorWrite);
 		Context->OMSetDepthStencilState(DepthLessEqualReadOnly.Get(), 0);
-		for (const FMeshDrawBatch::FItem& Item : Batch.Items)
-		{
-			BindObject(Batch, Item);
-			ID3D11Query* Query = OcclusionQueries[QueryIndex++].Get();
-			Context->Begin(Query);
-			RenderCommand::DrawIndexed(Item.IndexCount, Item.StartIndex);
-			Context->End(Query);
-		}
+		ID3D11Query* Query = OcclusionQueries[QueryIndex++].Get();
+		Context->Begin(Query);
+		RenderCommand::DrawIndexedInstanced(Cmd.IndexCount, 1, Cmd.FirstIndex, Cmd.BaseVertexLocation, 0);
+		Context->End(Query);
 	}
 	std::unordered_map<const void*, bool> ObjectVisible;
 	ObjectVisible.reserve(Count);
 	QueryIndex = 0;
-	for (const FMeshDrawBatch& Batch : Batches)
-		for (const FMeshDrawBatch::FItem& Item : Batch.Items)
+	for (const FVisibleMeshDrawCommand& Vis : Commands)
+	{
+		if (!Vis.Command)
+			continue;
+		const FMeshDrawCommand& Cmd = *Vis.Command;
+		UINT64 Samples = 0;
+		while (Context->GetData(OcclusionQueries[QueryIndex++].Get(), &Samples, sizeof(Samples), 0) == S_FALSE) {}
+		const bool bVisible = Samples > 0;
+		++Result.TotalDraws;
+		Result.TotalTriangles += Cmd.IndexCount / 3;
+		if (bVisible)
 		{
-			UINT64 Samples = 0;
-			while (Context->GetData(OcclusionQueries[QueryIndex++].Get(), &Samples, sizeof(Samples), 0) == S_FALSE) {}
-			const bool bVisible = Samples > 0;
-			++Result.TotalDraws;
-			Result.TotalTriangles += Item.IndexCount / 3;
-			if (bVisible)
-			{
-				++Result.VisibleDraws;
-				Result.VisibleTriangles += Item.IndexCount / 3;
-			}
-			if (Item.bOccludedByGpu)
-			{
-				++Result.GPUOccludedDraws;
-				if (bVisible) ++Result.FalseCulls;
-			}
-			bool& bObjectVisible = ObjectVisible[Item.ObjectKey];
-			bObjectVisible = bObjectVisible || bVisible;
+			++Result.VisibleDraws;
+			Result.VisibleTriangles += Cmd.IndexCount / 3;
 		}
+		if (Vis.bOccludedByGpu)
+		{
+			++Result.GPUOccludedDraws;
+			if (bVisible) ++Result.FalseCulls;
+		}
+		bool& bObjectVisible = ObjectVisible[Cmd.ObjectKey];
+		bObjectVisible = bObjectVisible || bVisible;
+	}
 	Result.TotalObjects = static_cast<uint32>(ObjectVisible.size());
 	for (const auto& [Key, bVisible] : ObjectVisible)
 		Result.VisibleObjects += bVisible ? 1 : 0;
 	RenderCommand::SetBlendState(EBlendState::Opaque);
 	RenderCommand::SetDepthStencilState(EDepthStencilState::Default);
+	const TArray<FMeshDrawShaderResource> EmptyResources{};
+	UnbindUnusedResources(EmptyResources, BoundResources);
+	RenderCommand::BindConstantBuffer(4, nullptr, EShaderBindFlagBits::Pixel);
+	RenderCommand::UnbindShaderResources(17, 1, EShaderBindFlagBits::Vertex | EShaderBindFlagBits::Pixel);
+	RenderCommand::UnbindShaderResources(18, 1, EShaderBindFlagBits::Vertex);
+	RenderCommand::BindConstantBuffer(5, nullptr, EShaderBindFlagBits::Vertex);
 	Result.ElapsedMs = std::chrono::duration<double, std::milli>(
 		std::chrono::high_resolution_clock::now() - StartTime).count();
 	Result.bValid = true;
 	return Result;
 }
-

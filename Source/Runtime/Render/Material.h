@@ -1,21 +1,75 @@
 #pragma once
 
 #include "MaterialInterface.h"
+#include "Render/Buffer.h"
 #include "Render/ImportedMaterialProperties.h"
 #include "RenderResourceManager.h"
 #include "Render/RenderStates.h"
-#include "Render/Buffer.h"
 #include "Render/Texture2D.h"
 #include "Material.generated.h"
 
 class FShader;
+class UMaterialInstanceDynamic;
 
-enum class EMaterialParamLayout
+enum class EMaterialUsage : uint32
 {
-	None,
-	StaticMesh,
-	ParticleSubUV
+	None = 0,
+	StaticMesh = 1u << 0,
+	SkeletalMesh = 1u << 1,
+	ParticleSprite = 1u << 2,
+	ParticleMesh = 1u << 3
 };
+
+enum class EMaterialExpressionType : uint8
+{
+	Constant,
+	Constant2Vector,
+	Constant3Vector,
+	Constant4Vector,
+	ScalarParameter,
+	VectorParameter,
+	TextureSample,
+	TextureCoordinate,
+	Add,
+	Multiply,
+	Lerp,
+	OneMinus,
+	MaterialOutput
+};
+
+enum class EMaterialValueType : uint8
+{
+	Scalar,
+	Vector2,
+	Vector3,
+	Vector4,
+	Texture2D,
+	Unknown
+};
+
+struct FMaterialExpressionNode
+{
+	int32 Id = 0;
+	EMaterialExpressionType Type = EMaterialExpressionType::Constant;
+	FVector2 Position = FVector2(0.0f, 0.0f);
+	float ScalarValue = 0.0f;
+	FVector4 VectorValue = FVector4(0.0f, 0.0f, 0.0f, 0.0f);
+	FString ParameterName;
+	FString ParameterGroup = "Default";
+	FString TexturePath;
+	int32 CoordinateIndex = 0;
+};
+
+struct FMaterialExpressionConnection
+{
+	int32 OutputNodeId = 0;
+	int32 OutputPin = 0;
+	int32 InputNodeId = 0;
+	int32 InputPin = 0;
+};
+
+inline constexpr int32 MaxMaterialGraphParameters = 16;
+inline constexpr int32 MaxMaterialGraphTextures = 6;
 
 struct FStaticMeshMaterialParams
 {
@@ -39,9 +93,57 @@ public:
 	UMaterial() :SortID(NextSortID++) {};
 	virtual ~UMaterial() override = default;
 
-	EMaterialParamLayout ParamLayout = EMaterialParamLayout::None;
+	uint32 UsageFlags = static_cast<uint32>(EMaterialUsage::StaticMesh);
+
+	bool HasUsage(EMaterialUsage Usage) const
+	{
+		return (UsageFlags & static_cast<uint32>(Usage)) != 0;
+	}
+
+	void SetUsage(EMaterialUsage Usage, bool bEnabled)
+	{
+		const uint32 Flag = static_cast<uint32>(Usage);
+		if (bEnabled)
+		{
+			UsageFlags |= Flag;
+		}
+		else
+		{
+			UsageFlags &= ~Flag;
+		}
+	}
+
+	bool HasGraphOutput() const
+	{
+		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+		{
+			if (Connection.InputNodeId == OutputNodeId)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	FShaderProgram* Shader = nullptr;
 	TArray<UTexture2D*> Textures;
+	TArray<FMaterialExpressionNode> ExpressionNodes;
+	TArray<FMaterialExpressionConnection> ExpressionConnections;
+	int32 OutputNodeId = 0;
+
+	void EnsureDefaultGraph();
+
+	int32 GetExpressionInputPinCount(EMaterialExpressionType Type) const;
+	int32 GetExpressionOutputPinCount(EMaterialExpressionType Type) const;
+	const char* GetExpressionInputPinName(EMaterialExpressionType Type, int32 PinIndex) const;
+	const char* GetExpressionOutputPinName(EMaterialExpressionType Type, int32 PinIndex) const;
+
+	EMaterialValueType GetExpressionOutputType(int32 NodeId, int32 OutputPin = 0) const;
+
+	bool ConnectExpressionPins(int32 OutputNodeId, int32 OutputPin, int32 InputNodeId, int32 InputPin, FString& OutError);
+	bool ValidateExpressionGraph(FString& OutError) const;
+
 	TUniquePtr<FConstantBuffer> ParamBuffer;
 	EPSOType PSOType = EPSOType::StaticMesh_Opaque;
 	EBlendState BlendState = EBlendState::Opaque;
@@ -64,32 +166,29 @@ public:
 	ELightingModel ShadingModel = ELightingModel::Phong;
 	bool bOverrideShadingModel = false;
 	void SetBlendState(EBlendState InBlendState);
+	UMaterial* GetBaseMaterial() const override { return const_cast<UMaterial*>(this); }
+	void GetRenderProxy(FMaterialRenderProxy& OutProxy) const override;
+
+	EPSOType GetPSOType() const override { return PSOType; }
+	EBlendState GetBlendState() const override { return BlendState; }
+	ESamplerState GetSamplerState() const override { return SamplerState; }
+	uint16 GetSortID() const override { return SortID; }
 	void ApplyImportedProperties(const FImportedMaterialProperties& Properties);
 
-	bool bIsInstance = false;
+	static UMaterialInstanceDynamic* CreateDynamicInstance(UMaterialInterface* Parent);
 
-	// 인스턴스가 복제된 원본. 인스턴스는 경로가 없어서, 저장할 때 원본을 따라가 기준 에셋을 찾는다
-	const UMaterial* Parent = nullptr;
-
-	// Source의 내용을 복사한 편집용 복제본을 만든다
-	static UMaterial* CreateInstance(const UMaterial* Source);
-
-	// 경로가 있는(=에셋으로 등록된) 가장 가까운 원본. 자신이 에셋이면 자신
-	const UMaterial* GetBaseAsset() const;
-
-	static json SaveMaterial(const UMaterial* Material);
-	static UMaterial* LoadMaterial(const json& In);
+	static json SaveMaterial(const UMaterialInterface* Material);
+	static UMaterialInterface* LoadMaterial(const json& In);
 
 	const uint16 SortID;
 
 	using Super::Serialize;
-	// 인스턴스의 값(색, 텍스처, 상태). 객체는 이미 만들어져 있어야 한다.
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
+	static void SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterialInterface*& Material);
 
-	// 머티리얼 참조 하나를 Slot에 읽고 쓴다.
-	// 에셋이면 경로만, 인스턴스면 기준 에셋 + 값을 그 자리에 쓰고, 불러올 때 인스턴스를 새로 만든다.
-	// null이면 빈 Record({})로 기록되고, 불러오면 nullptr이 된다.
-	static void SerializeMaterialReference(FStructuredArchive::FSlot Slot, UMaterial*& Material);
+	void CopySettingsFrom(const UMaterial& Source);
+	void InitializeRenderResources(const UMaterial& Template);
+
 private:
 	inline static uint16 NextSortID = 0;
 };

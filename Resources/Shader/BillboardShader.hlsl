@@ -1,4 +1,5 @@
 #pragma pack_matrix(row_major)
+#include "ColorSpace.hlsli"
 
 cbuffer constants : register(b0)
 {
@@ -48,8 +49,15 @@ PS_INPUT mainVS(VS_INPUT input)
 
 float4 mainPS(PS_INPUT input) : SV_TARGET
 {
-    float4 color = SpriteTexture.Sample(SpriteSampler, input.uv);
-    color.rgb *= Tint.rgb;
-    color.a *= SpriteAlpha;
-    return color;
+	float4 color = SpriteTexture.Sample(SpriteSampler, input.uv);
+	if (DecodeSRGB > 0.5f)
+	{
+		color.rgb = SRGBToLinear(color.rgb) * SRGBToLinear(Tint.rgb);
+	}
+	else
+	{
+		color.rgb *= Tint.rgb;
+	}
+	color.a *= SpriteAlpha;
+	return color;
 }

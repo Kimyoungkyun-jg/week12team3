@@ -16,7 +16,7 @@ struct FSceneRenderOptions
 	ELightCullingMode LightCullingMode = ELightCullingMode::Tiled;
 	bool bShowSceneDepth = false;
 	bool bShowCascade = false;
-	bool bShowShadowMask = false;   // 언리얼 구조 그림자의 ScreenShadowMask를 화면에 띄운다 (Deferred)
+	bool bShowShadowMask = false;
 	bool bShowWorldNormal = false;
 	bool bShowLightCulling = false;
 	float SceneDepthRange = 1.0f;
@@ -29,7 +29,6 @@ struct FSceneRenderOptions
 	bool bShowVignette = true;
 	bool bShowCameraOverlay = true;
 
-	ERenderingPath RenderingPath = ERenderingPath::Deferred;
 	EReflectionModel ReflectionModel = EReflectionModel::BlinnPhong;
 	EShadingModel ShadingModel = EShadingModel::Phong;
 	bool bUnlit = false;

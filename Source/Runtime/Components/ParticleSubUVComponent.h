@@ -38,15 +38,12 @@ public:
 	virtual void TickComponent(float DeltaTime) override;
 	virtual FBox CalcLocalBounds() const override;
 
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext) override;
 	// ViewportLayout가 View별 거리 정렬 입력을 만들 수 있도록 현재 파티클 배열을 읽기 전용으로 제공한다.
 	const TArray<FParticle>& GetParticlesForView() const { return Particles; }
 	// 프레임의 첫 View 전에 파티클 인덱스별 상수를 준비하고 네 View에서 재사용한다.
 	void BeginViewSubmission();
 	// 불투명 파티클의 기존 정렬 경로를 선택한다.
 	bool UsesOpaqueMaterial() const;
-	// ViewportLayout가 정렬한 파티클을 View별 Billboard 행렬과 거리 순서로 렌더 큐에 넣는다.
-	void SubmitParticleToRenderQueue(FRenderQueue& RenderQueue, int32 ParticleIndex, const FMatrix& WorldMatrix, float CameraDistanceSquared);
 
 	void SetSubUVSize(uint32 Cols, uint32 Rows);
 	void SetFrameRate(float InFrameRate);
@@ -75,7 +72,7 @@ private:
 	int32 ParticleCount = 0;
 	bool bPlayOnce = false;
 	// 텍스처를 교체할 때만 생성하는 이 컴포넌트 전용 머티리얼.
-	UMaterial* TextureMaterialInstance = nullptr;
+	UMaterialInstanceDynamic* TextureMaterialInstance = nullptr;
 
 	float MinLifeTime = 6.0f;           // 수명 최소값(초)
 	float MaxLifeTime = 8.0f;          // 수명 최대값(초)

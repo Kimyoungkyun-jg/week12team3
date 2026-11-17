@@ -128,8 +128,10 @@ struct FShadowDepthPassConstants
 	float    ShadowNear;        // MinSubjectZ
 	uint32   bPerspective;      // Spot·Point 1, Directional 0
 	float    Padding[3]{};
+	FVector  PreShadowTranslation{};
+	float    PreShadowPadding = 0.0f;
 };
-static_assert(sizeof(FShadowDepthPassConstants) == 48);
+static_assert(sizeof(FShadowDepthPassConstants) == 64);
 
 // ShadowProjection.hlsl b0와 같은 배치. 그림자 한 장을 화면 마스크에 그릴 때 쓴다.
 struct FShadowProjectionConstants

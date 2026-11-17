@@ -15,14 +15,6 @@ namespace
 		return Wide;
 	}
 
-	// 문자열 값은 editor.ini가 저장하는 표기와 같다.
-	ERenderingPath ParseRenderingPath(const FString& Name, ERenderingPath Fallback)
-	{
-		if (Name == "Forward") return ERenderingPath::Forward;
-		if (Name == "Deferred") return ERenderingPath::Deferred;
-		return Fallback;
-	}
-
 	ELightingModel ParseLightingModel(const FString& Name, ELightingModel Fallback)
 	{
 		if (Name == "Gouraud") return ELightingModel::Gouraud;
@@ -68,7 +60,6 @@ FGameSettings FGameSettings::Load(const FString& Path)
 	Settings.bVSync = Config.GetBool("Window", "VSync", Settings.bVSync);
 
 	FSceneRenderOptions& Options = Settings.RenderOptions;
-	Options.RenderingPath = ParseRenderingPath(Config.GetString("Rendering", "RenderingPath", ""), Options.RenderingPath);
 	Options.SetLegacyLightingModel(ParseLightingModel(Config.GetString("Rendering", "LightingModel", ""), ELightingModel::Phong));
 	const FString Reflection = Config.GetString("Rendering", "ReflectionModel", "");
 	if (Reflection == "Phong") Options.ReflectionModel = EReflectionModel::Phong;
@@ -96,7 +87,5 @@ FGameSettings FGameSettings::Load(const FString& Path)
 	Options.DirectionalShadowMapSize = GetUInt("Rendering", "DirectionalShadowMapSize", Options.DirectionalShadowMapSize, false);
 	Options.PointShadowMapSize = GetUInt("Rendering", "PointShadowMapSize", Options.PointShadowMapSize, false);
 	Options.SpotShadowMapSize = GetUInt("Rendering", "SpotShadowMapSize", Options.SpotShadowMapSize, false);
-	if (Options.RenderingPath == ERenderingPath::Deferred && Options.ShadingModel == EShadingModel::Gouraud)
-		Options.ShadingModel = EShadingModel::Phong;
 	return Settings;
 }

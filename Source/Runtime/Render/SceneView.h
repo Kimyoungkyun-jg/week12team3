@@ -62,11 +62,6 @@ struct FSceneView
 		Context.Prepare();
 		return Context;
 	}
-
-	FViewContext ToLODViewContext() const
-	{
-		return ToViewContext();
-	}
 };
 
 struct FCameraOverlayDebug

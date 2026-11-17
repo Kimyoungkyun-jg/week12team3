@@ -1,6 +1,7 @@
 #pragma once
 
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
+#include "Render/MeshPassProcessor.h"
 #include "Render/ObjectConstants.h"
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Engine/LightSceneProxy.h"
@@ -9,11 +10,11 @@
 #include "Render/SceneRendering.h"
 #include "Render/Decal/DecalStats.h"
 #include "Math/Matrix.h"
-#include <algorithm>
-#include <cmath>
-#include <iterator>
-#include <vector>
 #include "Math/QuadTree.h"
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstring>
 
 class ULightComponent;
 
@@ -32,13 +33,13 @@ struct FRenderStats
 	uint32 RectCount = 0;
 	float AtlasCapacity = 0.0f;
 	float ShadowTiles = 0.0f;
-	uint32 ShadowViewsRedrawn = 0; // 이번 프레임에 다시 그린 그림자 뷰(큐브 면, cascade) 수
-	uint32 ShadowViewsCached = 0;  // 캐시를 재사용해 건너뛴 그림자 뷰 수
+	uint32 ShadowViewsRedrawn = 0;
+	uint32 ShadowViewsCached = 0;
 	uint32 ShadowLightsSkippedOutsideView = 0;
 	uint32 ShadowLightsSkippedNoReceiver = 0;
 	uint32 ShadowLightsSkippedNoCaster = 0;
 	uint32 ShadowCastersSkippedSmall = 0;
-	uint32 ShadowDepthDraws = 0;    // 언리얼 구조 ShadowDepths 패스에서 그린 그림자 맵 수
+	uint32 ShadowDepthDraws = 0;
 
 	uint32 CascadeViewsRedrawn = 0;
 	uint32 CascadeViewsCached = 0;
@@ -46,91 +47,7 @@ struct FRenderStats
 	void Reset() { *this = FRenderStats(); }
 };
 
-struct FParticleInstanceData
-{
-	FMatrix World;
-	FVector4 TintAndAlpha;
-	FVector4 SubUVParams;
-};
-
-struct FParticleInstancedBatch
-{
-	UStaticMesh* Mesh = nullptr;
-	UMaterial* Material = nullptr;
-	uint32 StartInstance = 0;
-	uint32 InstanceCount = 0;
-	uint32 StartIndex = 0;
-	uint32 IndexCount = 0;
-	bool bIsMesh = false;
-	EBlendState BlendState = EBlendState::AlphaBlend;
-};
-
-struct FGpuParticleEmitterResources
-{
-	TUniquePtr<FStructuredBuffer> ParticleBuffer;
-	TUniquePtr<FStructuredBuffer> SpawnUploadBuffer;
-	TUniquePtr<FStructuredBuffer> CurveLUTBuffer;
-	TUniquePtr<FConstantBuffer> SimCB;
-	TUniquePtr<FConstantBuffer> DrawCB;
-	uint32 MaxParticles = 0;
-	uint32 SpawnCapacity = 0;
-};
-
-struct FGpuParticleSimParams
-{
-	float DeltaTime = 0.0f;
-	uint32 MaxParticles = 0;
-	uint32 SpawnCount = 0;
-	uint32 WriteCursor = 0;
-
-	FVector4 ColorStart = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
-	FVector4 ColorEnd = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
-
-	FVector SizeStart = FVector::OneVector;
-	float SubUVCols = 1.0f;
-
-	FVector SizeEnd = FVector::OneVector;
-	float SubUVRows = 1.0f;
-
-	uint32 UseColorModule = 0;
-	uint32 UseSizeModule = 0;
-	uint32 UseColorOverLife = 0;
-	uint32 UseSizeByLife = 0;
-
-	uint32 UseSubUV = 0;
-	uint32 SubUVLinear = 1;
-	float SubUVPlayRate = 1.0f;
-	uint32 HasColorOverride = 0;
-
-	FVector4 ColorOverride = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
-};
-
-struct FGpuParticleDrawParams
-{
-	FMatrix LocalToWorld = FMatrix::Identity;
-	FVector4 CameraFacing = FVector4(1.0f, 0.0f, 0.0f, 0.0f);
-	FVector4 CameraRight = FVector4(0.0f, 1.0f, 0.0f, 0.0f);
-	FVector4 CameraUp = FVector4(0.0f, 0.0f, 1.0f, 0.0f);
-	FVector4 WorldScaleAndLocal = FVector4(1.0f, 1.0f, 0.0f, 0.0f);
-	FVector4 AtlasParams = FVector4(1.0f, 1.0f, 0.0f, 0.0f);
-};
-
-struct FGpuParticleBatch
-{
-	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
-	UStaticMesh* Mesh = nullptr;
-	UMaterial* Material = nullptr;
-	uint32 MaxParticles = 0;
-	uint32 ParticleStride = 112;
-	bool bResetRequested = false;
-	TArray<uint8> PendingSpawnBytes;
-	uint32 SpawnCount = 0;
-	TArray<FVector4> CurveLUT;
-	FGpuParticleSimParams SimParams{};
-	FGpuParticleDrawParams DrawParams{};
-};
-
-// 뷰 하나의 데이터를 프레임 사이에도 보관한다. SceneRenderer는 현재 프레임 동안 이를 빌려 쓴다.
+// 뷰 하나의 렌더 상태를 보관한다. SceneRenderer 는 프레임 동안 이를 빌려 쓴다.
 struct FSceneRenderData
 {
 	static constexpr int32 PointLightSlotIndex = 0;
@@ -144,70 +61,57 @@ struct FSceneRenderData
 
 	static constexpr float CascadeBlendRatio = 0.1f;
 
-	struct alignas(64) FGatherChunk
-	{
-		TArray<FRenderPacket> Packets;              // 스태틱 묶음에 못 들어가는 것 (반투명 섹션, Renderer 없는 호출)
-		TArray<uint32> SlowPathIndices;
-		std::vector<FStaticDrawGroup> Groups;       // 불투명 스태틱 메시: (머티리얼, 메시, LOD)별 묶음. 항목만 매 프레임 비운다
-		uint32 LastGroup = 0;                       // 바로 전 물체가 들어간 묶음 (연속한 물체는 대개 같은 묶음)
-		uint32 StaticDrawCount = 0;
-		uint32 LODCounts[4] = {};
-		uint64 LODTriangles[4] = {};
-	};
-
-	FRenderQueue RenderQueue;
+	FMeshElementCollector Collector;
 	FRenderStats RenderStats;
 	FDecalStats DecalStats;
 	std::shared_ptr<FGpuTimingHistory> BaseSkeletalDrawGpu;
 	std::shared_ptr<FGpuTimingHistory> ShadowSkeletalDrawGpu;
 	ESkinningMode SkeletalDrawGpuMode = ESkinningMode::CPU;
-	ERenderingPath SkeletalDrawGpuPath = ERenderingPath::Forward;
 	TArray<FPrimitiveSceneProxy*> VisibleProxies;
 	TArray<FLODSelectionInput> LODInputs;
 	TArray<uint8> SelectedLODs;
-	TArray<FGatherChunk> GatherChunks;
 
-	TArray<FPerObjectConstants> ObjectConstants;
-	TArray<FParticleInstanceData> ParticleInstances;
-	TArray<FParticleInstancedBatch> ParticleBatches;
-	mutable TUniquePtr<FStructuredBuffer> ParticleInstanceBuffer;
-	mutable uint32 ParticleInstanceCapacity = 0;
-	mutable TUniquePtr<FConstantBuffer> ParticleBatchCB;
-	TArray<FGpuParticleBatch> GpuParticleBatches;
+	// 정적 캐시 필터링용 뷰별 가시성 및 선택 결과
+	TArray<uint8> PrimitiveVisibilityMap;
+	TArray<uint8> PrimitiveOccludedMap;
+	TArray<uint8> PrimitiveSelectedLODs;
+
+	// 동적 요소용 임시 GPUScene 슬롯 및 패스 커맨드
+	TArray<FPrimitiveSceneData> DynamicPrimitiveData;
+	std::array<TArray<FMeshDrawCommand>, static_cast<size_t>(EMeshPass::Num)> DynamicPassCommands;
+	TArray<FVisibleMeshDrawCommand> VisibleBasePassCommands;
+	TArray<FVisibleMeshDrawCommand> VisibleDepthPassCommands;
+	TArray<FVisibleMeshDrawCommand> VisibleTranslucencyCommands;
+	TArray<FVisibleMeshDrawCommand> VisibleShadowCommands;
+	TArray<uint8> ShadowVisibilityMap;
+	const FStructuredBuffer* GPUSceneBuffer = nullptr;
+
 	FSceneLightResources ViewLightResources;
 
 	FAmbientLightRenderData AmbientLight{};
 	FSkyLightRenderData SkyLight{};
 	bool bHasSkyLight = false;
 
-	TArray<FLightRenderParameters> VisibleLights; // 모든 종류의 광원. 업로드할 때 종류별 구간으로 정렬한다
-	TArray<const FLightSceneProxy*> VisibleLightProxies; // VisibleLights와 같은 순서의 Proxy (그림자 채널 배정에 씀)
-	uint32 LightParameterOffsets[4]; // 라이트 리스트 내 구간의 offset
-	uint32 LightParameterCounts[4]; // 라이트 리스트 내 구간의 count
+	TArray<FLightRenderParameters> VisibleLights;
+	TArray<const FLightSceneProxy*> VisibleLightProxies;
+	uint32 LightParameterOffsets[4];
+	uint32 LightParameterCounts[4];
 
-	// CPU 전용 그림자 뷰 목록. Details 미리보기, 캐스케이드 경계 선, stat이 읽는다. GPU에 올리지 않는다.
-	// FSceneRenderer::FinalizeShadowLights가 ProjectedShadows에서 광원 순서대로 채운다.
 	TArray<FLightShadowRenderData> LightShadows;
-	// VisibleLights와 같은 순서. 이 광원의 첫 그림자 뷰가 LightShadows의 몇 번째인지, 없으면 InvalidShadowView.
 	static constexpr uint32 InvalidShadowView = 0xFFFFFFFFu;
 	TArray<uint32> VisibleLightShadowViews;
 
 	float CascadeShadowDistances[MaxCascadeShadowCount]{};
 	uint32 CascadeShadowCount = 0;
-	// CPU-only preview state for this view. Never uploaded with the light parameters.
 	const ULightComponent* PreviewLight = nullptr;
 	int32 PreviewLightIndex = INDEX_NONE;
 	FLightShadowRange PreviewShadowRange{};
 
-	// ---------- 언리얼 구조 그림자 (FSceneRenderer::InitDynamicShadows) ----------
-	// 이번 프레임의 그림자 맵 전부. VisibleLightInfos가 이 안을 가리킨다.
 	TArray<TUniquePtr<FProjectedShadowInfo>> ProjectedShadows;
-	// FLightSceneInfo::Id로 찾는다. 그림자가 없는 라이트는 빈 항목.
 	TArray<FVisibleLightInfo> VisibleLightInfos;
-	// AllocateShadowDepthTargets가 쓴 깊이 아틀라스 슬라이스 수
 	uint32 ShadowAtlasSliceCount = 0;
 
-	bool GetShadowPreview(const ULightComponent* Light, FTexture2DArray*& OutAtlas,  // Shadow range를 바탕으로 lightshadow 인덱스에서 선택한 조명이 몇번째 index에서 viewcount가 몇개인지 알 수 있음
+	bool GetShadowPreview(const ULightComponent* Light, FTexture2DArray*& OutAtlas,
 		TArray<FLightShadowRenderData>& OutShadows) const
 	{
 		OutAtlas = nullptr;
@@ -242,25 +146,28 @@ struct FSceneRenderData
 		DecalStats.ResetHistory();
 		BaseSkeletalDrawGpu = {};
 		ShadowSkeletalDrawGpu = {};
-
-		for (FGatherChunk& Chunk : GatherChunks)
-		{
-			Chunk.Groups.clear();
-			Chunk.LastGroup = 0;
-		}
 	}
 
 	void ResetFrame()
 	{
-		RenderQueue.Reset();
+		Collector.Reset();
 		RenderStats.Reset();
 		VisibleProxies.Reset();
 		LODInputs.Reset();
 		SelectedLODs.Reset();
-		ObjectConstants.Reset();
-		ParticleInstances.Reset();
-		ParticleBatches.Reset();
-		GpuParticleBatches.Reset();
+		PrimitiveVisibilityMap.Reset();
+		PrimitiveOccludedMap.Reset();
+		PrimitiveSelectedLODs.Reset();
+		DynamicPrimitiveData.Reset();
+		for (TArray<FMeshDrawCommand>& List : DynamicPassCommands)
+			List.Reset();
+		VisibleBasePassCommands.Reset();
+		VisibleDepthPassCommands.Reset();
+		VisibleTranslucencyCommands.Reset();
+		VisibleShadowCommands.Reset();
+		ShadowVisibilityMap.Reset();
+		GPUSceneBuffer = nullptr;
+
 		AmbientLight = {};
 		SkyLight = {};
 		bHasSkyLight = false;
@@ -277,24 +184,10 @@ struct FSceneRenderData
 		std::fill(std::begin(CascadeShadowDistances), std::end(CascadeShadowDistances), 0.0f);
 		std::memset(LightParameterOffsets, 0, sizeof(LightParameterOffsets));
 		std::memset(LightParameterCounts, 0, sizeof(LightParameterCounts));
-
-		for (FGatherChunk& Chunk : GatherChunks)
-		{
-			Chunk.Packets.Reset();
-			Chunk.SlowPathIndices.Reset();
-			Chunk.StaticDrawCount = 0;
-			std::fill(std::begin(Chunk.LODCounts), std::end(Chunk.LODCounts), 0u);
-			std::fill(std::begin(Chunk.LODTriangles), std::end(Chunk.LODTriangles), 0ull);
-			for (FStaticDrawGroup& Group : Chunk.Groups) Group.Items.clear();
-		}
 	}
 
-	// 광원을 종류별 구간으로 정렬하고 GPU에 올린다.
-	// 그림자 채널(ShadowMapChannel)은 InitDynamicShadows 뒤에 FSceneRenderer::FinalizeShadowLights가 채우고 다시 올린다.
 	void Commit(bool& bLightUploadSucceeded)
 	{
-		RenderQueue.Sort();
-
 		if (VisibleLights.Num())
 		{
 			constexpr uint32 TypeCount = 4;
@@ -305,11 +198,10 @@ struct FSceneRenderData
 				FSceneRenderData::RectLightSlotIndex,
 			};
 
-			// Sort indices so the selected light's identity survives sorting, including identical lights.
 			TArray<int32> LightOrder;
 			LightOrder.SetNum(VisibleLights.Num());
 			for (int32 i = 0; i < VisibleLights.Num(); ++i) LightOrder[i] = i;
-			// stable_sort: 같은 종류끼리의 순서가 프레임마다 같아야 채널 배정과 아틀라스 배치가 흔들리지 않는다.
+			// 같은 종류 순서를 유지해 채널 배정이 흔들리지 않게 한다.
 			std::stable_sort(LightOrder.begin(), LightOrder.end(), [&](int32 A, int32 B) {
 				const uint32 ASlot = TypeToSlot[VisibleLights[A].Type];
 				const uint32 BSlot = TypeToSlot[VisibleLights[B].Type];
@@ -330,7 +222,6 @@ struct FSceneRenderData
 
 			for (FLightRenderParameters& Light : VisibleLights) Light.ShadowMapChannel = FLightRenderParameters::InvalidShadowMapChannel;
 
-			// Light 배열 정리 및 구간 별 Offset, Count 기록
 			int32 Offset = 0;
 			int32 Count = 1;
 			for (int32 i = 1; i < VisibleLights.Num(); i++)
@@ -359,7 +250,6 @@ struct FSceneRenderData
 			LightParameterCounts[Slot] = Count;
 		}
 
-		// NOTE: 라이트 데이터를 GPU에 올림.
 		bLightUploadSucceeded = ViewLightResources.Init();
 		if (bLightUploadSucceeded)
 			bLightUploadSucceeded &= ViewLightResources.UploadViewLights(VisibleLights);
@@ -374,12 +264,12 @@ struct FSceneRenderData
 	inline uint32 GetDirectionalLightCount() const { return LightParameterCounts[DirectionalLightSlotIndex]; }
 
 	inline bool HasPointLights() { return LightParameterCounts[PointLightSlotIndex]; }
-	inline uint32 GetPointLightOffset() { return LightParameterOffsets[PointLightSlotIndex]; }
-	inline uint32 GetPointLightCount() { return LightParameterCounts[PointLightSlotIndex]; }
+	inline uint32 GetPointLightOffset() const { return LightParameterOffsets[PointLightSlotIndex]; }
+	inline uint32 GetPointLightCount() const { return LightParameterCounts[PointLightSlotIndex]; }
 
 	inline bool HasSpotLights() { return LightParameterCounts[SpotLightSlotIndex]; }
-	inline uint32 GetSpotLightOffset() { return LightParameterOffsets[SpotLightSlotIndex]; }
-	inline uint32 GetSpotLightCount() { return LightParameterCounts[SpotLightSlotIndex]; }
+	inline uint32 GetSpotLightOffset() const { return LightParameterOffsets[SpotLightSlotIndex]; }
+	inline uint32 GetSpotLightCount() const { return LightParameterCounts[SpotLightSlotIndex]; }
 
 	inline bool HasRectLights() { return LightParameterCounts[RectLightSlotIndex]; }
 	inline bool HasLights() { return HasDirectionalLight() || HasPointLights() || HasSpotLights() || HasRectLights(); }

@@ -336,19 +336,79 @@ void FSceneRenderer::AllocateShadowDepthTargets()
 void FSceneRenderer::RenderShadowDepthMaps(FRenderer* Renderer, FTexture2DArray* Atlas)
 {
 	FConstantBuffer* PassCB = RenderData.ViewLightResources.GetShadowDepthPassCB();
-	if (!bCorePassSucceeded || !Atlas || !PassCB) return;
+	if (!bCorePassSucceeded || !Atlas || !PassCB || !World) return;
+
+	FScene& Scene = World->GetScene();
+	const auto& CachedShadowCommands = Scene.GetCachedDrawList(EMeshPass::ShadowDepth);
+	const uint32 NumPrimitives = Scene.GetNumPrimitives();
+
+	FMeshElementCollector DynamicCollector;
+	TArray<FMeshDrawCommand> DynamicShadowCommands;
+	const FShadowDepthMeshProcessor ShadowProcessor;
+	const FSceneRenderOptions ShadowOptions{};
 
 	for (const TUniquePtr<FProjectedShadowInfo>& ShadowPtr : RenderData.ProjectedShadows)
 	{
 		const FProjectedShadowInfo& Shadow = *ShadowPtr;
 		if (!Shadow.bAllocated || Shadow.DynamicSubjectPrimitives.IsEmpty()) continue;
 
-		TArray<FMeshDrawBatch> Batches;
-		FMeshPassProcessor Processor;
-		// World 이동에 PreShadowTranslation을 미리 더해 그림자 원점 기준 좌표로 그린다 (원점에서 먼 곳의 float 정밀도).
-		if (!Processor.Build(Shadow.DynamicSubjectPrimitives, EPSOType::ShadowDepth, Batches, Shadow.PreShadowTranslation)) continue;
+		RenderData.ShadowVisibilityMap.Init(uint8(0), NumPrimitives);
+		DynamicCollector.Reset();
+		DynamicShadowCommands.Reset();
+		RenderData.VisibleShadowCommands.Reset();
 
-		// 테두리(BorderSize)는 Clear 값 1을 유지하도록 그리는 영역만 뷰포트로 잡는다.
+		bool bHasDynamic = false;
+		for (FPrimitiveSceneProxy* Proxy : Shadow.DynamicSubjectPrimitives)
+		{
+			if (!Proxy || !Proxy->IsVisible() || !Proxy->bCastsShadow)
+				continue;
+			if (Proxy->HasStaticRelevance() && Proxy->PackedIndex >= 0 && static_cast<uint32>(Proxy->PackedIndex) < NumPrimitives)
+			{
+				RenderData.ShadowVisibilityMap[static_cast<uint32>(Proxy->PackedIndex)] = 1;
+			}
+			else if (Proxy->HasDynamicRelevance())
+			{
+				Proxy->GetDynamicMeshElements(CachedViewContext, DynamicCollector, 0);
+				bHasDynamic = true;
+			}
+		}
+
+		for (const FCachedMeshDrawEntry& Entry : CachedShadowCommands)
+		{
+			if (Entry.PrimitiveIndex < NumPrimitives && RenderData.ShadowVisibilityMap[Entry.PrimitiveIndex])
+			{
+				FVisibleMeshDrawCommand Vis{};
+				Vis.Command = &Entry.Command;
+				Vis.PrimitiveId = Entry.Command.PrimitiveId;
+				Vis.StateBucketId = Entry.Command.StateBucketId;
+				Vis.SortKey = Entry.Command.SortKey;
+				RenderData.VisibleShadowCommands.Add(Vis);
+			}
+		}
+
+		if (bHasDynamic)
+		{
+			for (const FMeshBatch& Batch : DynamicCollector.GetMeshBatches())
+			{
+				ShadowProcessor.AddMeshBatch(Batch, ShadowOptions, &DynamicCollector, DynamicShadowCommands);
+			}
+			for (const FMeshDrawCommand& DynCmd : DynamicShadowCommands)
+			{
+				FVisibleMeshDrawCommand Vis{};
+				Vis.Command = &DynCmd;
+				Vis.PrimitiveId = DynCmd.PrimitiveId;
+				Vis.StateBucketId = DynCmd.StateBucketId;
+				Vis.SortKey = DynCmd.SortKey;
+				RenderData.VisibleShadowCommands.Add(Vis);
+			}
+		}
+
+		if (RenderData.VisibleShadowCommands.IsEmpty()) continue;
+
+		std::stable_sort(RenderData.VisibleShadowCommands.begin(), RenderData.VisibleShadowCommands.end(),
+			[](const FVisibleMeshDrawCommand& A, const FVisibleMeshDrawCommand& B) { return A.SortKey < B.SortKey; });
+
+		// 테두리 영역은 Clear 값을 유지하도록 그리는 영역만 뷰포트로 잡는다.
 		RenderCommand::SetRenderTargets(0, nullptr, Atlas, Shadow.AtlasIndex);
 		RenderCommand::SetViewport(Shadow.X, Shadow.Y, Shadow.ResolutionX, Shadow.ResolutionY);
 
@@ -358,24 +418,24 @@ void FSceneRenderer::RenderShadowDepthMaps(FRenderer* Renderer, FTexture2DArray*
 		Constants.LightDirection = Shadow.GetLightDirection();
 		Constants.ShadowNear = Shadow.MinSubjectZ;
 		Constants.bPerspective = Shadow.IsPerspective() ? 1u : 0u;
+		Constants.PreShadowTranslation = Shadow.PreShadowTranslation;
 		RenderCommand::UpdateBufferData(PassCB, &Constants, sizeof(Constants));
 		RenderCommand::BindConstantBuffer(3, PassCB, EShaderBindFlagBits::Vertex);
 
-		// 위치가 이미 그림자 원점 기준이므로 이동 없는 회전 x 투영만 쓴다.
 		FMatrix ShadowRotation = Shadow.ShadowView;
 		ShadowRotation.M[3][0] = ShadowRotation.M[3][1] = ShadowRotation.M[3][2] = 0.0f;
-		Renderer->UploadViewMatrix(ShadowRotation * Shadow.ShadowProjection);
+		Renderer->UploadViewConstants(ShadowRotation * Shadow.ShadowProjection, ShadowRotation, Shadow.ShadowProjection);
 		if (FSkinningStats::IsCollecting())
 		{
 			auto& Timing = RenderData.ShadowSkeletalDrawGpu;
 			if (!Timing) Timing = std::make_shared<FGpuTimingHistory>();
-			Renderer->DrawMeshes(Batches, Timing, RenderData.SkeletalDrawGpuMode);
+			Renderer->SubmitVisibleCommands(RenderData.VisibleShadowCommands, RenderData.GPUSceneBuffer, nullptr, Timing, RenderData.SkeletalDrawGpuMode);
 		}
 		else
 		{
-			Renderer->DrawMeshes(Batches);
+			Renderer->SubmitVisibleCommands(RenderData.VisibleShadowCommands, RenderData.GPUSceneBuffer);
 		}
-		++RenderData.RenderStats.ShadowDepthDraws;   // 단계 9 stat에 추가할 필드
+		++RenderData.RenderStats.ShadowDepthDraws;
 	}
 	RenderCommand::BindConstantBuffer(3, nullptr, EShaderBindFlagBits::Vertex);
 }
@@ -551,9 +611,8 @@ void FSceneRenderer::FinalizeShadowLights(const FSceneRenderOptions& Options)
 	RenderData.VisibleLightShadowViews.SetNum(LightCount);
 	for (int32 i = 0; i < LightCount; ++i) RenderData.VisibleLightShadowViews[i] = FSceneRenderData::InvalidShadowView;
 
-	const bool bForward = Options.RenderingPath != ERenderingPath::Deferred;
 	// Gouraud는 정점에서 조명을 끝내므로 화면 마스크를 광원별로 곱할 수 없다.
-	const bool bAllowChannels = !(bForward && Options.ShadingModel == EShadingModel::Gouraud);
+	const bool bAllowChannels = Options.ShadingModel != EShadingModel::Gouraud;
 
 	// Forward 채널 배정 (언리얼 AssignAvailableShadowMapChannelForLight): 영향 범위가 겹치는 광원끼리만 다른 채널을 받는다.
 	struct FAssignedChannel { FSphere Bounds; bool bDirectional; uint32 Channel; };
@@ -603,11 +662,7 @@ void FSceneRenderer::FinalizeShadowLights(const FSceneRenderOptions& Options)
 		bCascadesFilled |= bFillCascades;
 
 		uint32 Channel = FLightRenderParameters::InvalidShadowMapChannel;
-		if (bAllowChannels && !bForward)
-		{
-			Channel = 0;   // Deferred: 광원마다 마스크를 새로 만드므로 항상 R
-		}
-		else if (bAllowChannels)
+		if (bAllowChannels)
 		{
 			const FSphere Bounds = Info->GetBoundingSphere();
 			uint32 UsedMask = 0;

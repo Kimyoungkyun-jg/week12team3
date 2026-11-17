@@ -71,7 +71,6 @@ namespace
 	DECLARE_CYCLE_STAT("World Tick", STAT_WorldTick);
 	DECLARE_CYCLE_STAT("Editor Tick", STAT_EditorTick);
 	DECLARE_CYCLE_STAT("Capture World", STAT_CaptureWorld);
-	DECLARE_CYCLE_STAT("Build Render Queue", STAT_BuildRenderQueue);
 	DECLARE_CYCLE_STAT("ImGui", STAT_ImGui);
 }
 
@@ -183,6 +182,9 @@ bool UEditorEngine::Init()
 	});
 	EditorUI->SetFbxImportBlockedQuery([this]() { return IsPlaying(); });
 	AssetEditorPanel = EditorUI->AddEditorPanel<FAssetEditorPanel>();
+	MaterialEditorPanel = EditorUI->AddEditorPanel<FMaterialEditorPanel>();
+	ContentDrawerPanel->SetCreateMaterialCallback([this](const FString& Path) { MaterialEditorPanel->NewMaterial(Path); });
+	ContentDrawerPanel->SetCreateMaterialInstanceCallback([this](const FString& Path, const FString& ParentPath) { MaterialEditorPanel->NewMaterialInstance(Path, ParentPath); });
 	ParticleSystemEditorPanel = EditorUI->AddEditorPanel<FParticleSystemEditorPanel>();
 	// 다시 가져오기의 옵션은 바이너리 헤더에서 읽는다. Target Skeleton은 헤더에 없으므로,
 	// 다른 FBX의 Skeleton에 맞춘 AnimSequence면 그 Skeleton을 대상으로 다시 지정한다(메시 없는 FBX는 대상 없이 임포트되지 않는다).
@@ -256,7 +258,14 @@ bool UEditorEngine::Init()
 		{
 			ParticleSystemEditorPanel->OpenAsset(Path);
 		}
-		else AssetEditorPanel->OpenAsset(Path);
+		else if (Extension == ".material" && MaterialEditorPanel)
+		{
+			MaterialEditorPanel->OpenAsset(Path);
+		}
+		else
+		{
+			AssetEditorPanel->OpenAsset(Path);
+		}
 	});
 
 	// OutLine
@@ -565,7 +574,7 @@ void UEditorEngine::RefreshImportedAssets()
 		if (!Component || !Component->GetOwner() || Component->GetOwner()->GetWorld() != EditorWorld) continue;
 
 		// 메시를 바꾸면 슬롯 덮어쓰기가 지워지므로 먼저 보관한다.
-		TArray<UMaterial*> Overrides;
+		TArray<UMaterialInterface*> Overrides;
 		for (int32 Slot = 0; Slot < Component->GetNumMaterials(); ++Slot) Overrides.Add(Current(Component->GetOverrideMaterial(Slot)));
 		if (auto* Skinned = Cast<USkinnedMeshComponent>(Component)) Skinned->SetSkeletalMesh(Current(Skinned->GetSkeletalMesh()));
 		else if (auto* Static = Cast<UStaticMeshComponent>(Component)) Static->SetStaticMesh(Current(Static->GetStaticMesh()));
@@ -607,7 +616,9 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 			const bool bAnimEditorFocused =
 				(AnimSequenceViewerPanel && AnimSequenceViewerPanel->HasFocusedWindow()) ||
 				(AnimGraphEditorPanel && AnimGraphEditorPanel->HasFocusedWindow()) ||
-				(BlendSpaceEditorPanel && BlendSpaceEditorPanel->HasFocusedWindow());
+				(BlendSpaceEditorPanel && BlendSpaceEditorPanel->HasFocusedWindow()) ||
+				(AssetEditorPanel && AssetEditorPanel->HasFocusedWindow()) ||
+				(MaterialEditorPanel && MaterialEditorPanel->HasFocusedWindow());
 			if (bAnimEditorFocused)
 				EditorCommandUI::ProcessShortcuts({ &SaveAll });
 			else
@@ -884,9 +895,7 @@ void UEditorEngine::UpdateViewportState(const float DeltaTime)
 void UEditorEngine::TickWorldAndEditor(const float DeltaTime)
 {
 	const FEditorSettings& RenderSettings = SettingsPanel->GetSettings();
-	const bool bVSSkinningUnavailable = RenderSettings.SkinningMode == ESkinningMode::GPU
-		&& RenderSettings.RenderingPath != ERenderingPath::Forward;
-	USkeletalMeshComponent::SetSkinningMode(bVSSkinningUnavailable ? ESkinningMode::CPU : RenderSettings.SkinningMode);
+	USkeletalMeshComponent::SetSkinningMode(RenderSettings.SkinningMode);
 
 	// 게임 입력 처리
 	if (PlayWorld)
@@ -1076,6 +1085,7 @@ void UEditorEngine::RenderViewports()
 		}
 	}
 	AssetEditorPanel->RenderPreview(this);
+	MaterialEditorPanel->RenderPreview(this);
 	ParticleSystemEditorPanel->RenderPreview(this);
 	AnimSequenceViewerPanel->RenderPreview(this);
 	AnimGraphEditorPanel->RenderPreview(this);
@@ -1408,7 +1418,6 @@ void UEditorEngine::BuildSceneRenderOptions(FGameViewportClient* ViewClient, FSc
 	const FEditorViewportClient* Source = ViewportsPanel ? ViewportsPanel->GetViewportClient(PIEStartEditorViewIndex) : nullptr;
 	Options.bCacheShadows = SettingsPanel->GetSettings().bCacheShadows;
 	Options.PcfMode = SettingsPanel->GetSettings().PcfMode;
-	Options.RenderingPath = SettingsPanel->GetSettings().RenderingPath;
 	Options.ReflectionModel = SettingsPanel->GetSettings().ReflectionModel;
 	Options.ShadingModel = SettingsPanel->GetSettings().ShadingModel;
 	Options.LightCullingMode = SettingsPanel->GetSettings().LightCullingMode;
@@ -1434,7 +1443,6 @@ void UEditorEngine::BuildSceneRenderOptions(FEditorViewportClient* ViewClient, b
 	const FViewShowFlags& ShowFlags = ViewClient->GetShowFlags();
 	Options.bCacheShadows = SettingsPanel->GetSettings().bCacheShadows;
 	Options.PcfMode = SettingsPanel->GetSettings().PcfMode;
-	Options.RenderingPath = SettingsPanel->GetSettings().RenderingPath;
 	Options.LightCullingMode = SettingsPanel->GetSettings().LightCullingMode;
 	Options.DirectionalShadowMapSize = SettingsPanel->GetSettings().GetDirectionalShadowMapSize();
 	Options.PointShadowMapSize = SettingsPanel->GetSettings().GetPointShadowMapSize();
@@ -1847,6 +1855,7 @@ void UEditorEngine::PreExit()
 	if (AimOffsetEditorPanel) AimOffsetEditorPanel->Release();
 	if (ContentDrawerPanel) ContentDrawerPanel->Release();
 	if (AssetEditorPanel) AssetEditorPanel->Release();
+	if (MaterialEditorPanel) MaterialEditorPanel->Release();
 	if (ParticleSystemEditorPanel) ParticleSystemEditorPanel->Release();
 	EditorWorld->ClearWorld();
 	// PIE 창이 열린 채 종료하면 Device가 살아 있을 때 Swapchain과 타깃을 먼저 정리한다.
@@ -2141,6 +2150,14 @@ void UEditorEngine::SaveAllAssets()
 	if (BlendSpaceEditorPanel)
 	{
 		BlendSpaceEditorPanel->SaveIfDirty();
+	}
+	if (AssetEditorPanel)
+	{
+		AssetEditorPanel->SaveIfDirty();
+	}
+	if (MaterialEditorPanel)
+	{
+		MaterialEditorPanel->SaveIfDirty();
 	}
 }
 

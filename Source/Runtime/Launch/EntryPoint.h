@@ -36,7 +36,7 @@ inline void SetContentRootToExecutableDir()
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
 	SetContentRootToExecutableDir();
-	WindowsCrashHandler::Install();
+	WindowsCrashHandler::Install(GetExecutablePath());
 
 	{
 		FEngineLoop EngineLoop;

@@ -37,8 +37,8 @@ public:
 	bool LineTraceComponentForView(const FRay& WorldRay, FHitResult& OutHit, const FMatrix& BillboardWorldMatrix);
 
 	virtual int32 GetNumMaterials() const override { return 1; }
-	virtual UMaterial* GetMaterial(int32 SlotIndex) const override { return SlotIndex == 0 ? Material : nullptr; }
-	virtual void SetMaterial(int32 SlotIndex, UMaterial* InMaterial) override { if (SlotIndex == 0) { Material = InMaterial; MarkRenderStateDirty(); } }
+	virtual UMaterialInterface* GetMaterial(int32 SlotIndex) const override { return SlotIndex == 0 ? Material : nullptr; }
+	virtual void SetMaterial(int32 SlotIndex, UMaterialInterface* InMaterial) override { if (SlotIndex == 0) { Material = InMaterial; MarkRenderStateDirty(); } }
 
 	void SetTintSource(const ULightComponentBase* InSource) { TintSource = InSource; MarkRenderStateDirty(); }
 
@@ -49,10 +49,6 @@ public:
 	UStaticMesh* GetQuadMesh() const { return QuadMesh; }
 
 	void GetWorldTransformedMatrix(FMatrix* OutWorldMatrix) const;
-	// 뷰 컨텍스트 기준 월드 행렬로 Billboard 렌더 패킷을 제출한다.
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext) override;
-	// View별 ViewportLayout가 계산한 Billboard 행렬을 사용해 같은 렌더 패킷 형식으로 제출한다.
-	void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FMatrix& BillboardWorldMatrix);
 
 	virtual void Serialize(json& Handle, bool bIsLoading) override;
 
@@ -66,7 +62,7 @@ public:
 protected:
 	virtual FBillboardProxyData BuildBillboardProxyData() const;
 
-	UMaterial* Material = nullptr;
+	UMaterialInterface* Material = nullptr;
 	UStaticMesh* QuadMesh = nullptr;
 	FSubUVConstants IconParams{ 0.0f, 1.0f, 1.0f, 1.0f };	// CurrentFrame, RowSize, ColSize, Alpha
 private:

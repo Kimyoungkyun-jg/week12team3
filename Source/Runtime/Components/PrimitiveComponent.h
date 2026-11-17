@@ -3,7 +3,7 @@
 #include "SceneComponent.h"
 #include "../Render/Shader.h"
 #include "../Render/Mesh.h"
-#include "Render/RenderPacket.h"
+#include "Render/MeshBatch.h"
 #include "Render/GeometryGenerator.h"
 #include "Collision/HitResult.h"
 #include "Core/Delegate/Delegate.h"
@@ -46,10 +46,6 @@ public:
 
 	virtual void BeginPlay() override;
 
-	// Todo: subuv
-	//void SubmitToRenderQueue(TQueue<FRenderPacket>& RenderQueue);
-	virtual void SubmitToRenderQueue(FRenderQueue& RenderQueue, const FViewContext& ViewContext);
-
 	virtual const FStaticMeshData* GetMeshData() const { return nullptr; }
 
 	// Outline처럼 컴포넌트를 통째로 한 번 더 그릴 때 쓰는 GPU 메시.
@@ -58,8 +54,8 @@ public:
 	virtual UStaticMesh* GetRenderMesh() const { return nullptr; }
 
 	virtual int32 GetNumMaterials() const { return 0; }
-	virtual UMaterial* GetMaterial(int32 SlotIndex) const { return nullptr; }
-	virtual void SetMaterial(int32 SlotIndex, UMaterial* InMaterial) {}
+	virtual UMaterialInterface* GetMaterial(int32 SlotIndex) const { return nullptr; }
+	virtual void SetMaterial(int32 SlotIndex, UMaterialInterface* InMaterial) {}
 	//
 	// FShader* GetShader() const { return Shader.get(); };
 

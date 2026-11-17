@@ -1,26 +1,40 @@
 #pragma pack_matrix(row_major)
 #include "Skinning.hlsli"
 #include "MaterialUV.hlsli"
-cbuffer Viewconstants : register(b0)
+cbuffer ViewConstants : register(b0)
 {
-    matrix VP;
+	matrix VP;
+	matrix View;
+	matrix Projection;
+	float4 ViewTimeParams;
 };
 
-cbuffer Worldconstants : register(b2)
+cbuffer DrawBatchConstants : register(b5)
 {
-    matrix World;
+	uint StartInstance;
+	uint3 DrawBatchPad;
 };
+
+struct FPrimitiveSceneData
+{
+	matrix LocalToWorld;
+	matrix NormalMatrix;
+	float4 Flags;
+};
+
+StructuredBuffer<FPrimitiveSceneData> PrimitiveSceneData : register(t17);
+StructuredBuffer<uint> InstancePrimitiveIds : register(t18);
 
 cbuffer MaterialParams : register(b1)
 {
-    float4 BaseColor;
-    float2 UVOffset;
-    float2 Padding;
-    float2 UVTiling;
-    float2 WorldUVTileSize;
-    float4 Emissive;
-    float4 SpecularColorShininess;
-    float4 WorldUVParams;
+	float4 BaseColor;
+	float2 UVOffset;
+	float2 UVScrollSpeed;
+	float2 UVTiling;
+	float2 WorldUVTileSize;
+	float4 Emissive;
+	float4 SpecularColorShininess;
+	float4 WorldUVParams;
 };
 
 cbuffer TranslucentFogConstants : register(b3)
@@ -43,21 +57,27 @@ struct VS_INPUT
 	int4 BoneIndices : BLENDINDICES;
 	float4 BoneWeights : BLENDWEIGHT;
 #endif
+	uint instanceId : SV_InstanceID;
 };
 
 struct PS_INPUT
 {
-    float4 position : SV_POSITION;
-    float3 normal : NORMAL;
-    float4 color : COLOR;
-    float2 uv : TEXCOORD0;
-    float3 worldPosition : TEXCOORD1;
-    float3 localPosition : TEXCOORD2;
-    float3 localNormal : TEXCOORD3;
+	float4 position : SV_POSITION;
+	float3 normal : NORMAL;
+	float4 color : COLOR;
+	float2 uv : TEXCOORD0;
+	float3 worldPosition : TEXCOORD1;
+	float3 localPosition : TEXCOORD2;
+	float3 localNormal : TEXCOORD3;
+	nointerpolation uint primitiveId : TEXCOORD4;
 };
 
 Texture2D g_txColor : register(t0);
-SamplerState g_Sample : register(s0);
+SamplerState ColorSampler : register(s0);
+
+#ifdef MATERIAL_GRAPH
+#include MATERIAL_GRAPH_INCLUDE
+#endif
 
 float FogTransmittance(float3 Position)
 {
@@ -96,30 +116,57 @@ float FogTransmittance(float3 Position)
 PS_INPUT mainVS(VS_INPUT input)
 {
 #if GPU_SKINNING
-    SkinVertex(input.p, input.n, input.tangent, input.BoneIndices, input.BoneWeights);
+	SkinVertex(input.p, input.n, input.tangent, input.BoneIndices, input.BoneWeights);
 #endif
-    PS_INPUT output;
+	uint primitiveId = InstancePrimitiveIds[input.instanceId + StartInstance];
+	FPrimitiveSceneData prim = PrimitiveSceneData[primitiveId];
+	PS_INPUT output;
 
-    float4 WorldPosition = mul(float4(input.p, 1.0f), World);
-    output.position = mul(WorldPosition, VP);
-    output.color = input.c;
-    output.uv = input.t;
-    output.normal = mul(float4(input.n, 0.0f), World).xyz;
-    output.localPosition = input.p;
-    output.localNormal = input.n;
-    output.worldPosition = WorldPosition.xyz;
-    return output;
+	float4 WorldPosition = mul(float4(input.p, 1.0f), prim.LocalToWorld);
+	output.position = mul(WorldPosition, VP);
+	output.color = input.c;
+	output.uv = input.t;
+	output.normal = mul(float4(input.n, 0.0f), prim.LocalToWorld).xyz;
+	output.localPosition = input.p;
+	output.localNormal = input.n;
+	output.worldPosition = WorldPosition.xyz;
+	output.primitiveId = primitiveId;
+	return output;
 }
 
 float4 mainPS(PS_INPUT input) : SV_TARGET
 {
-    float3 ProjectedT, ProjectedB;
-    float2 UV = ResolveMaterialUV(input.uv, input.worldPosition, input.normal,
-        input.localPosition, input.localNormal, World, UVTiling, UVOffset, WorldUVTileSize,
-        WorldUVParams.x > 0.5f, ProjectedT, ProjectedB);
-    float4 texColor = g_txColor.Sample(g_Sample, UV);
-    texColor.rgb = pow(max(texColor.rgb, 0.0f), 2.2f) * BaseColor.rgb + Emissive.rgb;
-    texColor.a *= BaseColor.a;
-    texColor.a *= FogTransmittance(input.worldPosition);
-    return texColor;
+	FPrimitiveSceneData prim = PrimitiveSceneData[input.primitiveId];
+	float3 ProjectedT, ProjectedB;
+	float2 DynamicOffset = UVOffset + UVScrollSpeed * ViewTimeParams.x;
+	float2 UV = ResolveMaterialUV(input.uv, input.worldPosition, input.normal,
+		input.localPosition, input.localNormal, prim.LocalToWorld, UVTiling, DynamicOffset, WorldUVTileSize,
+		WorldUVParams.x > 0.5f, ProjectedT, ProjectedB);
+	float4 texColor = g_txColor.Sample(ColorSampler, UV);
+	texColor.rgb = pow(max(texColor.rgb, 0.0f), 2.2f) * BaseColor.rgb + Emissive.rgb;
+	texColor.a *= BaseColor.a;
+
+#ifdef MATERIAL_GRAPH
+	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV);
+
+#ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
+	texColor.rgb = GraphOutput.BaseColor.rgb;
+	texColor.a = BaseColor.a * GraphOutput.BaseColor.a;
+#endif
+
+	float3 GraphEmissive = float3(0, 0, 0);
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_COLOR
+	GraphEmissive = GraphOutput.EmissiveColor;
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR
+	GraphEmissive *= GraphOutput.EmissiveFactor;
+#endif
+
+	texColor.rgb += GraphEmissive;
+#endif
+
+	texColor.a *= FogTransmittance(input.worldPosition);
+	return texColor;
 }

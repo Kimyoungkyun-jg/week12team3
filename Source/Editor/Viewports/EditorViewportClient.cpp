@@ -18,7 +18,7 @@ FEditorViewportClient::FEditorViewportClient() {}
 void FEditorViewportClient::ApplyRenderSettings(FSceneRenderOptions& Options) const
 {
     Options.ReflectionModel = ReflectionModel;
-    Options.ShadingModel = Options.RenderingPath == ERenderingPath::Deferred ? EShadingModel::Phong : ShadingModel;
+    Options.ShadingModel = ShadingModel;
     Options.bOverrideMaterialLighting = true;
     Options.bEnableFXAA = ShowFlags.bFXAA;
     Options.bDrawDecals = ShowFlags.bDecals;

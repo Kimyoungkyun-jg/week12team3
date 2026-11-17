@@ -60,8 +60,6 @@ public:
 
 	void ClearWorld();
 
-	void GatherRenderPackets(FRenderQueue& RenderArray, const FViewContext* LODView = nullptr, const FFrustumPlanes* Frustum = nullptr, FRenderer* Renderer = nullptr);
-
 	void CreateMainCamera();
 
 	// 카메라 Get/Set
@@ -115,8 +113,6 @@ public:
 	FScene& GetScene() { return Scene; }
 	FTickTaskManager& GetTickTaskManager() { return TickTaskManager; }
 
-	const FRenderStats& GetRenderStats() const { return RenderStats; }
-
 	void SetWorldType(EWorldType InType) { WorldType = InType; }
 	EWorldType GetWorldType() const { return WorldType; }
 
@@ -142,19 +138,6 @@ public:
 
 private:
 	EWorldType WorldType = EWorldType::None;
-
-	struct alignas(64) FGatherChunk
-	{
-		TArray<FRenderPacket> Packets;              // 스태틱 묶음에 못 들어가는 것 (반투명 섹션, Renderer 없는 호출)
-		TArray<uint32> SlowPathIndices;
-		std::vector<FStaticDrawGroup> Groups;       // 불투명 스태틱 메시: (머티리얼, 메시, LOD)별 묶음. 항목만 매 프레임 비운다
-		uint32 LastGroup = 0;                       // 바로 전 물체가 들어간 묶음 (연속한 물체는 대개 같은 묶음)
-		uint32 StaticDrawCount = 0;
-		uint32 LODCounts[4] = {};
-		uint64 LODTriangles[4] = {};
-	};
-
-	TArray<FGatherChunk> GatherChunks;
 
 	// 등록된 Tick 함수만 실행한다. Actor보다 먼저 사라져도 남은 함수와의 연결을 스스로 끊는다.
 	FTickTaskManager TickTaskManager;
@@ -189,13 +172,6 @@ private:
 	TArray<ULevel*> Levels;
 
 	FScene Scene;
-
-	// GatherRenderPackets가 매 프레임 채우는 컬링 결과. 용량을 재사용한다.
-	TArray<FPrimitiveSceneProxy*> VisibleProxies;
-	TArray<FLODSelectionInput> LODInputs;
-	TArray<uint8> SelectedLODs;
-
-	FRenderStats RenderStats;
 
 	// Slomo-hitstop
 	float GlobalTimeDilation = 1.0f;

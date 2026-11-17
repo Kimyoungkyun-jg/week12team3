@@ -37,7 +37,7 @@
 #include "Editor/Animation/AnimGraphEditorPanel.h"
 #include "Editor/Animation/BlendSpaceEditorPanel.h"
 #include "Editor/Animation/AnimationAssetEditorPanels.h"
-
+#include "Editor/MaterialEditor/MaterialEditorPanel.h"
 #include "Editor/Rendering/Outline.h"
 #include "Editor/Rendering/OutLineRenderer.h"
 #include "Editor/Outliner/OutlinerPanel.h"
@@ -211,6 +211,7 @@ private:
 	FEditorCommand Duplicate;
 	FContentDrawerPanel* ContentDrawerPanel = nullptr;
 	FAssetEditorPanel* AssetEditorPanel = nullptr;
+	FMaterialEditorPanel* MaterialEditorPanel = nullptr;
 	FParticleSystemEditorPanel* ParticleSystemEditorPanel = nullptr;
 	FUIEditorPanel* UIEditorPanel = nullptr;
 	FPoseRetargetPanel* PoseRetargetPanel = nullptr;

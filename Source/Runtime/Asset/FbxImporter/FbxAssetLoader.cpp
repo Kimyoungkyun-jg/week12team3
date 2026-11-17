@@ -245,8 +245,14 @@ public:
 		{
 			auto* Base = UAssetManager::GetAssetByPath<UMaterial>("DefaultMaterial");
 			if (!Base) { Error = "DefaultMaterial must be initialized before loading FBX materials"; return nullptr; }
-			auto* Material = UMaterial::CreateInstance(Base);
-			if (!Material) { Error = "Cannot create FBX material"; return nullptr; }
+			auto* Material = NewObject<UMaterial>();
+			if (!Material)
+			{
+				Error = "Cannot create FBX material";
+				return nullptr;
+			}
+
+			Material->CopySettingsFrom(*Base);
 			Created.push_back(Material); Object = Material;
 			if ((Base->ParamBuffer && !Material->ParamBuffer) || Material->Textures.Num() < 2)
 			{ Error = "Cannot initialize FBX material resources"; return nullptr; }
@@ -273,11 +279,22 @@ public:
 		}
 		else
 		{
-			TArray<UMaterial*> Materials;
+			TArray<UMaterialInterface*> Materials;
 			for (const auto& MaterialKey : Asset.MaterialKeys)
 			{
 				auto* Material = Cast<UMaterial>(Resolve(MaterialKey));
-				if (!Material) { if (Error.empty()) Error = "Invalid FBX material reference: " + MaterialKey; return nullptr; }
+				if (!Material)
+				{
+					if (Error.empty())
+					{
+						Error = "Invalid FBX material reference: " + MaterialKey;
+					}
+					return nullptr;
+				}
+
+				const EMaterialUsage Usage = Asset.Type == EFbxAssetType::SkeletalMesh ? EMaterialUsage::SkeletalMesh : EMaterialUsage::StaticMesh;
+				Material->SetUsage(Usage, true);
+
 				Materials.Add(Material);
 			}
 			if (Asset.Type == EFbxAssetType::StaticMesh)
