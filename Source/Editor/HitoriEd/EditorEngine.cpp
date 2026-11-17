@@ -613,16 +613,22 @@ void UEditorEngine::BeginFrame(const float DeltaTime)
 		{
 			// 애니메이션 에디터 창에 포커스가 있으면 Ctrl+S는 그 창이 처리하므로 씬 저장과 복사·붙여넣기 등은 받지 않는다.
 			// 전체 저장(Ctrl+Shift+S)은 어디에 포커스가 있어도 동작한다.
-			const bool bAnimEditorFocused =
+			const bool bAssetEditorFocused =
+				(ParticleSystemEditorPanel && ParticleSystemEditorPanel->HasFocusedWindow()) ||
 				(AnimSequenceViewerPanel && AnimSequenceViewerPanel->HasFocusedWindow()) ||
 				(AnimGraphEditorPanel && AnimGraphEditorPanel->HasFocusedWindow()) ||
 				(BlendSpaceEditorPanel && BlendSpaceEditorPanel->HasFocusedWindow()) ||
 				(AssetEditorPanel && AssetEditorPanel->HasFocusedWindow()) ||
 				(MaterialEditorPanel && MaterialEditorPanel->HasFocusedWindow());
-			if (bAnimEditorFocused)
+
+			if (bAssetEditorFocused)
+			{
 				EditorCommandUI::ProcessShortcuts({ &SaveAll });
+			}
 			else
+			{
 				EditorCommandUI::ProcessShortcuts({ &Save, &SaveAll, &Play, &Pause, &Resume, &Copy, &Paste, &Duplicate });
+			}
 		}
 
 		// F: 선택한 액터로 포커스 (UE). 우클릭 비행 중이거나 글자 입력 중이면 받지 않는다.
@@ -2146,6 +2152,10 @@ void UEditorEngine::SaveAllAssets()
 	if (!IsPlaying())
 	{
 		SaveCurrentScene();
+	}
+	if (ParticleSystemEditorPanel)
+	{
+		ParticleSystemEditorPanel->Save();
 	}
 	if (AnimSequenceViewerPanel)
 	{

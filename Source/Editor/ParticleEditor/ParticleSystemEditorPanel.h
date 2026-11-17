@@ -29,10 +29,14 @@ public:
 	void OpenAsset(const FString& InPath);
 	void RenderPreview(UEditorEngine* Engine);
 	void Release();
+	void Save();
+	bool HasFocusedWindow() const { return IsOpen() && bFocused; }
 
 private:
 	void CreateDefaultSystem();
 	void SaveAsset();
+	bool NormalizeLODDistances();
+	bool CanCopyLODData(const UParticleLODLevel* Source) const;
 	void AddEmitter();
 	void DuplicateEmitter(UParticleEmitter* Source);
 	bool AddLowestLOD(bool bCopyPrevious);
@@ -83,6 +87,7 @@ private:
 	bool bShowDetails = true;
 	bool bShowCurveEditor = true;
 	bool bVisible = false;
+	bool bFocused = false;
 	bool bFocusRequested = false;
 	float BackgroundColor[4] = { 0.06f, 0.06f, 0.07f, 1.0f };
 };
