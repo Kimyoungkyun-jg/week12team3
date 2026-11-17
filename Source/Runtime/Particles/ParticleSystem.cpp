@@ -359,7 +359,8 @@ UParticleSystem* UParticleSystem::LoadFromFile(const FString& Path, UObject* Out
 	return FJsonArchive::LoadObject(System, Path) ? System : nullptr;
 }
 
-void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, const FParticleTickContext& Context) const
+void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, 
+	const FParticleTickContext& Context, const UParticleModuleEventGenerator * EventGenerator) const
 {
 	if (Offset == 0)
 	{
@@ -404,12 +405,13 @@ void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float Delt
 		Particle.Velocity = Vt;
 		Payload.CollisionCount++;
 
-		if (!bGenerateEvents || Payload.CollisionCount % EventFrequency != 0)
+		if (EventGenerator==nullptr || Payload.CollisionCount % std::max(1,EventGenerator->EventFrequency) != 0)
 		{
 			return;
 		}
 
 		FParticleEventCollideData Event;
+		Event.EventName = EventGenerator->EventName;
 		Event.Location = Hit.Location;
 		Event.Normal = Hit.ImpactNormal;
 		Event.Velocity = Vt;

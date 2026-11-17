@@ -44,6 +44,7 @@ struct FParticleCollisionPayload
 
 struct FParticleEventCollideData
 {
+	FString EventName;
 	FVector Location;
 	FVector Normal;
 	FVector Velocity;
@@ -383,11 +384,28 @@ public:
 };
 
 UCLASS()
+class UParticleModuleEventGenerator : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	bool RunsOnUpdate() const override { return false; }
+	const char* GetDisplayName() const override { return "Event Generator"; }
+
+
+public:
+	UPROPERTY(EditAnywhere)
+	FString EventName = "Hit";
+	UPROPERTY(EditAnywhere)
+	int32 EventFrequency = 1;
+};
+
+UCLASS()
 class UParticleModuleCollision : public UParticleModule
 {
 	GENERATED_BODY()
 public:
-	void TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, const FParticleTickContext& Context) const;
+	void TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, 
+		const FParticleTickContext& Context, const UParticleModuleEventGenerator* EventGenerator) const;
 	
 	bool RunsOnUpdate() const override { return true; }
 	uint32 RequiredBytes() const override { return sizeof(FParticleCollisionPayload); }
@@ -409,12 +427,6 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float CollisionRadius = 1.0f;
-
-	UPROPERTY(EditAnywhere)
-	bool bGenerateEvents = true;
-
-	UPROPERTY(EditAnywhere)
-	int32 EventFrequency = 1;
 };
 
 UCLASS()

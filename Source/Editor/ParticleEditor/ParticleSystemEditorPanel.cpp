@@ -446,6 +446,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					AddModItem("Initial Rotation", UParticleModuleRotation::StaticClass());
 					AddModItem("SubImage Index", UParticleModuleSubUV::StaticClass());
 					AddModItem("Collision", UParticleModuleCollision::StaticClass());
+					AddModItem("Event Generator", UParticleModuleEventGenerator::StaticClass());
 					ImGui::EndPopup();
 				}
 			}

@@ -104,6 +104,16 @@
                                                             "bEnabled": true
                                                         }
                                                     }
+                                                },
+                                                {
+                                                    "Class": "UParticleModuleEventGenerator",
+                                                    "Value": {
+                                                        "Properties": {
+                                                            "EventFrequency": 1,
+                                                            "EventName": "Hit",
+                                                            "bEnabled": true
+                                                        }
+                                                    }
                                                 }
                                             ],
                                             "RequiredModule": {

@@ -454,6 +454,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 	UParticleModuleRequired* Required = CurrentLODLevel->GetOrCreateRequired();
 	const bool bIsGpu = (EmitterType == EParticleEmitterType::GpuSprite);
 	const int32 MaxAllowed = std::clamp(Required->MaxParticles, 0, 65535);
+	const UParticleModuleEventGenerator* EventGenerator = nullptr;
 
 	if (bIsGpu)
 	{
@@ -473,6 +474,15 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 		else if (MaxActiveParticles == 0)
 			Resize(std::min(4, MaxAllowed));
 		if (!ParticleData || !ParticleIndices || MaxActiveParticles <= 0) return;
+
+		for (auto& Module : CurrentLODLevel->Modules)
+		{
+			if (UParticleModuleEventGenerator* Event = Cast<UParticleModuleEventGenerator>(Module))
+			{
+				EventGenerator = Event;
+				break;
+			}
+		}
 
 		// 살아 있는 파티클은 방출이 끝난 뒤에도 수명이 다할 때까지 갱신한다.
 		for (int32 Index = 0; Index < ActiveParticles;)
@@ -495,7 +505,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 				const UParticleModuleCollision *Collision;
 				if (Collision = Cast<UParticleModuleCollision>(Module))
 				{
-					Collision->TickCollision(Particle, DeltaTime, GetModuleDataOffset(Module), Context);
+					Collision->TickCollision(Particle, DeltaTime, GetModuleDataOffset(Module), Context, EventGenerator);
 				}
 
 				if (!InstanceParameters) continue;
