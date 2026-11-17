@@ -15,5 +15,7 @@ public:
 	void OnHit(const FParticleEventCollideData& Event);
 
 private:
-	UParticleSystemComponent* EffectComponent;
+	TArray <UParticleSystemComponent*> EffectPool;
+	int32 NextIndex = 0;
+	static constexpr int32 PoolSize = 8;
 };

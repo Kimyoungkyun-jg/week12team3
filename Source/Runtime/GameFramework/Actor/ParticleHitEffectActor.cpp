@@ -6,10 +6,24 @@
 
 AParticleHitEffectActor::AParticleHitEffectActor()
 {
-	EffectComponent = CreateDefaultSubobject<UParticleSystemComponent>("EffectComponent");
-	SetRootComponent(EffectComponent);
-	EffectComponent->SetAutoActivate(false);
-	EffectComponent->TemplatePath = "Assets/Particles/HitParticles.particle";
+	for (int32 i = 0; i < PoolSize; i++)
+	{
+		const FString Name = "Effect_" + std::to_string(i);
+		UParticleSystemComponent* Effect = CreateDefaultSubobject<UParticleSystemComponent>(Name);
+		EffectPool.Add(Effect);
+
+		Effect->SetAutoActivate(false);
+		Effect->TemplatePath = "Assets/Particles/HitParticles.particle";
+		
+		if (i == 0)
+		{
+			SetRootComponent(Effect);
+		}
+		else
+		{
+			Effect->SetupAttachment(EffectPool[0]);
+		}
+	}
 }
 
 void AParticleHitEffectActor::BeginPlay()
@@ -29,12 +43,26 @@ void AParticleHitEffectActor::BeginPlay()
 
 void AParticleHitEffectActor::OnHit(const FParticleEventCollideData& Event)
 {
-	if (EffectComponent->IsActive() && !EffectComponent->HasCompleted())
+	UParticleSystemComponent* Chosen = nullptr;
+
+	for (auto& Effect : EffectPool)
 	{
-		return;
+		if (!Effect->IsActive() || Effect->HasCompleted())
+		{
+			Chosen = Effect;
+			break;
+		}
 	}
 
-	EffectComponent->SetWorldLocation(Event.Location, false);
-	EffectComponent->ResetParticles();
-	EffectComponent->Activate(true);
+	if (Chosen == nullptr)
+	{
+	
+	Chosen = EffectPool[NextIndex];
+		NextIndex = (NextIndex + 1) % PoolSize;
+	}
+	
+	Chosen->SetWorldLocation(Event.Location, false);
+	Chosen->ResetParticles();
+	Chosen->Activate(true);
+	
 }
