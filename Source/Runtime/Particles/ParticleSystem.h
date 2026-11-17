@@ -391,6 +391,7 @@ class UParticleEmitter : public UObject
 	GENERATED_BODY()
 public:
 	UParticleLODLevel* AddLODLevel();
+	bool CopyLOD0(int32 TargetIndex, float SpawnRateScale);
 	void CacheEmitterModuleInfo();
 	const TArray<UParticleLODLevel*>& GetLODLevels() const { return LODLevels; }
 

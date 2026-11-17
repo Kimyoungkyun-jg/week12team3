@@ -49,6 +49,22 @@ namespace
 		}
 		return Emitter;
 	}
+
+	UParticleLODLevel* GetEditableLOD(UParticleEmitter* Emitter, int32 Index)
+	{
+		if (!Emitter)
+		{
+			return nullptr;
+		}
+
+		const auto& Levels = Emitter->GetLODLevels();
+		if (Index < 0 || Index >= static_cast<int32>(Levels.Num()))
+		{
+			return nullptr;
+		}
+
+		return Levels[Index];
+	}
 }
 
 FParticleSystemEditorPanel::FParticleSystemEditorPanel() = default;
@@ -68,6 +84,7 @@ void FParticleSystemEditorPanel::Release()
 	}
 	SelectedModule = nullptr;
 	SelectedEmitter = nullptr;
+	SelectedLODIndex = 0;
 	EditingSystem = nullptr;
 }
 
@@ -80,7 +97,7 @@ void FParticleSystemEditorPanel::CreateDefaultSystem()
 
 	EditingSystem->LODDistances.Add(0.0f);
 	EditingSystem->LODDistances.Add(20.0f);
-	EditingSystem->LODDistances.Add(50.0f);
+	EditingSystem->LODDistances.Add(30.0f);
 }
 
 void FParticleSystemEditorPanel::OpenAsset(const FString& InPath)
@@ -185,11 +202,12 @@ void FParticleSystemEditorPanel::RenderMenuBar()
 	{
 		if (ImGui::MenuItem("Add Emitter", nullptr, false, EditingSystem != nullptr))
 		{
-			if (UParticleEmitter* Emitter = EditingSystem->AddEmitter())
+			if (AddDefaultEmitter(EditingSystem))
 			{
-				Emitter->AddLODLevel();
 				if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+				{
 					PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+				}
 			}
 		}
 		if (ImGui::MenuItem("Restart Sim", nullptr, false, PreviewActor != nullptr))
@@ -321,9 +339,8 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 	ImGui::SameLine();
 	if (ImGui::SmallButton("+ Emitter") && EditingSystem)
 	{
-		if (UParticleEmitter* NewEmitter = EditingSystem->AddEmitter())
+		if (UParticleEmitter* NewEmitter = AddDefaultEmitter(EditingSystem))
 		{
-			NewEmitter->AddLODLevel();
 			SelectedEmitter = NewEmitter;
 			SelectedModule = nullptr;
 			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
@@ -339,6 +356,71 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 	}
 
 	const TArray<UParticleEmitter*>& Emitters = EditingSystem->GetEmitters();
+
+	int32 MaxLODCount = 0;
+	for (UParticleEmitter* Emitter : Emitters)
+	{
+		if (Emitter)
+		{
+			MaxLODCount = std::max(
+				MaxLODCount,
+				static_cast<int32>(Emitter->GetLODLevels().Num()));
+		}
+	}
+
+	// LOD 개수가 줄어든 경우 선택을 초기화
+	if (SelectedLODIndex < 0 || SelectedLODIndex >= MaxLODCount)
+	{
+		SelectedLODIndex = 0;
+		SelectedModule = nullptr;
+	}
+
+	if (MaxLODCount > 0)
+	{
+		const FString CurrentLabel = "LOD " + std::to_string(SelectedLODIndex);
+		ImGui::SetNextItemWidth(EditorUIScale::Px(100.0f));
+
+		if (ImGui::BeginCombo("##ParticleLOD", CurrentLabel.c_str()))
+		{
+			for (int32 Index = 0; Index < MaxLODCount; ++Index)
+			{
+				const FString Label = "LOD " + std::to_string(Index);
+				const bool bSelected = Index == SelectedLODIndex;
+
+				if (ImGui::Selectable(Label.c_str(), bSelected) && !bSelected)
+				{
+					SelectedLODIndex = Index;
+					SelectedModule = nullptr;
+				}
+
+				if (bSelected)
+				{
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndCombo();
+		}
+		if ((SelectedLODIndex == 1 || SelectedLODIndex == 2) && GetEditableLOD(SelectedEmitter, SelectedLODIndex))
+		{
+			ImGui::SameLine();
+
+			if (ImGui::SmallButton("Copy from LOD 0"))
+			{
+				const float SpawnRateScale = SelectedLODIndex == 1 ? 0.6f : 0.2f;
+
+				if (SelectedEmitter->CopyLOD0(SelectedLODIndex, SpawnRateScale))
+				{
+					SelectedModule = nullptr;
+					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+					{
+						PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+					}
+				}
+			}
+		}
+		ImGui::Separator();
+	}
+
 	const float ColumnWidth = EditorUIScale::Px(190.0f);
 	const float ColumnHeight = std::max(EditorUIScale::Px(80.0f), ImGui::GetContentRegionAvail().y);
 
@@ -354,7 +436,9 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 		const bool bEmitterSelected = (SelectedEmitter == Emitter && SelectedModule == nullptr);
 		if (ImGui::BeginChild("EmitterCol", ImVec2(ColumnWidth, ColumnHeight), ImGuiChildFlags_Borders))
 		{
-			UParticleLODLevel* LOD = !Emitter->GetLODLevels().IsEmpty() ? Emitter->GetLODLevels()[0] : nullptr;
+			UParticleLODLevel* LOD = nullptr;
+			LOD = GetEditableLOD(Emitter, SelectedLODIndex);
+
 			if (ImGui::Selectable(Emitter->EmitterName.c_str(), bEmitterSelected, 0, ImVec2(ColumnWidth - EditorUIScale::Px(44.0f), 0.0f)))
 			{
 				SelectedEmitter = Emitter;
@@ -527,21 +611,11 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 
 		if (auto* MeshType = Cast<UParticleModuleTypeDataMesh>(SelectedModule))
 		{
-			UParticleLODLevel* OwnerLOD = (SelectedEmitter && !SelectedEmitter->GetLODLevels().IsEmpty())
-				? SelectedEmitter->GetLODLevels()[0]
-				: nullptr;
-			if (!OwnerLOD && EditingSystem)
+			UParticleLODLevel* OwnerLOD = GetEditableLOD(SelectedEmitter, SelectedLODIndex);
+			if (OwnerLOD && OwnerLOD->TypeDataModule == MeshType)
 			{
-				for (UParticleEmitter* E : EditingSystem->GetEmitters())
-				{
-					if (E && !E->GetLODLevels().IsEmpty() && E->GetLODLevels()[0] && E->GetLODLevels()[0]->TypeDataModule == MeshType)
-					{
-						OwnerLOD = E->GetLODLevels()[0];
-						break;
-					}
-				}
+				DrawTypeDataMeshPicker(OwnerLOD, MeshType);
 			}
-			DrawTypeDataMeshPicker(OwnerLOD, MeshType);
 		}
 		else if (auto* Req = Cast<UParticleModuleRequired>(SelectedModule))
 		{
@@ -699,12 +773,10 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			SelectedEmitter->EmitterName = NameBuf;
 		ImGui::Checkbox("Solo", &SelectedEmitter->bIsSolo);
 		ImGui::DragFloat("Play Rate", &SelectedEmitter->PlayRate, 0.05f, 0.0f, 20.0f);
-		if (!SelectedEmitter->GetLODLevels().IsEmpty())
+		if (UParticleLODLevel* LOD = GetEditableLOD(SelectedEmitter, SelectedLODIndex))
 		{
-			UParticleLODLevel* LOD = SelectedEmitter->GetLODLevels()[0];
-			if (auto* MeshType = LOD ? Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule) : nullptr)
+			if (auto* MeshType = Cast<UParticleModuleTypeDataMesh>(LOD->TypeDataModule))
 			{
-				ImGui::Separator();
 				DrawTypeDataMeshPicker(LOD, MeshType);
 			}
 		}

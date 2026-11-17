@@ -307,6 +307,28 @@ UParticleLODLevel* UParticleEmitter::AddLODLevel()
 	return LOD;
 }
 
+bool UParticleEmitter::CopyLOD0(int32 TargetIndex, float SpawnRateScale)
+{
+	if (TargetIndex <= 0 || TargetIndex >= static_cast<int32>(LODLevels.Num()) || !LODLevels[0])
+	{
+		return false;
+	}
+
+	UParticleLODLevel* Copy = Cast<UParticleLODLevel>(StaticDuplicateObject(LODLevels[0], this));
+
+	if (!Copy)
+	{
+		return false;
+	}
+
+	Copy->Level = TargetIndex;
+	Copy->GetOrCreateSpawn()->Rate *= SpawnRateScale;
+
+	LODLevels[TargetIndex] = Copy;
+	CacheEmitterModuleInfo();
+	return true;
+}
+
 void UParticleEmitter::CacheEmitterModuleInfo()
 {
 	for (UParticleLODLevel* LOD : LODLevels)

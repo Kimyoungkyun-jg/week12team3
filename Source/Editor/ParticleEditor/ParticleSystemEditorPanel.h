@@ -43,6 +43,7 @@ private:
 	UParticleSystem* EditingSystem = nullptr;
 	UParticleEmitter* SelectedEmitter = nullptr;
 	UParticleModule* SelectedModule = nullptr;
+	int32 SelectedLODIndex = 0;
 	UWorld* PreviewWorld = nullptr;
 	AParticleSystemActor* PreviewActor = nullptr;
 	FEditorViewportClient Client;
