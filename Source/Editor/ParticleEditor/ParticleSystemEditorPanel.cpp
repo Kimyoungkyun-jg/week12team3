@@ -25,6 +25,8 @@
 #include <algorithm>
 #include <filesystem>
 #include <cctype>
+#include <cmath>
+#include <cstdio>
 
 namespace
 {
@@ -50,6 +52,371 @@ namespace
 		}
 		return Emitter;
 	}
+}
+
+void FParticleSystemEditorPanel::CopyModuleProperties(UParticleModule* Destination, const UParticleModule* Source)
+{
+	if (!Destination || !Source)
+	{
+		return;
+	}
+
+	Destination->bEnabled = Source->bEnabled;
+
+	if (const auto* Src = Cast<UParticleModuleRequired>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleRequired>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		Dst->MaxParticles = Src->MaxParticles;
+		Dst->EmitterDuration = Src->EmitterDuration;
+		Dst->bLooping = Src->bLooping;
+		Dst->bUseLocalSpace = Src->bUseLocalSpace;
+		Dst->Material = Src->Material;
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleSpawn>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleSpawn>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		Dst->Rate = Src->Rate;
+		Dst->Bursts = Src->Bursts;
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleTypeDataMesh>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleTypeDataMesh>(Destination);
+		if (Dst)
+		{
+			Dst->Mesh = Src->Mesh;
+		}
+		return;
+	}
+
+	if (Cast<UParticleModuleTypeDataSprite>(Source) || Cast<UParticleModuleTypeDataGpuSprite>(Source))
+	{
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleLifetime>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleLifetime>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		Dst->Min = Src->Min;
+		Dst->Max = Src->Max;
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleLocation>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleLocation>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		Dst->Min = Src->Min;
+		Dst->Max = Src->Max;
+		Dst->ParameterName = Src->ParameterName;
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleVelocity>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleVelocity>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		Dst->Min = Src->Min;
+		Dst->Max = Src->Max;
+		Dst->ParameterName = Src->ParameterName;
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleColor>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleColor>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		Dst->Start = Src->Start;
+		Dst->End = Src->End;
+		Dst->ParameterName = Src->ParameterName;
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleSize>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleSize>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		Dst->Start = Src->Start;
+		Dst->End = Src->End;
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleInitialSize>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleInitialSize>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		Dst->MinSize = Src->MinSize;
+		Dst->MaxSize = Src->MaxSize;
+		Dst->bUniformScale = Src->bUniformScale;
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleSizeByLife>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleSizeByLife>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		if (Src->ScaleX && Dst->ScaleX)
+		{
+			Dst->ScaleX->ImportFromJson(Src->ScaleX->ExportToJson());
+		}
+		if (Src->ScaleY && Dst->ScaleY)
+		{
+			Dst->ScaleY->ImportFromJson(Src->ScaleY->ExportToJson());
+		}
+		if (Src->ScaleZ && Dst->ScaleZ)
+		{
+			Dst->ScaleZ->ImportFromJson(Src->ScaleZ->ExportToJson());
+		}
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleColorOverLife>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleColorOverLife>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		if (Src->ColorR && Dst->ColorR)
+		{
+			Dst->ColorR->ImportFromJson(Src->ColorR->ExportToJson());
+		}
+		if (Src->ColorG && Dst->ColorG)
+		{
+			Dst->ColorG->ImportFromJson(Src->ColorG->ExportToJson());
+		}
+		if (Src->ColorB && Dst->ColorB)
+		{
+			Dst->ColorB->ImportFromJson(Src->ColorB->ExportToJson());
+		}
+		if (Src->Alpha && Dst->Alpha)
+		{
+			Dst->Alpha->ImportFromJson(Src->Alpha->ExportToJson());
+		}
+
+		Dst->ParameterName = Src->ParameterName;
+		Dst->bUseFadeInOut = Src->bUseFadeInOut;
+		Dst->FadeInEnd = Src->FadeInEnd;
+		Dst->FadeOutStart = Src->FadeOutStart;
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleRotation>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleRotation>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		Dst->Min = Src->Min;
+		Dst->Max = Src->Max;
+		Dst->RateMin = Src->RateMin;
+		Dst->RateMax = Src->RateMax;
+		return;
+	}
+
+	if (const auto* Src = Cast<UParticleModuleSubUV>(Source))
+	{
+		auto* Dst = Cast<UParticleModuleSubUV>(Destination);
+		if (!Dst)
+		{
+			return;
+		}
+
+		Dst->SubImagesHorizontal = Src->SubImagesHorizontal;
+		Dst->SubImagesVertical = Src->SubImagesVertical;
+		Dst->bUseLinearOverLife = Src->bUseLinearOverLife;
+		Dst->PlayRate = Src->PlayRate;
+
+		if (Src->SubImageIndex && Dst->SubImageIndex)
+		{
+			Dst->SubImageIndex->ImportFromJson(Src->SubImageIndex->ExportToJson());
+		}
+
+		return;
+	}
+}
+
+UParticleModule* FParticleSystemEditorPanel::CopyModuleToLOD(UParticleLODLevel* Destination, const UParticleModule* Source)
+{
+	if (!Destination || !Source)
+	{
+		return nullptr;
+	}
+
+	UParticleModule* NewModule = Destination->AddModule(Source->GetClass());
+	if (!NewModule)
+	{
+		return nullptr;
+	}
+
+	CopyModuleProperties(NewModule, Source);
+	return NewModule;
+}
+
+bool FParticleSystemEditorPanel::CopyLODData(UParticleLODLevel* Destination, const UParticleLODLevel* Source)
+{
+	if (!Destination || !Source)
+	{
+		return false;
+	}
+
+	Destination->Level = Source->Level;
+	Destination->bEnabled = Source->bEnabled;
+
+	if (Source->RequiredModule)
+	{
+		CopyModuleProperties(Destination->GetOrCreateRequired(), Source->RequiredModule);
+	}
+
+	if (Source->SpawnModule)
+	{
+		CopyModuleProperties(Destination->GetOrCreateSpawn(), Source->SpawnModule);
+	}
+
+	if (Source->TypeDataModule)
+	{
+		UParticleModuleTypeDataBase* NewTypeData = Destination->SetTypeData(Source->TypeDataModule->GetClass());
+		if (!NewTypeData)
+		{
+			return false;
+		}
+
+		CopyModuleProperties(NewTypeData, Source->TypeDataModule);
+	}
+
+	for (UParticleModule* SourceModule : Source->Modules)
+	{
+		if (!SourceModule || !CopyModuleToLOD(Destination, SourceModule))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void FParticleSystemEditorPanel::ApplyPreviewLOD()
+{
+	if (!PreviewActor || !PreviewActor->GetParticleSystemComponent())
+	{
+		return;
+	}
+
+	UParticleSystemComponent* Component = PreviewActor->GetParticleSystemComponent();
+	TArray<FParticleEmitterInstance>& Instances = Component->GetEmitterInstancesMutable();
+
+	for (FParticleEmitterInstance& Instance : Instances)
+	{
+		Instance.SetLODLevel(SelectedLODIndex);
+	}
+
+	Component->UpdateEmitterStrides();
+	Component->MarkRenderStateDirty();
+}
+
+bool FParticleSystemEditorPanel::AddLowestLOD(bool bCopyPrevious)
+{
+	if (!EditingSystem || EditingSystem->GetEmitters().IsEmpty())
+	{
+		StatusMessage = "Cannot add LOD without emitters.";
+		return false;
+	}
+
+	const int32 ExistingLODCount = static_cast<int32>(EditingSystem->LODDistances.Num());
+
+	if (ExistingLODCount <= 0)
+	{
+		StatusMessage = "LOD distance settings are missing.";
+		return false;
+	}
+
+	for (UParticleEmitter* Emitter : EditingSystem->GetEmitters())
+	{
+		if (!Emitter || static_cast<int32>(Emitter->GetLODLevels().Num()) != ExistingLODCount)
+		{
+			StatusMessage = "Emitter LOD counts are inconsistent.";
+			return false;
+		}
+	}
+
+	const float LastDistance = EditingSystem->LODDistances.Last();
+	const float NewDistance = LastDistance + std::max(50.0f, std::abs(LastDistance) * 0.5f);
+
+	for (UParticleEmitter* Emitter : EditingSystem->GetEmitters())
+	{
+		const TArray<UParticleLODLevel*>& Levels = Emitter->GetLODLevels();
+		const UParticleLODLevel* SourceLOD = Levels.Last();
+
+		UParticleLODLevel* NewLOD = Emitter->AddLODLevel();
+		if (!NewLOD)
+		{
+			StatusMessage = "Failed to create LOD.";
+			return false;
+		}
+
+		if (bCopyPrevious && !CopyLODData(NewLOD, SourceLOD))
+		{
+			StatusMessage = "Failed to copy previous LOD.";
+			return false;
+		}
+	}
+
+	EditingSystem->LODDistances.Add(NewDistance);
+	SelectedLODIndex = ExistingLODCount;
+
+	if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+	{
+		PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+		ApplyPreviewLOD();
+	}
+
+	StatusMessage = "LOD added";
+	return true;
 }
 
 FParticleSystemEditorPanel::FParticleSystemEditorPanel() = default;
@@ -145,6 +512,96 @@ void FParticleSystemEditorPanel::SaveAsset()
 	StatusMessage = EditingSystem->SaveToFile(AssetPath) ? "Saved" : "Save failed";
 }
 
+void FParticleSystemEditorPanel::AddEmitter()
+{
+	if (!EditingSystem)
+	{
+		return;
+	}
+
+	const int32 DesiredLODCount = static_cast<int32>(EditingSystem->LODDistances.Num());
+
+	if (DesiredLODCount <= 0)
+	{
+		StatusMessage = "Create LOD distances before adding an emitter.";
+		return;
+	}
+
+	for (UParticleEmitter* Existing : EditingSystem->GetEmitters())
+	{
+		if (!Existing || static_cast<int32>(Existing->GetLODLevels().Num()) != DesiredLODCount)
+		{
+			StatusMessage = "Emitter LOD counts are inconsistent.";
+			return;
+		}
+	}
+
+	UParticleEmitter* NewEmitter = EditingSystem->AddEmitter();
+	if (!NewEmitter)
+	{
+		return;
+	}
+
+	for (int32 Index = 0; Index < DesiredLODCount; ++Index)
+	{
+		NewEmitter->AddLODLevel();
+	}
+
+	SelectedEmitter = NewEmitter;
+	SelectedModule = nullptr;
+	SelectedLODIndex = 0;
+	SelectedCurveTrackIndex = 0;
+	SelectedCurveKeyId = -1;
+
+	if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+	{
+		PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+		ApplyPreviewLOD();
+	}
+
+	StatusMessage = "Emitter added";
+}
+
+void FParticleSystemEditorPanel::DuplicateEmitter(UParticleEmitter* Source)
+{
+	if (!EditingSystem || !Source)
+	{
+		return;
+	}
+
+	UParticleEmitter* NewEmitter = EditingSystem->AddEmitter();
+	if (!NewEmitter)
+	{
+		return;
+	}
+
+	NewEmitter->EmitterName = Source->EmitterName + " Copy";
+	NewEmitter->bIsSolo = Source->bIsSolo;
+	NewEmitter->PlayRate = Source->PlayRate;
+
+	for (const UParticleLODLevel* SourceLOD : Source->GetLODLevels())
+	{
+		UParticleLODLevel* NewLOD = NewEmitter->AddLODLevel();
+		if (!CopyLODData(NewLOD, SourceLOD))
+		{
+			StatusMessage = "Emitter duplicated with incomplete LOD data.";
+			break;
+		}
+	}
+
+	SelectedEmitter = NewEmitter;
+	SelectedModule = nullptr;
+	SelectedLODIndex = 0;
+
+	if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+	{
+		PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+		ApplyPreviewLOD();
+	}
+
+	StatusMessage = "Emitter duplicated";
+}
+
 void FParticleSystemEditorPanel::Tick(float DeltaTime)
 {
 	if (!IsOpen() || !PreviewWorld) return;
@@ -172,7 +629,8 @@ void FParticleSystemEditorPanel::RenderPreview(UEditorEngine* Engine)
 		}
 
 		UParticleSystemComponent* PreviewComponent = PreviewActor ? PreviewActor->GetParticleSystemComponent() : nullptr;
-		Engine->RenderPreviewViewport(&Client, PreviewWorld, nullptr, bShowSkybox ? Skybox.get() : nullptr, bShowGrid, bShowBounds ? PreviewComponent : nullptr, bShowOriginAxis);
+		Engine->RenderPreviewViewport(&Client, PreviewWorld, nullptr, bShowSkybox ? Skybox.get() : nullptr, bShowGrid, bShowBounds ? PreviewComponent : nullptr, bShowOriginAxis,
+			{ BackgroundColor[0], BackgroundColor[1], BackgroundColor[2], 1.0f });
 	}
 }
 
@@ -203,16 +661,12 @@ void FParticleSystemEditorPanel::RenderMenuBar()
 	{
 		if (ImGui::MenuItem("Add Emitter", nullptr, false, EditingSystem != nullptr))
 		{
-			if (UParticleEmitter* Emitter = EditingSystem->AddEmitter())
-			{
-				const int32 DesiredLODCount = std::max(1, static_cast<int32>(EditingSystem->LODDistances.Num()));
-				for (int32 Index = 0; Index < DesiredLODCount; ++Index)
-				{
-					Emitter->AddLODLevel();
-				}
-				if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-					PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
-			}
+			AddEmitter();
+		}
+
+		if (ImGui::MenuItem("Add Lowest LOD", nullptr, false, EditingSystem != nullptr))
+		{
+			AddLowestLOD(bCopyPreviousLOD);
 		}
 		if (ImGui::MenuItem("Restart Sim", nullptr, false, PreviewActor != nullptr))
 		{
@@ -237,24 +691,69 @@ void FParticleSystemEditorPanel::RenderMenuBar()
 void FParticleSystemEditorPanel::RenderToolbar()
 {
 	ImGui::BeginDisabled(EditingSystem == nullptr);
+
 	if (ImGui::Button("Save"))
+	{
 		SaveAsset();
+	}
+
 	ImGui::EndDisabled();
 
 	ImGui::SameLine();
-	if (ImGui::Button("Restart Sim"))
+
+	if (ImGui::Button("Restart"))
 	{
 		if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+		{
 			PreviewActor->GetParticleSystemComponent()->ResetParticles();
+		}
 	}
 
 	ImGui::SameLine();
+
 	if (ImGui::Button(bPaused ? "Play" : "Pause"))
+	{
 		bPaused = !bPaused;
+	}
 
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth(EditorUIScale::Px(90.0f));
 	ImGui::SliderFloat("##SimSpeed", &SimSpeed, 0.1f, 2.0f, "%.2fx");
+
+	ImGui::SameLine();
+
+	const char* ViewModes[] = {
+		"Solid",
+		"Wireframe",
+		"Scene Depth",
+		"World Normal",
+		"Light Culling",
+		"Cascade",
+		"Shadow Mask",
+		"Unlit"
+	};
+
+	int32 ViewModeIndex = static_cast<int32>(Client.GetViewportMode());
+
+	ImGui::SetNextItemWidth(EditorUIScale::Px(125.0f));
+
+	if (ImGui::Combo("##ParticleViewMode", &ViewModeIndex, ViewModes, IM_ARRAYSIZE(ViewModes)))
+	{
+		Client.SetViewportMode(static_cast<EViewportMode>(ViewModeIndex));
+	}
+
+	ImGui::SameLine();
+
+	if (ImGui::Button("Focus"))
+	{
+		if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+		{
+			const FBox Bounds = PreviewActor->GetParticleSystemComponent()->CalcBounds();
+			const FVector Center = (Bounds.Min + Bounds.Max) * 0.5f;
+			const float Radius = std::max(1.0f, (Bounds.Max - Bounds.Min).Length() * 0.5f);
+			Client.FocusOnBounds(Center, Radius);
+		}
+	}
 
 	ImGui::SameLine();
 	ImGui::Checkbox("Bounds", &bShowBounds);
@@ -265,6 +764,8 @@ void FParticleSystemEditorPanel::RenderToolbar()
 	ImGui::SameLine();
 	ImGui::Checkbox("Sky", &bShowSkybox);
 	ImGui::SameLine();
+	ImGui::Checkbox("Stats", &bShowParticleStats);
+	ImGui::SameLine();
 	ImGui::ColorEdit3("##BgColor", BackgroundColor, ImGuiColorEditFlags_NoInputs);
 
 	if (!StatusMessage.empty())
@@ -272,7 +773,94 @@ void FParticleSystemEditorPanel::RenderToolbar()
 		ImGui::SameLine();
 		ImGui::TextDisabled("%s", StatusMessage.c_str());
 	}
+
 	ImGui::Separator();
+	RenderLODControls();
+	ImGui::Separator();
+}
+
+void FParticleSystemEditorPanel::RenderLODControls()
+{
+	if (!EditingSystem)
+	{
+		return;
+	}
+
+	const int32 LODCount = static_cast<int32>(EditingSystem->LODDistances.Num());
+	bool bConsistent = LODCount > 0;
+
+	for (UParticleEmitter* Emitter : EditingSystem->GetEmitters())
+	{
+		if (!Emitter || static_cast<int32>(Emitter->GetLODLevels().Num()) != LODCount)
+		{
+			bConsistent = false;
+			break;
+		}
+	}
+
+	ImGui::BeginDisabled(!bConsistent || LODCount <= 0);
+
+	if (!bConsistent)
+	{
+		ImGui::TextDisabled("LOD configuration mismatch");
+	}
+	else
+	{
+		SelectedLODIndex = std::clamp(SelectedLODIndex, 0, LODCount - 1);
+
+		if (ImGui::Button("<"))
+		{
+			SelectedLODIndex = std::max(0, SelectedLODIndex - 1);
+			ApplyPreviewLOD();
+		}
+
+		ImGui::SameLine();
+
+		char LODLabel[64];
+		snprintf(LODLabel, sizeof(LODLabel), "LOD %d / %d", SelectedLODIndex, LODCount);
+
+		ImGui::SetNextItemWidth(EditorUIScale::Px(120.0f));
+
+		if (ImGui::BeginCombo("##GlobalLOD", LODLabel))
+		{
+			for (int32 Index = 0; Index < LODCount; ++Index)
+			{
+				char OptionLabel[32];
+				snprintf(OptionLabel, sizeof(OptionLabel), "LOD %d", Index);
+
+				if (ImGui::Selectable(OptionLabel, SelectedLODIndex == Index))
+				{
+					SelectedLODIndex = Index;
+					SelectedModule = nullptr;
+					SelectedCurveTrackIndex = 0;
+					SelectedCurveKeyId = -1;
+					ApplyPreviewLOD();
+				}
+			}
+
+			ImGui::EndCombo();
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button(">"))
+		{
+			SelectedLODIndex = std::min(LODCount - 1, SelectedLODIndex + 1);
+			ApplyPreviewLOD();
+		}
+	}
+
+	ImGui::EndDisabled();
+
+	ImGui::SameLine();
+	ImGui::Checkbox("Copy Previous LOD", &bCopyPreviousLOD);
+
+	ImGui::SameLine();
+
+	if (ImGui::Button("+ Add Lowest LOD"))
+	{
+		AddLowestLOD(bCopyPreviousLOD);
+	}
 }
 
 void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
@@ -286,14 +874,6 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 	const ImVec2 Avail = ImGui::GetContentRegionAvail();
 	const ImVec2 Size(std::max(1.0f, Avail.x), std::max(1.0f, Avail.y));
 	const ImVec2 ImagePos = ImGui::GetCursorScreenPos();
-
-	if (!bShowSkybox)
-	{
-		const ImU32 BgCol = ImGui::ColorConvertFloat4ToU32(
-			ImVec4(BackgroundColor[0], BackgroundColor[1], BackgroundColor[2], 1.0f));
-		ImGui::GetWindowDrawList()->AddRectFilled(
-			ImagePos, ImVec2(ImagePos.x + Size.x, ImagePos.y + Size.y), BgCol);
-	}
 
 	PendingViewportWidth = static_cast<uint32>(Size.x);
 	PendingViewportHeight = static_cast<uint32>(Size.y);
@@ -320,7 +900,7 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 		static_cast<int32>(Wheel * 120), 4.0f * CameraSpeed, 0.2f);
 
 	// 뷰포트 우하단에 이미터별 활성 파티클 수를 표시한다.
-	if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+	if (bShowParticleStats && PreviewActor && PreviewActor->GetParticleSystemComponent())
 	{
 		const TArray<FParticleEmitterInstance>& Instances =
 			PreviewActor->GetParticleSystemComponent()->GetEmitterInstances();
@@ -361,33 +941,6 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 		return;
 	}
 
-	ImGui::TextUnformatted("EMITTERS");
-
-	if (ImGui::Button("+ Add Emitter", ImVec2(-1.0f, 0.0f)) && EditingSystem)
-	{
-		if (UParticleEmitter* NewEmitter = EditingSystem->AddEmitter())
-		{
-			const int32 DesiredLODCount = std::max(1, static_cast<int32>(EditingSystem->LODDistances.Num()));
-			for (int32 Index = 0; Index < DesiredLODCount; ++Index)
-			{
-				NewEmitter->AddLODLevel();
-			}
-
-			SelectedEmitter = NewEmitter;
-			SelectedModule = nullptr;
-			SelectedLODIndex = 0;
-			SelectedCurveTrackIndex = 0;
-			SelectedCurveKeyId = -1;
-
-			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-			{
-				PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
-			}
-		}
-	}
-
-	ImGui::Separator();
-
 	if (!EditingSystem)
 	{
 		ImGui::TextDisabled("No Particle System");
@@ -395,143 +948,149 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 		return;
 	}
 
+	ImGui::TextUnformatted("EMITTERS");
+	ImGui::SameLine();
+
+	if (ImGui::SmallButton("+ Add Emitter"))
+	{
+		AddEmitter();
+	}
+
+	ImGui::SameLine();
+
 	const bool bSystemSelected = SelectedEmitter == nullptr && SelectedModule == nullptr;
 
-	if (ImGui::Selectable("Particle System", bSystemSelected, ImGuiSelectableFlags_SpanAvailWidth))
+	if (ImGui::SmallButton(bSystemSelected ? "[Particle System]" : "Particle System"))
 	{
 		SelectedEmitter = nullptr;
 		SelectedModule = nullptr;
-		SelectedLODIndex = 0;
 		SelectedCurveTrackIndex = 0;
 		SelectedCurveKeyId = -1;
 	}
 
 	ImGui::Separator();
 
-	const TArray<UParticleEmitter*>& Emitters = EditingSystem->GetEmitters();
 	UParticleEmitter* EmitterToRemove = nullptr;
+	UParticleEmitter* EmitterToDuplicate = nullptr;
 
-	if (Emitters.IsEmpty())
+	if (ImGui::BeginChild("EmitterColumns", ImVec2(0.0f, 0.0f), false, ImGuiWindowFlags_HorizontalScrollbar))
 	{
-		ImGui::TextDisabled("No emitters. Add an emitter to get started.");
-	}
+		const TArray<UParticleEmitter*>& Emitters = EditingSystem->GetEmitters();
 
-	for (int32 EmitterIdx = 0; EmitterIdx < static_cast<int32>(Emitters.Num()); ++EmitterIdx)
-	{
-		UParticleEmitter* Emitter = Emitters[EmitterIdx];
-		if (!Emitter)
+		if (Emitters.IsEmpty())
 		{
-			continue;
+			ImGui::TextDisabled("No emitters. Add an emitter to get started.");
 		}
 
-		ImGui::PushID(Emitter);
-
-		const bool bEmitterSelected = (SelectedEmitter == Emitter);
-		const ImGuiTreeNodeFlags EmitterFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | (bEmitterSelected ? ImGuiTreeNodeFlags_Selected : 0);
-
-		const bool bEmitterExpanded = ImGui::TreeNodeEx("EmitterNode", EmitterFlags, "%s", Emitter->EmitterName.c_str());
-
-		if (ImGui::IsItemClicked() && SelectedEmitter != Emitter)
+		for (int32 EmitterIndex = 0; EmitterIndex < static_cast<int32>(Emitters.Num()); ++EmitterIndex)
 		{
-			SelectedEmitter = Emitter;
-			SelectedModule = nullptr;
-			SelectedLODIndex = 0;
-			SelectedCurveTrackIndex = 0;
-			SelectedCurveKeyId = -1;
-		}
-
-		if (bEmitterExpanded)
-		{
-			const TArray<UParticleLODLevel*>& LODLevels = Emitter->GetLODLevels();
-
-			if (!LODLevels.IsEmpty())
+			UParticleEmitter* Emitter = Emitters[EmitterIndex];
+			if (!Emitter)
 			{
-				SelectedLODIndex = std::clamp(SelectedLODIndex, 0, static_cast<int32>(LODLevels.Num()) - 1);
+				continue;
+			}
 
-				char LODLabel[32];
-				snprintf(LODLabel, sizeof(LODLabel), "LOD %d", SelectedLODIndex);
+			ImGui::PushID(Emitter);
 
-				ImGui::TextDisabled("LOD LEVEL");
-				ImGui::SetNextItemWidth(-1.0f);
-				if (ImGui::BeginCombo("##EmitterLODLevel", LODLabel))
+			if (ImGui::BeginChild("EmitterColumn", ImVec2(EmitterColumnWidth, 0.0f), ImGuiChildFlags_Borders))
+			{
+				char Header[64];
+				snprintf(Header, sizeof(Header), "Emitter %d", EmitterIndex + 1);
+
+				if (ImGui::Selectable(Header, SelectedEmitter == Emitter, ImGuiSelectableFlags_SpanAvailWidth))
 				{
-					for (int32 Index = 0; Index < static_cast<int32>(LODLevels.Num()); ++Index)
-					{
-						char OptionLabel[32];
-						snprintf(OptionLabel, sizeof(OptionLabel), "LOD %d", Index);
-
-						if (ImGui::Selectable(OptionLabel, SelectedLODIndex == Index))
-						{
-							SelectedEmitter = Emitter;
-							SelectedModule = nullptr;
-							SelectedLODIndex = Index;
-							SelectedCurveTrackIndex = 0;
-							SelectedCurveKeyId = -1;
-						}
-					}
-
-					ImGui::EndCombo();
+					SelectedEmitter = Emitter;
+					SelectedModule = nullptr;
+					SelectedCurveTrackIndex = 0;
+					SelectedCurveKeyId = -1;
 				}
-			}
 
-			UParticleLODLevel* LOD = LODLevels.IsEmpty() ? nullptr : LODLevels[SelectedLODIndex];
+				char NameBuffer[128] = {};
+				strncpy_s(NameBuffer, Emitter->EmitterName.c_str(), _TRUNCATE);
 
-			if (ImGui::Button("Remove Emitter", ImVec2(-1.0f, 0.0f)))
-			{
-				EmitterToRemove = Emitter;
-			}
+				ImGui::SetNextItemWidth(-1.0f);
+				if (ImGui::InputText("##EmitterName", NameBuffer, sizeof(NameBuffer)))
+				{
+					Emitter->EmitterName = NameBuffer;
+				}
 
-			if (LOD)
-			{
+				if (ImGui::Button("Duplicate Emitter", ImVec2(-1.0f, 0.0f)))
+				{
+					EmitterToDuplicate = Emitter;
+				}
+
+				if (ImGui::Button("Remove Emitter", ImVec2(-1.0f, 0.0f)))
+				{
+					EmitterToRemove = Emitter;
+				}
+
+				const TArray<UParticleLODLevel*>& LODLevels = Emitter->GetLODLevels();
+
+				if (SelectedLODIndex < 0 || SelectedLODIndex >= static_cast<int32>(LODLevels.Num()))
+				{
+					ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.3f, 1.0f), "Missing LOD %d", SelectedLODIndex);
+					ImGui::EndChild();
+					ImGui::PopID();
+					ImGui::SameLine(0.0f, EditorUIScale::Px(6.0f));
+					continue;
+				}
+
+				UParticleLODLevel* LOD = LODLevels[SelectedLODIndex];
+
+				ImGui::Separator();
+
 				ImGui::Checkbox("Enabled", &LOD->bEnabled);
 				ImGui::SameLine();
 				ImGui::Checkbox("Solo", &Emitter->bIsSolo);
 
+				ImGui::TextDisabled("Emitter Play Rate");
+				ImGui::SetNextItemWidth(-1.0f);
+				ImGui::DragFloat("##EmitterPlayRate", &Emitter->PlayRate, 0.05f, 0.0f, 20.0f);
+
 				ImGui::Separator();
-
-				int TypeIdx = 0;
-				UParticleModuleTypeDataBase* TypeData = LOD->GetOrCreateTypeData();
-				const EParticleEmitterType CurType = TypeData->GetEmitterType();
-
-				if (CurType == EParticleEmitterType::GpuSprite)
-				{
-					TypeIdx = 1;
-				}
-				else if (CurType == EParticleEmitterType::Mesh)
-				{
-					TypeIdx = 2;
-				}
-
 				ImGui::TextDisabled("EMITTER TYPE");
+
+				int32 TypeIndex = 0;
+				UParticleModuleTypeDataBase* TypeData = LOD->GetOrCreateTypeData();
+
+				if (TypeData->GetEmitterType() == EParticleEmitterType::GpuSprite)
+				{
+					TypeIndex = 1;
+				}
+				else if (TypeData->GetEmitterType() == EParticleEmitterType::Mesh)
+				{
+					TypeIndex = 2;
+				}
+
 				ImGui::SetNextItemWidth(-1.0f);
 
-				if (ImGui::Combo("##EmitterType", &TypeIdx, "Sprite\0GPU Sprite\0Mesh\0"))
+				if (ImGui::Combo("##EmitterType", &TypeIndex, "Sprite\0GPU Sprite\0Mesh\0"))
 				{
 					UClass* TargetClass = UParticleModuleTypeDataSprite::StaticClass();
 
-					if (TypeIdx == 1)
+					if (TypeIndex == 1)
 					{
 						TargetClass = UParticleModuleTypeDataGpuSprite::StaticClass();
 					}
-					else if (TypeIdx == 2)
+					else if (TypeIndex == 2)
 					{
 						TargetClass = UParticleModuleTypeDataMesh::StaticClass();
 					}
 
-					const bool bWasTypeDataSelected = (SelectedModule == TypeData);
+					const bool bWasSelected = SelectedModule == TypeData;
 					UParticleModuleTypeDataBase* NewTypeData = LOD->SetTypeData(TargetClass);
 
-					if (auto* NewMeshType = Cast<UParticleModuleTypeDataMesh>(NewTypeData))
+					if (auto* MeshType = Cast<UParticleModuleTypeDataMesh>(NewTypeData))
 					{
-						if (!NewMeshType->Mesh)
+						if (!MeshType->Mesh)
 						{
-							NewMeshType->Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Cube");
+							MeshType->Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Cube");
 						}
 
 						LOD->GetOrCreateRequired()->Material = nullptr;
 					}
 
-					if (bWasTypeDataSelected)
+					if (bWasSelected)
 					{
 						SelectedModule = NewTypeData;
 					}
@@ -539,26 +1098,28 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 					{
 						PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+						ApplyPreviewLOD();
 					}
 				}
-
-				ImGui::Spacing();
 
 				UParticleModule* ModuleToRemove = nullptr;
 				UParticleModule* ModuleToMove = nullptr;
 				UParticleModule* MoveTargetModule = nullptr;
+				UParticleModule* ModuleToDuplicate = nullptr;
+				UParticleModule* ModuleToCopyToOtherEmitter = nullptr;
+				UParticleEmitter* CopyTargetEmitter = nullptr;
 				bool bMoveAfterTarget = false;
 
-				auto DrawModuleRow = [&](UParticleModule* Mod, const char* Stage, bool bRemovable)
+				auto DrawModuleRow = [&](UParticleModule* Module, const char* Stage, bool bRemovable)
 				{
-					if (!Mod)
+					if (!Module)
 					{
 						return;
 					}
 
-					ImGui::PushID(Mod);
+					ImGui::PushID(Module);
 
-					if (ImGui::Checkbox("##Enabled", &Mod->bEnabled))
+					if (ImGui::Checkbox("##ModuleEnabled", &Module->bEnabled))
 					{
 						if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 						{
@@ -569,42 +1130,100 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					ImGui::SameLine();
 
 					const float RowWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
-					const char* DisplayName = Mod->GetDisplayName();
 					const float TextWidth = std::max(1.0f, RowWidth - EditorUIScale::Px(12.0f));
+					const char* DisplayName = Module->GetDisplayName();
 
 					const ImVec2 NameSize = ImGui::CalcTextSize(DisplayName, nullptr, false, TextWidth);
 					const ImVec2 StageSize = ImGui::CalcTextSize(Stage, nullptr, false, TextWidth);
 					const float RowHeight = NameSize.y + StageSize.y + EditorUIScale::Px(10.0f);
 
-					const bool bSelected = (SelectedModule == Mod);
-
-					if (ImGui::Selectable("##ModuleRow", bSelected, 0, ImVec2(RowWidth, RowHeight)))
+					if (ImGui::Selectable("##ModuleRow", SelectedModule == Module, 0, ImVec2(RowWidth, RowHeight)))
 					{
-						if (SelectedModule != Mod)
+						if (SelectedModule != Module)
 						{
 							SelectedCurveTrackIndex = 0;
 							SelectedCurveKeyId = -1;
 						}
 
 						SelectedEmitter = Emitter;
-						SelectedModule = Mod;
+						SelectedModule = Module;
 					}
 
 					const ImVec2 RowMin = ImGui::GetItemRectMin();
+					const ImVec2 RowMax = ImGui::GetItemRectMax();
 					const ImVec2 TextPosition(RowMin.x + EditorUIScale::Px(6.0f), RowMin.y + EditorUIScale::Px(3.0f));
 
 					ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(), TextPosition, ImGui::GetColorU32(ImGuiCol_Text), DisplayName, nullptr, TextWidth);
 					ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(TextPosition.x, TextPosition.y + NameSize.y + EditorUIScale::Px(2.0f)), ImGui::GetColorU32(ImGuiCol_TextDisabled), Stage, nullptr, TextWidth);
 
-					const ImVec2 RowMax = ImGui::GetItemRectMax();
+					if (bRemovable && ImGui::BeginPopupContextItem("ModuleContext"))
+					{
+						if (ImGui::MenuItem("Duplicate Module"))
+						{
+							ModuleToDuplicate = Module;
+						}
+
+						if (ImGui::MenuItem("Remove Module"))
+						{
+							ModuleToRemove = Module;
+						}
+
+						if (ImGui::BeginMenu("Copy To Emitter"))
+						{
+							for (UParticleEmitter* TargetEmitter : Emitters)
+							{
+								if (!TargetEmitter || TargetEmitter == Emitter)
+								{
+									continue;
+								}
+
+								if (ImGui::MenuItem(TargetEmitter->EmitterName.c_str()))
+								{
+									ModuleToCopyToOtherEmitter = Module;
+									CopyTargetEmitter = TargetEmitter;
+								}
+							}
+
+							ImGui::EndMenu();
+						}
+
+						ImGui::EndPopup();
+					}
+
+					if (bRemovable && ImGui::BeginDragDropSource())
+					{
+						UParticleModule* DraggedModule = Module;
+						ImGui::SetDragDropPayload("PARTICLE_MODULE", &DraggedModule, sizeof(DraggedModule));
+						ImGui::TextUnformatted(DisplayName);
+						ImGui::EndDragDropSource();
+					}
+
+					if (bRemovable && ImGui::BeginDragDropTarget())
+					{
+						if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("PARTICLE_MODULE"))
+						{
+							UParticleModule* DroppedModule = *static_cast<UParticleModule* const*>(Payload->Data);
+
+							const bool bSameLOD = std::find(LOD->Modules.begin(), LOD->Modules.end(), DroppedModule) != LOD->Modules.end();
+
+							if (bSameLOD && DroppedModule != Module)
+							{
+								ModuleToMove = DroppedModule;
+								MoveTargetModule = Module;
+								bMoveAfterTarget = ImGui::GetIO().MousePos.y > (RowMin.y + RowMax.y) * 0.5f;
+							}
+						}
+
+						ImGui::EndDragDropTarget();
+					}
 
 					ImGui::PopID();
 				};
 
 				if (ImGui::CollapsingHeader("Emitter Setup", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					DrawModuleRow(LOD->GetOrCreateTypeData(), "RENDER", false);
-					DrawModuleRow(LOD->GetOrCreateRequired(), "SETTINGS", false);
+					DrawModuleRow(LOD->GetOrCreateTypeData(), "RENDERER", false);
+					DrawModuleRow(LOD->GetOrCreateRequired(), "REQUIRED", false);
 				}
 
 				if (ImGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_DefaultOpen))
@@ -614,18 +1233,18 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 
 				if (ImGui::CollapsingHeader("Modules", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					for (UParticleModule* Mod : LOD->Modules)
+					for (UParticleModule* Module : LOD->Modules)
 					{
-						if (!Mod)
+						if (!Module)
 						{
 							continue;
 						}
 
-						const char* Stage = Mod->RunsOnSpawn()
-							? (Mod->RunsOnUpdate() ? "SPAWN + UPDATE" : "SPAWN")
-							: (Mod->RunsOnUpdate() ? "UPDATE" : "CUSTOM");
+						const char* Stage = Module->RunsOnSpawn()
+							? (Module->RunsOnUpdate() ? "SPAWN + UPDATE" : "SPAWN")
+							: (Module->RunsOnUpdate() ? "UPDATE" : "CUSTOM");
 
-						DrawModuleRow(Mod, Stage, true);
+						DrawModuleRow(Module, Stage, true);
 					}
 
 					if (ImGui::Button("+ Add Module", ImVec2(-1.0f, 0.0f)))
@@ -638,7 +1257,6 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					{
 						ImGui::SetNextItemWidth(-1.0f);
 						ImGui::InputTextWithHint("##ModuleSearch", "Search modules...", ModuleSearchText, sizeof(ModuleSearchText));
-
 						ImGui::Separator();
 
 						struct FModuleOption
@@ -728,6 +1346,8 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					if (SelectedModule == ModuleToRemove)
 					{
 						SelectedModule = nullptr;
+						SelectedCurveTrackIndex = 0;
+						SelectedCurveKeyId = -1;
 					}
 
 					LOD->RemoveModule(ModuleToRemove);
@@ -737,7 +1357,22 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 						PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
 					}
 				}
-				else if (ModuleToMove && MoveTargetModule && ModuleToMove != MoveTargetModule)
+				else if (ModuleToDuplicate)
+				{
+					if (UParticleModule* Duplicated = CopyModuleToLOD(LOD, ModuleToDuplicate))
+					{
+						SelectedEmitter = Emitter;
+						SelectedModule = Duplicated;
+						SelectedCurveTrackIndex = 0;
+						SelectedCurveKeyId = -1;
+
+						if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+						{
+							PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
+						}
+					}
+				}
+				else if (ModuleToMove && MoveTargetModule)
 				{
 					int32 FromIndex = -1;
 					int32 ToIndex = -1;
@@ -748,7 +1383,6 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 						{
 							FromIndex = Index;
 						}
-
 						if (LOD->Modules[Index] == MoveTargetModule)
 						{
 							ToIndex = Index;
@@ -772,13 +1406,42 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 						}
 					}
 				}
+
+				if (ModuleToCopyToOtherEmitter && CopyTargetEmitter)
+				{
+					const TArray<UParticleLODLevel*>& TargetLevels = CopyTargetEmitter->GetLODLevels();
+
+					if (SelectedLODIndex < static_cast<int32>(TargetLevels.Num()))
+					{
+						UParticleLODLevel* TargetLOD = TargetLevels[SelectedLODIndex];
+
+						if (UParticleModule* Copied = CopyModuleToLOD(TargetLOD, ModuleToCopyToOtherEmitter))
+						{
+							SelectedEmitter = CopyTargetEmitter;
+							SelectedModule = Copied;
+							SelectedCurveTrackIndex = 0;
+							SelectedCurveKeyId = -1;
+
+							if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+							{
+								PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
+							}
+						}
+					}
+				}
 			}
 
-			ImGui::TreePop();
-		}
+			ImGui::EndChild();
+			ImGui::PopID();
 
-		ImGui::PopID();
+			if (EmitterIndex + 1 < static_cast<int32>(Emitters.Num()))
+			{
+				ImGui::SameLine(0.0f, EditorUIScale::Px(6.0f));
+			}
+		}
 	}
+
+	ImGui::EndChild();
 
 	if (EmitterToRemove)
 	{
@@ -786,6 +1449,8 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 		{
 			SelectedEmitter = nullptr;
 			SelectedModule = nullptr;
+			SelectedCurveTrackIndex = 0;
+			SelectedCurveKeyId = -1;
 		}
 
 		EditingSystem->RemoveEmitter(EmitterToRemove);
@@ -793,7 +1458,12 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 		if (PreviewActor && PreviewActor->GetParticleSystemComponent())
 		{
 			PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+			ApplyPreviewLOD();
 		}
+	}
+	else if (EmitterToDuplicate)
+	{
+		DuplicateEmitter(EmitterToDuplicate);
 	}
 
 	ImGui::EndChild();
@@ -1124,187 +1794,316 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 
 void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Height)
 {
-	if (ImGui::BeginChild("ParticleCurveEditor", ImVec2(Width, Height), ImGuiChildFlags_Borders))
+	if (!ImGui::BeginChild("ParticleCurveEditor", ImVec2(Width, Height), ImGuiChildFlags_Borders))
 	{
-		TArray<FParticleCurveTrack> Tracks;
-		if (SelectedModule)
-			SelectedModule->CollectCurves(Tracks);
+		ImGui::EndChild();
+		return;
+	}
 
-		if (!SelectedModule || Tracks.IsEmpty())
-		{
-			ImGui::TextUnformatted("Curve Editor");
-			ImGui::Separator();
-			ImGui::TextDisabled("Select a module with curves (SizeByLife, ColorOverLife, SubUV).");
-			ImGui::EndChild();
-			return;
-		}
+	struct FEditorCurveEntry
+	{
+		UParticleEmitter* Emitter = nullptr;
+		UParticleModule* Module = nullptr;
+		FParticleCurveTrack Track;
+		FString Label;
+	};
 
-		SelectedCurveTrackIndex = std::clamp(SelectedCurveTrackIndex, 0, static_cast<int32>(Tracks.Num()) - 1);
-		for (int32 Index = 0; Index < static_cast<int32>(Tracks.Num()); ++Index)
+	TArray<FEditorCurveEntry> Tracks;
+
+	if (EditingSystem)
+	{
+		for (UParticleEmitter* Emitter : EditingSystem->GetEmitters())
 		{
-			if (Index > 0) ImGui::SameLine();
-			const FParticleCurveTrack& Track = Tracks[Index];
-			const bool bActive = (Index == SelectedCurveTrackIndex);
-			const ImVec4 Col(Track.Color.R / 255.0f, Track.Color.G / 255.0f, Track.Color.B / 255.0f, 1.0f);
-			if (bActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(Col.x * 0.45f, Col.y * 0.45f, Col.z * 0.45f, 1.0f));
-			if (ImGui::SmallButton(Track.Name.empty() ? "Curve" : Track.Name.c_str()))
+			if (!Emitter)
 			{
-				SelectedCurveTrackIndex = Index;
-				SelectedCurveKeyId = -1;
+				continue;
 			}
-			if (bActive) ImGui::PopStyleColor();
-		}
 
-		UCurveFloat* ActiveCurve = Tracks[SelectedCurveTrackIndex].Curve;
-		if (ActiveCurve)
-		{
-			float DefaultValue = ActiveCurve->DefaultValue;
+			const TArray<UParticleLODLevel*>& Levels = Emitter->GetLODLevels();
 
-			if (ImGui::DragFloat("Default Value", &DefaultValue, 0.01f))
+			if (SelectedLODIndex < 0 || SelectedLODIndex >= static_cast<int32>(Levels.Num()))
 			{
-				ActiveCurve->DefaultValue = DefaultValue;
+				continue;
 			}
-		}
-		if (ActiveCurve)
-		{
-			ImGui::SameLine();
-			if (ImGui::SmallButton("+ Add Key"))
-				SelectedCurveKeyId = ActiveCurve->AddKey(0.5f, ActiveCurve->GetFloatValue(0.5f));
 
-			const FFloatCurveKey* SelectedKey = SelectedCurveKeyId >= 0 ? ActiveCurve->FindKey(SelectedCurveKeyId) : nullptr;
-			if (!SelectedKey && !ActiveCurve->GetKeys().IsEmpty())
+			UParticleLODLevel* LOD = Levels[SelectedLODIndex];
+			if (!LOD)
 			{
-				SelectedCurveKeyId = ActiveCurve->GetKeys()[0].KeyId;
-				SelectedKey = ActiveCurve->FindKey(SelectedCurveKeyId);
+				continue;
 			}
-			if (SelectedKey)
+
+			for (UParticleModule* Module : LOD->Modules)
 			{
-				const int32 SelectedKeyId = SelectedKey->KeyId;
-				const FFloatCurveKey SelectedKeyData = *SelectedKey;
-
-				float KeyTime = SelectedKeyData.Time;
-				float KeyValue = SelectedKeyData.Value;
-				int ModeIdx = static_cast<int>(SelectedKeyData.InterpMode);
-				float ArriveT = SelectedKeyData.ArriveTangent;
-				float LeaveT = SelectedKeyData.LeaveTangent;
-
-				ImGui::SameLine();
-				ImGui::SetNextItemWidth(EditorUIScale::Px(68.0f));
-				if (ImGui::DragFloat("T", &KeyTime, 0.01f, 0.0f, 1.0f))
+				if (!Module)
 				{
-					ActiveCurve->SetKeyTime(SelectedKeyId, KeyTime);
+					continue;
 				}
 
-				ImGui::SameLine();
-				ImGui::SetNextItemWidth(EditorUIScale::Px(68.0f));
-				if (ImGui::DragFloat("V", &KeyValue, 0.02f))
-				{
-					ActiveCurve->SetKeyValue(SelectedKeyId, KeyValue);
-				}
+				TArray<FParticleCurveTrack> ModuleTracks;
+				Module->CollectCurves(ModuleTracks);
 
-				ImGui::SameLine();
-				ImGui::SetNextItemWidth(EditorUIScale::Px(82.0f));
-				if (ImGui::Combo("##Mode", &ModeIdx, "Constant\0Linear\0Cubic\0"))
+				for (const FParticleCurveTrack& Track : ModuleTracks)
 				{
-					ActiveCurve->SetKeyInterpMode(SelectedKeyId, static_cast<ECurveInterpMode>(ModeIdx));
-				}
-
-				if (SelectedKeyData.InterpMode == ECurveInterpMode::Cubic)
-				{
-					ImGui::SameLine();
-					ImGui::SetNextItemWidth(EditorUIScale::Px(56.0f));
-					bool bTanChanged = ImGui::DragFloat("In", &ArriveT, 0.05f);
-					ImGui::SameLine();
-					ImGui::SetNextItemWidth(EditorUIScale::Px(56.0f));
-					bTanChanged |= ImGui::DragFloat("Out", &LeaveT, 0.05f);
-					if (bTanChanged)
+					if (!Track.Curve)
 					{
-						ActiveCurve->SetKeyTangents(SelectedKeyId, ArriveT, LeaveT);
+						continue;
 					}
-				}
 
-				ImGui::SameLine();
-				if (ImGui::SmallButton("Remove"))
-				{
-					ActiveCurve->RemoveKey(SelectedKeyId);
-					SelectedCurveKeyId = -1;
-				}
-			}
-		}
-
-		if (ImPlot::BeginPlot("##ParticleCurvePlot", ImVec2(-1.0f, -1.0f)))
-		{
-			ImPlot::SetupAxes("Time", "Value");
-			ImPlot::SetupAxisLimits(ImAxis_X1, -0.05, 1.05, ImPlotCond_Once);
-			float MinValue = ActiveCurve ? ActiveCurve->DefaultValue : 0.0f;
-			float MaxValue = ActiveCurve ? ActiveCurve->DefaultValue : 1.0f;
-
-			if (ActiveCurve)
-			{
-				for (const FFloatCurveKey& Key : ActiveCurve->GetKeys())
-				{
-					MinValue = std::min(MinValue, Key.Value);
-					MaxValue = std::max(MaxValue, Key.Value);
+					FEditorCurveEntry Entry;
+					Entry.Emitter = Emitter;
+					Entry.Module = Module;
+					Entry.Track = Track;
+					Entry.Label = Emitter->EmitterName + " / " + Module->GetDisplayName() + " / " + Track.Name;
+					Tracks.Add(Entry);
 				}
 			}
-
-			const float ValueRange = std::max(0.1f, MaxValue - MinValue);
-			ImPlot::SetupAxisLimits(ImAxis_Y1, MinValue - ValueRange * 0.15f, MaxValue + ValueRange * 0.15f, ImPlotCond_Always);
-
-			constexpr int SampleCount = 64;
-			double Xs[SampleCount];
-			double Ys[SampleCount];
-			for (int32 TrackIdx = 0; TrackIdx < static_cast<int32>(Tracks.Num()); ++TrackIdx)
-			{
-				const FParticleCurveTrack& Track = Tracks[TrackIdx];
-				if (!Track.Curve) continue;
-				for (int i = 0; i < SampleCount; ++i)
-				{
-					const float T = static_cast<float>(i) / static_cast<float>(SampleCount - 1);
-					Xs[i] = T;
-					Ys[i] = Track.Curve->GetFloatValue(T);
-				}
-				const ImVec4 Col(Track.Color.R / 255.0f, Track.Color.G / 255.0f, Track.Color.B / 255.0f,
-					TrackIdx == SelectedCurveTrackIndex ? 1.0f : 0.45f);
-				ImPlotSpec Spec;
-				Spec.LineColor = Col;
-				Spec.LineWeight = TrackIdx == SelectedCurveTrackIndex ? 2.5f : 1.25f;
-				ImPlot::PlotLine(Track.Name.empty() ? "Curve" : Track.Name.c_str(), Xs, Ys, SampleCount, Spec);
-			}
-
-			if (ActiveCurve)
-			{
-				const FParticleCurveTrack& ActiveTrack = Tracks[SelectedCurveTrackIndex];
-				const ImVec4 ActiveCol(ActiveTrack.Color.R / 255.0f, ActiveTrack.Color.G / 255.0f, ActiveTrack.Color.B / 255.0f, 1.0f);
-				const TArray<FFloatCurveKey> Keys = ActiveCurve->GetKeys();
-				for (const FFloatCurveKey& Key : Keys)
-				{
-					double KX = Key.Time;
-					double KY = Key.Value;
-					bool bClicked = false;
-					const bool bSelectedKey = (Key.KeyId == SelectedCurveKeyId);
-					const ImVec4 PtCol = bSelectedKey ? ImVec4(1.0f, 1.0f, 0.3f, 1.0f) : ActiveCol;
-					if (ImPlot::DragPoint(Key.KeyId, &KX, &KY, PtCol, bSelectedKey ? 6.0f : 4.5f, 0, &bClicked))
-					{
-						SelectedCurveKeyId = Key.KeyId;
-						ActiveCurve->SetKeyTime(Key.KeyId, std::clamp(static_cast<float>(KX), 0.0f, 1.0f));
-						ActiveCurve->SetKeyValue(Key.KeyId, static_cast<float>(KY));
-					}
-					else if (bClicked)
-					{
-						SelectedCurveKeyId = Key.KeyId;
-					}
-				}
-
-				if (ImPlot::IsPlotHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-				{
-					const ImPlotPoint Pt = ImPlot::GetPlotMousePos();
-					SelectedCurveKeyId = ActiveCurve->AddKey(std::clamp(static_cast<float>(Pt.x), 0.0f, 1.0f), static_cast<float>(Pt.y));
-				}
-			}
-			ImPlot::EndPlot();
 		}
 	}
+
+	ImGui::TextUnformatted("CURVE TRACKS");
+	ImGui::Separator();
+
+	if (Tracks.IsEmpty())
+	{
+		ImGui::TextDisabled("No curves in the selected LOD.");
+		ImGui::EndChild();
+		return;
+	}
+
+	SelectedCurveTrackIndex = std::clamp(SelectedCurveTrackIndex, 0, static_cast<int32>(Tracks.Num()) - 1);
+
+	for (int32 Index = 0; Index < static_cast<int32>(Tracks.Num()); ++Index)
+	{
+		const FEditorCurveEntry& Entry = Tracks[Index];
+		const bool bActive = SelectedCurveTrackIndex == Index;
+		bool bVisible = std::find(HiddenCurveTracks.begin(), HiddenCurveTracks.end(), Entry.Track.Curve) == HiddenCurveTracks.end();
+
+		ImGui::PushID(Entry.Track.Curve);
+
+		if (ImGui::Checkbox("##CurveVisible", &bVisible))
+		{
+			auto It = std::find(HiddenCurveTracks.begin(), HiddenCurveTracks.end(), Entry.Track.Curve);
+
+			if (bVisible && It != HiddenCurveTracks.end())
+			{
+				HiddenCurveTracks.RemoveAt(static_cast<int32>(std::distance(HiddenCurveTracks.begin(), It)));
+			}
+			else if (!bVisible && It == HiddenCurveTracks.end())
+			{
+				HiddenCurveTracks.Add(Entry.Track.Curve);
+			}
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Selectable(Entry.Label.c_str(), bActive, ImGuiSelectableFlags_SpanAvailWidth))
+		{
+			SelectedCurveTrackIndex = Index;
+			SelectedEmitter = Entry.Emitter;
+			SelectedModule = Entry.Module;
+			SelectedCurveKeyId = -1;
+		}
+
+		ImGui::PopID();
+	}
+
+	FEditorCurveEntry& ActiveEntry = Tracks[SelectedCurveTrackIndex];
+	UCurveFloat* ActiveCurve = ActiveEntry.Track.Curve;
+
+	if (ActiveCurve)
+	{
+		float DefaultValue = ActiveCurve->DefaultValue;
+
+		ImGui::TextUnformatted("Default Value");
+		ImGui::SetNextItemWidth(EditorUIScale::Px(120.0f));
+
+		if (ImGui::DragFloat("##CurveDefaultValue", &DefaultValue, 0.01f))
+		{
+			ActiveCurve->DefaultValue = DefaultValue;
+		}
+
+		ImGui::SameLine();
+
+		if (ImGui::Button("+ Add Key"))
+		{
+			SelectedCurveKeyId = ActiveCurve->AddKey(0.5f, ActiveCurve->GetFloatValue(0.5f));
+		}
+
+		const FFloatCurveKey* SelectedKey = SelectedCurveKeyId >= 0 ? ActiveCurve->FindKey(SelectedCurveKeyId) : nullptr;
+
+		if (!SelectedKey && !ActiveCurve->GetKeys().IsEmpty())
+		{
+			SelectedCurveKeyId = ActiveCurve->GetKeys()[0].KeyId;
+			SelectedKey = ActiveCurve->FindKey(SelectedCurveKeyId);
+		}
+
+		if (SelectedKey)
+		{
+			const int32 KeyId = SelectedKey->KeyId;
+			const FFloatCurveKey KeyData = *SelectedKey;
+
+			float KeyTime = KeyData.Time;
+			float KeyValue = KeyData.Value;
+			int32 ModeIndex = static_cast<int32>(KeyData.InterpMode);
+			float ArriveTangent = KeyData.ArriveTangent;
+			float LeaveTangent = KeyData.LeaveTangent;
+
+			ImGui::SetNextItemWidth(EditorUIScale::Px(80.0f));
+
+			if (ImGui::DragFloat("Time", &KeyTime, 0.01f, 0.0f, 1.0f))
+			{
+				ActiveCurve->SetKeyTime(KeyId, KeyTime);
+			}
+
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(EditorUIScale::Px(80.0f));
+
+			if (ImGui::DragFloat("Value", &KeyValue, 0.02f))
+			{
+				ActiveCurve->SetKeyValue(KeyId, KeyValue);
+			}
+
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(EditorUIScale::Px(100.0f));
+
+			if (ImGui::Combo("##CurveInterpMode", &ModeIndex, "Constant\0Linear\0Cubic\0"))
+			{
+				ActiveCurve->SetKeyInterpMode(KeyId, static_cast<ECurveInterpMode>(ModeIndex));
+			}
+
+			if (KeyData.InterpMode == ECurveInterpMode::Cubic)
+			{
+				ImGui::SetNextItemWidth(EditorUIScale::Px(70.0f));
+
+				bool bChanged = ImGui::DragFloat("Arrive", &ArriveTangent, 0.05f);
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(EditorUIScale::Px(70.0f));
+				bChanged |= ImGui::DragFloat("Leave", &LeaveTangent, 0.05f);
+
+				if (bChanged)
+				{
+					ActiveCurve->SetKeyTangents(KeyId, ArriveTangent, LeaveTangent);
+				}
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Remove Key"))
+			{
+				ActiveCurve->RemoveKey(KeyId);
+				SelectedCurveKeyId = -1;
+			}
+		}
+	}
+
+	if (ImPlot::BeginPlot("##ParticleCurvePlot", ImVec2(-1.0f, -1.0f)))
+	{
+		ImPlot::SetupAxes("Relative Time", "Value");
+		ImPlot::SetupAxisLimits(ImAxis_X1, -0.05, 1.05, ImPlotCond_Once);
+
+		float MinValue = 0.0f;
+		float MaxValue = 1.0f;
+		bool bHasValue = false;
+
+		for (const FEditorCurveEntry& Entry : Tracks)
+		{
+			if (!Entry.Track.Curve)
+			{
+				continue;
+			}
+
+			if (std::find(HiddenCurveTracks.begin(), HiddenCurveTracks.end(), Entry.Track.Curve) != HiddenCurveTracks.end())
+			{
+				continue;
+			}
+
+			UCurveFloat* Curve = Entry.Track.Curve;
+
+			if (!bHasValue)
+			{
+				MinValue = Curve->DefaultValue;
+				MaxValue = Curve->DefaultValue;
+				bHasValue = true;
+			}
+			else
+			{
+				MinValue = std::min(MinValue, Curve->DefaultValue);
+				MaxValue = std::max(MaxValue, Curve->DefaultValue);
+			}
+
+			for (const FFloatCurveKey& Key : Curve->GetKeys())
+			{
+				MinValue = std::min(MinValue, Key.Value);
+				MaxValue = std::max(MaxValue, Key.Value);
+			}
+		}
+
+		const float ValueRange = std::max(0.1f, MaxValue - MinValue);
+		ImPlot::SetupAxisLimits(ImAxis_Y1, MinValue - ValueRange * 0.15f, MaxValue + ValueRange * 0.15f, ImPlotCond_Always);
+
+		constexpr int SampleCount = 64;
+		double XValues[SampleCount];
+		double YValues[SampleCount];
+
+		for (int32 TrackIndex = 0; TrackIndex < static_cast<int32>(Tracks.Num()); ++TrackIndex)
+		{
+			const FEditorCurveEntry& Entry = Tracks[TrackIndex];
+
+			if (!Entry.Track.Curve || std::find(HiddenCurveTracks.begin(), HiddenCurveTracks.end(), Entry.Track.Curve) != HiddenCurveTracks.end())
+			{
+				continue;
+			}
+
+			for (int32 Sample = 0; Sample < SampleCount; ++Sample)
+			{
+				const float Time = static_cast<float>(Sample) / static_cast<float>(SampleCount - 1);
+				XValues[Sample] = Time;
+				YValues[Sample] = Entry.Track.Curve->GetFloatValue(Time);
+			}
+
+			const FColor& TrackColor = Entry.Track.Color;
+			const bool bActive = TrackIndex == SelectedCurveTrackIndex;
+			ImPlotSpec Spec;
+			Spec.LineColor = ImVec4(TrackColor.R / 255.0f, TrackColor.G / 255.0f, TrackColor.B / 255.0f, bActive ? 1.0f : 0.45f);
+			Spec.LineWeight = bActive ? 2.5f : 1.25f;
+
+			ImPlot::PlotLine(Entry.Label.c_str(), XValues, YValues, SampleCount, Spec);
+		}
+
+		if (ActiveCurve && std::find(HiddenCurveTracks.begin(), HiddenCurveTracks.end(), ActiveCurve) == HiddenCurveTracks.end())
+		{
+			const FColor& ActiveColor = ActiveEntry.Track.Color;
+			const ImVec4 PointColor(ActiveColor.R / 255.0f, ActiveColor.G / 255.0f, ActiveColor.B / 255.0f, 1.0f);
+
+			for (const FFloatCurveKey& Key : ActiveCurve->GetKeys())
+			{
+				double X = Key.Time;
+				double Y = Key.Value;
+				bool bClicked = false;
+				const bool bSelected = Key.KeyId == SelectedCurveKeyId;
+
+				if (ImPlot::DragPoint(Key.KeyId, &X, &Y, bSelected ? ImVec4(1.0f, 1.0f, 0.3f, 1.0f) : PointColor, bSelected ? 6.0f : 4.5f, 0, &bClicked))
+				{
+					SelectedCurveKeyId = Key.KeyId;
+					ActiveCurve->SetKeyTime(Key.KeyId, std::clamp(static_cast<float>(X), 0.0f, 1.0f));
+					ActiveCurve->SetKeyValue(Key.KeyId, static_cast<float>(Y));
+				}
+				else if (bClicked)
+				{
+					SelectedCurveKeyId = Key.KeyId;
+				}
+			}
+
+			if (ImPlot::IsPlotHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+			{
+				const ImPlotPoint Point = ImPlot::GetPlotMousePos();
+				SelectedCurveKeyId = ActiveCurve->AddKey(std::clamp(static_cast<float>(Point.x), 0.0f, 1.0f), static_cast<float>(Point.y));
+			}
+		}
+
+		ImPlot::EndPlot();
+	}
+
 	ImGui::EndChild();
 }
 
@@ -1327,6 +2126,7 @@ void FParticleSystemEditorPanel::OnRender()
 
 	RenderMenuBar();
 	RenderToolbar();
+
 	if (!EditingSystem)
 	{
 		ImGui::TextUnformatted("No Particle System is open.");
@@ -1336,92 +2136,66 @@ void FParticleSystemEditorPanel::OnRender()
 	}
 
 	const ImVec2 Available = ImGui::GetContentRegionAvail();
+	const float Splitter = EditorUIScale::Px(6.0f);
 
-	const float SplitterThickness = EditorUIScale::Px(6.0f);
-	const float MinMainHeight = EditorUIScale::Px(220.0f);
-	const float MinCurveHeight = EditorUIScale::Px(130.0f);
+	const bool bLeftVisible = bShowViewport || bShowDetails;
+	const bool bRightVisible = bShowEmitters || bShowCurveEditor;
 
-	const float MaximumCurveHeight = bShowCurveEditor
-		? std::max(0.0f, Available.y - MinMainHeight - SplitterThickness)
-		: 0.0f;
+	const float ColumnSplitterWidth = bLeftVisible && bRightVisible ? Splitter : 0.0f;
+	const float LayoutWidth = std::max(1.0f, Available.x - ColumnSplitterWidth);
 
-	const float CurveHeight = bShowCurveEditor
-		? std::clamp(Available.y * CurvePanelRatio, std::min(MinCurveHeight, MaximumCurveHeight), MaximumCurveHeight)
-		: 0.0f;
+	float LeftWidth = LayoutWidth;
+	float RightWidth = LayoutWidth;
 
-	const bool bCanResizeCurve = bShowCurveEditor && MaximumCurveHeight > 0.0f;
-	const float ActiveSplitterHeight = bCanResizeCurve ? SplitterThickness : 0.0f;
-	const float MainHeight = std::max(0.0f, Available.y - CurveHeight - ActiveSplitterHeight);
-
-	if (EmitterPanelWidth <= 0.0f)
+	if (bLeftVisible && bRightVisible)
 	{
-		EmitterPanelWidth = EditorUIScale::Px(285.0f);
+		const float MinColumnWidth = std::min(EditorUIScale::Px(240.0f), LayoutWidth * 0.5f);
+		LeftWidth = std::clamp(LayoutWidth * MainColumnRatio, MinColumnWidth, LayoutWidth - MinColumnWidth);
+		RightWidth = LayoutWidth - LeftWidth;
 	}
 
-	if (DetailsPanelWidth <= 0.0f)
+	const bool bLeftTopVisible = bShowViewport;
+	const bool bLeftBottomVisible = bShowDetails;
+	const bool bRightTopVisible = bShowEmitters;
+	const bool bRightBottomVisible = bShowCurveEditor;
+
+	const bool bHasTwoRows = (bLeftTopVisible && bLeftBottomVisible) || (bRightTopVisible && bRightBottomVisible);
+	const float RowSplitterHeight = bHasTwoRows ? Splitter : 0.0f;
+	const float LayoutHeight = std::max(1.0f, Available.y - RowSplitterHeight);
+	const float MinRowHeight = std::min(EditorUIScale::Px(130.0f), LayoutHeight * 0.5f);
+
+	const float TopHeight = bHasTwoRows
+		? std::clamp(LayoutHeight * TopRowRatio, MinRowHeight, LayoutHeight - MinRowHeight)
+		: LayoutHeight;
+
+	const float BottomHeight = bHasTwoRows ? LayoutHeight - TopHeight : LayoutHeight;
+
+	auto DrawHorizontalSplitter = [&](const char* Id, float Width)
 	{
-		DetailsPanelWidth = EditorUIScale::Px(360.0f);
-	}
+		ImGui::InvisibleButton(Id, ImVec2(Width, Splitter));
 
-	const int32 VisibleColumnCount = (bShowEmitters ? 1 : 0) + (bShowViewport ? 1 : 0) + (bShowDetails ? 1 : 0);
-	const int32 SplitterCount = std::max(0, VisibleColumnCount - 1);
-	const float PanelAreaWidth = std::max(1.0f, Available.x - SplitterThickness * SplitterCount);
+		const bool bHovered = ImGui::IsItemHovered();
+		const bool bActive = ImGui::IsItemActive();
 
-	const float MinEmitterWidth = EditorUIScale::Px(180.0f);
-	const float MinDetailsWidth = EditorUIScale::Px(220.0f);
-	const float MinViewportWidth = EditorUIScale::Px(220.0f);
+		if (bHovered || bActive)
+		{
+			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+		}
 
-	auto ClampPanelWidth = [](float Value, float MinWidth, float MaxWidth)
-	{
-		const float SafeMax = std::max(1.0f, MaxWidth);
-		const float SafeMin = std::min(MinWidth, SafeMax);
-		return std::clamp(Value, SafeMin, SafeMax);
+		if (bActive)
+		{
+			TopRowRatio = std::clamp(TopRowRatio + ImGui::GetIO().MouseDelta.y / std::max(1.0f, AvailableHeight), 0.2f, 0.8f);
+		}
+
+		const ImVec2 Min = ImGui::GetItemRectMin();
+		const ImU32 Color = ImGui::GetColorU32(bHovered || bActive ? ImGuiCol_SeparatorHovered : ImGuiCol_Separator);
+
+		ImGui::GetWindowDrawList()->AddRectFilled(Min, ImVec2(Min.x + Width, Min.y + Splitter), Color);
 	};
 
-	float CurrentEmitterWidth = 0.0f;
-	float CurrentViewportWidth = 0.0f;
-	float CurrentDetailsWidth = 0.0f;
-
-	if (bShowEmitters && bShowViewport && bShowDetails)
+	auto DrawVerticalSplitter = [&]()
 	{
-		CurrentEmitterWidth = ClampPanelWidth(EmitterPanelWidth, MinEmitterWidth, PanelAreaWidth - MinViewportWidth - MinDetailsWidth);
-		CurrentDetailsWidth = ClampPanelWidth(DetailsPanelWidth, MinDetailsWidth, PanelAreaWidth - CurrentEmitterWidth - MinViewportWidth);
-		CurrentViewportWidth = std::max(1.0f, PanelAreaWidth - CurrentEmitterWidth - CurrentDetailsWidth);
-	}
-	else if (bShowEmitters && bShowViewport)
-	{
-		CurrentEmitterWidth = ClampPanelWidth(EmitterPanelWidth, MinEmitterWidth, PanelAreaWidth - MinViewportWidth);
-		CurrentViewportWidth = std::max(1.0f, PanelAreaWidth - CurrentEmitterWidth);
-	}
-	else if (bShowViewport && bShowDetails)
-	{
-		CurrentDetailsWidth = ClampPanelWidth(DetailsPanelWidth, MinDetailsWidth, PanelAreaWidth - MinViewportWidth);
-		CurrentViewportWidth = std::max(1.0f, PanelAreaWidth - CurrentDetailsWidth);
-	}
-	else if (bShowEmitters && bShowDetails)
-	{
-		CurrentEmitterWidth = ClampPanelWidth(EmitterPanelWidth, MinEmitterWidth, PanelAreaWidth - MinDetailsWidth);
-		CurrentDetailsWidth = std::max(1.0f, PanelAreaWidth - CurrentEmitterWidth);
-	}
-	else if (bShowEmitters)
-	{
-		CurrentEmitterWidth = PanelAreaWidth;
-	}
-	else if (bShowViewport)
-	{
-		CurrentViewportWidth = PanelAreaWidth;
-	}
-	else if (bShowDetails)
-	{
-		CurrentDetailsWidth = PanelAreaWidth;
-	}
-
-	const float MaxEmitterDragWidth = PanelAreaWidth - (bShowViewport ? MinViewportWidth : (bShowDetails ? MinDetailsWidth : 0.0f)) - (bShowViewport && bShowDetails ? CurrentDetailsWidth : 0.0f);
-	const float MaxDetailsDragWidth = PanelAreaWidth - (bShowViewport ? MinViewportWidth : 0.0f) - (bShowEmitters ? CurrentEmitterWidth : 0.0f);
-
-	auto DrawVerticalSplitter = [&](const char* Id, float* Width, float Direction, float MinWidth, float MaxWidth)
-	{
-		ImGui::InvisibleButton(Id, ImVec2(SplitterThickness, MainHeight));
+		ImGui::InvisibleButton("##CascadeColumnSplitter", ImVec2(Splitter, AvailableHeight));
 
 		const bool bHovered = ImGui::IsItemHovered();
 		const bool bActive = ImGui::IsItemActive();
@@ -1433,81 +2207,64 @@ void FParticleSystemEditorPanel::OnRender()
 
 		if (bActive)
 		{
-			*Width = ClampPanelWidth(*Width + ImGui::GetIO().MouseDelta.x * Direction, MinWidth, MaxWidth);
+			MainColumnRatio = std::clamp(MainColumnRatio + ImGui::GetIO().MouseDelta.x / std::max(1.0f, Available.x), 0.2f, 0.8f);
 		}
 
-		const ImVec2 SplitterMin = ImGui::GetItemRectMin();
-		const float CenterX = SplitterMin.x + SplitterThickness * 0.5f;
-		const ImU32 SplitterColor = ImGui::GetColorU32(bHovered || bActive ? ImGuiCol_SeparatorHovered : ImGuiCol_Separator);
+		const ImVec2 Min = ImGui::GetItemRectMin();
+		const ImU32 Color = ImGui::GetColorU32(bHovered || bActive ? ImGuiCol_SeparatorHovered : ImGuiCol_Separator);
 
-		ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(CenterX - 1.0f, SplitterMin.y), ImVec2(CenterX + 1.0f, SplitterMin.y + MainHeight), SplitterColor);
+		ImGui::GetWindowDrawList()->AddRectFilled(Min, ImVec2(Min.x + Splitter, Min.y + AvailableHeight), Color);
 	};
 
-	bool bHasPreviousPanel = false;
-
-	if (bShowEmitters)
+	if (bLeftVisible)
 	{
-		RenderEmittersPanel(CurrentEmitterWidth, MainHeight);
-		bHasPreviousPanel = true;
-	}
+		ImGui::BeginGroup();
 
-	if (bShowViewport)
-	{
-		if (bHasPreviousPanel)
+		if (bLeftTopVisible && bLeftBottomVisible)
 		{
-			ImGui::SameLine(0.0f, 0.0f);
-
-			if (bShowEmitters)
-			{
-				DrawVerticalSplitter("##EmitterPanelSplitter", &EmitterPanelWidth, 1.0f, MinEmitterWidth, MaxEmitterDragWidth);
-			}
-
-			ImGui::SameLine(0.0f, 0.0f);
+			RenderViewportPanel(LeftWidth, TopHeight);
+			DrawHorizontalSplitter("##LeftPanelSplitter", LeftWidth);
+			RenderDetailsPanel(LeftWidth, BottomHeight);
+		}
+		else if (bLeftTopVisible)
+		{
+			RenderViewportPanel(LeftWidth, AvailableHeight);
+		}
+		else if (bLeftBottomVisible)
+		{
+			RenderDetailsPanel(LeftWidth, AvailableHeight);
 		}
 
-		RenderViewportPanel(CurrentViewportWidth, MainHeight);
-		bHasPreviousPanel = true;
+		ImGui::EndGroup();
 	}
 
-	if (bShowDetails)
+	if (bLeftVisible && bRightVisible)
 	{
-		if (bHasPreviousPanel)
-		{
-			ImGui::SameLine(0.0f, 0.0f);
-
-			if (bShowViewport)
-			{
-				DrawVerticalSplitter("##DetailsPanelSplitter", &DetailsPanelWidth, -1.0f, MinDetailsWidth, MaxDetailsDragWidth);
-			}
-			else if (bShowEmitters)
-			{
-				DrawVerticalSplitter("##EmitterDetailsSplitter", &EmitterPanelWidth, 1.0f, MinEmitterWidth, MaxEmitterDragWidth);
-			}
-
-			ImGui::SameLine(0.0f, 0.0f);
-		}
-
-		RenderDetailsPanel(CurrentDetailsWidth, MainHeight);
+		ImGui::SameLine(0.0f, 0.0f);
+		DrawVerticalSplitter();
+		ImGui::SameLine(0.0f, 0.0f);
 	}
 
-	if (bCanResizeCurve)
+	if (bRightVisible)
 	{
-		ImGui::InvisibleButton("##ParticleCurveSplitter", ImVec2(-1.0f, SplitterThickness));
+		ImGui::BeginGroup();
 
-		if (ImGui::IsItemHovered() || ImGui::IsItemActive())
+		if (bRightTopVisible && bRightBottomVisible)
 		{
-			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeNS);
+			RenderEmittersPanel(RightWidth, TopHeight);
+			DrawHorizontalSplitter("##RightPanelSplitter", RightWidth);
+			RenderCurveEditorPanel(RightWidth, BottomHeight);
+		}
+		else if (bRightTopVisible)
+		{
+			RenderEmittersPanel(RightWidth, AvailableHeight);
+		}
+		else if (bRightBottomVisible)
+		{
+			RenderCurveEditorPanel(RightWidth, AvailableHeight);
 		}
 
-		if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
-		{
-			CurvePanelRatio = std::clamp(CurvePanelRatio - ImGui::GetIO().MouseDelta.y / std::max(1.0f, Available.y), 0.15f, 0.50f);
-		}
-	}
-
-	if (bShowCurveEditor && CurveHeight > 0.0f)
-	{
-		RenderCurveEditorPanel(0.0f, CurveHeight);
+		ImGui::EndGroup();
 	}
 
 	ImGui::End();

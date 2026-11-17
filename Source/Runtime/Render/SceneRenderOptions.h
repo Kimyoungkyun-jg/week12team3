@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Render/RenderEnums.h"
+#include <array>
 
 // 뷰 하나의 씬 렌더링 옵션. 에디터와 게임 뷰포트가 같은 설정을 전달한다.
 struct FSceneRenderOptions
@@ -26,6 +27,7 @@ struct FSceneRenderOptions
 
 	bool bGammaCorrection = true;
 	float DisplayGamma = 2.2f;
+	std::array<float, 4> BackgroundColor = { 0.0f, 0.0f, 0.0f, 1.0f };
 	bool bShowVignette = true;
 	bool bShowCameraOverlay = true;
 

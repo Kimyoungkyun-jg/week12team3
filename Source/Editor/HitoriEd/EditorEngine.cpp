@@ -1753,7 +1753,8 @@ void UEditorEngine::RenderFrame(FEditorViewportClient* ViewClient,
 }
 
 void UEditorEngine::RenderPreviewViewport(FEditorViewportClient* PreviewClient, UWorld* PreviewWorld, const FGizmo* PreviewGizmo,
-	FSkyboxRenderer* SkyboxOverride, bool bDrawGrid, const UPrimitiveComponent* BoundsComponent, bool bDrawOriginAxis)
+	FSkyboxRenderer* SkyboxOverride, bool bDrawGrid, const UPrimitiveComponent* BoundsComponent, bool bDrawOriginAxis,
+	const std::array<float, 4>& BackgroundColor)
 {
 	if (!PreviewClient || !PreviewWorld || PreviewClient->GetWidth() == 0 || PreviewClient->GetHeight() == 0)
 		return;
@@ -1763,6 +1764,7 @@ void UEditorEngine::RenderPreviewViewport(FEditorViewportClient* PreviewClient, 
 	FSceneRenderOptions Options;
 	BuildSceneRenderOptions(PreviewClient, false, Options);
 	Options.bDrawPrimitives = true;
+	Options.BackgroundColor = BackgroundColor;
 
 	const FSceneView SceneView = PreviewClient->CalcSceneView();
 	FSceneRenderer SceneRenderer(PreviewWorld, SceneView, PreviewClient->GetRenderData());

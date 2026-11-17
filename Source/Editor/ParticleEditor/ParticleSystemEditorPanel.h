@@ -7,6 +7,8 @@
 class UParticleSystem;
 class UParticleEmitter;
 class UParticleModule;
+class UParticleLODLevel;
+class UCurveFloat;
 class AParticleSystemActor;
 class UWorld;
 class FSkyboxRenderer;
@@ -31,8 +33,16 @@ public:
 private:
 	void CreateDefaultSystem();
 	void SaveAsset();
+	void AddEmitter();
+	void DuplicateEmitter(UParticleEmitter* Source);
+	bool AddLowestLOD(bool bCopyPrevious);
+	bool CopyLODData(UParticleLODLevel* Destination, const UParticleLODLevel* Source);
+	UParticleModule* CopyModuleToLOD(UParticleLODLevel* Destination, const UParticleModule* Source);
+	void CopyModuleProperties(UParticleModule* Destination, const UParticleModule* Source);
+	void ApplyPreviewLOD();
 	void RenderMenuBar();
 	void RenderToolbar();
+	void RenderLODControls();
 	void RenderViewportPanel(float Width, float Height);
 	void RenderEmittersPanel(float Width, float Height);
 	void RenderDetailsPanel(float Width, float Height);
@@ -53,12 +63,15 @@ private:
 	bool bViewportResizePending = false;
 	float CameraSpeed = 1.0f;
 	float SimSpeed = 1.0f;
-	float CurvePanelRatio = 0.26f;
-	float EmitterPanelWidth = 0.0f;
-	float DetailsPanelWidth = 0.0f;
+	float MainColumnRatio = 0.46f;
+	float TopRowRatio = 0.56f;
+	float EmitterColumnWidth = 260.0f;
 	int32 SelectedLODIndex = 0;
 	int32 SelectedCurveTrackIndex = 0;
 	int32 SelectedCurveKeyId = -1;
+	TArray<UCurveFloat*> HiddenCurveTracks;
+	bool bCopyPreviousLOD = true;
+	bool bShowParticleStats = true;
 	char ModuleSearchText[128] = {};
 	bool bPaused = false;
 	bool bShowBounds = false;
@@ -71,5 +84,7 @@ private:
 	bool bShowCurveEditor = true;
 	bool bVisible = false;
 	bool bFocusRequested = false;
+	bool bCopyPreviousLOD = true;
+	bool bShowParticleStats = true;
 	float BackgroundColor[4] = { 0.06f, 0.06f, 0.07f, 1.0f };
 };

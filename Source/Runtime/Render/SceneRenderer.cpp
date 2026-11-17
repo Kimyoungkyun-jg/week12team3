@@ -644,7 +644,7 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 	FRenderGraphRasterPassDesc Sky{};
 	Sky.Name = "Skybox";
 	Sky.ColorAttachments = {
-		{ LightingHDR, ERenderGraphLoadAction::Clear,{ 0.0f, 0.0f, 0.0f, 1.0f } }
+		{ LightingHDR, ERenderGraphLoadAction::Clear, Options.BackgroundColor }
 	};
 	if (!Graph.AddRasterPass(std::move(Sky), [this, Skybox]
 		{
