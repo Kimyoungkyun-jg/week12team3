@@ -556,7 +556,7 @@ bool FParticleSystemEditorPanel::InsertLOD(int32 InsertIndex, bool bCopyPrevious
 
 bool FParticleSystemEditorPanel::RemoveLOD(int32 Index)
 {
-	if (!EditingSystem || EditingSystem->LODDistances.Num() <= 1 || Index < 0 || Index >= static_cast<int32>(EditingSystem->LODDistances.Num()))
+	if (!EditingSystem || EditingSystem->LODDistances.Num() <= 1 || Index <= 0 || Index >= static_cast<int32>(EditingSystem->LODDistances.Num()))
 	{
 		StatusMessage = "Cannot remove this LOD.";
 		return false;
@@ -899,19 +899,30 @@ bool FParticleSystemEditorPanel::NormalizeLODDistances()
 			return false;
 		}
 
-		const int32 LODCount = static_cast<int32>(Emitter->GetLODLevels().Num());
+		const TArray<UParticleLODLevel*>& Levels = Emitter->GetLODLevels();
+		const int32 LODCount = static_cast<int32>(Levels.Num());
 
 		if (LODCount <= 0)
 		{
 			return false;
 		}
 
-		if (CommonLODCount >= 0 && CommonLODCount != LODCount)
+		for (UParticleLODLevel* LOD : Levels)
+		{
+			if (!LOD || !LOD->RequiredModule || !LOD->SpawnModule || !LOD->TypeDataModule)
+			{
+				return false;
+			}
+		}
+
+		if (CommonLODCount < 0)
+		{
+			CommonLODCount = LODCount;
+		}
+		else if (CommonLODCount != LODCount)
 		{
 			return false;
 		}
-
-		CommonLODCount = LODCount;
 	}
 
 	if (EditingSystem->LODDistances.IsEmpty())
@@ -1098,7 +1109,14 @@ bool FParticleSystemEditorPanel::SaveAssetAs()
 		return false;
 	}
 
-	const FString NewPath = std::filesystem::absolute(FilePath).lexically_normal().string();
+	std::filesystem::path SavePath(FilePath);
+
+	if (SavePath.extension() != ".particle")
+	{
+		SavePath.replace_extension(".particle");
+	}
+
+	const FString NewPath = std::filesystem::absolute(SavePath).lexically_normal().string();
 
 	if (!EditingSystem->SaveToFile(NewPath))
 	{
@@ -1192,6 +1210,7 @@ void FParticleSystemEditorPanel::AddEmitter()
 		ApplyPreviewLOD();
 	}
 
+	MarkAssetModified();
 	StatusMessage = "Emitter added";
 }
 
@@ -1261,6 +1280,7 @@ void FParticleSystemEditorPanel::DuplicateEmitter(UParticleEmitter* Source)
 		ApplyPreviewLOD();
 	}
 
+	MarkAssetModified();
 	StatusMessage = "Emitter duplicated";
 }
 
@@ -1328,6 +1348,7 @@ bool FParticleSystemEditorPanel::RestoreSnapshot(const TArray<uint8>& Snapshot)
 	SelectedCurve = nullptr;
 	SelectedCurveTrackIndex = 0;
 	SelectedCurveKeyId = -1;
+	HiddenCurveTracks.Reset();
 	bAssetDirty = true;
 
 	if (PreviewActor && PreviewActor->GetParticleSystemComponent())
@@ -1357,12 +1378,18 @@ void FParticleSystemEditorPanel::Undo()
 	}
 
 	const TArray<uint8> TargetSnapshot = UndoStack.Last();
-	UndoStack.RemoveAt(static_cast<int32>(UndoStack.Num()) - 1);
-	RedoStack.Add(CurrentSnapshot);
 
 	bUndoRedoInProgress = true;
-	RestoreSnapshot(TargetSnapshot);
+	const bool bRestored = RestoreSnapshot(TargetSnapshot);
 	bUndoRedoInProgress = false;
+
+	if (!bRestored)
+	{
+		return;
+	}
+
+	UndoStack.RemoveAt(static_cast<int32>(UndoStack.Num()) - 1);
+	RedoStack.Add(CurrentSnapshot);
 
 	StatusMessage = "Undo";
 }
@@ -1382,12 +1409,18 @@ void FParticleSystemEditorPanel::Redo()
 	}
 
 	const TArray<uint8> TargetSnapshot = RedoStack.Last();
-	RedoStack.RemoveAt(static_cast<int32>(RedoStack.Num()) - 1);
-	UndoStack.Add(CurrentSnapshot);
 
 	bUndoRedoInProgress = true;
-	RestoreSnapshot(TargetSnapshot);
+	const bool bRestored = RestoreSnapshot(TargetSnapshot);
 	bUndoRedoInProgress = false;
+
+	if (!bRestored)
+	{
+		return;
+	}
+
+	RedoStack.RemoveAt(static_cast<int32>(RedoStack.Num()) - 1);
+	UndoStack.Add(CurrentSnapshot);
 
 	StatusMessage = "Redo";
 }
@@ -1505,10 +1538,7 @@ void FParticleSystemEditorPanel::RenderMenuBar()
 
 		if (ImGui::MenuItem("Reload", nullptr, false, !AssetPath.empty()))
 		{
-			if (ResolveUnsavedChanges())
-			{
-				OpenAsset(AssetPath);
-			}
+			OpenAsset(AssetPath);
 		}
 		if (ImGui::MenuItem("Find in Content Drawer", nullptr, false, !AssetPath.empty()))
 		{
@@ -1567,6 +1597,17 @@ void FParticleSystemEditorPanel::RenderToolbar()
 	if (ImGui::Button("Save"))
 	{
 		SaveAsset();
+	}
+
+	if (bAssetDirty)
+	{
+		ImGui::SameLine();
+		ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.25f, 1.0f), "* Modified");
+	}
+	else
+	{
+		ImGui::SameLine();
+		ImGui::TextDisabled("Saved");
 	}
 
 	ImGui::EndDisabled();
@@ -1748,11 +1789,13 @@ void FParticleSystemEditorPanel::RenderLODControls()
 
 	ImGui::SameLine();
 
-	ImGui::BeginDisabled(LODCount <= 1);
+	ImGui::BeginDisabled(SelectedLODIndex <= 0 || EditingSystem->LODDistances.Num() <= 1);
+
 	if (ImGui::Button("Remove LOD"))
 	{
 		RemoveLOD(SelectedLODIndex);
 	}
+
 	ImGui::EndDisabled();
 
 	ImGui::SameLine();
@@ -1918,7 +1961,9 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 
 			ImGui::PushID(Emitter);
 
-			if (ImGui::BeginChild("EmitterColumn", ImVec2(EmitterColumnWidth, 0.0f), ImGuiChildFlags_Borders))
+			const bool bEmitterColumnVisible = ImGui::BeginChild("EmitterColumn", ImVec2(EmitterColumnWidth, 0.0f), ImGuiChildFlags_Borders);
+
+			if (bEmitterColumnVisible)
 			{
 				char Header[64];
 				snprintf(Header, sizeof(Header), "Emitter %d", EmitterIndex + 1);
@@ -2684,14 +2729,14 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			strncpy_s(ParamBuf, Vel->ParameterName.c_str(), _TRUNCATE);
 			if (ImGui::InputText("Parameter Name", ParamBuf, sizeof(ParamBuf)))
 			{
-				Loc->ParameterName = ParamBuf;
+				Vel->ParameterName = ParamBuf;
 				MarkAssetModified();
 			}
-			if (ImGui::DragFloat3("Min", &Loc->Min.X, 0.05f))
+			if (ImGui::DragFloat3("Min", &Vel->Min.X, 0.05f))
 			{
 				MarkAssetModified();
 			}
-			if (ImGui::DragFloat3("Max", &Loc->Max.X, 0.05f))
+			if (ImGui::DragFloat3("Max", &Vel->Max.X, 0.05f))
 			{
 				MarkAssetModified();
 			}
@@ -3079,6 +3124,7 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 		if (ImGui::DragFloat("##CurveDefaultValue", &DefaultValue, 0.01f))
 		{
 			ActiveCurve->DefaultValue = DefaultValue;
+			MarkAssetModified();
 		}
 
 		ImGui::SameLine();
@@ -3086,6 +3132,7 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 		if (ImGui::Button("+ Add Key"))
 		{
 			SelectedCurveKeyId = ActiveCurve->AddKey(0.5f, ActiveCurve->GetFloatValue(0.5f));
+			MarkAssetModified();
 		}
 
 		const FFloatCurveKey* SelectedKey = SelectedCurveKeyId >= 0 ? ActiveCurve->FindKey(SelectedCurveKeyId) : nullptr;
@@ -3121,6 +3168,7 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 			if (ImGui::DragFloat("Value", &KeyValue, 0.02f))
 			{
 				ActiveCurve->SetKeyValue(KeyId, KeyValue);
+				MarkAssetModified();
 			}
 
 			ImGui::SameLine();
@@ -3129,6 +3177,7 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 			if (ImGui::Combo("##CurveInterpMode", &ModeIndex, "Constant\0Linear\0Cubic\0"))
 			{
 				ActiveCurve->SetKeyInterpMode(KeyId, static_cast<ECurveInterpMode>(ModeIndex));
+				MarkAssetModified();
 			}
 
 			if (KeyData.InterpMode == ECurveInterpMode::Cubic)
@@ -3143,6 +3192,7 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 				if (bChanged)
 				{
 					ActiveCurve->SetKeyTangents(KeyId, ArriveTangent, LeaveTangent);
+					MarkAssetModified();
 				}
 			}
 
@@ -3152,6 +3202,7 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 			{
 				ActiveCurve->RemoveKey(KeyId);
 				SelectedCurveKeyId = -1;
+				MarkAssetModified();
 			}
 		}
 	}
@@ -3268,6 +3319,7 @@ void FParticleSystemEditorPanel::RenderCurveEditorPanel(float Width, float Heigh
 			{
 				const ImPlotPoint Point = ImPlot::GetPlotMousePos();
 				SelectedCurveKeyId = ActiveCurve->AddKey(std::clamp(static_cast<float>(Point.x), 0.0f, 1.0f), static_cast<float>(Point.y));
+				MarkAssetModified();
 			}
 		}
 
