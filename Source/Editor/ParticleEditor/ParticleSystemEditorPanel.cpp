@@ -24,6 +24,7 @@
 #include <implot.h>
 #include <algorithm>
 #include <filesystem>
+#include <cctype>
 
 namespace
 {
@@ -317,9 +318,9 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 		return;
 	}
 
-	ImGui::TextUnformatted("Emitters");
+	ImGui::TextUnformatted("EMITTERS");
 	ImGui::SameLine();
-	if (ImGui::SmallButton("+ Emitter") && EditingSystem)
+	if (ImGui::SmallButton("+ Add Emitter") && EditingSystem)
 	{
 		if (UParticleEmitter* NewEmitter = EditingSystem->AddEmitter())
 		{
@@ -327,29 +328,40 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 			SelectedEmitter = NewEmitter;
 			SelectedModule = nullptr;
 			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+			{
 				PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+			}
 		}
 	}
+
 	ImGui::Separator();
 
 	if (!EditingSystem)
 	{
+		ImGui::TextDisabled("No Particle System");
 		ImGui::EndChild();
 		return;
 	}
 
 	const TArray<UParticleEmitter*>& Emitters = EditingSystem->GetEmitters();
-	const float ColumnWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x);
-
 	UParticleEmitter* EmitterToRemove = nullptr;
+
+	if (Emitters.IsEmpty())
+	{
+		ImGui::TextDisabled("No emitters. Add an emitter to get started.");
+	}
+
 	for (int32 EmitterIdx = 0; EmitterIdx < static_cast<int32>(Emitters.Num()); ++EmitterIdx)
 	{
 		UParticleEmitter* Emitter = Emitters[EmitterIdx];
-		if (!Emitter) continue;
+		if (!Emitter)
+		{
+			continue;
+		}
 
 		ImGui::PushID(Emitter);
 
-		const bool bEmitterSelected = (SelectedEmitter == Emitter && SelectedModule == nullptr);
+		const bool bEmitterSelected = (SelectedEmitter == Emitter);
 		const ImGuiTreeNodeFlags EmitterFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth | (bEmitterSelected ? ImGuiTreeNodeFlags_Selected : 0);
 
 		const bool bEmitterExpanded = ImGui::TreeNodeEx("EmitterNode", EmitterFlags, "%s", Emitter->EmitterName.c_str());
@@ -362,125 +374,303 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 
 		if (bEmitterExpanded)
 		{
+			UParticleLODLevel* LOD = !Emitter->GetLODLevels().IsEmpty() ? Emitter->GetLODLevels()[0] : nullptr;
+
 			if (ImGui::SmallButton("Remove Emitter"))
 			{
 				EmitterToRemove = Emitter;
 			}
 
-			UParticleLODLevel* LOD = !Emitter->GetLODLevels().IsEmpty() ? Emitter->GetLODLevels()[0] : nullptr;
-			ImGui::SameLine();
-			if (ImGui::SmallButton("X"))
-				EmitterToRemove = Emitter;
-
 			if (LOD)
 			{
 				ImGui::Checkbox("Enabled", &LOD->bEnabled);
 				ImGui::SameLine();
-				ImGui::Checkbox("S", &Emitter->bIsSolo);
+				ImGui::Checkbox("Solo", &Emitter->bIsSolo);
+
+				ImGui::Separator();
+
+				int TypeIdx = 0;
 				UParticleModuleTypeDataBase* TypeData = LOD->GetOrCreateTypeData();
-				const EParticleEmitterType CurType = TypeData ? TypeData->GetEmitterType() : EParticleEmitterType::Sprite;
-				int TypeIdx = (CurType == EParticleEmitterType::GpuSprite) ? 1 : (CurType == EParticleEmitterType::Mesh ? 2 : 0);
+				const EParticleEmitterType CurType = TypeData->GetEmitterType();
+
+				if (CurType == EParticleEmitterType::GpuSprite)
+				{
+					TypeIdx = 1;
+				}
+				else if (CurType == EParticleEmitterType::Mesh)
+				{
+					TypeIdx = 2;
+				}
+
+				ImGui::TextDisabled("EMITTER TYPE");
 				ImGui::SetNextItemWidth(-1.0f);
+
 				if (ImGui::Combo("##EmitterType", &TypeIdx, "Sprite\0GPU Sprite\0Mesh\0"))
 				{
 					UClass* TargetClass = UParticleModuleTypeDataSprite::StaticClass();
+
 					if (TypeIdx == 1)
+					{
 						TargetClass = UParticleModuleTypeDataGpuSprite::StaticClass();
+					}
 					else if (TypeIdx == 2)
+					{
 						TargetClass = UParticleModuleTypeDataMesh::StaticClass();
+					}
+
 					const bool bWasTypeDataSelected = (SelectedModule == TypeData);
 					UParticleModuleTypeDataBase* NewTypeData = LOD->SetTypeData(TargetClass);
+
 					if (auto* NewMeshType = Cast<UParticleModuleTypeDataMesh>(NewTypeData))
 					{
 						if (!NewMeshType->Mesh)
+						{
 							NewMeshType->Mesh = UAssetManager::GetAssetByPath<UStaticMesh>("Cube");
+						}
+
 						LOD->GetOrCreateRequired()->Material = nullptr;
 					}
-					if (bWasTypeDataSelected)
-						SelectedModule = NewTypeData;
-					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-						PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
-				}
-				ImGui::Separator();
 
-				auto DrawModuleRow = [&](UParticleModule* Mod, const ImVec4& TintColor, bool bRemovable)
+					if (bWasTypeDataSelected)
+					{
+						SelectedModule = NewTypeData;
+					}
+
+					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+					{
+						PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+					}
+				}
+
+				ImGui::Spacing();
+
+				UParticleModule* ModuleToRemove = nullptr;
+				UParticleModule* ModuleToMove = nullptr;
+				UParticleModule* MoveTargetModule = nullptr;
+
+				auto DrawModuleRow = [&](UParticleModule* Mod, const char* Stage, bool bRemovable)
 				{
-					if (!Mod) return false;
-					bool bDeleteRequested = false;
+					if (!Mod)
+					{
+						return;
+					}
+
 					ImGui::PushID(Mod);
-					ImGui::PushStyleColor(ImGuiCol_Header, TintColor);
-					const bool bSelected = (SelectedModule == Mod);
-					if (ImGui::Checkbox("##En", &Mod->bEnabled))
+
+					if (ImGui::Checkbox("##Enabled", &Mod->bEnabled))
 					{
 						if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+						{
 							PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
+						}
 					}
+
 					ImGui::SameLine();
-					if (ImGui::Selectable(Mod->GetDisplayName(), bSelected, 0, ImVec2(ColumnWidth - EditorUIScale::Px(78.0f), 0.0f)))
+
+					const float BadgeWidth = EditorUIScale::Px(88.0f);
+					const float RowWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - BadgeWidth);
+
+					const bool bSelected = (SelectedModule == Mod);
+
+					if (ImGui::Selectable(Mod->GetDisplayName(), bSelected, 0, ImVec2(RowWidth, EditorUIScale::Px(28.0f))))
 					{
 						SelectedEmitter = Emitter;
 						SelectedModule = Mod;
 					}
-					if (bRemovable)
+
+					if (bRemovable && ImGui::BeginPopupContextItem("ModuleContext"))
 					{
-						ImGui::SameLine();
-						if (ImGui::SmallButton("-"))
-							bDeleteRequested = true;
+						if (ImGui::MenuItem("Remove Module"))
+						{
+							ModuleToRemove = Mod;
+						}
+
+						ImGui::EndPopup();
 					}
-					ImGui::PopStyleColor();
+
+					if (bRemovable && ImGui::BeginDragDropSource())
+					{
+						UParticleModule* DraggedModule = Mod;
+						ImGui::SetDragDropPayload("PARTICLE_MODULE", &DraggedModule, sizeof(DraggedModule));
+						ImGui::TextUnformatted(Mod->GetDisplayName());
+						ImGui::EndDragDropSource();
+					}
+
+					if (bRemovable && ImGui::BeginDragDropTarget())
+					{
+						if (const ImGuiPayload* Payload = ImGui::AcceptDragDropPayload("PARTICLE_MODULE"))
+						{
+							ModuleToMove = *static_cast<UParticleModule**>(Payload->Data);
+							MoveTargetModule = Mod;
+						}
+						ImGui::EndDragDropTarget();
+					}
+
+					ImGui::SameLine();
+					ImGui::TextDisabled("%s", Stage);
+
 					ImGui::PopID();
-					return bDeleteRequested;
 				};
 
-				DrawModuleRow(LOD->GetOrCreateTypeData(), ImVec4(0.32f, 0.45f, 0.30f, 0.65f), false);
-				DrawModuleRow(LOD->GetOrCreateRequired(), ImVec4(0.55f, 0.50f, 0.20f, 0.65f), false);
-				DrawModuleRow(LOD->GetOrCreateSpawn(), ImVec4(0.60f, 0.25f, 0.25f, 0.65f), false);
-
-				UParticleModule* ModuleToRemove = nullptr;
-				for (UParticleModule* Mod : LOD->Modules)
+				if (ImGui::CollapsingHeader("Emitter Settings", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					if (DrawModuleRow(Mod, ImVec4(0.22f, 0.35f, 0.50f, 0.65f), true))
-						ModuleToRemove = Mod;
-				}
-				if (ModuleToRemove)
-				{
-					if (SelectedModule == ModuleToRemove) SelectedModule = nullptr;
-					LOD->RemoveModule(ModuleToRemove);
-					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-						PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
+					DrawModuleRow(LOD->GetOrCreateTypeData(), "RENDER", false);
+					DrawModuleRow(LOD->GetOrCreateRequired(), "SETTINGS", false);
 				}
 
-				if (ImGui::Button("+ Add Module", ImVec2(-1.0f, 0.0f)))
-					ImGui::OpenPopup("AddModulePopup");
-
-				if (ImGui::BeginPopup("AddModulePopup"))
+				if (ImGui::CollapsingHeader("Spawn", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					auto AddModItem = [&](const char* Label, UClass* ModClass)
+					DrawModuleRow(LOD->GetOrCreateSpawn(), "SPAWN", false);
+				}
+
+				if (ImGui::CollapsingHeader("Particle Modules", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					for (UParticleModule* Mod : LOD->Modules)
 					{
-						if (ImGui::MenuItem(Label))
+						if (!Mod)
 						{
-							if (UParticleModule* Added = LOD->AddModule(ModClass))
+							continue;
+						}
+
+						const char* Stage = Mod->RunsOnSpawn()
+							? (Mod->RunsOnUpdate() ? "SPAWN + UPDATE" : "SPAWN")
+							: (Mod->RunsOnUpdate() ? "UPDATE" : "CUSTOM");
+
+						DrawModuleRow(Mod, Stage, true);
+					}
+
+					if (ImGui::Button("+ Add Module", ImVec2(-1.0f, 0.0f)))
+					{
+						ModuleSearchText[0] = '\0';
+						ImGui::OpenPopup("AddModulePopup");
+					}
+
+					if (ImGui::BeginPopup("AddModulePopup"))
+					{
+						ImGui::SetNextItemWidth(-1.0f);
+						ImGui::InputTextWithHint("##ModuleSearch", "Search modules...", ModuleSearchText, sizeof(ModuleSearchText));
+
+						ImGui::Separator();
+
+						struct FModuleOption
+						{
+							const char* Name;
+							const char* Category;
+							UClass* ModuleClass;
+						};
+
+						const FModuleOption Options[] = {
+							{ "Lifetime", "Particle Initialization", UParticleModuleLifetime::StaticClass() },
+							{ "Initial Location", "Particle Initialization", UParticleModuleLocation::StaticClass() },
+							{ "Initial Velocity", "Particle Initialization", UParticleModuleVelocity::StaticClass() },
+							{ "Initial Rotation", "Particle Initialization", UParticleModuleRotation::StaticClass() },
+							{ "Initial Color", "Appearance", UParticleModuleColor::StaticClass() },
+							{ "Initial Size", "Appearance", UParticleModuleSize::StaticClass() },
+							{ "Initial Size (Random)", "Appearance", UParticleModuleInitialSize::StaticClass() },
+							{ "Color Over Life", "Particle Update", UParticleModuleColorOverLife::StaticClass() },
+							{ "Size By Life", "Particle Update", UParticleModuleSizeByLife::StaticClass() },
+							{ "SubImage Index", "Particle Update", UParticleModuleSubUV::StaticClass() }
+						};
+
+						FString SearchQuery = ModuleSearchText;
+						std::transform(SearchQuery.begin(), SearchQuery.end(), SearchQuery.begin(), [](unsigned char C)
+							{ return static_cast<char>(std::tolower(C)); });
+
+						FString CurrentCategory;
+						bool bFoundModule = false;
+
+						for (const FModuleOption& Option : Options)
+						{
+							FString LowerName = Option.Name;
+							std::transform(LowerName.begin(), LowerName.end(), LowerName.begin(), [](unsigned char C)
+								{ return static_cast<char>(std::tolower(C)); });
+
+							if (!SearchQuery.empty() && LowerName.find(SearchQuery) == FString::npos)
 							{
-								SelectedEmitter = Emitter;
-								SelectedModule = Added;
-								if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-									PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
+								continue;
+							}
+
+							if (CurrentCategory != Option.Category)
+							{
+								if (!CurrentCategory.empty())
+								{
+									ImGui::Separator();
+								}
+
+								CurrentCategory = Option.Category;
+								ImGui::TextDisabled("%s", CurrentCategory.c_str());
+							}
+
+							bFoundModule = true;
+
+							if (ImGui::Selectable(Option.Name))
+							{
+								if (UParticleModule* Added = LOD->AddModule(Option.ModuleClass))
+								{
+									SelectedEmitter = Emitter;
+									SelectedModule = Added;
+
+									if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+									{
+										PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
+									}
+								}
+
+								ImGui::CloseCurrentPopup();
 							}
 						}
-					};
-					AddModItem("Lifetime", UParticleModuleLifetime::StaticClass());
-					AddModItem("Initial Location", UParticleModuleLocation::StaticClass());
-					AddModItem("Initial Velocity", UParticleModuleVelocity::StaticClass());
-					AddModItem("Initial Color", UParticleModuleColor::StaticClass());
-					AddModItem("Color Over Life", UParticleModuleColorOverLife::StaticClass());
-					AddModItem("Initial Size", UParticleModuleSize::StaticClass());
-					AddModItem("Initial Size (Random)", UParticleModuleInitialSize::StaticClass());
-					AddModItem("Size By Life", UParticleModuleSizeByLife::StaticClass());
-					AddModItem("Initial Rotation", UParticleModuleRotation::StaticClass());
-					AddModItem("SubImage Index", UParticleModuleSubUV::StaticClass());
-					ImGui::EndPopup();
+
+						if (!bFoundModule)
+						{
+							ImGui::TextDisabled("No matching modules.");
+						}
+
+						ImGui::EndPopup();
+					}
+				}
+
+				if (ModuleToRemove)
+				{
+					if (SelectedModule == ModuleToRemove)
+					{
+						SelectedModule = nullptr;
+					}
+
+					LOD->RemoveModule(ModuleToRemove);
+
+					if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+					{
+						PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
+					}
+				}
+				else if (ModuleToMove && MoveTargetModule && ModuleToMove != MoveTargetModule)
+				{
+					int32 FromIndex = -1;
+					int32 ToIndex = -1;
+
+					for (int32 Index = 0; Index < static_cast<int32>(LOD->Modules.Num()); ++Index)
+					{
+						if (LOD->Modules[Index] == ModuleToMove)
+						{
+							FromIndex = Index;
+						}
+
+						if (LOD->Modules[Index] == MoveTargetModule)
+						{
+							ToIndex = Index;
+						}
+					}
+
+					if (FromIndex >= 0 && ToIndex >= 0 && LOD->MoveModule(FromIndex, ToIndex))
+					{
+						if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+						{
+							PreviewActor->GetParticleSystemComponent()->UpdateEmitterStrides();
+						}
+					}
 				}
 			}
+
 			ImGui::TreePop();
 		}
 
@@ -494,9 +684,13 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 			SelectedEmitter = nullptr;
 			SelectedModule = nullptr;
 		}
+
 		EditingSystem->RemoveEmitter(EmitterToRemove);
+
 		if (PreviewActor && PreviewActor->GetParticleSystemComponent())
+		{
 			PreviewActor->GetParticleSystemComponent()->SetTemplate(EditingSystem);
+		}
 	}
 
 	ImGui::EndChild();

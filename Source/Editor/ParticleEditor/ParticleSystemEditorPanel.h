@@ -53,6 +53,7 @@ private:
 	float CurvePanelRatio = 0.26f;
 	int32 SelectedCurveTrackIndex = 0;
 	int32 SelectedCurveKeyId = -1;
+	char ModuleSearchText[128] = {};
 	bool bPaused = false;
 	bool bShowBounds = false;
 	bool bShowOriginAxis = true;
