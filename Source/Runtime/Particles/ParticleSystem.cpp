@@ -298,13 +298,73 @@ bool UParticleLODLevel::MoveModule(int32 FromIndex, int32 ToIndex)
 
 UParticleLODLevel* UParticleEmitter::AddLODLevel()
 {
+	return InsertLODLevel(static_cast<int32>(LODLevels.Num()));
+}
+
+UParticleLODLevel* UParticleEmitter::InsertLODLevel(int32 Index)
+{
+	if (Index < 0 || Index > static_cast<int32>(LODLevels.Num()))
+	{
+		return nullptr;
+	}
+
 	UParticleLODLevel* LOD = NewObject<UParticleLODLevel>(this);
-	LOD->Level = static_cast<int32>(LODLevels.Num());
+
+	if (!LOD)
+	{
+		return nullptr;
+	}
+
+	LODLevels.Insert(LOD, Index);
+
 	LOD->GetOrCreateRequired();
 	LOD->GetOrCreateSpawn();
 	LOD->GetOrCreateTypeData();
-	LODLevels.Add(LOD);
+
+	for (int32 LODIndex = 0; LODIndex < static_cast<int32>(LODLevels.Num()); ++LODIndex)
+	{
+		LODLevels[LODIndex]->Level = LODIndex;
+	}
+
 	return LOD;
+}
+
+bool UParticleEmitter::RemoveLODLevel(int32 Index)
+{
+	if (Index < 0 || Index >= static_cast<int32>(LODLevels.Num()) || LODLevels.Num() <= 1)
+	{
+		return false;
+	}
+
+	LODLevels.RemoveAt(Index);
+
+	for (int32 LODIndex = 0; LODIndex < static_cast<int32>(LODLevels.Num()); ++LODIndex)
+	{
+		LODLevels[LODIndex]->Level = LODIndex;
+	}
+
+	return true;
+}
+
+bool UParticleEmitter::MoveLODLevel(int32 FromIndex, int32 ToIndex)
+{
+	const int32 Count = static_cast<int32>(LODLevels.Num());
+
+	if (FromIndex < 0 || FromIndex >= Count || ToIndex < 0 || ToIndex >= Count || FromIndex == ToIndex)
+	{
+		return false;
+	}
+
+	UParticleLODLevel* Moved = LODLevels[FromIndex];
+	LODLevels.RemoveAt(FromIndex);
+	LODLevels.Insert(Moved, ToIndex);
+
+	for (int32 LODIndex = 0; LODIndex < Count; ++LODIndex)
+	{
+		LODLevels[LODIndex]->Level = LODIndex;
+	}
+
+	return true;
 }
 
 void UParticleEmitter::CacheEmitterModuleInfo()
@@ -344,6 +404,22 @@ bool UParticleSystem::RemoveEmitter(UParticleEmitter* Emitter)
 		}
 	}
 	return false;
+}
+
+bool UParticleSystem::MoveEmitter(int32 FromIndex, int32 ToIndex)
+{
+	const int32 Count = static_cast<int32>(Emitters.Num());
+
+	if (FromIndex < 0 || FromIndex >= Count || ToIndex < 0 || ToIndex >= Count || FromIndex == ToIndex)
+	{
+		return false;
+	}
+
+	UParticleEmitter* Moved = Emitters[FromIndex];
+	Emitters.RemoveAt(FromIndex);
+	Emitters.Insert(Moved, ToIndex);
+
+	return true;
 }
 
 bool UParticleSystem::SaveToFile(const FString& Path)

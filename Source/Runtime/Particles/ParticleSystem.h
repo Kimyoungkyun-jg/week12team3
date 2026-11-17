@@ -391,6 +391,9 @@ class UParticleEmitter : public UObject
 	GENERATED_BODY()
 public:
 	UParticleLODLevel* AddLODLevel();
+	UParticleLODLevel* InsertLODLevel(int32 Index);
+	bool RemoveLODLevel(int32 Index);
+	bool MoveLODLevel(int32 FromIndex, int32 ToIndex);
 	void CacheEmitterModuleInfo();
 	const TArray<UParticleLODLevel*>& GetLODLevels() const { return LODLevels; }
 
@@ -400,6 +403,7 @@ public:
 	bool bIsSolo = false;
 	UPROPERTY(EditAnywhere)
 	float PlayRate = 1.0f;
+
 private:
 	UPROPERTY(Instanced)
 	TArray<UParticleLODLevel*> LODLevels;
@@ -412,6 +416,7 @@ class UParticleSystem : public UObject
 public:
 	UParticleEmitter* AddEmitter();
 	bool RemoveEmitter(UParticleEmitter* Emitter);
+	bool MoveEmitter(int32 FromIndex, int32 ToIndex);
 	const TArray<UParticleEmitter*>& GetEmitters() const { return Emitters; }
 	bool SaveToFile(const FString& Path);
 	static UParticleSystem* LoadFromFile(const FString& Path, UObject* Outer = nullptr);
