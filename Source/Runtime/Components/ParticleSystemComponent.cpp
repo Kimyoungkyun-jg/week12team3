@@ -1395,7 +1395,8 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 	TArray<FVector> DissolveBandVerts;
 	if (bSampleSkeletalSurface && ToSpawn > 0)
 	{
-		SkinnedVerts = &AfterimageSource->GetSkinnedPickPositions();
+		// 파티클 스폰용은 균등 샘플링된 경량 스킨 정점을 사용해 프레임 드랍을 막는다
+		SkinnedVerts = &AfterimageSource->GetSampledPickPositions();
 		BoneTransforms = &AfterimageSource->GetGlobalBoneTransforms();
 		SkeletalWorldMatrix = AfterimageSource->GetWorldMatrix();
 		if (SkinnedVerts && !SkinnedVerts->IsEmpty() && LocationMod && LocationMod->bFilterByDissolveHeight &&

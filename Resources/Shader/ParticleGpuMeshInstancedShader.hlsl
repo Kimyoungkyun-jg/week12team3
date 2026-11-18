@@ -110,7 +110,8 @@ PS_INPUT mainVS(VS_INPUT input)
 	output.worldPosition = WorldPos;
 	output.worldNormal = WorldNormal;
 	output.uv = input.uv;
-	output.tintAndAlpha = p.Color * input.color;
+	// 기본 큐브 정점 색이 파티클 색상을 덮지 않도록 파티클 컬러만 전달
+	output.tintAndAlpha = p.Color;
 	return output;
 }
 
@@ -126,7 +127,7 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
 	color *= input.tintAndAlpha;
 
 #ifdef MATERIAL_GRAPH
-	float3 CameraWorldPosition = mul(float4(0.0f, 0.0f, 0.0f, 1.0f), inverse(View)).xyz;
+	float3 CameraWorldPosition = ViewTimeParams.yzw;
 	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(input.uv, input.worldPosition, normalize(CameraWorldPosition - input.worldPosition), normalize(input.worldNormal), input.tintAndAlpha, ViewTimeParams.x);
 
 #ifdef MATERIAL_GRAPH_HAS_OPACITY_MASK

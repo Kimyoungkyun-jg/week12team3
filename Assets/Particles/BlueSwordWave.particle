@@ -207,15 +207,16 @@
 													"Class": "UParticleModuleCollision",
 													"Value": {
 														"Properties": {
-															"CollisionRadius": 1.2,
+															"CollisionRadius": 0.65,
 															"DepthThickness": 1.0,
 															"FrictionMax": 0.0,
 															"FrictionMin": 0.0,
 															"LODSlotId": 8,
-															"MaxCollisions": 1,
+															"MaxCollisions": 100,
 															"RestitutionMax": 0.0,
 															"RestitutionMin": 0.0,
-															"bEnabled": true
+															"bEnabled": true,
+															"bOverlapOnly": true
 														}
 													}
 												},
@@ -532,15 +533,16 @@
 													"Class": "UParticleModuleCollision",
 													"Value": {
 														"Properties": {
-															"CollisionRadius": 0.45,
+															"CollisionRadius": 0.35,
 															"DepthThickness": 1.0,
 															"FrictionMax": 0.2,
 															"FrictionMin": 0.2,
 															"LODSlotId": 9,
-															"MaxCollisions": 1,
+															"MaxCollisions": 16,
 															"RestitutionMax": 0.35,
 															"RestitutionMin": 0.0,
-															"bEnabled": true
+															"bEnabled": true,
+															"bOverlapOnly": true
 														}
 													}
 												},

@@ -6,7 +6,9 @@
 #include "UObject/Casts.h"
 #include "Serialization/JsonArchive.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <filesystem>
 
 namespace
 {
@@ -1361,18 +1363,123 @@ bool UParticleSystem::MoveEmitter(int32 FromIndex, int32 ToIndex)
 	return true;
 }
 
+namespace
+{
+	struct FCachedParticleTemplate
+	{
+		UParticleSystem* System = nullptr;
+		std::filesystem::file_time_type LastWriteTime{};
+		bool bHasWriteTime = false;
+	};
+
+	TMap<FString, FCachedParticleTemplate>& GetParticleTemplateCache()
+	{
+		static TMap<FString, FCachedParticleTemplate> Cache;
+		return Cache;
+	}
+
+	FString BuildParticleCacheKey(const FString& ResolvedPath)
+	{
+		FString Key = ResolvedPath;
+		for (char& Ch : Key)
+		{
+			Ch = static_cast<char>(std::tolower(static_cast<unsigned char>(Ch)));
+		}
+		return Key;
+	}
+}
+
+FString UParticleSystem::ResolveAssetPath(const FString& Path)
+{
+	if (Path.empty())
+	{
+		return FString();
+	}
+
+	FString Normalized = Path;
+	std::replace(Normalized.begin(), Normalized.end(), '\\', '/');
+
+	std::error_code Ec;
+	if (std::filesystem::exists(std::filesystem::path(Normalized), Ec))
+	{
+		return Normalized;
+	}
+
+	if (Normalized.rfind("Assets/", 0) != 0)
+	{
+		const FString WithAssets = "Assets/" + Normalized;
+		if (std::filesystem::exists(std::filesystem::path(WithAssets), Ec))
+		{
+			return WithAssets;
+		}
+	}
+
+	return Normalized;
+}
+
+UParticleSystem* UParticleSystem::LoadEditableFromFile(const FString& Path)
+{
+	const FString ResolvedPath = ResolveAssetPath(Path);
+	if (ResolvedPath.empty())
+	{
+		return nullptr;
+	}
+
+	UParticleSystem* System = NewObject<UParticleSystem>();
+	if (!FJsonArchive::LoadObject(System, ResolvedPath))
+		return nullptr;
+	System->PrepareLODModules();
+	return System;
+}
+
 bool UParticleSystem::SaveToFile(const FString& Path)
 {
-	return FJsonArchive::SaveObject(this, Path);
+	const bool bSaved = FJsonArchive::SaveObject(this, Path);
+	if (bSaved)
+	{
+		const FString Key = BuildParticleCacheKey(ResolveAssetPath(Path));
+		GetParticleTemplateCache().Remove(Key);
+	}
+	return bSaved;
 }
 
 UParticleSystem* UParticleSystem::LoadFromFile(const FString& Path, UObject* Outer)
 {
-	UParticleSystem* System = NewObject<UParticleSystem>(Outer);
-	if (!FJsonArchive::LoadObject(System, Path))
+	// 런타임 스폰 시 반복 파싱을 막기 위해 정규화 경로와 수정 시각 기준으로 템플릿 캐시
+	(void)Outer;
+	const FString ResolvedPath = ResolveAssetPath(Path);
+	if (ResolvedPath.empty())
+	{
 		return nullptr;
-	System->PrepareLODModules();
-	return System;
+	}
+
+	const FString Key = BuildParticleCacheKey(ResolvedPath);
+	std::error_code Ec;
+	const std::filesystem::file_time_type WriteTime = std::filesystem::last_write_time(std::filesystem::path(ResolvedPath), Ec);
+	const bool bHasWriteTime = !Ec;
+
+	TMap<FString, FCachedParticleTemplate>& Cache = GetParticleTemplateCache();
+	if (FCachedParticleTemplate* Found = Cache.Find(Key))
+	{
+		const bool bTimeMatched = (!bHasWriteTime && !Found->bHasWriteTime) || (bHasWriteTime && Found->bHasWriteTime && Found->LastWriteTime == WriteTime);
+		if (IsValid(Found->System) && bTimeMatched)
+		{
+			return Found->System;
+		}
+	}
+
+	UParticleSystem* Loaded = LoadEditableFromFile(ResolvedPath);
+	if (!Loaded)
+	{
+		return nullptr;
+	}
+
+	FCachedParticleTemplate Entry;
+	Entry.System = Loaded;
+	Entry.LastWriteTime = WriteTime;
+	Entry.bHasWriteTime = bHasWriteTime;
+	Cache.Add(Key, Entry);
+	return Loaded;
 }
 
 namespace
@@ -1386,9 +1493,11 @@ namespace
 		}
 		const FRay WorldRay(Origin, Direction);
 		World->SweepSingle(WorldRay, Distance, Radius, OutHit, IgnoreActor);
+		// 이미 맞은 거리 안쪽만 도형 충돌로 추가 확인
+		const float ShapeDistance = OutHit.bBlockingHit ? OutHit.Distance : Distance;
 		// 구 반경을 반영한 블로킹 캡슐 충돌도 함께 검사한다
 		FHitResult ShapeHit;
-		if (Radius > 0.0f && World->SweepSingle(WorldRay, Distance, Radius, ShapeHit, IgnoreActor, true))
+		if (Radius > 0.0f && ShapeDistance >= 0.001f && World->SweepSingle(WorldRay, ShapeDistance, Radius, ShapeHit, IgnoreActor, true))
 		{
 			if (!OutHit.bBlockingHit || ShapeHit.Distance < OutHit.Distance)
 			{
@@ -1447,6 +1556,14 @@ void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float Delt
 	FHitResult Hit;
 	if (!SweepParticleWorld(Context.World, Context.Component->GetOwner(), PrevLocation, MoveDelta / MoveDist, MoveDist, CollisionRadius, Hit))
 	{
+		return;
+	}
+
+	if (bOverlapOnly)
+	{
+		// 오버랩 모드에서는 위치와 속도를 막지 않고 충돌 이벤트만 발생시킨다
+		Payload.CollisionCount++;
+		EmitCollisionEvent(Context, EventGenerator, Payload.CollisionCount, Hit, ParticleWorldVel);
 		return;
 	}
 

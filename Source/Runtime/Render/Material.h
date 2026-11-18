@@ -200,6 +200,9 @@ public:
 
 	void EnsureDefaultGraph();
 	void GetReachableExpressionNodeIds(TArray<int32>& OutNodeIds) const;
+	uint64 ComputeGraphSignature() const;
+	bool GetCachedGraphHash(uint64 Signature, FString& OutHash, bool& OutValid, FString& OutError) const;
+	void SetCachedGraphHash(uint64 Signature, const FString& InHash, bool bInValid, const FString& InError) const;
 
 	int32 GetExpressionInputPinCount(EMaterialExpressionType Type) const;
 	int32 GetExpressionOutputPinCount(EMaterialExpressionType Type) const;
@@ -259,5 +262,18 @@ public:
 	void InitializeRenderResources(const UMaterial& Template);
 
 private:
+	void EnsureGraphCache() const;
+
+	mutable uint64 CachedGraphSignature = 0;
+	mutable bool bGraphCacheValid = false;
+	mutable bool bCachedGraphHashValid = false;
+	mutable bool bCachedGraphCompiledOk = false;
+	mutable FString CachedGraphHash;
+	mutable FString CachedGraphError;
+	mutable TArray<int32> CachedReachableNodeIds;
+	mutable TArray<FMaterialGraphParameter> CachedGraphParameters;
+	mutable TArray<int32> CachedGraphTextureNodeIds;
+	mutable TArray<UTexture2D*> CachedGraphTextures;
+
 	inline static uint16 NextSortID = 0;
 };

@@ -117,8 +117,9 @@ namespace
 			if (!ParticleComp)
 				continue;
 			const bool bIsDeathComp = ParticleComp->GetName() == "DeathParticleComponent";
-			if (!ParticlePath.empty() && (ParticleComp->TemplatePath == ParticlePath ||
-				ParticleComp->TemplatePath == "Assets/" + ParticlePath))
+			const bool bPathMatch = !ParticlePath.empty() &&
+				(ParticleComp->TemplatePath == ParticlePath || UParticleSystem::ResolveAssetPath(ParticleComp->TemplatePath) == ParticlePath);
+			if (bPathMatch)
 			{
 				// 시작 시에는 비활성 컴포넌트를 우선 재사용하고 틱이나 종료 시에는 활성 컴포넌트를 찾는다
 				if (bCreateIfMissing)
@@ -147,7 +148,6 @@ namespace
 				Created->SetupAttachment(Mesh);
 				Created->bAutoDestroy = false;
 				Created->bPreviewInEditor = false;
-				Created->SetAutoActivate(false);
 				Created->SetVisibility(false);
 				Created->Deactivate();
 				return Created;
@@ -250,19 +250,15 @@ namespace
 void UAnimNotifyState_ParticleEffect::NotifyBegin(const FAnimNotifyContext& Context)
 {
 	if (ParticlePath.empty()) return;
-	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, true, true);
+	// 기존 고정 컴포넌트를 가로채지 않고 경로가 일치하는 비활성 컴포넌트를 우선 재사용
+	const FString ResolvedPath = UParticleSystem::ResolveAssetPath(ParticlePath);
+	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ResolvedPath, false, true);
 	if (!ParticleComp)
 		return;
 
-	if (!ParticlePath.empty() && ParticleComp->TemplatePath != ParticlePath)
+	if (!ResolvedPath.empty() && (ParticleComp->TemplatePath != ResolvedPath || !ParticleComp->GetTemplate()))
 	{
-		UParticleSystem* Loaded = UParticleSystem::LoadFromFile(ParticlePath, ParticleComp);
-		FString ResolvedPath = ParticlePath;
-		if (!Loaded && ParticlePath.rfind("Assets/", 0) != 0)
-		{
-			ResolvedPath = "Assets/" + ParticlePath;
-			Loaded = UParticleSystem::LoadFromFile(ResolvedPath, ParticleComp);
-		}
+		UParticleSystem* Loaded = UParticleSystem::LoadFromFile(ResolvedPath, ParticleComp);
 		if (!Loaded) return;
 		ParticleComp->TemplatePath = ResolvedPath;
 		ParticleComp->SetTemplate(Loaded);
@@ -278,7 +274,8 @@ void UAnimNotifyState_ParticleEffect::NotifyBegin(const FAnimNotifyContext& Cont
 
 void UAnimNotifyState_ParticleEffect::NotifyTick(const FAnimNotifyContext& Context)
 {
-	UParticleSystemComponent* ParticleComp = FindTrackedParticleComponent(Context.MeshComponent, ActiveComponents, ParticlePath);
+	const FString ResolvedPath = UParticleSystem::ResolveAssetPath(ParticlePath);
+	UParticleSystemComponent* ParticleComp = FindTrackedParticleComponent(Context.MeshComponent, ActiveComponents, ResolvedPath);
 	if (!ParticleComp)
 		return;
 
@@ -294,7 +291,8 @@ void UAnimNotifyState_ParticleEffect::NotifyTick(const FAnimNotifyContext& Conte
 
 void UAnimNotifyState_ParticleEffect::NotifyEnd(const FAnimNotifyContext& Context)
 {
-	UParticleSystemComponent* ParticleComp = FindTrackedParticleComponent(Context.MeshComponent, ActiveComponents, ParticlePath);
+	const FString ResolvedPath = UParticleSystem::ResolveAssetPath(ParticlePath);
+	UParticleSystemComponent* ParticleComp = FindTrackedParticleComponent(Context.MeshComponent, ActiveComponents, ResolvedPath);
 	ActiveComponents.Remove(Context.MeshComponent);
 	if (!ParticleComp)
 		return;

@@ -791,6 +791,28 @@ FVertexBuffer* USkeletalMeshComponent::GetSkinnedVertexBuffer(uint32 LOD)
 	return Cached.Buffer.get();
 }
 
+namespace
+{
+	void SkinPickVertex(const FSkeletalVertex& Src, const TArray<FMatrix>& SkinningMatrices, FVector& OutPos)
+	{
+		FBlendMatrix Blend{};
+		float Total = 0.0f;
+		for (int32 I = 0; I < 4; ++I)
+		{
+			const int32 Bone = Src.BoneIndices[I];
+			const float Weight = Src.BoneWeights[I];
+			if (Bone < 0 || Bone >= SkinningMatrices.Num() || Weight <= 0.0f) continue;
+			for (int32 R = 0; R < 4; ++R)
+			{
+				for (int32 C = 0; C < 3; ++C) Blend[R][C] += SkinningMatrices[Bone].M[R][C] * Weight;
+			}
+			Total += Weight;
+		}
+		if (Total <= 0.0f) Blend[0][0] = Blend[1][1] = Blend[2][2] = 1.0f;
+		TransformPoint(Blend, Src.Position, OutPos);
+	}
+}
+
 void USkeletalMeshComponent::UpdatePickPositions()
 {
 	EnsureBoneState();
@@ -803,25 +825,48 @@ void USkeletalMeshComponent::UpdatePickPositions()
 	FVector Min(FLT_MAX, FLT_MAX, FLT_MAX), Max(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 	for (int32 V = 0; V < Vertices.Num(); ++V)
 	{
-		const FSkeletalVertex& Src = Vertices[V];
-		FBlendMatrix Blend{};
-		float Total = 0.0f;
-		for (int32 I = 0; I < 4; ++I)
-		{
-			const int32 Bone = Src.BoneIndices[I];
-			const float Weight = Src.BoneWeights[I];
-			if (Bone < 0 || Bone >= SkinningMatrices.Num() || Weight <= 0.0f) continue;
-			for (int32 R = 0; R < 4; ++R) for (int32 C = 0; C < 3; ++C) Blend[R][C] += SkinningMatrices[Bone].M[R][C] * Weight;
-			Total += Weight;
-		}
-		if (Total <= 0.0f) Blend[0][0] = Blend[1][1] = Blend[2][2] = 1.0f;
 		FVector& P = PickPositions[V];
-		TransformPoint(Blend, Src.Position, P);
+		SkinPickVertex(Vertices[V], SkinningMatrices, P);
 		Min = FVector(std::min(Min.X, P.X), std::min(Min.Y, P.Y), std::min(Min.Z, P.Z));
 		Max = FVector(std::max(Max.X, P.X), std::max(Max.Y, P.Y), std::max(Max.Z, P.Z));
 	}
 	PickBounds = FBox{ Min, Max };
 	PickRevision = PoseRevision;
+}
+
+void USkeletalMeshComponent::UpdateSampledPickPositions()
+{
+	EnsureBoneState();
+	if (!SkeletalMesh) return;
+	if (!SkinningMatrices.IsEmpty() && bSkinningMatricesDirty) UpdateSkinning();
+	if (SampledPickRevision == PoseRevision && !SampledPickPositions.IsEmpty()) return;
+
+	const TArray<FSkeletalVertex>& Vertices = SkeletalMesh->MeshData.SkinnedVertices;
+	const int32 TotalCount = Vertices.Num();
+	if (TotalCount == 0)
+	{
+		SampledPickPositions.Reset();
+		SampledPickRevision = PoseRevision;
+		return;
+	}
+	const int32 Step = std::max(1, TotalCount / 512);
+	SampledPickPositions.Reset();
+	SampledPickPositions.Reserve(TotalCount / Step + 1);
+	const bool bHasFull = (PickRevision == PoseRevision && PickPositions.Num() == TotalCount);
+	for (int32 V = 0; V < TotalCount; V += Step)
+	{
+		if (bHasFull)
+		{
+			SampledPickPositions.Add(PickPositions[V]);
+		}
+		else
+		{
+			FVector Pos;
+			SkinPickVertex(Vertices[V], SkinningMatrices, Pos);
+			SampledPickPositions.Add(Pos);
+		}
+	}
+	SampledPickRevision = PoseRevision;
 }
 
 bool USkeletalMeshComponent::LineTraceComponent(const FRay& WorldRay, FHitResult& OutHit)

@@ -716,6 +716,9 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float DepthThickness = 1.0f;
+
+	UPROPERTY(EditAnywhere)
+	bool bOverlapOnly = false;
 };
 
 UCLASS()
@@ -807,6 +810,8 @@ public:
 	bool SetLODDistance(int32 Index, float Distance);
 	const TArray<UParticleEmitter*>& GetEmitters() const { return Emitters; }
 	bool SaveToFile(const FString& Path);
+	static FString ResolveAssetPath(const FString& Path);
+	static UParticleSystem* LoadEditableFromFile(const FString& Path);
 	static UParticleSystem* LoadFromFile(const FString& Path, UObject* Outer = nullptr);
 
 	UPROPERTY(EditAnywhere)

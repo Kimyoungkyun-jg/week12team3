@@ -147,8 +147,12 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
 	texColor.a *= BaseColor.a;
 
 #ifdef MATERIAL_GRAPH
-	float3 CameraWorldPosition = mul(float4(0, 0, 0, 1), inverse(View)).xyz;
+	float3 CameraWorldPosition = ViewTimeParams.yzw;
 	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV, input.worldPosition, normalize(CameraWorldPosition - input.worldPosition), normalize(input.normal), input.color, ViewTimeParams.x);
+
+#ifdef MATERIAL_GRAPH_HAS_OPACITY_MASK
+	clip(GraphOutput.OpacityMask - 0.001f);
+#endif
 
 #ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
 	texColor.rgb = GraphOutput.BaseColor.rgb;

@@ -137,7 +137,7 @@ GBUFFER_OUTPUT mainPS(PS_INPUT Input)
     WorldUVParams.x > 0.5f, ProjectedT, ProjectedB);
 
 #ifdef MATERIAL_GRAPH
-	float3 CameraWorldPosition = mul(float4(0, 0, 0, 1), inverse(View)).xyz;
+	float3 CameraWorldPosition = ViewTimeParams.yzw;
 	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV, Input.WorldPos, normalize(CameraWorldPosition - Input.WorldPos), normalize(Input.WorldNormal), Input.VertexColor, ViewTimeParams.x);
 #ifdef MATERIAL_GRAPH_HAS_OPACITY_MASK
 	clip(GraphOutput.OpacityMask - 0.001f);

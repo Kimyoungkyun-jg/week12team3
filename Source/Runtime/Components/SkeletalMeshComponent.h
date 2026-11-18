@@ -86,6 +86,11 @@ public:
 		UpdatePickPositions();
 		return PickPositions;
 	}
+	const TArray<FVector>& GetSampledPickPositions()
+	{
+		UpdateSampledPickPositions();
+		return SampledPickPositions;
+	}
 private:
 	struct FSkinnedLOD
 	{
@@ -123,9 +128,12 @@ private:
 	USkeletalMesh* BoneStateMesh = nullptr;
 	// 피킹용 스킨 위치. GPU 스키닝에서도 CPU에서 계산하며 포즈가 바뀐 뒤 처음 피킹할 때만 다시 만든다.
 	void UpdatePickPositions();
+	void UpdateSampledPickPositions();
 	TArray<FVector> PickPositions;
+	TArray<FVector> SampledPickPositions;
 	FBox PickBounds;
 	uint64 PickRevision = 0;
+	uint64 SampledPickRevision = 0;
 	UPROPERTY(EditAnywhere)
 	bool bOnlyTickPoseWhenRendered = false;
 	bool bVisibleSinceLastTick = true;

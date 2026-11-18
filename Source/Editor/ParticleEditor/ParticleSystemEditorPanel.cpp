@@ -514,7 +514,7 @@ void FParticleSystemEditorPanel::OpenAsset(const FString& InPath)
 
 	if (std::filesystem::exists(FbxPath::FromString(InPath)))
 	{
-		EditingSystem = UParticleSystem::LoadFromFile(InPath);
+		EditingSystem = UParticleSystem::LoadEditableFromFile(InPath);
 		if (!EditingSystem)
 		{
 			StatusMessage = "Load failed";
@@ -2511,6 +2511,7 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			bChanged |= ImGui::DragFloat("Depth Thickness", &Collision->DepthThickness, 0.01f, 0.0f, 100.0f);
 			if (ImGui::IsItemHovered())
 				ImGui::SetTooltip("GPU only: how far behind the depth surface still counts as inside the wall.");
+			bChanged |= ImGui::Checkbox("Overlap Only", &Collision->bOverlapOnly);
 			if (bChanged) { MarkSelectedLODBuildDirty(); MarkAssetModified(); }
 		}
 		else if (auto* EventGen = Cast<UParticleModuleEventGenerator>(SelectedModule))

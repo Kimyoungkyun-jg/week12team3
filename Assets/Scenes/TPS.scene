@@ -12,10 +12,11 @@
                             "OverrideMaterials": [],
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "StaticMesh": "Cube",
                                 "Transform": {
                                     "Location": {
-                                        "X": 0.05119657516479492,
+                                        "X": 12.814598083496094,
                                         "Y": -1.666877269744873,
                                         "Z": -0.48807191848754883
                                     },
@@ -45,6 +46,7 @@
                             "Name": "UBoxComponent_0",
                             "Parent": "UStaticMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "BoxExtent": {
                                     "X": 0.5,
                                     "Y": 0.5,
@@ -95,6 +97,7 @@
                             "Parent": "",
                             "Properties": {
                                 "AngularRadiusDegrees": 0.27000001072883606,
+                                "AttachSocketName": "",
                                 "CascadeDistributionExponent": 3.0,
                                 "CascadeTransitionFraction": 0.10000000149011612,
                                 "DynamicShadowCascades": 4,
@@ -132,55 +135,15 @@
                         {
                             "Class": "UBillboardComponent",
                             "Material": {
-                                "Base": "BillboardMaterial",
                                 "Instance": {
-                                    "BaseColor": {
-                                        "W": 1.0,
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    },
-                                    "BlendState": "AlphaBlend",
-                                    "EmissiveColor": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "EmissiveFactor": 1.0,
-                                    "FlipNormalY": false,
-                                    "OverrideShadingModel": false,
-                                    "PSOType": 14,
-                                    "Properties": {},
-                                    "SamplerState": "LinearClamp",
-                                    "ShadingModel": 2,
-                                    "Shininess": 32.0,
-                                    "SpecularColor": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    },
-                                    "SpecularFactor": 1.0,
-                                    "Textures": [
-                                        "Resources/Icons/Directional.png"
-                                    ],
-                                    "UVScrollSpeed": [
-                                        0.0,
-                                        0.0
-                                    ],
-                                    "UVTiling": [
-                                        1.0,
-                                        1.0
-                                    ],
-                                    "WorldUVLocalSpace": false,
-                                    "WorldUVTileSize": [
-                                        0.0,
-                                        0.0
-                                    ]
+                                    "ParentAsset": "",
+                                    "Properties": {}
                                 }
                             },
                             "Name": "UBillboardComponent",
                             "Parent": "UDirectionalLightComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
@@ -218,6 +181,7 @@
                             ],
                             "Parent": "UDirectionalLightComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "StaticMesh": "Arrow",
                                 "Transform": {
                                     "Location": {
@@ -261,19 +225,20 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4294950480,
                                 "Transform": {
                                     "Location": {
-                                        "X": -11.155426025390625,
-                                        "Y": -1.624680519104004,
+                                        "X": 42.429832458496094,
+                                        "Y": -4.063478946685791,
                                         "Z": 1.4748539924621582
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
                                         "Roll": 0.0,
-                                        "Yaw": 0.0
+                                        "Yaw": -178.25404357910156
                                     },
                                     "Scale": {
                                         "X": 1.0,
@@ -295,55 +260,15 @@
                         {
                             "Class": "UBillboardComponent",
                             "Material": {
-                                "Base": "BillboardMaterial",
                                 "Instance": {
-                                    "BaseColor": {
-                                        "W": 1.0,
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    },
-                                    "BlendState": "AlphaBlend",
-                                    "EmissiveColor": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "EmissiveFactor": 1.0,
-                                    "FlipNormalY": false,
-                                    "OverrideShadingModel": false,
-                                    "PSOType": 14,
-                                    "Properties": {},
-                                    "SamplerState": "LinearClamp",
-                                    "ShadingModel": 2,
-                                    "Shininess": 32.0,
-                                    "SpecularColor": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    },
-                                    "SpecularFactor": 1.0,
-                                    "Textures": [
-                                        "Resources/Icons/Toolbar/Play.png"
-                                    ],
-                                    "UVScrollSpeed": [
-                                        0.0,
-                                        0.0
-                                    ],
-                                    "UVTiling": [
-                                        1.0,
-                                        1.0
-                                    ],
-                                    "WorldUVLocalSpace": false,
-                                    "WorldUVTileSize": [
-                                        0.0,
-                                        0.0
-                                    ]
+                                    "ParentAsset": "",
+                                    "Properties": {}
                                 }
                             },
                             "Name": "BillboardComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
@@ -381,6 +306,7 @@
                             ],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "StaticMesh": "Arrow",
                                 "Transform": {
                                     "Location": {
@@ -424,13 +350,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
-                                        "X": -11.272525787353516,
-                                        "Y": -28.63764190673828,
+                                        "X": -12.899734497070313,
+                                        "Y": -6.266794204711914,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -464,6 +391,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -498,6 +426,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -549,6 +478,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -596,10 +526,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -661,13 +630,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
-                                        "X": -11.272525787353516,
-                                        "Y": -26.14395523071289,
+                                        "X": -15.02203369140625,
+                                        "Y": -5.7494659423828125,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -701,6 +671,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -735,6 +706,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -786,6 +758,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -833,10 +806,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -898,13 +910,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
-                                        "X": -11.272525787353516,
-                                        "Y": -27.622119903564453,
+                                        "X": -13.616336822509766,
+                                        "Y": -6.186359405517578,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -938,6 +951,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -972,6 +986,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -1023,6 +1038,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -1070,10 +1086,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -1135,13 +1190,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
-                                        "X": -11.272525787353516,
-                                        "Y": -26.967891693115234,
+                                        "X": -16.733583450317383,
+                                        "Y": -5.905973434448242,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -1175,6 +1231,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -1209,6 +1266,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -1260,6 +1318,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -1307,10 +1366,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -1372,13 +1470,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
                                         "X": -11.272525787353516,
-                                        "Y": 23.87672233581543,
+                                        "Y": -6.5184326171875,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -1412,6 +1511,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -1446,6 +1546,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -1497,6 +1598,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -1544,10 +1646,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -1609,13 +1750,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
                                         "X": -11.272525787353516,
-                                        "Y": -28.63764190673828,
+                                        "Y": -6.476865768432617,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -1649,6 +1791,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -1683,6 +1826,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -1734,6 +1878,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -1781,10 +1926,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -1846,13 +2030,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
                                         "X": -11.272525787353516,
-                                        "Y": -28.63764190673828,
+                                        "Y": -6.254844665527344,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -1886,6 +2071,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -1920,6 +2106,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -1971,6 +2158,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -2018,10 +2206,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -2083,13 +2310,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
                                         "X": -11.272525787353516,
-                                        "Y": -28.63764190673828,
+                                        "Y": -6.275333404541016,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -2123,6 +2351,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -2157,6 +2386,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -2208,6 +2438,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -2255,10 +2486,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -2320,13 +2590,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
-                                        "X": -11.272525787353516,
-                                        "Y": 19.47289276123047,
+                                        "X": -10.394414901733398,
+                                        "Y": -6.179798126220703,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -2360,6 +2631,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -2394,6 +2666,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -2445,6 +2718,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -2492,10 +2766,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -2557,14 +2870,15 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
-                                        "X": -11.272525787353516,
-                                        "Y": 23.87672233581543,
-                                        "Z": 1.0684137344360352
+                                        "X": -13.942039489746094,
+                                        "Y": -6.526487350463867,
+                                        "Z": 1.0684127807617188
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
@@ -2597,6 +2911,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -2631,6 +2946,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -2682,6 +2998,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -2729,10 +3046,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -2794,14 +3150,15 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
-                                        "X": -11.272525787353516,
-                                        "Y": 23.87672233581543,
-                                        "Z": 1.0684137344360352
+                                        "X": -15.604654312133789,
+                                        "Y": -6.976036071777344,
+                                        "Z": 1.0684146881103516
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
@@ -2834,6 +3191,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -2868,6 +3226,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -2919,6 +3278,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -2966,10 +3326,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -3031,13 +3430,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
-                                        "X": -11.272525787353516,
-                                        "Y": 23.87672233581543,
+                                        "X": -12.725082397460938,
+                                        "Y": -6.039812088012695,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -3071,6 +3471,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -3105,6 +3506,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -3156,6 +3558,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -3203,10 +3606,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -3268,13 +3710,14 @@
                             "Name": "CapsuleComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 1.0,
                                 "CapsuleRadius": 0.5,
                                 "ShapeColor": 4286105710,
                                 "Transform": {
                                     "Location": {
                                         "X": -11.272525787353516,
-                                        "Y": 23.87672233581543,
+                                        "Y": -6.414180755615234,
                                         "Z": 1.0684137344360352
                                     },
                                     "Rotation": {
@@ -3308,6 +3751,7 @@
                             "OverrideMaterials": [],
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "SkeletalMesh": "Models/Zombie/SK_Zombie Idle_mixamorig_Hips.fbxbin",
                                 "Transform": {
                                     "Location": {
@@ -3342,6 +3786,7 @@
                             "Name": "SpringArmComponent",
                             "Parent": "CapsuleComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CameraLagMaxDistance": 0.0,
                                 "CameraLagSpeed": 10.0,
                                 "CameraRotationLagSpeed": 10.0,
@@ -3393,6 +3838,7 @@
                             "Name": "CameraComponent",
                             "Parent": "SpringArmComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": -4.0,
@@ -3440,10 +3886,49 @@
                             }
                         },
                         {
+                            "Class": "UParticleSystemComponent",
+                            "InstanceParameters": "[]",
+                            "Name": "DeathParticleComponent",
+                            "Parent": "CapsuleComponent",
+                            "Properties": {
+                                "AttachSocketName": "",
+                                "CustomTimeDilation": 1.0,
+                                "TemplatePath": "Assets/Particles/ZombieDeathParticles.particle",
+                                "Transform": {
+                                    "Location": {
+                                        "X": 0.0,
+                                        "Y": 0.0,
+                                        "Z": 0.0
+                                    },
+                                    "Rotation": {
+                                        "Pitch": 0.0,
+                                        "Roll": 0.0,
+                                        "Yaw": 0.0
+                                    },
+                                    "Scale": {
+                                        "X": 1.0,
+                                        "Y": 1.0,
+                                        "Z": 1.0
+                                    }
+                                },
+                                "bAutoActivate": false,
+                                "bAutoDestroy": false,
+                                "bBlockComponent": false,
+                                "bCastShadow": false,
+                                "bGenerateOverlapEvents": true,
+                                "bHiddenInGame": false,
+                                "bPreviewInEditor": false,
+                                "bReceiveDecal": false,
+                                "bReceiveShadow": false,
+                                "bVisible": false
+                            }
+                        },
+                        {
                             "Class": "UCapsuleComponent",
                             "Name": "RightHandHitCapsule",
                             "Parent": "SkeletalMeshComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "CapsuleHalfHeight": 0.20000000298023224,
                                 "CapsuleRadius": 0.11999999731779099,
                                 "ShapeColor": 4286105710,
@@ -3505,6 +3990,7 @@
                             "Name": "USkyLightComponent",
                             "Parent": "",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Intensity": 0.20000000298023224,
                                 "LightColor": 4294967295,
                                 "ShadowBias": 0.5,
@@ -3537,55 +4023,15 @@
                         {
                             "Class": "UBillboardComponent",
                             "Material": {
-                                "Base": "BillboardMaterial",
                                 "Instance": {
-                                    "BaseColor": {
-                                        "W": 1.0,
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    },
-                                    "BlendState": "AlphaBlend",
-                                    "EmissiveColor": {
-                                        "X": 0.0,
-                                        "Y": 0.0,
-                                        "Z": 0.0
-                                    },
-                                    "EmissiveFactor": 1.0,
-                                    "FlipNormalY": false,
-                                    "OverrideShadingModel": false,
-                                    "PSOType": 14,
-                                    "Properties": {},
-                                    "SamplerState": "LinearClamp",
-                                    "ShadingModel": 2,
-                                    "Shininess": 32.0,
-                                    "SpecularColor": {
-                                        "X": 1.0,
-                                        "Y": 1.0,
-                                        "Z": 1.0
-                                    },
-                                    "SpecularFactor": 1.0,
-                                    "Textures": [
-                                        "Resources/Icons/Sky.png"
-                                    ],
-                                    "UVScrollSpeed": [
-                                        0.0,
-                                        0.0
-                                    ],
-                                    "UVTiling": [
-                                        1.0,
-                                        1.0
-                                    ],
-                                    "WorldUVLocalSpace": false,
-                                    "WorldUVTileSize": [
-                                        0.0,
-                                        0.0
-                                    ]
+                                    "ParentAsset": "",
+                                    "Properties": {}
                                 }
                             },
                             "Name": "UBillboardComponent",
                             "Parent": "USkyLightComponent",
                             "Properties": {
+                                "AttachSocketName": "",
                                 "Transform": {
                                     "Location": {
                                         "X": 0.0,
@@ -3627,7 +4073,7 @@
             "GameModeClassName": "AGameMode",
             "HUDClassName": "",
             "PlayerControllerClassName": "",
-            "PlayerPawnClassName": "ATestCharacter"
+            "PlayerPawnClassName": "ASwordCharacter"
         }
     }
 }
