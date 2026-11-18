@@ -10,7 +10,23 @@ class UStaticMesh;
 class UMaterial;
 class FMeshElementCollector;
 class FParticleSceneProxy;
+class USkeletalMesh;
 struct FViewContext;
+
+struct FAfterimageSnapshot
+{
+	USkeletalMesh* Mesh = nullptr;
+	FMatrix World = FMatrix::Identity;
+	FBox WorldBounds{};
+	TArray<FMatrix> SkinningMatrices;
+	mutable TUniquePtr<FStructuredBuffer> MatrixBuffer;
+};
+
+struct FAfterimageRenderParticle
+{
+	TSharedPtr<FAfterimageSnapshot> Snapshot;
+	float Alpha = 1.0f;
+};
 
 struct FParticleRenderData
 {
@@ -56,6 +72,17 @@ public:
 	TArray<FParticleRenderData> Particles;
 
 	bool HasParticles() const override { return Mesh != nullptr && !Particles.IsEmpty(); }
+	void GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
+		UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
+};
+
+class FDynamicAfterimageEmitterData : public FDynamicEmitterDataBase
+{
+public:
+	UMaterialInterface* Material = nullptr;
+	TArray<FAfterimageRenderParticle> Particles;
+
+	bool HasParticles() const override { return !Particles.IsEmpty(); }
 	void GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
 		UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const override;
 };

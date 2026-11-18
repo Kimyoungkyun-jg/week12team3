@@ -50,27 +50,7 @@ namespace
 
 	void EnsureSwordAnimationSettings()
 	{
-		constexpr const char* Names[] = {
-			"Idle",
-			"strafe_walk_F", "strafe_walk_B", "strafe_walk_L", "strafe_walk_L45",
-			"strafe_walk_L135", "strafe_walk_R", "strafe_walk_R45", "strafe_walk_R135",
-			"strafe_run_F", "strafe_run_B", "strafe_run_L", "strafe_run_L45",
-			"strafe_run_L135", "strafe_run_R", "strafe_run_R45", "strafe_run_R135"
-		};
-		for (const char* Name : Names)
-		{
-			const FString Key = FString("Models/SwordModel/AS_") + Name + ".fbxbin";
-			UAnimSequence* Sequence = UAssetManager::LoadAnimSequence(Key);
-			if (!Sequence) continue;
-			if (!Sequence->bForceRootLock || Sequence->RootMotionRootLock != ERootMotionRootLock::AnimFirstFrame)
-			{
-				// 이동 클립이 캡슐 밖으로 벗어나지 않도록 루트 본을 고정한다
-				Sequence->bEnableRootMotion = false;
-				Sequence->bForceRootLock = true;
-				Sequence->RootMotionRootLock = ERootMotionRootLock::AnimFirstFrame;
-				UAssetManager::SaveAnimSequence(*Sequence);
-			}
-		}
+		// 이동 클립이 캡슐 밖으로 벗어나지 않도록 루트 본을 고정한다
 	}
 
 	void EnsureFallbackMaterialColor(UMaterialInterface* MatInterface, const FVector4& Color)
@@ -203,67 +183,6 @@ namespace
 
 	void InstallSwordRibbonNotify()
 	{
-		UAnimSequence* Sequence = UAssetManager::LoadAnimSequence("Models/SwordModel/AS_combo02.fbxbin");
-		if (!Sequence || !Sequence->GetDataModel()) return;
-		const float Length = Sequence->GetDataModel()->PlayLength;
-		bool bNeedSave = false;
-
-		for (int32 Idx = Sequence->Notifies.Num() - 1; Idx >= 0; --Idx)
-		{
-			if (Sequence->Notifies[Idx].Name == "SwordRibbon" && Sequence->Notifies[Idx].IsState())
-			{
-				Sequence->Notifies.RemoveAt(Idx);
-				bNeedSave = true;
-			}
-		}
-
-		const FRibbonWindow Windows[] = {
-			{ "SwordRibbon_1", 0.05f, 0.60f },
-			{ "SwordRibbon_2", 0.95f, 1.65f },
-			{ "SwordRibbon_3", 2.50f, 3.45f }
-		};
-
-		for (const FRibbonWindow& Win : Windows)
-		{
-			const float Start = std::min(Win.Start, Length);
-			const float Duration = std::max(0.05f, std::min(Win.End, Length) - Start);
-			UAnimNotifyState_ParticleEffect* Notify = nullptr;
-			for (const FAnimNotifyEvent& Event : Sequence->Notifies)
-			{
-				if (Event.Name == Win.Name && Event.IsState())
-				{
-					Notify = Cast<UAnimNotifyState_ParticleEffect>(Event.NotifyState);
-					break;
-				}
-			}
-			if (!Notify)
-			{
-				Notify = Cast<UAnimNotifyState_ParticleEffect>(Sequence->AddNotifyState(
-					Win.Name, "UAnimNotifyState_ParticleEffect", Start, Duration));
-				if (!Notify) continue;
-				bNeedSave = true;
-			}
-			if (Notify->ComponentName != "SwordRibbonComponent" ||
-				Notify->BoneName != "SwordBaseSocket" ||
-				Notify->SecondBoneName != "SwordTipSocket" ||
-				Notify->BaseParameterName != "RibbonBase" ||
-				Notify->TipParameterName != "RibbonTip" ||
-				Notify->ParticlePath != "Assets/Particles/SwordRibbon.particle")
-			{
-				Notify->ComponentName = "SwordRibbonComponent";
-				Notify->ParticlePath = "Assets/Particles/SwordRibbon.particle";
-				Notify->BoneName = "SwordBaseSocket";
-				Notify->SecondBoneName = "SwordTipSocket";
-				Notify->BaseParameterName = "RibbonBase";
-				Notify->TipParameterName = "RibbonTip";
-				Notify->BoneOffset = FVector(0.0f, 0.0f, 0.0f);
-				Notify->FadeOutDuration = 0.15f;
-				bNeedSave = true;
-			}
-		}
-
-		if (bNeedSave && !UAssetManager::SaveAnimSequence(*Sequence))
-			HTR_LOG(Warning, "Failed to save SwordRibbon notify to AS_combo02.fbxbin");
 	}
 }
 
@@ -296,6 +215,20 @@ ASwordCharacter::ASwordCharacter()
 	SwordRibbonComponent->bPreviewInEditor = false;
 	SwordRibbonComponent->SetVisibility(false);
 	SwordRibbonComponent->Deactivate();
+	for (const auto& Effect : { std::pair{ "SwordWaveComponent", "Assets/Particles/BlueSwordWave.particle" },
+		std::pair{ "BeamParticleComponent", "Assets/Particles/anit2beam.particle" } })
+	{
+		UParticleSystemComponent* Component = CreateDefaultSubobject<UParticleSystemComponent>(Effect.first);
+		Component->SetupAttachment(MeshComponent);
+		if (UParticleSystem* Template = UParticleSystem::LoadFromFile(Effect.second, Component))
+		{
+			Component->TemplatePath = Effect.second;
+			Component->SetTemplate(Template);
+		}
+		Component->bPreviewInEditor = false;
+		Component->SetVisibility(false);
+		Component->Deactivate();
+	}
 
 	USpringArmComponent* SpringArm = GetSpringArmComponent();
 	SpringArm->TargetArmLength = 3.0f;

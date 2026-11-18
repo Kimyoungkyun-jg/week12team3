@@ -78,6 +78,70 @@ namespace
 			return "Lerp";
 		case EMaterialExpressionType::OneMinus:
 			return "One Minus";
+		case EMaterialExpressionType::Subtract:
+			return "Subtract";
+		case EMaterialExpressionType::Divide:
+			return "Divide";
+		case EMaterialExpressionType::Clamp:
+			return "Clamp";
+		case EMaterialExpressionType::Power:
+			return "Power";
+		case EMaterialExpressionType::Abs:
+			return "Abs";
+		case EMaterialExpressionType::Frac:
+			return "Frac";
+		case EMaterialExpressionType::Sine:
+			return "Sine";
+		case EMaterialExpressionType::Min:
+			return "Min";
+		case EMaterialExpressionType::Max:
+			return "Max";
+		case EMaterialExpressionType::AppendVector:
+			return "Append Vector";
+		case EMaterialExpressionType::Custom:
+			return "Custom";
+		case EMaterialExpressionType::Saturate:
+			return "Saturate";
+		case EMaterialExpressionType::Panner:
+			return "Panner";
+		case EMaterialExpressionType::Fresnel:
+			return "Fresnel";
+		case EMaterialExpressionType::Cosine:
+			return "Cosine";
+		case EMaterialExpressionType::Floor:
+			return "Floor";
+		case EMaterialExpressionType::Distance:
+			return "Distance";
+		case EMaterialExpressionType::Length:
+			return "Length";
+		case EMaterialExpressionType::CrossProduct:
+			return "Cross Product";
+		case EMaterialExpressionType::Desaturation:
+			return "Desaturation";
+		case EMaterialExpressionType::SphereMask:
+			return "Sphere Mask";
+		case EMaterialExpressionType::ConstantBiasScale:
+			return "Constant Bias Scale";
+		case EMaterialExpressionType::Rotator:
+			return "Rotator";
+		case EMaterialExpressionType::ComponentMask:
+			return "Component Mask";
+		case EMaterialExpressionType::DotProduct:
+			return "Dot Product";
+		case EMaterialExpressionType::Normalize:
+			return "Normalize";
+		case EMaterialExpressionType::TextureSampleParameter2D:
+			return "Texture Sample Parameter 2D";
+		case EMaterialExpressionType::Time:
+			return "Time";
+		case EMaterialExpressionType::VertexColor:
+			return "Vertex Color";
+		case EMaterialExpressionType::WorldPosition:
+			return "World Position";
+		case EMaterialExpressionType::CameraVectorWS:
+			return "Camera Vector WS";
+		case EMaterialExpressionType::VertexNormalWS:
+			return "Vertex Normal WS";
 		case EMaterialExpressionType::MaterialOutput:
 			return "Material Output";
 		default:
@@ -124,10 +188,18 @@ namespace
 		switch (Node.Type)
 		{
 		case EMaterialExpressionType::TextureSample:
+		case EMaterialExpressionType::TextureSampleParameter2D:
 			return "float2";
-
 		case EMaterialExpressionType::Add:
+		case EMaterialExpressionType::Subtract:
 		case EMaterialExpressionType::Multiply:
+		case EMaterialExpressionType::Divide:
+		case EMaterialExpressionType::Power:
+		case EMaterialExpressionType::Min:
+		case EMaterialExpressionType::Max:
+		case EMaterialExpressionType::DotProduct:
+		case EMaterialExpressionType::AppendVector:
+		case EMaterialExpressionType::Custom:
 			Type = GetConnectedType(PinIndex);
 
 			if (Type == EMaterialValueType::Unknown)
@@ -135,8 +207,41 @@ namespace
 				Type = GetConnectedType(1 - PinIndex);
 			}
 
-			return Type == EMaterialValueType::Unknown ? FString("same numeric type") : FString(GetMaterialValueTypeName(Type));
+			return Type == EMaterialValueType::Unknown ? FString("numeric") : FString(GetMaterialValueTypeName(Type));
+		case EMaterialExpressionType::Panner:
+			return "float2";
 
+		case EMaterialExpressionType::Rotator:
+			return PinIndex == 2 ? "float" : "float2";
+
+		case EMaterialExpressionType::Fresnel:
+			return PinIndex == 0 ? "float3" : "float";
+
+		case EMaterialExpressionType::Distance:
+			return "same vector type";
+
+		case EMaterialExpressionType::CrossProduct:
+			return "float3";
+
+		case EMaterialExpressionType::Desaturation:
+			return PinIndex == 0 ? "float3 / float4" : "float";
+
+		case EMaterialExpressionType::SphereMask:
+			return PinIndex < 2 ? "float3" : "float";
+
+		case EMaterialExpressionType::ConstantBiasScale:
+			if (PinIndex == 0)
+			{
+				return "numeric";
+			}
+
+			Type = GetConnectedType(0);
+			return Type == EMaterialValueType::Unknown
+				? FString("scalar or input type")
+				: FString(GetMaterialValueTypeName(Type));
+
+		case EMaterialExpressionType::Length:
+			return "float2 / float3 / float4";
 		case EMaterialExpressionType::Lerp:
 			if (PinIndex == 2)
 			{
@@ -153,9 +258,25 @@ namespace
 			return Type == EMaterialValueType::Unknown ? FString("same numeric type") : FString(GetMaterialValueTypeName(Type));
 
 		case EMaterialExpressionType::OneMinus:
+		case EMaterialExpressionType::Abs:
+		case EMaterialExpressionType::Frac:
+		case EMaterialExpressionType::Sine:
+		case EMaterialExpressionType::Normalize:
+		case EMaterialExpressionType::ComponentMask:
+		case EMaterialExpressionType::Saturate:
+		case EMaterialExpressionType::Cosine:
+		case EMaterialExpressionType::Floor:
 			Type = GetConnectedType(PinIndex);
 			return Type == EMaterialValueType::Unknown ? FString("numeric") : FString(GetMaterialValueTypeName(Type));
+		case EMaterialExpressionType::Clamp:
+			if (PinIndex == 0)
+			{
+				return "numeric";
+			}
 
+			return GetConnectedType(0) == EMaterialValueType::Unknown
+				? FString("scalar or input type")
+				: FString(GetMaterialValueTypeName(GetConnectedType(0)));
 		case EMaterialExpressionType::MaterialOutput:
 			switch (PinIndex)
 			{
@@ -165,7 +286,11 @@ namespace
 				return "float3 / float4";
 			case 2:
 			case 4:
+			case 5:
+			case 6:
 				return "float";
+			case 7:
+				return "float3";
 			default:
 				return "Unknown";
 			}
@@ -173,6 +298,12 @@ namespace
 		default:
 			return "Unknown";
 		}
+	}
+
+	bool HasMaterialTexturePreview(EMaterialExpressionType Type)
+	{
+		return Type == EMaterialExpressionType::TextureSample ||
+			Type == EMaterialExpressionType::TextureSampleParameter2D;
 	}
 
 	bool HasInlineMaterialValue(EMaterialExpressionType Type)
@@ -194,7 +325,8 @@ namespace
 	ImVec2 GetMaterialNodeSize(const UMaterial& Material, const FMaterialExpressionNode& Node)
 	{
 		const float ValueHeight = HasInlineMaterialValue(Node.Type) ? 42.0f : 0.0f;
-		const float Height = std::max(76.0f, 48.0f + Material.GetExpressionInputPinCount(Node.Type) * 25.0f + ValueHeight);
+		const float TexturePreviewHeight = HasMaterialTexturePreview(Node.Type) ? 78.0f : 0.0f;
+		const float Height = std::max(76.0f, 48.0f + Material.GetExpressionInputPinCount(Node.Type) * 25.0f + ValueHeight + TexturePreviewHeight);
 		return ImVec2(230.0f, Height);
 	}
 
@@ -439,6 +571,12 @@ void FMaterialEditorPanel::OpenAsset(const FString& InPath)
 	{
 		Material->EnsureDefaultGraph();
 		SelectedNodeId = Material->OutputNodeId;
+
+		if (Material == Asset && Material->bLegacyGraphMigrated)
+		{
+			bDirty = true;
+			Status = "Legacy Material Graph generated. Save to keep the migrated graph.";
+		}
 	}
 
 	const EPSOType Type = Asset->GetPSOType();
@@ -533,6 +671,11 @@ void FMaterialEditorPanel::SaveMaterial()
 		return;
 	}
 
+	if (UMaterial* BaseMaterial = Cast<UMaterial>(Asset))
+	{
+		BaseMaterial->bLegacyGraphMigrated = false;
+	}
+
 	bDirty = false;
 	bMaterialThumbnailDirty = false;
 	Status = "Saved";
@@ -607,6 +750,10 @@ void FMaterialEditorPanel::AddMaterialExpression(UMaterial& Material, EMaterialE
 	{
 		Node.ParameterName = "VectorParameter_" + std::to_string(NewId);
 	}
+	if (Type == EMaterialExpressionType::TextureSampleParameter2D)
+	{
+		Node.ParameterName = "TextureParameter_" + std::to_string(NewId);
+	}
 
 	Material.ExpressionNodes.Add(Node);
 
@@ -659,6 +806,7 @@ void FMaterialEditorPanel::DrawMaterialGraphPalette(UMaterial& Material)
 	{
 		AddItem("Scalar Parameter", EMaterialExpressionType::ScalarParameter);
 		AddItem("Vector Parameter", EMaterialExpressionType::VectorParameter);
+		AddItem("Texture Sample Parameter 2D", EMaterialExpressionType::TextureSampleParameter2D);
 		ImGui::TreePop();
 	}
 
@@ -669,12 +817,67 @@ void FMaterialEditorPanel::DrawMaterialGraphPalette(UMaterial& Material)
 		ImGui::TreePop();
 	}
 
+	if (ImGui::TreeNodeEx("Input", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		AddItem("Time", EMaterialExpressionType::Time);
+		AddItem("Vertex Color", EMaterialExpressionType::VertexColor);
+		ImGui::TreePop();
+	}
+
+	if (ImGui::TreeNodeEx("World", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		AddItem("World Position", EMaterialExpressionType::WorldPosition);
+		AddItem("Camera Vector WS", EMaterialExpressionType::CameraVectorWS);
+		AddItem("Vertex Normal WS", EMaterialExpressionType::VertexNormalWS);
+		ImGui::TreePop();
+	}
+
 	if (ImGui::TreeNodeEx("Math", ImGuiTreeNodeFlags_DefaultOpen))
 	{
 		AddItem("Add", EMaterialExpressionType::Add);
+		AddItem("Subtract", EMaterialExpressionType::Subtract);
 		AddItem("Multiply", EMaterialExpressionType::Multiply);
-		AddItem("Lerp", EMaterialExpressionType::Lerp);
+		AddItem("Divide", EMaterialExpressionType::Divide);
+		AddItem("Linear Interpolate", EMaterialExpressionType::Lerp);
+		AddItem("Clamp", EMaterialExpressionType::Clamp);
+		AddItem("Power", EMaterialExpressionType::Power);
+		AddItem("Abs", EMaterialExpressionType::Abs);
+		AddItem("Frac", EMaterialExpressionType::Frac);
+		AddItem("Sine", EMaterialExpressionType::Sine);
+		AddItem("Min", EMaterialExpressionType::Min);
+		AddItem("Max", EMaterialExpressionType::Max);
 		AddItem("One Minus", EMaterialExpressionType::OneMinus);
+		AddItem("Saturate", EMaterialExpressionType::Saturate);
+		AddItem("Cosine", EMaterialExpressionType::Cosine);
+		AddItem("Floor", EMaterialExpressionType::Floor);
+		AddItem("Distance", EMaterialExpressionType::Distance);
+		AddItem("Length", EMaterialExpressionType::Length);
+		AddItem("Cross Product", EMaterialExpressionType::CrossProduct);
+		AddItem("Desaturation", EMaterialExpressionType::Desaturation);
+		AddItem("Constant Bias Scale", EMaterialExpressionType::ConstantBiasScale);
+		ImGui::TreePop();
+	}
+
+	if (ImGui::TreeNodeEx("Vector", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		AddItem("Append Vector", EMaterialExpressionType::AppendVector);
+		AddItem("Component Mask", EMaterialExpressionType::ComponentMask);
+		AddItem("Dot Product", EMaterialExpressionType::DotProduct);
+		AddItem("Normalize", EMaterialExpressionType::Normalize);
+		if (ImGui::TreeNodeEx("Coordinates", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			AddItem("Panner", EMaterialExpressionType::Panner);
+			AddItem("Rotator", EMaterialExpressionType::Rotator);
+			ImGui::TreePop();
+		}
+
+		if (ImGui::TreeNodeEx("Utility", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			AddItem("Fresnel", EMaterialExpressionType::Fresnel);
+			AddItem("Sphere Mask", EMaterialExpressionType::SphereMask);
+			ImGui::TreePop();
+		}
+		AddItem("Custom", EMaterialExpressionType::Custom);
 		ImGui::TreePop();
 	}
 
@@ -807,11 +1010,6 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 			Draw->AddCircleFilled(PinPosition, 5.0f * Scale, IM_COL32(130, 190, 230, 255));
 			Draw->AddText({ PinPosition.x + 10.0f * Scale, PinPosition.y - 7.0f * Scale }, IM_COL32(220, 220, 225, 255), PinLabel.c_str());
 
-			if (PinName)
-			{
-				Draw->AddText({ PinPosition.x + 10.0f * Scale, PinPosition.y - 7.0f * Scale }, IM_COL32(220, 220, 225, 255), PinName);
-			}
-
 			if (bDraggingConnection && ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
 				Mouse.x >= PinPosition.x - 10.0f * Scale && Mouse.x <= PinPosition.x + 10.0f * Scale &&
 				Mouse.y >= PinPosition.y - 10.0f * Scale && Mouse.y <= PinPosition.y + 10.0f * Scale)
@@ -860,6 +1058,54 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 				PendingOutputPin = 0;
 				bDraggingConnection = true;
 				bHandledClick = true;
+			}
+		}
+
+		if (HasMaterialTexturePreview(Node.Type))
+		{
+			const float PreviewTop = 48.0f + InputCount * 25.0f;
+			const float ThumbnailSize = 64.0f;
+
+			const ImVec2 ThumbnailMin(Min.x + 10.0f * Scale, Min.y + PreviewTop * Scale);
+			const ImVec2 ThumbnailMax(ThumbnailMin.x + ThumbnailSize * Scale, ThumbnailMin.y + ThumbnailSize * Scale);
+
+			Draw->AddRectFilled(ThumbnailMin, ThumbnailMax, IM_COL32(25, 27, 30, 255), 4.0f * Scale);
+
+			UTexture2D* Texture = Node.TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Node.TexturePath);
+			ID3D11ShaderResourceView* TextureSRV = Texture && Texture->GetResource() ? Texture->GetResource()->GetSRV() : nullptr;
+
+			if (TextureSRV && Texture->GetWidth() > 0 && Texture->GetHeight() > 0)
+			{
+				const float FitScale = ThumbnailSize / static_cast<float>(std::max(Texture->GetWidth(), Texture->GetHeight()));
+				const ImVec2 ImageSize(Texture->GetWidth() * FitScale * Scale, Texture->GetHeight() * FitScale * Scale);
+				const ImVec2 ImageMin(ThumbnailMin.x + (ThumbnailSize * Scale - ImageSize.x) * 0.5f,
+					ThumbnailMin.y + (ThumbnailSize * Scale - ImageSize.y) * 0.5f);
+
+				Draw->AddImage(reinterpret_cast<ImTextureID>(TextureSRV), ImageMin, ImVec2(ImageMin.x + ImageSize.x, ImageMin.y + ImageSize.y));
+			}
+			else
+			{
+				Draw->AddText(ImVec2(ThumbnailMin.x + 7.0f * Scale, ThumbnailMin.y + 25.0f * Scale),
+					IM_COL32(170, 170, 170, 255), Node.TexturePath.empty() ? "No Texture" : "No Preview");
+			}
+
+			Draw->AddRect(ThumbnailMin, ThumbnailMax, IM_COL32(100, 105, 115, 255), 4.0f * Scale);
+
+			const FString TextureLabel = Node.TexturePath.empty()
+				? FString("No Texture")
+				: FbxPath::ToString(FbxPath::FromString(Node.TexturePath).filename());
+
+			const ImVec2 LabelMin(ThumbnailMax.x + 8.0f * Scale, ThumbnailMin.y + 5.0f * Scale);
+			const ImVec2 LabelMax(Max.x - 8.0f * Scale, ThumbnailMin.y + 36.0f * Scale);
+
+			Draw->PushClipRect(LabelMin, LabelMax, true);
+			Draw->AddText(LabelMin, IM_COL32(230, 230, 235, 255), TextureLabel.c_str());
+			Draw->PopClipRect();
+
+			if (Texture)
+			{
+				const FString TextureSize = std::to_string(Texture->GetWidth()) + " x " + std::to_string(Texture->GetHeight());
+				Draw->AddText(ImVec2(LabelMin.x, ThumbnailMin.y + 42.0f * Scale), IM_COL32(155, 160, 170, 255), TextureSize.c_str());
 			}
 		}
 
@@ -1149,6 +1395,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 
 	case EMaterialExpressionType::ScalarParameter:
 	case EMaterialExpressionType::VectorParameter:
+	case EMaterialExpressionType::TextureSampleParameter2D:
 	{
 		char Name[128]{};
 		strncpy_s(Name, sizeof(Name), Selected->ParameterName.c_str(), _TRUNCATE);
@@ -1168,6 +1415,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 			MarkMaterialChanged();
 		}
 
+		
 		if (Selected->Type == EMaterialExpressionType::ScalarParameter)
 		{
 			if (ImGui::DragFloat("Default Value", &Selected->ScalarValue, 0.01f))
@@ -1175,9 +1423,26 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 				MarkMaterialChanged();
 			}
 		}
-		else if (EditMaterialColor("Default Value", &Selected->VectorValue.X, true))
+		else if (Selected->Type == EMaterialExpressionType::VectorParameter)
 		{
-			MarkMaterialChanged();
+			if (EditMaterialColor("Default Value", &Selected->VectorValue.X, true))
+			{
+				MarkMaterialChanged();
+			}
+		}
+		else if (Selected->Type == EMaterialExpressionType::TextureSampleParameter2D)
+		{
+			UTexture2D* Current = Selected->TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Selected->TexturePath);
+
+			if (FContentDrawerPanel::DrawTexturePicker("Default Texture", Current, "None"))
+			{
+				Selected->TexturePath = Current ? Current->GetPath() : FString();
+				MarkMaterialChanged();
+			}
+			if (ImGui::Checkbox("sRGB", &Selected->bSRGB))
+			{
+				MarkMaterialChanged();
+			}
 		}
 
 		break;
@@ -1191,15 +1456,68 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 			Selected->TexturePath = Current ? Current->GetPath() : FString();
 			MarkMaterialChanged();
 		}
+
+		if (ImGui::Checkbox("sRGB", &Selected->bSRGB))
+		{
+			MarkMaterialChanged();
+		}
+
 		break;
 	}
 
 	case EMaterialExpressionType::TextureCoordinate:
-		if (ImGui::DragInt("Coordinate Index", &Selected->CoordinateIndex, 1.0f, 0, 7))
+		ImGui::TextDisabled("Coordinate Index: 0");
+		break;
+
+	case EMaterialExpressionType::ComponentMask:
+	{
+		bool R = (Selected->ComponentMask & 0x01) != 0;
+		bool G = (Selected->ComponentMask & 0x02) != 0;
+		bool B = (Selected->ComponentMask & 0x04) != 0;
+		bool A = (Selected->ComponentMask & 0x08) != 0;
+
+		bool bChanged = false;
+		bChanged |= ImGui::Checkbox("R", &R);
+		ImGui::SameLine();
+		bChanged |= ImGui::Checkbox("G", &G);
+		ImGui::SameLine();
+		bChanged |= ImGui::Checkbox("B", &B);
+		ImGui::SameLine();
+		bChanged |= ImGui::Checkbox("A", &A);
+
+		if (bChanged)
 		{
+			Selected->ComponentMask = static_cast<uint8>((R ? 0x01 : 0) | (G ? 0x02 : 0) | (B ? 0x04 : 0) | (A ? 0x08 : 0));
 			MarkMaterialChanged();
 		}
+
 		break;
+	}
+
+	case EMaterialExpressionType::Custom:
+	{
+		ImGui::TextDisabled("Use A and B as input variable names.");
+
+		char Code[4096]{};
+		strncpy_s(Code, sizeof(Code), Selected->CustomCode.c_str(), _TRUNCATE);
+
+		if (ImGui::InputTextMultiline("HLSL Expression", Code, sizeof(Code), ImVec2(-1.0f, 120.0f)))
+		{
+			Selected->CustomCode = Code;
+			MarkMaterialChanged();
+		}
+
+		int32 OutputType = static_cast<int32>(Selected->CustomOutputType);
+
+		if (ImGui::Combo("Output Type", &OutputType, "Scalar\0Vector2\0Vector3\0Vector4\0"))
+		{
+			Selected->CustomOutputType = static_cast<EMaterialValueType>(OutputType);
+			MarkMaterialChanged();
+		}
+
+		ImGui::TextDisabled("Example: cross(A, B)");
+		break;
+	}
 
 	default:
 		ImGui::TextDisabled("This node has no editable properties.");
@@ -1297,8 +1615,8 @@ void FMaterialEditorPanel::DrawMaterialGraph(UMaterial& Material)
 
 	ImGui::BeginChild("MaterialPreview", { 0.0f, PreviewHeight }, ImGuiChildFlags_Borders);
 	DrawPreview();
-	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 	ImGui::EndChild();
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 
 	// 프리뷰와 노드 디테일 높이 비율을 드래그로 조절한다
 	ImGui::InvisibleButton("##MaterialPreviewSplitter", ImVec2(-1.0f, SplitterSize));
@@ -1368,7 +1686,7 @@ void FMaterialEditorPanel::OnRender()
 
 	if (ImGui::Button("Compile"))
 	{
-		if (UMaterial* Material = Cast<UMaterial>(Asset))
+		if (UMaterial* Material = Asset->GetBaseMaterial())
 		{
 			FString CompileError;
 
@@ -1468,6 +1786,22 @@ void FMaterialEditorPanel::OnRender()
 	}
 	else if (UMaterialInstance* Instance = Cast<UMaterialInstance>(Asset))
 	{
+		UMaterial* ParentMaterial = Instance->GetBaseMaterial();
+
+		if (ParentMaterial)
+		{
+			ImGui::Text("Parent Material: %s", ParentMaterial->GetPath().c_str());
+
+			if (ImGui::Button("Open Parent Material Graph"))
+			{
+				const FString ParentPath = ParentMaterial->GetPath();
+				OpenAsset(ParentPath);
+				ImGui::End();
+				return;
+			}
+
+			ImGui::Separator();
+		}
 		const ImVec2 InstanceAvail = ImGui::GetContentRegionAvail();
 		const float SplitterSize = EditorUIScale::Px(6.0f);
 		const float MinPaneH = EditorUIScale::Px(90.0f);
@@ -1509,24 +1843,57 @@ void FMaterialEditorPanel::OnRender()
 
 		ImGui::EndDisabled();
 
-		UMaterial* ParentMaterial = Instance->GetBaseMaterial();
-
 		if (ParentMaterial)
 		{
 			ImGui::Separator();
 			ImGui::TextUnformatted("Parameters");
 
+			const auto GetGroupName = [](const FMaterialExpressionNode& Node)
+			{
+				return Node.ParameterGroup.empty() ? FString("Default") : Node.ParameterGroup;
+			};
+
+			const auto GetParameterType = [](EMaterialExpressionType Type)
+			{
+				if (Type == EMaterialExpressionType::ScalarParameter)
+				{
+					return EMaterialParameterType::Scalar;
+				}
+
+				if (Type == EMaterialExpressionType::VectorParameter)
+				{
+					return EMaterialParameterType::Vector;
+				}
+
+				return EMaterialParameterType::Texture;
+			};
+
+			TArray<int32> ReachableParameterNodeIds;
+			ParentMaterial->GetReachableExpressionNodeIds(ReachableParameterNodeIds);
+
+			const auto IsParameterReachable = [&](int32 NodeId)
+			{
+				return std::find(ReachableParameterNodeIds.begin(), ReachableParameterNodeIds.end(), NodeId) != ReachableParameterNodeIds.end();
+			};
+
 			std::set<FString> DrawnGroups;
+			std::set<FString> DrawnParameters;
 
 			for (const FMaterialExpressionNode& ParameterNode : ParentMaterial->ExpressionNodes)
 			{
-				if (ParameterNode.Type != EMaterialExpressionType::ScalarParameter &&
-					ParameterNode.Type != EMaterialExpressionType::VectorParameter)
+				if (!IsParameterReachable(ParameterNode.Id))
 				{
 					continue;
 				}
 
-				const FString GroupName = ParameterNode.ParameterGroup.empty() ? FString("Default") : ParameterNode.ParameterGroup;
+				if (ParameterNode.Type != EMaterialExpressionType::ScalarParameter &&
+					ParameterNode.Type != EMaterialExpressionType::VectorParameter &&
+					ParameterNode.Type != EMaterialExpressionType::TextureSampleParameter2D)
+				{
+					continue;
+				}
+
+				const FString GroupName = GetGroupName(ParameterNode);
 
 				if (!DrawnGroups.insert(GroupName).second)
 				{
@@ -1540,19 +1907,36 @@ void FMaterialEditorPanel::OnRender()
 
 				for (const FMaterialExpressionNode& Node : ParentMaterial->ExpressionNodes)
 				{
-					if (Node.ParameterGroup != ParameterNode.ParameterGroup ||
-						(Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter))
+					if (!IsParameterReachable(Node.Id))
 					{
 						continue;
 					}
 
+					if (GetGroupName(Node) != GroupName)
+					{
+						continue;
+					}
+
+					if (Node.Type != EMaterialExpressionType::ScalarParameter &&
+						Node.Type != EMaterialExpressionType::VectorParameter &&
+						Node.Type != EMaterialExpressionType::TextureSampleParameter2D)
+					{
+						continue;
+					}
+
+					const EMaterialParameterType OverrideType = GetParameterType(Node.Type);
 					const FName ParameterName(Node.ParameterName);
-					const FMaterialParameterOverride* Existing = Instance->GetParameterOverride(ParameterName);
-					const bool bScalar = Node.Type == EMaterialExpressionType::ScalarParameter;
+					const FString ParameterKey = Node.ParameterName + "#" + std::to_string(static_cast<uint8>(OverrideType));
 
-					bool bOverride = Existing && Existing->Type == (bScalar ? EMaterialParameterType::Scalar : EMaterialParameterType::Vector);
+					if (!DrawnParameters.insert(ParameterKey).second)
+					{
+						continue;
+					}
 
-					ImGui::PushID(Node.ParameterName.c_str());
+					const FMaterialParameterOverride* Existing = Instance->GetParameterOverride(ParameterName, OverrideType);
+					bool bOverride = Existing != nullptr;
+
+					ImGui::PushID(Node.Id);
 
 					ImGui::TextUnformatted(Node.ParameterName.c_str());
 					ImGui::SameLine();
@@ -1561,32 +1945,35 @@ void FMaterialEditorPanel::OnRender()
 					{
 						if (bOverride)
 						{
-							if (bScalar)
+							if (OverrideType == EMaterialParameterType::Scalar)
 							{
 								Instance->SetScalarParameterValue(ParameterName, Node.ScalarValue);
 							}
-							else
+							else if (OverrideType == EMaterialParameterType::Vector)
 							{
 								Instance->SetVectorParameterValue(ParameterName, Node.VectorValue);
+							}
+							else
+							{
+								UTexture2D* DefaultTexture = Node.TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Node.TexturePath);
+								Instance->SetTextureParameterValue(ParameterName, DefaultTexture);
 							}
 						}
 						else
 						{
-							Instance->ClearParameterOverride(ParameterName);
+							Instance->ClearParameterOverride(ParameterName, OverrideType);
 						}
 
 						MarkMaterialChanged();
 					}
 
-					const FMaterialParameterOverride* CurrentOverride = Instance->GetParameterOverride(ParameterName);
+					const FMaterialParameterOverride* CurrentOverride = Instance->GetParameterOverride(ParameterName, OverrideType);
 
 					ImGui::BeginDisabled(!bOverride);
 
-					if (bScalar)
+					if (OverrideType == EMaterialParameterType::Scalar)
 					{
-						float Value = CurrentOverride && CurrentOverride->Type == EMaterialParameterType::Scalar
-							? CurrentOverride->ScalarValue
-							: Node.ScalarValue;
+						float Value = CurrentOverride ? CurrentOverride->ScalarValue : Node.ScalarValue;
 
 						if (ImGui::DragFloat("Value", &Value, 0.01f))
 						{
@@ -1594,15 +1981,25 @@ void FMaterialEditorPanel::OnRender()
 							MarkMaterialChanged();
 						}
 					}
-					else
+					else if (OverrideType == EMaterialParameterType::Vector)
 					{
-						FVector4 Value = CurrentOverride && CurrentOverride->Type == EMaterialParameterType::Vector
-							? CurrentOverride->VectorValue
-							: Node.VectorValue;
+						FVector4 Value = CurrentOverride ? CurrentOverride->VectorValue : Node.VectorValue;
 
 						if (EditMaterialColor("Value", &Value.X, true))
 						{
 							Instance->SetVectorParameterValue(ParameterName, Value);
+							MarkMaterialChanged();
+						}
+					}
+					else
+					{
+						UTexture2D* Texture = CurrentOverride
+							? CurrentOverride->TextureValue
+							: (Node.TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Node.TexturePath));
+
+						if (FContentDrawerPanel::DrawTexturePicker("Texture", Texture, "None"))
+						{
+							Instance->SetTextureParameterValue(ParameterName, Texture);
 							MarkMaterialChanged();
 						}
 					}
@@ -1613,10 +2010,15 @@ void FMaterialEditorPanel::OnRender()
 
 				ImGui::TreePop();
 			}
+
+			if (DrawnParameters.empty())
+			{
+				ImGui::TextDisabled("This Material has no graph parameters.");
+			}
 		}
 
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 		ImGui::EndChild();
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 
 		ImGui::InvisibleButton("##InstancePreviewSplitter", ImVec2(-1.0f, SplitterSize));
 		const bool bInstSplitterActive = ImGui::IsItemActive();

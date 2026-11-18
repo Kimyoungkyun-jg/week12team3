@@ -1,0 +1,301 @@
+{
+    "Class": "UMaterial",
+    "Object": {
+        "BaseColor": {
+            "W": 0.550000011920929,
+            "X": 0.18000000715255737,
+            "Y": 0.7200000286102295,
+            "Z": 1.0
+        },
+        "BlendState": "AlphaBlend",
+        "EmissiveColor": {
+            "X": 0.0,
+            "Y": 0.0,
+            "Z": 0.0
+        },
+        "EmissiveFactor": 1.0,
+        "ExpressionConnections": [
+            {
+                "InputNodeId": 4,
+                "InputPin": 0,
+                "OutputNodeId": 3,
+                "OutputPin": 0
+            },
+            {
+                "InputNodeId": 5,
+                "InputPin": 0,
+                "OutputNodeId": 4,
+                "OutputPin": 0
+            },
+            {
+                "InputNodeId": 5,
+                "InputPin": 1,
+                "OutputNodeId": 2,
+                "OutputPin": 0
+            },
+            {
+                "InputNodeId": 1,
+                "InputPin": 0,
+                "OutputNodeId": 5,
+                "OutputPin": 0
+            },
+            {
+                "InputNodeId": 1,
+                "InputPin": 1,
+                "OutputNodeId": 6,
+                "OutputPin": 0
+            },
+            {
+                "InputNodeId": 1,
+                "InputPin": 2,
+                "OutputNodeId": 7,
+                "OutputPin": 0
+            },
+            {
+                "InputNodeId": 1,
+                "InputPin": 3,
+                "OutputNodeId": 8,
+                "OutputPin": 0
+            },
+            {
+                "InputNodeId": 1,
+                "InputPin": 4,
+                "OutputNodeId": 9,
+                "OutputPin": 0
+            }
+        ],
+        "ExpressionNodes": [
+            {
+                "ComponentMask": 1,
+                "CoordinateIndex": 0,
+                "CustomCode": "cross(A, B)",
+                "CustomOutputType": 2,
+                "Id": 1,
+                "ParameterGroup": "Default",
+                "ParameterName": "",
+                "Position": [
+                    1054.66650390625,
+                    190.66690063476563
+                ],
+                "ScalarValue": 0.0,
+                "TexturePath": "",
+                "Type": 12,
+                "VectorValue": {
+                    "W": 0.0,
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                }
+            },
+            {
+                "ComponentMask": 1,
+                "CoordinateIndex": 0,
+                "CustomCode": "cross(A, B)",
+                "CustomOutputType": 2,
+                "Id": 2,
+                "ParameterGroup": "Default",
+                "ParameterName": "",
+                "Position": [
+                    40.0,
+                    350.0
+                ],
+                "ScalarValue": 0.0,
+                "TexturePath": "",
+                "Type": 3,
+                "VectorValue": {
+                    "W": 0.550000011920929,
+                    "X": 0.18000000715255737,
+                    "Y": 0.7200000286102295,
+                    "Z": 1.0
+                }
+            },
+            {
+                "ComponentMask": 1,
+                "CoordinateIndex": 0,
+                "CustomCode": "cross(A, B)",
+                "CustomOutputType": 2,
+                "Id": 3,
+                "ParameterGroup": "Default",
+                "ParameterName": "",
+                "Position": [
+                    40.0,
+                    80.0
+                ],
+                "ScalarValue": 0.0,
+                "TexturePath": "",
+                "Type": 7,
+                "VectorValue": {
+                    "W": 0.0,
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                }
+            },
+            {
+                "ComponentMask": 1,
+                "CoordinateIndex": 0,
+                "CustomCode": "cross(A, B)",
+                "CustomOutputType": 2,
+                "Id": 4,
+                "ParameterGroup": "Default",
+                "ParameterName": "",
+                "Position": [
+                    300.0,
+                    80.0
+                ],
+                "ScalarValue": 0.0,
+                "TexturePath": "WhiteTexture",
+                "Type": 6,
+                "VectorValue": {
+                    "W": 0.0,
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                }
+            },
+            {
+                "ComponentMask": 1,
+                "CoordinateIndex": 0,
+                "CustomCode": "cross(A, B)",
+                "CustomOutputType": 2,
+                "Id": 5,
+                "ParameterGroup": "Default",
+                "ParameterName": "",
+                "Position": [
+                    570.0,
+                    180.0
+                ],
+                "ScalarValue": 0.0,
+                "TexturePath": "",
+                "Type": 9,
+                "VectorValue": {
+                    "W": 0.0,
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                }
+            },
+            {
+                "ComponentMask": 1,
+                "CoordinateIndex": 0,
+                "CustomCode": "cross(A, B)",
+                "CustomOutputType": 2,
+                "Id": 6,
+                "ParameterGroup": "Default",
+                "ParameterName": "",
+                "Position": [
+                    40.0,
+                    620.0
+                ],
+                "ScalarValue": 0.0,
+                "TexturePath": "",
+                "Type": 2,
+                "VectorValue": {
+                    "W": 1.0,
+                    "X": 1.0,
+                    "Y": 1.0,
+                    "Z": 1.0
+                }
+            },
+            {
+                "ComponentMask": 1,
+                "CoordinateIndex": 0,
+                "CustomCode": "cross(A, B)",
+                "CustomOutputType": 2,
+                "Id": 7,
+                "ParameterGroup": "Default",
+                "ParameterName": "",
+                "Position": [
+                    300.0,
+                    620.0
+                ],
+                "ScalarValue": 32.0,
+                "TexturePath": "",
+                "Type": 0,
+                "VectorValue": {
+                    "W": 0.0,
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                }
+            },
+            {
+                "ComponentMask": 1,
+                "CoordinateIndex": 0,
+                "CustomCode": "cross(A, B)",
+                "CustomOutputType": 2,
+                "Id": 8,
+                "ParameterGroup": "Default",
+                "ParameterName": "",
+                "Position": [
+                    40.0,
+                    760.0
+                ],
+                "ScalarValue": 0.0,
+                "TexturePath": "",
+                "Type": 2,
+                "VectorValue": {
+                    "W": 1.0,
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                }
+            },
+            {
+                "ComponentMask": 1,
+                "CoordinateIndex": 0,
+                "CustomCode": "cross(A, B)",
+                "CustomOutputType": 2,
+                "Id": 9,
+                "ParameterGroup": "Default",
+                "ParameterName": "",
+                "Position": [
+                    300.0,
+                    760.0
+                ],
+                "ScalarValue": 1.0,
+                "TexturePath": "",
+                "Type": 0,
+                "VectorValue": {
+                    "W": 0.0,
+                    "X": 0.0,
+                    "Y": 0.0,
+                    "Z": 0.0
+                }
+            }
+        ],
+        "FlipNormalY": false,
+        "OutputNodeId": 1,
+        "OverrideShadingModel": true,
+        "PSOType": 1,
+        "Properties": {},
+        "SamplerState": "LinearClamp",
+        "ShadingModel": 2,
+        "Shininess": 32.0,
+        "SpecularColor": {
+            "X": 1.0,
+            "Y": 1.0,
+            "Z": 1.0
+        },
+        "SpecularFactor": 1.0,
+        "Textures": [
+            "WhiteTexture",
+            "FlatNormalTexture"
+        ],
+        "UVScrollSpeed": [
+            0.0,
+            0.0
+        ],
+        "UVTiling": [
+            1.0,
+            1.0
+        ],
+        "UsageFlags": 3,
+        "WorldUVLocalSpace": false,
+        "WorldUVTileSize": [
+            0.0,
+            0.0
+        ]
+    },
+    "Version": 1
+}

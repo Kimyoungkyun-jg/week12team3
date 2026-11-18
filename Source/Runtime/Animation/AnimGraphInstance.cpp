@@ -235,20 +235,26 @@ float UAnimGraphInstance::PlayMontage(const FString& MontagePath, float InPlayRa
 	Target->Segments = std::move(LoadedSegments);
 	// 몽타주 전용 구간 노티파이 인스턴스를 생성해 속성을 복원한다
 	Target->NotifyStates.assign(Target->Asset.Notifies.size(), nullptr);
+	Target->NotifyObjects.assign(Target->Asset.Notifies.size(), nullptr);
 	for (size_t Idx = 0; Idx < Target->Asset.Notifies.size(); ++Idx)
 	{
 		const FAnimMontageNotify& NotifyDef = Target->Asset.Notifies[Idx];
-		if (NotifyDef.ClassName.empty() || NotifyDef.Duration <= 0.0f) continue;
-		UClass* StateClass = FindClass(NotifyDef.ClassName);
-		if (!StateClass || !StateClass->IsChildOf(UAnimNotifyState::StaticClass()) || !StateClass->Constructor) continue;
-		UAnimNotifyState* State = NewObject<UAnimNotifyState>(this, StateClass);
-		if (!State) continue;
+		if (NotifyDef.ClassName.empty()) continue;
+		UClass* NotifyClass = FindClass(NotifyDef.ClassName);
+		if (!NotifyClass || !NotifyClass->Constructor) continue;
+		const bool bState = NotifyDef.Duration > 0.0f;
+		UObject* Object = bState && NotifyClass->IsChildOf(UAnimNotifyState::StaticClass())
+			? static_cast<UObject*>(NewObject<UAnimNotifyState>(this, NotifyClass))
+			: (!bState && NotifyClass->IsChildOf(UAnimNotify::StaticClass())
+				? static_cast<UObject*>(NewObject<UAnimNotify>(this, NotifyClass)) : nullptr);
+		if (!Object) continue;
 		if (!NotifyDef.Properties.empty())
 		{
 			json Props = json::parse(NotifyDef.Properties, nullptr, false);
-			if (Props.is_object()) State->Serialize(Props, true);
+			if (Props.is_object()) Object->Serialize(Props, true);
 		}
-		Target->NotifyStates[Idx] = State;
+		if (bState) Target->NotifyStates[Idx] = static_cast<UAnimNotifyState*>(Object);
+		else Target->NotifyObjects[Idx] = static_cast<UAnimNotify*>(Object);
 	}
 	Target->TotalLength = TotalLength;
 	Target->Position = InitialPos;
@@ -434,6 +440,16 @@ void UAnimGraphInstance::UpdateMontages(float DeltaSeconds)
 			{
 				LastTriggeredNotify = Notify.Name;
 				if (OnMontageNotify) OnMontageNotify(Notify.Name);
+				if (NotifyIdx < Montage.NotifyObjects.size() && Montage.NotifyObjects[NotifyIdx])
+				{
+					FAnimNotifyQueueItem Item;
+					Item.Event.Name = Notify.Name;
+					Item.Event.TriggerTime = Notify.Time;
+					Item.Event.Notify = Montage.NotifyObjects[NotifyIdx];
+					Item.Source = Montage.Sequence;
+					Item.SourceNode = Item.Event.Notify;
+					SequenceNotifies.Add(Item);
+				}
 			}
 		}
 		AddNotifyQueueItems(SequenceNotifies);

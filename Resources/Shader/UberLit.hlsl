@@ -123,8 +123,9 @@ struct VS_OUT
 	float3 MaterialLocalNormal : TEXCOORD8;
 	nointerpolation uint PrimitiveId : TEXCOORD9;
 #if SHADING_MODEL_GOURAUD
-	float3 VertexDiffuse : TEXCOORD1;
-	float3 VertexSpecular : TEXCOORD2;
+    float3 VertexDiffuse : TEXCOORD1;
+    float3 VertexSpecular : TEXCOORD2;
+    float3 VertexAmbientDiffuse : TEXCOORD3;
 #elif !VIEW_MODE_WORLD_NORMAL
 	float3 WorldPosition : TEXCOORD1;
 	float ViewDepth : TEXCOORD2;
@@ -295,11 +296,11 @@ void CalculateRectLight(inout FLightResult Result, FLightRenderParameters Info,
 	AddLight(Result, N, V, L, Radiance, bIncludeSpecular, ActiveSpecular);
 }
 
-FLightResult CalculateBaseLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 N, float3 V, bool bIncludeSpecular, float ReceiveShadow, float4 ActiveSpecular)
+FLightResult CalculateBaseLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 N, float3 V, bool bIncludeSpecular, float ReceiveShadow, float AmbientOcclusion, float4 ActiveSpecular)
 {
-	FLightResult Result;
-	Result.Diffuse = CalculateAmbientLight(Ambient) + CalculateSkyLight(N);
-	Result.Specular = 0.0f;
+    FLightResult Result;
+    Result.Diffuse = (CalculateAmbientLight(Ambient) + CalculateSkyLight(N)) * saturate(AmbientOcclusion);
+    Result.Specular = 0.0f;
 
 	[loop]
 	for (uint DirectionalIndex = 0; DirectionalIndex < LightCounts.z; ++DirectionalIndex)
@@ -353,23 +354,23 @@ void AddAllLocalLights(inout FLightResult Result, float3 PixelPosition, float3 P
 	}
 }
 
-FLightResult CalculateLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 Normal, bool bIncludeSpecular, float ReceiveShadow, float4 ActiveSpecular)
+FLightResult CalculateLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 Normal, bool bIncludeSpecular, float ReceiveShadow, float AmbientOcclusion, float4 ActiveSpecular)
 {
-	float3 N = normalize(Normal);
-	float3 ToCamera = CameraPosition.xyz - P;
-	float3 V = ToCamera * rsqrt(max(dot(ToCamera, ToCamera), 1.0e-8f));
-	FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular, ReceiveShadow, ActiveSpecular);
+    float3 N = normalize(Normal);
+    float3 ToCamera = CameraPosition.xyz - P;
+    float3 V = ToCamera * rsqrt(max(dot(ToCamera, ToCamera), 1.0e-8f));
+    FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular, ReceiveShadow, AmbientOcclusion, ActiveSpecular);
 	AddAllLocalLights(Result, PixelPosition, P, N, V, bIncludeSpecular, ReceiveShadow, ActiveSpecular);
 	return Result;
 }
 
 // 타일 목록의 인덱스는 공유 SceneLights 안에서 종류별 시작 위치에 더한다.
-FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 Normal, bool bIncludeSpecular, float ReceiveShadow, float4 ActiveSpecular)
+FLightResult CalculateTiledLighting(float3 PixelPosition, float3 P, float ViewDepth, float3 Normal, bool bIncludeSpecular, float ReceiveShadow, float AmbientOcclusion, float4 ActiveSpecular)
 {
-	float3 N = normalize(Normal);
-	float3 ToCamera = CameraPosition.xyz - P;
-	float3 V = ToCamera * rsqrt(max(dot(ToCamera, ToCamera), 1.0e-8f));
-	FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular, ReceiveShadow, ActiveSpecular);
+    float3 N = normalize(Normal);
+    float3 ToCamera = CameraPosition.xyz - P;
+    float3 V = ToCamera * rsqrt(max(dot(ToCamera, ToCamera), 1.0e-8f));
+    FLightResult Result = CalculateBaseLighting(PixelPosition, P, ViewDepth, N, V, bIncludeSpecular, ReceiveShadow, AmbientOcclusion, ActiveSpecular);
 
 	if (GridMode == LIGHT_GRID_MODE_OFF)
 	{
@@ -452,8 +453,10 @@ VS_OUT Uber_VS(VS_IN Input)
 	float Handedness = Input.Tangent.w * (determinant((float3x3)Prim.LocalToWorld) < 0.0f ? -1.0f : 1.0f);
 	Output.WorldTangent = float4(T, Handedness);
 #if SHADING_MODEL_GOURAUD
-	FLightResult Lit = CalculateLighting(float3(0.0f, 0.0f, 0.0f), WorldPosition.xyz, ViewPosition.x, N, !REFLECTION_MODEL_LAMBERT, Prim.Flags.x, SpecularColorShininess);
-	Output.VertexDiffuse = Lit.Diffuse;
+	FLightResult Lit = CalculateLighting(float3(0.0f, 0.0f, 0.0f), WorldPosition.xyz, ViewPosition.x, N, !REFLECTION_MODEL_LAMBERT, Prim.Flags.x, 1.0f, SpecularColorShininess);
+	float3 AmbientDiffuse = CalculateAmbientLight(Ambient) + CalculateSkyLight(normalize(N));
+	Output.VertexAmbientDiffuse = AmbientDiffuse;
+	Output.VertexDiffuse = Lit.Diffuse - AmbientDiffuse;
 	Output.VertexSpecular = Lit.Specular;
 #elif !VIEW_MODE_WORLD_NORMAL
 	Output.WorldPosition = WorldPosition.xyz;
@@ -477,13 +480,34 @@ FUberOutput Uber_PS(VS_OUT Input)
 #else
 	float4 ActiveSpecular = SpecularColorShininess;
 
-	float3 ActiveEmissive = Emissive.rgb;
+    float3 ActiveEmissive = Emissive.rgb;
+    float AmbientOcclusion = 1.0f;
 
 #ifdef MATERIAL_GRAPH
-	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(Input.UV);
+	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(Input.UV, Input.MaterialWorldPos, normalize(CameraPosition.xyz - Input.MaterialWorldPos), normalize(Input.WorldNormal), Input.Color, ViewTimeParams.x);
+
+#ifdef MATERIAL_GRAPH_HAS_AMBIENT_OCCLUSION
+	AmbientOcclusion = saturate(GraphOutput.AmbientOcclusion);
+#endif
 
 #ifdef MATERIAL_GRAPH_HAS_SPECULAR_COLOR
 	ActiveSpecular.rgb = GraphOutput.SpecularColor;
+#endif
+	
+#ifdef MATERIAL_GRAPH_HAS_NORMAL
+{
+    float3 N = normalize(Input.WorldNormal);
+    float3 T = Input.WorldTangent.xyz - N * dot(N, Input.WorldTangent.xyz);
+    float TangentLengthSquared = dot(T, T);
+
+    if (TangentLengthSquared > 1.0e-8f)
+    {
+        T *= rsqrt(TangentLengthSquared);
+        float3 B = cross(N, T) * Input.WorldTangent.w;
+
+        ShadingNormal = normalize(T * GraphOutput.Normal.x + B * GraphOutput.Normal.y + N * GraphOutput.Normal.z);
+    }
+}
 #endif
 
 #ifdef MATERIAL_GRAPH_HAS_SHININESS
@@ -515,6 +539,26 @@ FUberOutput Uber_PS(VS_OUT Input)
 	}
 	float3 Albedo = SurfaceColor.rgb * BaseColor.rgb;
 #endif
+	
+#if defined(MATERIAL_GRAPH_HAS_METALLIC) || defined(MATERIAL_GRAPH_HAS_ROUGHNESS)
+{
+    const float PI = 3.14159265359f;
+
+    float Metallic = saturate(GraphOutput.Metallic);
+    float Roughness = clamp(GraphOutput.Roughness, 0.045f, 1.0f);
+
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), Albedo, Metallic);
+
+    float3 ToCamera = normalize(CameraPosition.xyz - Input.MaterialWorldPos);
+    float NoV = saturate(dot(ShadingNormal, ToCamera));
+
+    float3 Fview = F0 + (1.0f - F0) * pow(1.0f - NoV, 5.0f);
+
+    Albedo *= (1.0f - Metallic) * (1.0f - Fview) / PI;
+
+    ActiveSpecular = float4(F0, -Roughness);
+}
+#endif
 
 	int3 PixelCoord = int3(int2(Input.Position.xy), 0);
 
@@ -543,10 +587,16 @@ FUberOutput Uber_PS(VS_OUT Input)
 	float3 Specular = 0.0f;
 
 #if SHADING_MODEL_GOURAUD
-	Diffuse = Input.VertexDiffuse;
+	Diffuse = Input.VertexDiffuse + Input.VertexAmbientDiffuse * AmbientOcclusion;
 	Specular = Input.VertexSpecular;
 #elif SHADING_MODEL_PHONG
-	FLightResult Lit = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, !REFLECTION_MODEL_LAMBERT, Prim.Flags.x, ActiveSpecular);
+    bool bIncludeSpecular = !REFLECTION_MODEL_LAMBERT;
+
+#if defined(MATERIAL_GRAPH_HAS_METALLIC) || defined(MATERIAL_GRAPH_HAS_ROUGHNESS)
+	bIncludeSpecular = true;
+#endif
+
+    FLightResult Lit = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, bIncludeSpecular, Prim.Flags.x, AmbientOcclusion, ActiveSpecular);
 	Diffuse = Lit.Diffuse;
 	Specular = Lit.Specular;
 #elif VIEW_MODE_UNLIT

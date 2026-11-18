@@ -50,6 +50,7 @@ public:
 	static void SetForceSkinningUpdate(bool bForce) { bForceSkinningUpdate = bForce; }
 	static bool IsForceSkinningUpdate() { return bForceSkinningUpdate; }
 	const TArray<FMatrix>& GetGlobalBoneTransforms() const { return GlobalBoneTransforms; }
+	const TArray<FMatrix>& GetSkinningMatrices() const { return SkinningMatrices; }
 	virtual bool DoesSocketExist(const FString& InSocketName) const override;
 	virtual FMatrix GetSocketWorldMatrix(const FString& InSocketName) const override;
 	virtual FQuat GetSocketWorldRotationQuat(const FString& InSocketName) const override;

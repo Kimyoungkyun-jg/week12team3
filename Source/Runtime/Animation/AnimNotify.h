@@ -125,9 +125,6 @@ class UAnimNotifyState_ParticleEffect : public UAnimNotifyState
 	GENERATED_BODY()
 public:
 	UPROPERTY(EditAnywhere)
-	FString ComponentName;
-
-	UPROPERTY(EditAnywhere)
 	FString ParticlePath;
 
 	UPROPERTY(EditAnywhere)

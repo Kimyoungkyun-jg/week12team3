@@ -10,6 +10,8 @@ class FScene;
 class FParticleSceneProxy;
 struct FParticleDynamicData;
 struct FGpuParticleEmitterResources;
+struct FAfterimageSnapshot;
+class USkeletalMeshComponent;
 
 #define DECLARE_PARTICLE(Name, Address) \
 	FBaseParticle& Name = *((FBaseParticle*)(Address));
@@ -60,6 +62,7 @@ struct FParticleEmitterInstance
 	const FParticleInstanceParameters* InstanceParameters = nullptr;
 
 	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
+	TArray<TSharedPtr<FAfterimageSnapshot>> AfterimageSnapshots;
 	TArray<FGpuParticle> PendingGpuSpawns;
 	uint32 GpuWriteCursor = 0;
 	float LastGpuDeltaTime = 0.0f;
@@ -97,7 +100,7 @@ struct FParticleEmitterInstance
 	uint32 GetModuleDataOffset(const UParticleModule* Module) const;
 	void Resize(int32 NewMaxActiveParticles);
 	void SetLODLevel(int32 NewLODIndex);
-	void Tick(float DeltaTime, const FVector& Origin, const FParticleTickContext &Context);
+	void Tick(float DeltaTime, const FVector& Origin, const FParticleTickContext &Context, USkeletalMeshComponent* AfterimageSource = nullptr);
 	void Reset();
 	bool HasCompleted() const;
 	bool IsGpuEmitter() const;

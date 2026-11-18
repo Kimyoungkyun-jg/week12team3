@@ -66,20 +66,64 @@ float CalculateConeAttenuation(float CosAngle, float CosInner, float CosOuter)
 void AccumulateLight(inout FLightResult Result, float3 N, float3 V, float3 L,
     float3 Radiance, float3 SpecularColor, float Shininess, bool bIncludeSpecular)
 {
+    const float PI = 3.14159265359f;
     float NoL = saturate(dot(N, L));
+
     Result.Diffuse += Radiance * NoL;
-    if (bIncludeSpecular && NoL > 0.0f)
+
+    if (!bIncludeSpecular || NoL <= 0.0f)
     {
-#if REFLECTION_MODEL_PHONG
-        float3 R = reflect(-L, N);
-        float SpecularTerm = saturate(dot(R, V));
-#else
-        float3 H = L + V;
-        H *= rsqrt(max(dot(H, H), 1.0e-8f));
-        float SpecularTerm = saturate(dot(N, H));
-#endif
-        Result.Specular += Radiance * SpecularColor * pow(SpecularTerm, max(Shininess, 1.0f));
+        return;
     }
+
+    if (Shininess < 0.0f)
+    {
+        float Roughness = clamp(-Shininess, 0.045f, 1.0f);
+
+        float NoV = saturate(dot(N, V));
+
+        float3 HalfVector = L + V;
+        float HalfLengthSquared = dot(HalfVector, HalfVector);
+
+        if (HalfLengthSquared < 1.0e-8f)
+        {
+            return;
+        }
+
+        float3 H = HalfVector * rsqrt(HalfLengthSquared);
+
+        float NoH = saturate(dot(N, H));
+        float VoH = saturate(dot(V, H));
+
+        float Alpha = Roughness * Roughness;
+        float AlphaSquared = Alpha * Alpha;
+
+        float Denominator = NoH * NoH * (AlphaSquared - 1.0f) + 1.0f;
+        float D = AlphaSquared / max(PI * Denominator * Denominator, 1.0e-8f);
+
+        float K = (Roughness + 1.0f) * (Roughness + 1.0f) / 8.0f;
+
+        float Gv = NoV / max(NoV * (1.0f - K) + K, 1.0e-5f);
+        float Gl = NoL / max(NoL * (1.0f - K) + K, 1.0e-5f);
+
+        float3 F = SpecularColor + (1.0f - SpecularColor) * pow(1.0f - VoH, 5.0f);
+
+        float3 Specular = (D * Gv * Gl * F) / max(4.0f * NoV * NoL, 1.0e-5f);
+
+        Result.Specular += Radiance * Specular * NoL;
+        return;
+    }
+
+#if REFLECTION_MODEL_PHONG
+    float3 R = reflect(-L, N);
+    float SpecularTerm = saturate(dot(R, V));
+#else
+    float3 H = L + V;
+    H *= rsqrt(max(dot(H, H), 1.0e-8f));
+    float SpecularTerm = saturate(dot(N, H));
+#endif
+
+    Result.Specular += Radiance * SpecularColor * pow(SpecularTerm, max(Shininess, 1.0f));
 }
 
 float CalculateLinearDepth(float Z, float Near, float Far)

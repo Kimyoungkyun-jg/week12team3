@@ -2,7 +2,29 @@
   "BlendInTime": 0.05,
   "BlendOutTime": 0.12,
   "Loop": false,
-  "Notifies": [],
+  "Notifies": [
+    {
+      "ClassName": "UAnimNotifyState_ParticleEffect",
+      "Duration": 0.85,
+      "Name": "DashAfterimage",
+      "Properties": {
+        "BaseParameterName": "RibbonBase",
+        "BoneName": "",
+        "BoneOffset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "FadeOutDuration": 0.4,
+        "ParticlePath": "Assets/Particles/DashAfterimage.particle",
+        "SecondBoneName": "",
+        "TipParameterName": "RibbonTip",
+        "bFollowBoneRotation": false,
+        "bLoopDuringState": true
+      },
+      "Time": 0.03
+    }
+  ],
   "PlayRate": 1.0,
   "Sections": [
     {

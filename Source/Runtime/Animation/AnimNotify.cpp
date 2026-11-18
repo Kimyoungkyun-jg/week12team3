@@ -1,11 +1,13 @@
 #include "EnginePCH.h"
 #include "Animation/AnimNotify.h"
+#include "Animation/AnimInstance.h"
 #include "Asset/AnimSequence.h"
 #include "Asset/AssetManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/ParticleSystemComponent.h"
 #include "Particles/ParticleSystem.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/Character.h"
 #include "UObject/Casts.h"
 #include "Engine/Classes/Sound/SoundWave.h"
 #include "Engine/GameplayStatics.h"
@@ -101,40 +103,25 @@ void UAnimNotifyState_Log::NotifyEnd(const FAnimNotifyContext& Context)
 
 namespace
 {
-	UParticleSystemComponent* FindTargetParticleComponent(USkeletalMeshComponent* Mesh, const FString& ComponentName)
+	UParticleSystemComponent* FindTargetParticleComponent(USkeletalMeshComponent* Mesh, const FString& ParticlePath, bool bAllowFallback)
 	{
-		if (!Mesh || !Mesh->GetOwner())
+		ACharacter* Character = Cast<ACharacter>(Mesh->GetOwner());
+		if (!Character)
 			return nullptr;
 
-		for (UActorComponent* Comp : Mesh->GetOwner()->GetComponents())
+		UParticleSystemComponent* Fallback = nullptr;
+		for (UActorComponent* Comp : Character->GetComponents())
 		{
 			UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp);
 			if (!ParticleComp)
 				continue;
-			if (ComponentName.empty() || ParticleComp->GetName() == ComponentName)
+			if (!ParticlePath.empty() && (ParticleComp->TemplatePath == ParticlePath ||
+				ParticleComp->TemplatePath == "Assets/" + ParticlePath))
 				return ParticleComp;
+			if (!Fallback || (Fallback->IsActive() && !ParticleComp->IsActive()))
+				Fallback = ParticleComp;
 		}
-		return nullptr;
-	}
-
-	UParticleSystemComponent* FindOrCreatePreviewParticleComponent(
-		USkeletalMeshComponent* Mesh, const FString& ComponentName, const FString& ParticlePath)
-	{
-		if (UParticleSystemComponent* Existing = FindTargetParticleComponent(Mesh, ComponentName))
-			return Existing;
-		if (!Mesh || !Mesh->GetOwner() || ParticlePath.empty())
-			return nullptr;
-
-		const FString NewName = ComponentName.empty() ? FString("NotifyParticlePreview") : ComponentName;
-		UParticleSystemComponent* Created = Cast<UParticleSystemComponent>(
-			Mesh->GetOwner()->AddComponent(UParticleSystemComponent::StaticClass(), NewName, true));
-		if (!Created)
-			return nullptr;
-		Created->SetupAttachment(Mesh);
-		Created->bPreviewInEditor = false;
-		Created->SetVisibility(false);
-		Created->Deactivate();
-		return Created;
+		return bAllowFallback ? Fallback : nullptr;
 	}
 
 	FRotator ExtractRotationFromMatrix(const FMatrix& Matrix)
@@ -196,7 +183,8 @@ namespace
 
 void UAnimNotifyState_ParticleEffect::NotifyBegin(const FAnimNotifyContext& Context)
 {
-	UParticleSystemComponent* ParticleComp = FindOrCreatePreviewParticleComponent(Context.MeshComponent, ComponentName, ParticlePath);
+	if (ParticlePath.empty()) return;
+	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, true);
 	if (!ParticleComp)
 		return;
 
@@ -209,11 +197,9 @@ void UAnimNotifyState_ParticleEffect::NotifyBegin(const FAnimNotifyContext& Cont
 			ResolvedPath = "Assets/" + ParticlePath;
 			Loaded = UParticleSystem::LoadFromFile(ResolvedPath, ParticleComp);
 		}
-		if (Loaded)
-		{
-			ParticleComp->TemplatePath = ResolvedPath;
-			ParticleComp->SetTemplate(Loaded);
-		}
+		if (!Loaded) return;
+		ParticleComp->TemplatePath = ResolvedPath;
+		ParticleComp->SetTemplate(Loaded);
 	}
 
 	SyncParticleToBone(Context.MeshComponent, ParticleComp, BoneName, SecondBoneName,
@@ -225,7 +211,7 @@ void UAnimNotifyState_ParticleEffect::NotifyBegin(const FAnimNotifyContext& Cont
 
 void UAnimNotifyState_ParticleEffect::NotifyTick(const FAnimNotifyContext& Context)
 {
-	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ComponentName);
+	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, false);
 	if (!ParticleComp)
 		return;
 
@@ -241,7 +227,7 @@ void UAnimNotifyState_ParticleEffect::NotifyTick(const FAnimNotifyContext& Conte
 
 void UAnimNotifyState_ParticleEffect::NotifyEnd(const FAnimNotifyContext& Context)
 {
-	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ComponentName);
+	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, false);
 	if (!ParticleComp)
 		return;
 

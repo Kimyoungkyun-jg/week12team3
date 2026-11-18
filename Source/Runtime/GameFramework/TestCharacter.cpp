@@ -52,49 +52,7 @@ namespace
 
 	void EnsureDashAnimationSettings()
 	{
-		UAnimSequence* Sequence = UAssetManager::LoadAnimSequence("Models/UnrealModel/AS_MM_Dash.fbxbin");
-		if (!Sequence || !Sequence->GetDataModel()) return;
-		bool bNeedSave = false;
-		if (!Sequence->bEnableRootMotion || Sequence->bForceRootLock ||
-			Sequence->RootMotionRootLock != ERootMotionRootLock::AnimFirstFrame)
-		{
-			// 대시 클립의 루트 모션을 켜서 캡슐이 함께 이동하도록 한다
-			Sequence->bEnableRootMotion = true;
-			Sequence->bForceRootLock = false;
-			Sequence->RootMotionRootLock = ERootMotionRootLock::AnimFirstFrame;
-			bNeedSave = true;
-		}
-		bool bHasDashRibbon = false;
-		for (const FAnimNotifyEvent& Event : Sequence->Notifies)
-		{
-			if (Event.Name == "DashRibbon" && Event.IsState())
-			{
-				bHasDashRibbon = true;
-				break;
-			}
-		}
-		if (!bHasDashRibbon)
-		{
-			const float Length = Sequence->GetDataModel()->PlayLength;
-			const float Start = std::min(0.03f, Length);
-			const float Duration = std::max(0.05f, std::min(0.78f, Length) - Start);
-			UAnimNotifyState_ParticleEffect* Notify = Cast<UAnimNotifyState_ParticleEffect>(
-				Sequence->AddNotifyState("DashRibbon", "UAnimNotifyState_ParticleEffect", Start, Duration));
-			if (Notify)
-			{
-				Notify->ComponentName = "DashRibbonComponent";
-				Notify->ParticlePath = "Assets/Particles/DashRibbon.particle";
-				Notify->BoneName = "ball_l";
-				Notify->SecondBoneName = "head";
-				Notify->BaseParameterName = "RibbonBase";
-				Notify->TipParameterName = "RibbonTip";
-				Notify->BoneOffset = FVector(0.0f, 0.0f, 0.0f);
-				Notify->FadeOutDuration = 0.2f;
-				bNeedSave = true;
-			}
-		}
-		if (bNeedSave && !UAssetManager::SaveAnimSequence(*Sequence))
-			HTR_LOG(Warning, "Failed to save dash settings to AS_MM_Dash.fbxbin");
+		// 대시 클립의 루트 모션을 켜서 캡슐이 함께 이동하도록 한다
 	}
 }
 
@@ -130,6 +88,16 @@ ATestCharacter::ATestCharacter()
 	DashRibbonComponent->bPreviewInEditor = false;
 	DashRibbonComponent->SetVisibility(false);
 	DashRibbonComponent->Deactivate();
+	UParticleSystemComponent* DashAfterimageComponent = CreateDefaultSubobject<UParticleSystemComponent>("DashAfterimageComponent");
+	DashAfterimageComponent->SetupAttachment(SkeletalMeshComponent);
+	if (UParticleSystem* Template = UParticleSystem::LoadFromFile("Assets/Particles/DashAfterimage.particle", DashAfterimageComponent))
+	{
+		DashAfterimageComponent->TemplatePath = "Assets/Particles/DashAfterimage.particle";
+		DashAfterimageComponent->SetTemplate(Template);
+	}
+	DashAfterimageComponent->bPreviewInEditor = false;
+	DashAfterimageComponent->SetVisibility(false);
+	DashAfterimageComponent->Deactivate();
 	UScriptComponent* TuningScript = CreateDefaultSubobject<UScriptComponent>("CameraTuningScript");
 	TuningScript->SetScriptPath("Assets/Scripts/TestCharacterTuning.lua");
 }

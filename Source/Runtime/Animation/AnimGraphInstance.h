@@ -7,6 +7,7 @@
 #include "AnimGraphInstance.generated.h"
 
 class UAnimNotifyState;
+class UAnimNotify;
 
 UCLASS()
 class UAnimGraphInstance : public UAnimInstance
@@ -83,6 +84,7 @@ private:
 		UAnimSequence* Sequence = nullptr;
 		std::vector<FActiveMontageSegment> Segments;
 		std::vector<UAnimNotifyState*> NotifyStates;
+		std::vector<UAnimNotify*> NotifyObjects;
 		float TotalLength = 0.0f;
 		float Position = 0.0f;
 		float PlayRate = 1.0f;

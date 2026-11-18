@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "Editor/Animation/AnimSequenceViewerPanel.h"
 #include "Editor/Animation/AnimSequenceDisplayName.h"
+#include "Editor/Animation/AnimNotifyEditorUtils.h"
 #include "Editor/Details/PropertyEditor.h"
 #include "Animation/AnimNotify.h"
 #include "UObject/UObjectHash.h"
@@ -71,47 +72,19 @@ namespace
 	// 만들 수 있는(추상이 아닌) UAnimNotify 파생 클래스를 이름순으로 모은다.
 	void GetNotifyClasses(TArray<UClass*>& OutClasses)
 	{
-		OutClasses.Reset();
-		TArray<UClass*> Derived;
-		GetDerivedClasses(UAnimNotify::StaticClass(), Derived);
-		for (UClass* Class : Derived)
-		{
-			if (Class && Class->Constructor)
-			{
-				OutClasses.Add(Class);
-			}
-		}
-		std::sort(OutClasses.begin(), OutClasses.end(), [](const UClass* A, const UClass* B) { return A->Name < B->Name; });
+		AnimNotifyEditorUtils::GetClasses(UAnimNotify::StaticClass(), OutClasses);
 	}
 
 	// 만들 수 있는(추상이 아닌) UAnimNotifyState 파생 클래스를 이름순으로 모은다.
 	void GetNotifyStateClasses(TArray<UClass*>& OutClasses)
 	{
-		OutClasses.Reset();
-		TArray<UClass*> Derived;
-		GetDerivedClasses(UAnimNotifyState::StaticClass(), Derived);
-		for (UClass* Class : Derived)
-		{
-			if (Class && Class->Constructor)
-			{
-				OutClasses.Add(Class);
-			}
-		}
-		std::sort(OutClasses.begin(), OutClasses.end(), [](const UClass* A, const UClass* B) { return A->Name < B->Name; });
+		AnimNotifyEditorUtils::GetClasses(UAnimNotifyState::StaticClass(), OutClasses);
 	}
 
 	// "UAnimNotify_PlaySound" -> "PlaySound", "UAnimNotifyState_Log" -> "Log"
 	FString GetNotifyDisplayName(const UClass* Class)
 	{
-		for (const char* Prefix : { "UAnimNotifyState_", "UAnimNotify_" })
-		{
-			const FString Text = Prefix;
-			if (Class->Name.starts_with(Text))
-			{
-				return Class->Name.substr(Text.size());
-			}
-		}
-		return Class->Name;
+		return AnimNotifyEditorUtils::GetDisplayName(Class);
 	}
 }
 

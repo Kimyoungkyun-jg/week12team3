@@ -201,7 +201,7 @@ public:
 	TArray<FParticleBurst> Bursts;
 };
 
-enum class EParticleEmitterType : uint8 { Sprite, GpuSprite, Mesh, Beam, Ribbon };
+enum class EParticleEmitterType : uint8 { Sprite, GpuSprite, Mesh, Beam, Ribbon, Afterimage };
 enum class EBeamMethod : uint8 { Distance = 0, Target = 1 };
 enum class EBeamEndpointMethod : uint8 { Emitter = 0, UserSet = 1, Parameter = 2 };
 enum class EBeamTaperMethod : uint8 { None = 0, Full = 1, Partial = 2 }; // 빔의 시작점에서 끝점으로 갈수록 굵기를 조절할 수 있는 옵션
@@ -242,6 +242,15 @@ public:
 	EParticleEmitterType GetEmitterType() const override { return EParticleEmitterType::Mesh; }
 	UPROPERTY(EditAnywhere)
 	UStaticMesh* Mesh = nullptr;
+};
+
+UCLASS()
+class UParticleModuleTypeDataAfterimage : public UParticleModuleTypeDataBase
+{
+	GENERATED_BODY()
+public:
+	const char* GetDisplayName() const override { return "TypeData Afterimage"; }
+	EParticleEmitterType GetEmitterType() const override { return EParticleEmitterType::Afterimage; }
 };
 
 UCLASS()
