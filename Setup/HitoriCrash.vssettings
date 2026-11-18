@@ -23,5 +23,6 @@
 		<PropertyValue name="AlwaysRunUntrustedSourceServerCommands">0</PropertyValue>
 
 		<PropertyValue name="UseDocumentChecksum">1</PropertyValue>
+		<PropertyValue name="SymbolUseMSSymbolServers">1</PropertyValue>
 	</Category>
 </UserSettings>

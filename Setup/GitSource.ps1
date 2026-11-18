@@ -154,7 +154,7 @@ function Export-GitSource
                 if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the Git source cache.' }
             }
 
-            & git.exe -C $cache cat-file -e "${Commit}^{commit}" 2>$null
+            & git.exe -C $cache rev-parse --verify --quiet "${Commit}^{commit}" | Out-Null
 
             if ($LASTEXITCODE -ne 0)
             {

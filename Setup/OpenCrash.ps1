@@ -74,8 +74,7 @@ try
     }
 
     $arguments = (
-    '"{0}" /Command ' +
-    '"Tools.ImportandExportSettings /import:{1}"'
+    '"{0}" /RootSuffix HitoriCrash /ResetSettings "{1}"'
     ) -f $dumpPathForVs, $config.SettingsPath
 
     Start-Process `
