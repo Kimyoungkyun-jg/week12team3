@@ -855,7 +855,10 @@ constexpr FPipelineTableEntry PipelineTable[] =
 	{ EPSOType::Particle_Sprite, "Resources/Shader/ParticleSpriteShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
 	{ EPSOType::SkeletalMesh_GBuffer, "Resources/Shader/SkeletalMeshGBufferShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default },
 	{ EPSOType::Particle_BeamTrailTranslucent, "Resources/Shader/ParticleBeamTrailShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
-	{ EPSOType::Particle_BeamTrailAdditive, "Resources/Shader/ParticleBeamTrailShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Additive, EDepthStencilState::ReadOnly }
+	{ EPSOType::Particle_BeamTrailAdditive, "Resources/Shader/ParticleBeamTrailShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Additive, EDepthStencilState::ReadOnly },
+	{ EPSOType::Particle_GpuMeshOpaque, "Resources/Shader/ParticleGpuMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default },
+	{ EPSOType::Particle_GpuMeshTranslucent, "Resources/Shader/ParticleGpuMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
+	{ EPSOType::Particle_GpuMeshAdditive, "Resources/Shader/ParticleGpuMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Additive, EDepthStencilState::ReadOnly }
 };
 
 static_assert(sizeof(PipelineTable) / sizeof(PipelineTable[0]) == static_cast<size_t>(EPSOType::Count));
@@ -1083,6 +1086,12 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 	case EPSOType::Particle_MeshTranslucent:
 	case EPSOType::Particle_MeshAdditive:
 		ShaderPath = "Resources/Shader/ParticleMeshInstancedShader.hlsl";
+		break;
+
+	case EPSOType::Particle_GpuMeshOpaque:
+	case EPSOType::Particle_GpuMeshTranslucent:
+	case EPSOType::Particle_GpuMeshAdditive:
+		ShaderPath = "Resources/Shader/ParticleGpuMeshInstancedShader.hlsl";
 		break;
 
 	case EPSOType::SkeletalMesh_GBuffer:

@@ -16,7 +16,11 @@ struct FGpuParticle
 	float BaseRotationRate;
 	float SubImageIndex;
 	uint bAlive;
-	float2 Pad;
+	uint CollisionCount;
+	float Pad;
+	float4 MeshRotation;
+	float3 AngularVelocity;
+	float SimPad;
 };
 
 struct FGpuDistributionDesc
@@ -57,9 +61,11 @@ cbuffer SimParams : register(b0)
     float DepthThickness;
     float2 CollisionPad;
 	
-    float4x4 ViewProj;
-    float4x4 InvViewProj;
-    float4 ScreenAndClip;
+	float4x4 ViewProj;
+	float4x4 InvViewProj;
+	float4 ScreenAndClip;
+	float3 Acceleration;
+	float AccelPad;
 };
 
 StructuredBuffer<FGpuParticle> SpawnBuffer : register(t0);
@@ -179,22 +185,42 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		float3 velScale = EvaluateDistribution(VelocityScale, T).xyz;
 		p.Velocity = p.BaseVelocity * velScale;
 	}
+	else
+	{
+		p.Velocity += Acceleration * DeltaTime;
+	}
 	if (RotationRateScale.AtlasUVAndMode.w > 0.5f)
 	{
 		float rotScale = EvaluateDistribution(RotationRateScale, T).x;
 		p.RotationRate = p.BaseRotationRate * rotScale;
 	}
-	
+
 	p.Position += p.Velocity * DeltaTime;
 	p.Rotation += p.RotationRate * DeltaTime;
 
-    float Depth = 0.0f;
+	float AngSpeedSq = dot(p.AngularVelocity, p.AngularVelocity);
+	if (AngSpeedSq > 1e-10f)
+	{
+		float AngSpeed = sqrt(AngSpeedSq);
+		float HalfAngle = 0.5f * AngSpeed * DeltaTime;
+		float S = sin(HalfAngle);
+		float C = cos(HalfAngle);
+		float4 DeltaQ = float4((p.AngularVelocity / AngSpeed) * S, C);
+		float4 BaseQ = length(p.MeshRotation) > 1e-5f ? p.MeshRotation : float4(0.0f, 0.0f, 0.0f, 1.0f);
+		float4 NextQ;
+		NextQ.x = DeltaQ.w * BaseQ.x + DeltaQ.x * BaseQ.w + DeltaQ.y * BaseQ.z - DeltaQ.z * BaseQ.y;
+		NextQ.y = DeltaQ.w * BaseQ.y - DeltaQ.x * BaseQ.z + DeltaQ.y * BaseQ.w + DeltaQ.z * BaseQ.x;
+		NextQ.z = DeltaQ.w * BaseQ.z + DeltaQ.x * BaseQ.y - DeltaQ.y * BaseQ.x + DeltaQ.z * BaseQ.w;
+		NextQ.w = DeltaQ.w * BaseQ.w - DeltaQ.x * BaseQ.x - DeltaQ.y * BaseQ.y - DeltaQ.z * BaseQ.z;
+		p.MeshRotation = normalize(NextQ);
+	}
+
     int Stage = 0;
     bool bHit = false;
     float3 Normal = float3(0, 0, 1);
     float3 A = p.Position;
 	
-    if (HasCollision != 0 && p.Pad.x < CollisionMaxCount)
+    if (HasCollision != 0 && p.CollisionCount < CollisionMaxCount)
     {
         Stage = DepthCollision(p.Position, Normal, A);
         bHit = (Stage == 4);
@@ -207,12 +233,15 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
             p.Position += Normal * (CollisionRadius - d); // 밀어내기
 
         if (dot(p.Velocity, Normal) < 0)
-            p.Pad.x++;
+        {
+            p.CollisionCount += 1;
+            p.AngularVelocity *= (1.0f - CollisionFriction); // 메시 파티클 회전도 마찰로 감쇠
+        }
 		
         p.Velocity = Bounce(p.Velocity, Normal);
         p.BaseVelocity = Bounce(p.BaseVelocity, Normal);
     }
-	
+
 	if (SizeScale.AtlasUVAndMode.w > 0.5f)
 	{
 		float3 sizeScale = EvaluateDistribution(SizeScale, T).xyz;
@@ -245,9 +274,9 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		}
 		p.SubImageIndex = floor(clamp(RawIndex, 0.0f, TotalFrames - 1.0f));
 	}
-	
-    if (p.Pad.x > 0)
+
+    if (p.CollisionCount > 0)
         p.Color.rgb = float3(1.0f, 0.2f, 0.2f);
-	
+
 	ParticleBuffer[Idx] = p;
 }
