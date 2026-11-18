@@ -1,91 +1,137 @@
+﻿# 사용자가 전달한 덤프를 WinDbg로 열고 빌드에 맞는 심볼과 소스 검색 경로를 설정
+
 param
 (
     [Parameter(Mandatory)]
     [string] $DumpPath
 )
 
+# 파일이나 저장소를 읽지 못하면 중간 설정으로 디버거를 열지 않고 오류 반환
 $ErrorActionPreference = 'Stop'
 
-$dump = Get-Item -LiteralPath $DumpPath
-if ($dump.PSIsContainer -or $dump.Extension -ne '.dmp') 
+$stateRoot = Join-Path $env:LOCALAPPDATA 'Hitori\Debugger'
+$logDirectory = Join-Path $stateRoot 'Logs'
+
+New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
+
+# 최근 로그 20개를 유지
+Get-ChildItem -LiteralPath $logDirectory -Filter '*.log' -File |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -Skip 20 |
+    Remove-Item -Force
+
+$logName = '{0}-{1}.log' -f `
+    (Get-Date -Format 'yyyyMMdd-HHmmss-fff'), $PID
+
+$logPath = Join-Path $logDirectory $logName
+
+function Write-ViewerLog
 {
-    throw "Select a .dmp file: $DumpPath"
+    param([string] $Message)
+
+    $line = '{0} {1}' -f (Get-Date -Format 'HH:mm:ss.fff'), $Message
+    Add-Content -LiteralPath $logPath -Value $line -Encoding UTF8
 }
 
-$symbolStore = '\\172.21.10.122\Symbols'
-$symbolCache = Join-Path $env:LOCALAPPDATA 'Hitori\SymbolCache'
-New-Item -ItemType Directory -Path $symbolCache -Force | Out-Null
-$symbolPath = "srv*$symbolCache*$symbolStore"
-
-$modernWinDbg = Get-Command WinDbgX.exe -CommandType Application -ErrorAction SilentlyContinue
-$classicWinDbg = 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\windbg.exe'
-
-if ($modernWinDbg) 
+try
 {
-    $winDbg = $modernWinDbg.Source
-}
-elseif (Test-Path -LiteralPath $classicWinDbg -PathType Leaf) 
-{
-    $winDbg = $classicWinDbg
-}
-else 
-{
-    throw 'WinDbg was not found. Install WinDbg or update its path in OpenCrash.ps1.'
-}
-
-$debuggerArgs = @('-z', $dump.FullName, '-y', $symbolPath)
-
-$buildIdName = $dump.BaseName + '.build-id.txt'
-$buildIdFile = @(
-    (Join-Path $dump.DirectoryName $buildIdName)
-    (Join-Path (Join-Path $symbolStore 'Crashes') $buildIdName)
-) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-$sourceRoots = @()
-if ($buildIdFile)
-{
-    $buildId = (Get-Content -LiteralPath $buildIdFile -Raw).Trim()
-    if ($buildId -match '^[0-9a-fA-F]{64}$') 
+    $dump = Get-Item -LiteralPath $DumpPath
+    if ($dump.PSIsContainer -or $dump.Extension -ne '.dmp') 
     {
-        $imageFolder = Join-Path (Join-Path $symbolStore 'Builds') $buildId
-        $buildSourceRoot = Join-Path (Join-Path $symbolStore 'Sources') $buildId
-        $sourceRoots += $buildSourceRoot
-        if (Test-Path -LiteralPath $imageFolder -PathType Container) 
+        throw "Select a .dmp file: $DumpPath"
+    }
+
+    $stateRoot = Join-Path $env:LOCALAPPDATA 'Hitori\Debugger'
+    $configPath = Join-Path $stateRoot 'Viewer.json'
+
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf))
+    {
+        throw 'Run RegisterDumpViewer.bat first.'
+    }
+
+    $config = Get-Content -LiteralPath $configPath -Raw |
+        ConvertFrom-Json
+
+    $symbolStore = $config.SymbolStore
+    if ([string]::IsNullOrWhiteSpace($symbolStore))
+    {
+        throw 'SymbolStore is missing. Run RegisterDumpViewer.bat again.'
+    }
+
+    Write-ViewerLog "OriginalDump=$($dump.FullName)"
+    Write-ViewerLog "DumpSHA256=$((Get-FileHash -LiteralPath $dump.FullName -Algorithm SHA256).Hash)"
+    Write-ViewerLog "ConfigPath=$configPath"
+    Write-ViewerLog "VisualStudioPath=$($config.VisualStudioPath)"
+    Write-ViewerLog "SettingsPath=$($config.SettingsPath)"
+    Write-ViewerLog "SymbolStore=$symbolStore"
+    Write-ViewerLog "WorkingDirectory=$PSScriptRoot"
+    Write-ViewerLog "IsUNC=$($dump.FullName.StartsWith('\\'))"
+
+    $gitSourcePath = Join-Path $PSScriptRoot 'GitSource.ps1'
+
+    foreach ($file in @(
+        $config.VisualStudioPath,
+        $config.SettingsPath,
+        $gitSourcePath
+    ))
+    {
+        if (-not (Test-Path -LiteralPath $file -PathType Leaf))
         {
-            $debuggerArgs += @('-i', $imageFolder)
-        }
-        else 
-        {
-            Write-Warning "Image folder not found: $imageFolder"
+            throw "Required file is missing: $file"
         }
     }
-    else 
+
+    $env:HITORI_GIT_SOURCE_SCRIPT = $gitSourcePath
+    $env:DBGHELP_HOMEDIR = $stateRoot
+
+    $repositoryCandidate = Split-Path -Parent $PSScriptRoot
+    $gitEntry = Join-Path $repositoryCandidate '.git'
+
+    $env:HITORI_SOURCE_REPOSITORY = $null
+
+    if (Test-Path -LiteralPath $gitEntry)
     {
-        Write-Warning "Invalid build ID: $buildIdFile"
+        $env:HITORI_SOURCE_REPOSITORY = $repositoryCandidate
     }
-}
-else 
-{
-    Write-Warning "Build ID file not found: $buildIdName"
-}
 
-$sourceFolders = foreach ($sourceRoot in $sourceRoots)
-{
-    if (Test-Path -LiteralPath $sourceRoot -PathType Container)
+    $dumpPathForVs = $dump.FullName
+
+    if ($dumpPathForVs.StartsWith('\\'))
     {
-        $sourceRoot
-        Get-ChildItem -LiteralPath $sourceRoot -Directory -Recurse | Select-Object -ExpandProperty FullName
+        $cacheDirectory = Join-Path $stateRoot (
+            'Dumps\' + [guid]::NewGuid().ToString('N')
+        )
+
+        New-Item -ItemType Directory `
+            -Path $cacheDirectory -Force | Out-Null
+
+        $dumpPathForVs = Join-Path $cacheDirectory $dump.Name
+
+        Copy-Item -LiteralPath $dump.FullName `
+            -Destination $dumpPathForVs -ErrorAction Stop
     }
-}
 
-if ($sourceFolders)
+    $arguments = (
+    '"{0}" /RootSuffix HitoriCrash /ResetSettings "{1}"'
+    ) -f $dumpPathForVs, $config.SettingsPath
+
+    Write-ViewerLog "OpenedDump=$dumpPathForVs"
+    Write-ViewerLog "Arguments=$arguments"
+    Write-ViewerLog "GitSourceScript=$env:HITORI_GIT_SOURCE_SCRIPT"
+    Write-ViewerLog "SourceRepository=$env:HITORI_SOURCE_REPOSITORY"
+
+    Start-Process `
+        -FilePath $config.VisualStudioPath `
+        -ArgumentList $arguments `
+        -WorkingDirectory $PSScriptRoot
+    }
+catch
 {
-    $debuggerArgs += @('-srcpath', ($sourceFolders -join ';'))
-}
-else 
-{
-    Write-Warning "Source folders not found: $($sourceRoots -join '; ')"
-}
+    Write-Host $_.Exception.Message -ForegroundColor Red
 
-$debuggerArgs += @('-c', '.ecxr; k')
+    Write-ViewerLog ($_ | Out-String)
+    Write-Host "Log: $logPath"
 
-& $winDbg @debuggerArgs
+    [void](Read-Host 'Press Enter to close')
+    exit 1
+}

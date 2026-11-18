@@ -36,7 +36,8 @@ inline void SetContentRootToExecutableDir()
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
 	SetContentRootToExecutableDir();
-	WindowsCrashHandler::Install(GetExecutablePath());
+	// 콘텐츠 루트가 결정된 뒤 로컬 덤프 출력 경로와 미처리 예외 콜백을 준비한다.
+	WindowsCrashHandler::Install();
 
 	{
 		FEngineLoop EngineLoop;

@@ -3,7 +3,10 @@
 
 cbuffer constants : register(b0)
 {
-	matrix VP;
+    matrix VP;
+    matrix View;
+    matrix Projection;
+    float4 ViewTimeParams;
 };
 
 cbuffer batchConstants : register(b1)
@@ -44,15 +47,18 @@ struct PS_INPUT
 	float2 uv : TEXCOORD0;
 	float4 tintAndAlpha : TEXCOORD1;
 	float4 extraParams : TEXCOORD2;
+    float3 worldPosition : TEXCOORD3;
 };
 
 PS_INPUT mainVS(VS_INPUT input)
 {
 	FParticleInstanceData inst = ParticleInstances[input.instanceId + StartInstance];
 	PS_INPUT output;
-	output.position = mul(mul(float4(input.position, 1.0f), inst.World), VP);
-	output.worldNormal = mul(input.normal, (float3x3)inst.World);
-	output.uv = input.uv;
+    float4 WorldPosition = mul(float4(input.position, 1.0f), inst.World);
+    output.position = mul(WorldPosition, VP);
+    output.worldPosition = WorldPosition.xyz;
+    output.worldNormal = mul(input.normal, (float3x3) inst.World);
+    output.uv = input.uv;
 	output.tintAndAlpha = inst.TintAndAlpha * input.color;
 	output.extraParams = inst.SubUVParams;
 	return output;
@@ -69,7 +75,8 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
 		color *= tex;
 	}
 #ifdef MATERIAL_GRAPH
-	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(input.uv);
+	float3 CameraWorldPosition = mul(float4(0.0f, 0.0f, 0.0f, 1.0f), inverse(View)).xyz;
+	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(input.uv, input.worldPosition, normalize(CameraWorldPosition - input.worldPosition), normalize(input.worldNormal), input.tintAndAlpha, ViewTimeParams.x);
 
 #ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
 	color *= GraphOutput.BaseColor;

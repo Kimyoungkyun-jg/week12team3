@@ -1,0 +1,41 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- MSBuild가 하위 프로젝트 빌드 시 자동으로 읽는 공통 확장 설정-->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'HitoriEditor' or '$(MSBuildProjectName)' == 'HitoriGame'">
+    <!-- 개인별 .vcxproj.user에 값이 있으면 그 값을 사용하고, 값이 없을 때만 OFF로 시작 -->
+    <HitoriPublishSymbols Condition="'$(HitoriPublishSymbols)' == ''">false</HitoriPublishSymbols>
+    <!-- 게시가 켜져 있으면 소스 변경이 없는 빌드 요청도 MSBuild에 전달해 게시 타깃을 실행 -->
+    <DisableFastUpToDateCheck Condition="'$(HitoriPublishSymbols)' == 'true'">true</DisableFastUpToDateCheck>
+    <_HitoriSetupDirectory>$(MSBuildThisFileDirectory)Setup\</_HitoriSetupDirectory>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'HitoriEditor' or '$(MSBuildProjectName)' == 'HitoriGame'">
+    <!-- 사용자 정의 속성 페이지 XML을 프로젝트에 등록 -->
+    <PropertyPageSchema Include="$(_HitoriSetupDirectory)SymbolPublishing.xml">
+      <Context>Project</Context>
+    </PropertyPageSchema>
+  </ItemGroup>
+
+  <!-- 프로젝트별·구성별로 저장된 HitoriPublishSymbols 값이 true일 때만 아래 작업을 수행 -->
+  <Target Name="HitoriPublishBuildSymbols" AfterTargets="Build"
+          Condition="'$(HitoriPublishSymbols)' == 'true' and '$(DesignTimeBuild)' != 'true' and ('$(MSBuildProjectName)' == 'HitoriEditor' or '$(MSBuildProjectName)' == 'HitoriGame')">
+	  <Error
+	    Condition="'$(HitoriSymbolStore)' == ''"
+	    Text="심볼 게시를 켰으면 프로젝트 속성에서 공유폴더 경로를 입력하세요." />
+	  <Message Importance="high" Text="[Hitori] Compile/link succeeded. Publishing $(TargetFileName) symbols..." />
+
+	  <!-- 경로 설정 -->
+	  <PropertyGroup>
+          <_HitoriPdbPath>%(Link.ProgramDataBaseFileName)</_HitoriPdbPath>
+          <_HitoriPdbPath Condition="'$(_HitoriPdbPath)' == ''">$(TargetDir)$(TargetName).pdb</_HitoriPdbPath>
+      </PropertyGroup>
+    
+	  <!-- EXE/PDB 전체 경로와 저장소를 게시 스크립트에 전달 -->
+    <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File &quot;$(_HitoriSetupDirectory)PublishSymbols.ps1&quot; -ExePath &quot;$(TargetPath)&quot; -PdbPath &quot;$(_HitoriPdbPath)&quot; -SymbolStore &quot;$(HitoriSymbolStore)&quot;"
+          WorkingDirectory="$(MSBuildThisFileDirectory)" IgnoreExitCode="true" StdOutEncoding="utf-8" StdErrEncoding="utf-8">
+      <Output TaskParameter="ExitCode" PropertyName="_HitoriPublishExitCode" />
+    </Exec>
+	  
+    <!-- EXE 생성은 끝난 상태지만 게시까지 성공한 빌드로 표시되지 않도록 오류를 반환 -->
+    <Error Condition="'$(_HitoriPublishExitCode)' != '0'" Text="[Hitori] Compile/link succeeded, but symbol publication failed. See the build output. Build again to retry." />
+  </Target>
+</Project>

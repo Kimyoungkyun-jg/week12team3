@@ -43,6 +43,19 @@ const FMaterialParameterOverride* UMaterialInstance::GetParameterOverride(const 
 	return nullptr;
 }
 
+const FMaterialParameterOverride* UMaterialInstance::GetParameterOverride(const FName& ParameterName, EMaterialParameterType Type) const
+{
+	for (const FMaterialParameterOverride& Override : ParameterOverrides)
+	{
+		if (Override.ParameterName == ParameterName && Override.Type == Type)
+		{
+			return &Override;
+		}
+	}
+
+	return nullptr;
+}
+
 bool UMaterialInstance::HasParameterOverride(const FName& ParameterName) const
 {
 	return GetParameterOverride(ParameterName) != nullptr;
@@ -52,12 +65,9 @@ void UMaterialInstance::SetScalarParameterValue(const FName& ParameterName, floa
 {
 	for (FMaterialParameterOverride& Override : ParameterOverrides)
 	{
-		if (Override.ParameterName == ParameterName)
+		if (Override.ParameterName == ParameterName && Override.Type == EMaterialParameterType::Scalar)
 		{
-			Override.Type = EMaterialParameterType::Scalar;
 			Override.ScalarValue = Value;
-			Override.VectorValue = FVector4(0, 0, 0, 0);
-			Override.TextureValue = nullptr;
 			return;
 		}
 	}
@@ -73,12 +83,9 @@ void UMaterialInstance::SetVectorParameterValue(const FName& ParameterName, cons
 {
 	for (FMaterialParameterOverride& Override : ParameterOverrides)
 	{
-		if (Override.ParameterName == ParameterName)
+		if (Override.ParameterName == ParameterName && Override.Type == EMaterialParameterType::Vector)
 		{
-			Override.Type = EMaterialParameterType::Vector;
-			Override.ScalarValue = 0.0f;
 			Override.VectorValue = Value;
-			Override.TextureValue = nullptr;
 			return;
 		}
 	}
@@ -94,11 +101,8 @@ void UMaterialInstance::SetTextureParameterValue(const FName& ParameterName, UTe
 {
 	for (FMaterialParameterOverride& Override : ParameterOverrides)
 	{
-		if (Override.ParameterName == ParameterName)
+		if (Override.ParameterName == ParameterName && Override.Type == EMaterialParameterType::Texture)
 		{
-			Override.Type = EMaterialParameterType::Texture;
-			Override.ScalarValue = 0.0f;
-			Override.VectorValue = FVector4(0, 0, 0, 0);
 			Override.TextureValue = Texture;
 			return;
 		}
@@ -118,9 +122,24 @@ void UMaterialInstance::ClearParameterOverride(const FName& ParameterName)
 		if (ParameterOverrides[Index].ParameterName == ParameterName)
 		{
 			ParameterOverrides.RemoveAt(Index);
-			return;
 		}
 	}
+}
+
+void UMaterialInstance::ClearParameterOverride(const FName& ParameterName, EMaterialParameterType Type)
+{
+	for (int32 Index = ParameterOverrides.Num() - 1; Index >= 0; --Index)
+	{
+		if (ParameterOverrides[Index].ParameterName == ParameterName && ParameterOverrides[Index].Type == Type)
+		{
+			ParameterOverrides.RemoveAt(Index);
+		}
+	}
+}
+
+bool UMaterialInstance::HasParameterOverride(const FName& ParameterName, EMaterialParameterType Type) const
+{
+	return GetParameterOverride(ParameterName, Type) != nullptr;
 }
 
 UMaterial* UMaterialInstance::GetBaseMaterial() const
@@ -245,7 +264,7 @@ void UMaterialInstance::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
 
 		for (FMaterialParameterOverride& Existing : OutProxy.ParameterOverrides)
 		{
-			if (Existing.ParameterName == Parameter.ParameterName)
+			if (Existing.ParameterName == Parameter.ParameterName && Existing.Type == Parameter.Type)
 			{
 				Existing = Parameter;
 				bReplaced = true;
@@ -259,6 +278,42 @@ void UMaterialInstance::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
 		}
 
 		ApplyMaterialParameter(OutProxy, Parameter);
+	}
+
+	if (!OutProxy.BaseMaterial)
+	{
+		return;
+	}
+
+	for (int32 Index = 0; Index < OutProxy.GraphTextureNodeIds.Num(); ++Index)
+	{
+		const int32 NodeId = OutProxy.GraphTextureNodeIds[Index];
+
+		for (const FMaterialExpressionNode& Node : OutProxy.BaseMaterial->ExpressionNodes)
+		{
+			if (Node.Id != NodeId || Node.Type != EMaterialExpressionType::TextureSampleParameter2D)
+			{
+				continue;
+			}
+
+			const FMaterialParameterOverride* Override = nullptr;
+
+			for (const FMaterialParameterOverride& Candidate : OutProxy.ParameterOverrides)
+			{
+				if (Candidate.ParameterName == FName(Node.ParameterName) && Candidate.Type == EMaterialParameterType::Texture)
+				{
+					Override = &Candidate;
+					break;
+				}
+			}
+
+			if (Override && OutProxy.GraphTextures.IsValidIndex(Index))
+			{
+				OutProxy.GraphTextures[Index] = Override->TextureValue;
+			}
+
+			break;
+		}
 	}
 }
 

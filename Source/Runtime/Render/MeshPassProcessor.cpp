@@ -188,46 +188,44 @@ namespace
 	{
 		for (int32 Index = 0; Index < Material.GraphTextures.Num(); ++Index)
 		{
-			Resources.Add({ 2u + static_cast<uint32>(Index), EShaderBindFlagBits::Pixel,
-				Material.GraphTextures[Index], nullptr });
+			Resources.Add({ 2u + static_cast<uint32>(Index), EShaderBindFlagBits::Pixel, Material.GraphTextures[Index], nullptr });
 		}
 
 		FMeshDrawConstantBuffer& CB = ConstantBuffers.AddDefaulted_GetRef();
 		CB.Slot = 4;
 		CB.Stages = EShaderBindFlagBits::Pixel;
+
 		const uint32 BufferSize = sizeof(FVector4) * MaxMaterialGraphParameters;
 		static_assert(BufferSize <= sizeof(CB.Data));
 
-		int32 ParameterIndex = 0;
+		TArray<FMaterialGraphParameter> GraphParameters;
+		Material.BaseMaterial->GetGraphParameterLayout(GraphParameters);
 
-		for (const FMaterialExpressionNode& Node : Material.BaseMaterial->ExpressionNodes)
+		for (int32 ParameterIndex = 0; ParameterIndex < GraphParameters.Num() && ParameterIndex < MaxMaterialGraphParameters; ++ParameterIndex)
 		{
-			if (Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter)
-			{
-				continue;
-			}
+			const FMaterialGraphParameter& Parameter = GraphParameters[ParameterIndex];
 
-			if (ParameterIndex >= MaxMaterialGraphParameters)
-				break;
+			FVector4 Value = Parameter.Type == EMaterialExpressionType::ScalarParameter
+				? FVector4(Parameter.ScalarValue, 0.0f, 0.0f, 0.0f)
+				: Parameter.VectorValue;
 
-			FVector4 Value = Node.Type == EMaterialExpressionType::ScalarParameter
-				? FVector4(Node.ScalarValue, 0.0f, 0.0f, 0.0f)
-				: Node.VectorValue;
-
-			const FName Name(Node.ParameterName);
+			const FName Name(Parameter.Name);
+			const EMaterialParameterType OverrideType = Parameter.Type == EMaterialExpressionType::ScalarParameter
+				? EMaterialParameterType::Scalar
+				: EMaterialParameterType::Vector;
 
 			for (const FMaterialParameterOverride& Override : Material.ParameterOverrides)
 			{
-				if (Override.ParameterName != Name)
+				if (Override.ParameterName != Name || Override.Type != OverrideType)
 				{
 					continue;
 				}
 
-				if (Node.Type == EMaterialExpressionType::ScalarParameter && Override.Type == EMaterialParameterType::Scalar)
+				if (OverrideType == EMaterialParameterType::Scalar)
 				{
 					Value.X = Override.ScalarValue;
 				}
-				else if (Node.Type == EMaterialExpressionType::VectorParameter && Override.Type == EMaterialParameterType::Vector)
+				else
 				{
 					Value = Override.VectorValue;
 				}
@@ -236,7 +234,6 @@ namespace
 			}
 
 			std::memcpy(CB.Data.data() + ParameterIndex * sizeof(FVector4), &Value, sizeof(FVector4));
-			++ParameterIndex;
 		}
 
 		CB.DataSize = BufferSize;
@@ -714,6 +711,10 @@ bool FDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FScene
 	const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const
 {
 	if (!Batch.IsOpaque() || Batch.bIsParticle)
+		return true;
+
+	// 알파 컷아웃 머티리얼은 깊이 프리패스를 건너뛰어 잘린 픽셀 뒤가 가려지지 않게 한다
+	if (Batch.Material && Batch.Material->GetBaseMaterial() && Batch.Material->GetBaseMaterial()->HasOpacityMask())
 		return true;
 
 	FVertexBuffer* VB = ResolveBatchVertexBuffer(Batch.VertexFactory, Collector);

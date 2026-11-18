@@ -12,10 +12,7 @@ namespace
 {
 	std::wstring CrashDirectory;
 	std::wstring DumpPath;
-	std::wstring PowerShellPath;
-	std::wstring PublishCommandPrefix;
-	std::wstring PublishCommandSuffix;
-	std::wstring PublishCommandLine;
+	// 여러 스레드가 동시에 예외 필터에 들어오거나 필터가 재진입하는 경우 첫 덤프 작성만 허용
 	volatile LONG DumpStarted = 0;
 
 	void LogDumpError(const wchar_t* Operation, DWORD Error)
@@ -25,6 +22,7 @@ namespace
 		OutputDebugStringW(Message);
 	}
 
+	// SetUnhandledExceptionFilter가 호출하는 콜백
 	LONG WINAPI HandleUnhandledException(LPEXCEPTION_POINTERS ExceptionPointers)
 	{
 		if (InterlockedCompareExchange(&DumpStarted, 1, 0) != 0)
@@ -43,6 +41,7 @@ namespace
 			return EXCEPTION_EXECUTE_HANDLER;
 		}
 
+		// 같은 이름의 기존 덤프를 덮어쓰지 않고 새 파일일 때만 생성
 		HANDLE DumpFile = CreateFileW(DumpPath.c_str(), GENERIC_WRITE, 0, nullptr, 
 			CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
 
@@ -52,11 +51,15 @@ namespace
 			return EXCEPTION_EXECUTE_HANDLER;
 		}
 
+		// 덤프에서 예외 당시 스레드와 CPU 문맥을 식별할 정보를 구성
 		MINIDUMP_EXCEPTION_INFORMATION ExceptionInfo{};
 		ExceptionInfo.ThreadId = GetCurrentThreadId();
+		// Windows가 필터에 넘긴 예외 기록과 레지스터 문맥을 그대로 DbgHelp에 전달
 		ExceptionInfo.ExceptionPointers = ExceptionPointers;
 		ExceptionInfo.ClientPointers = FALSE;
 
+		// 현재 프로세스를 대상으로 예외 스레드가 직접 .dmp를 작성
+		// MiniDumpNormal은 스택 추적에 필요한 정보를, MiniDumpWithThreadInfo는 추가 스레드 상태를 포함
 		const BOOL Written = MiniDumpWriteDump(
 			GetCurrentProcess(),
 			GetCurrentProcessId(),
@@ -72,42 +75,21 @@ namespace
 
 		if (Written)
 		{
-			if (!PublishCommandLine.empty() &&
-				swprintf_s(PublishCommandLine.data(), PublishCommandLine.size() + 1, L"%ls%ls%ls",
-					PublishCommandPrefix.c_str(), DumpPath.c_str(), PublishCommandSuffix.c_str()) >= 0)
-			{
-				STARTUPINFOW StartupInfo{};
-				StartupInfo.cb = sizeof(StartupInfo);
-
-				PROCESS_INFORMATION ProcessInfo{};
-				if (CreateProcessW(
-						PowerShellPath.c_str(), PublishCommandLine.data(),
-						nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
-						nullptr, nullptr, &StartupInfo, &ProcessInfo))
-				{
-					CloseHandle(ProcessInfo.hThread);
-					CloseHandle(ProcessInfo.hProcess);
-				}
-				else
-				{
-					LogDumpError(L"CreateProcessW (PublishCrash)", GetLastError());
-				}
-			}
 			OutputDebugStringW(L"[Hitori] Minidump written to:\n");
 			OutputDebugStringW(DumpPath.c_str());
 			OutputDebugStringW(L"\n");
 		}
 		else
 		{
+			// 쓰기에 실패한 덤프를 제거
 			DeleteFileW(DumpPath.c_str());
 			LogDumpError(L"MiniDumpWriteDump", Error);
 		}
-
 		return EXCEPTION_EXECUTE_HANDLER;
 	}
 }
 
-void WindowsCrashHandler::Install(const std::filesystem::path& ExecutablePath)
+void WindowsCrashHandler::Install()
 {
 	std::error_code Error;
 	const auto CrashDir = std::filesystem::current_path(Error) / L"Saved" / L"Crashes";
@@ -128,28 +110,7 @@ void WindowsCrashHandler::Install(const std::filesystem::path& ExecutablePath)
 	CrashDirectory = CrashDir.wstring();
 	DumpPath.resize(CrashDirectory.size() + 96);
 
-	const auto ScriptPath = ExecutablePath.parent_path() / L"PublishCrash.ps1";
-
-	auto PdbPath = ExecutablePath;
-	PdbPath.replace_extension(L".pdb");
-
-	wchar_t SystemDirectory[MAX_PATH]{};
-	const UINT Length = GetSystemDirectoryW(SystemDirectory, MAX_PATH);
-
-	if (!ExecutablePath.empty() && Length > 0 && Length < MAX_PATH)
-	{
-		PowerShellPath = (std::filesystem::path(SystemDirectory) /
-			L"WindowsPowerShell\\v1.0\\powershell.exe")
-							 .wstring();
-
-		PublishCommandPrefix =
-			L"\"" + PowerShellPath +
-			L"\" -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File \"" +
-			ScriptPath.wstring() +
-			L"\" -DumpPath \"";
-		PublishCommandSuffix = L"\" -PdbPath \"" + PdbPath.wstring() + L"\"";
-		PublishCommandLine.resize(PublishCommandPrefix.size() + DumpPath.size() + PublishCommandSuffix.size());
-	}
-
+	// 프로세스 전체의 미처리 예외 필터를 등록
+	// 실제 호출은 예외가 난 스레드에서 발생
 	SetUnhandledExceptionFilter(&HandleUnhandledException);
 }

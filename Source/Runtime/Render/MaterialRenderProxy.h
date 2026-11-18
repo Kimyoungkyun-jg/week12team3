@@ -9,6 +9,7 @@ struct FMaterialRenderProxy
 
 	TArray<UTexture2D*> Textures;
 	TArray<UTexture2D*> GraphTextures;
+	TArray<int32> GraphTextureNodeIds;
 	TArray<FMaterialParameterOverride> ParameterOverrides;
 
 	FVector4 BaseColor = FVector4(1, 1, 1, 1);

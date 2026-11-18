@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UObject/Object.h"
+#include "Math/Quat.h"
 #include "Math/Vector.h"
 #include "Math/Vector4.h"
 #include "Math/Color.h"
@@ -29,6 +30,7 @@ struct FBaseParticle
 	float Rotation = 0.0f;
 	float RotationRate = 0.0f;
 	float BaseRotationRate = 0.0f;
+	FQuat MeshRotation = FQuat::Identity();
 	uint8 BaseAlpha = 255;
 };
 
@@ -79,6 +81,7 @@ struct FParticleTickContext
 {
 	UWorld* World = nullptr;
 	FMatrix ComponentToWorld;
+	FQuat ComponentRotation = FQuat::Identity();
 	UParticleSystemComponent * Component = nullptr;
 };
 
@@ -448,6 +451,8 @@ public:
 
 	UPROPERTY(Instanced)
 	UDistributionVector* StartLocation = nullptr;
+	UPROPERTY(EditAnywhere)
+	bool bSampleSkeletalMesh = false;
 };
 
 UCLASS()

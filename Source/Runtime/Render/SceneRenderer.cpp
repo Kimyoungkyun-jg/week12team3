@@ -1,5 +1,6 @@
 #include "EnginePCH.h"
 #include "Render/SceneRenderer.h"
+#include "Render/Material.h"
 #include "Render/Renderer.h"
 #include "Render/SceneLightResources.h"
 #include "Render/RenderGraph/RenderGraph.h"
@@ -767,7 +768,9 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 			{
 				for (FVisibleMeshDrawCommand& Vis : RenderData.VisibleBasePassCommands)
 				{
-					if (Vis.Command && !Vis.Command->bIsParticle)
+					const bool bHasOpacityMask = Vis.Command && Vis.Command->Material &&
+						Vis.Command->Material->GetBaseMaterial() && Vis.Command->Material->GetBaseMaterial()->HasOpacityMask();
+					if (Vis.Command && !Vis.Command->bIsParticle && !bHasOpacityMask)
 					{
 						Vis.bHasDepthStencilOverride = true;
 						Vis.DepthStencilOverride = EDepthStencilState::PrepassReadOnly;

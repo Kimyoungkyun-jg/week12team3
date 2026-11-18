@@ -1601,14 +1601,30 @@ bool FContentDrawerPanel::DrawTexturePicker(
 	const FString PreviewText =
 		(InOutTexture && !InOutTexture->GetPath().empty()) ? InOutTexture->GetPath() : FString(NullLabel);
 
-	ID3D11ShaderResourceView* SelectedSRV =
-		(InOutTexture && InOutTexture->GetResource()) ? InOutTexture->GetResource()->GetSRV() : nullptr;
+	const auto GetTextureSRV = [](UTexture2D* Texture) -> ID3D11ShaderResourceView*
+	{
+		return Texture && Texture->GetResource() ? Texture->GetResource()->GetSRV() : nullptr;
+	};
+
+	const auto GetFitSize = [](UTexture2D* Texture, float MaxSize) -> ImVec2
+	{
+		if (!Texture || Texture->GetWidth() == 0 || Texture->GetHeight() == 0)
+		{
+			return ImVec2(MaxSize, MaxSize);
+		}
+
+		const float FitScale = MaxSize / static_cast<float>(std::max(Texture->GetWidth(), Texture->GetHeight()));
+		return ImVec2(Texture->GetWidth() * FitScale, Texture->GetHeight() * FitScale);
+	};
+
+	UTexture2D* PreviewTexture = InOutTexture;
+	ID3D11ShaderResourceView* SelectedSRV = GetTextureSRV(InOutTexture);
 
 	ImGui::PushID(Label);
 
 	if (SelectedSRV)
 	{
-		ImGui::Image(reinterpret_cast<ImTextureID>(SelectedSRV), ImVec2(InlineThumbSize, InlineThumbSize));
+		ImGui::Image(reinterpret_cast<ImTextureID>(SelectedSRV), GetFitSize(InOutTexture, InlineThumbSize));
 		if (ImGui::IsItemHovered())
 			ImGui::SetTooltip("%s", PreviewText.c_str());
 	}
@@ -1643,7 +1659,13 @@ bool FContentDrawerPanel::DrawTexturePicker(
 			if (ImGui::Selectable(NullLabel, InOutTexture == nullptr, ImGuiSelectableFlags_NoAutoClosePopups))
 			{
 				InOutTexture = nullptr;
+				PreviewTexture = nullptr;
 				bChanged = true;
+			}
+
+			if (ImGui::IsItemHovered())
+			{
+				PreviewTexture = nullptr;
 			}
 			if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 				ImGui::CloseCurrentPopup();
@@ -1653,19 +1675,63 @@ bool FContentDrawerPanel::DrawTexturePicker(
 				[](const UTexture2D* Tex) { return Tex->GetPath(); },
 				[](const UTexture2D* Tex) { return !Tex->IsRetired() && !Tex->GetPath().empty(); });
 
+			ImDrawList* DrawList = ImGui::GetWindowDrawList();
+
 			for (UTexture2D* Candidate : Candidates)
 			{
-				const bool bSelected = (Candidate == InOutTexture);
+				const bool bSelected = Candidate == InOutTexture;
 				ImGui::PushID(Candidate);
-				if (ImGui::Selectable(Candidate->GetPath().c_str(), bSelected, ImGuiSelectableFlags_NoAutoClosePopups))
+
+				const ImVec2 RowMin = ImGui::GetCursorScreenPos();
+				const float RowHeight = EditorUIScale::Px(44.0f);
+
+				if (ImGui::Selectable("##TextureRow", bSelected, ImGuiSelectableFlags_NoAutoClosePopups, ImVec2(0.0f, RowHeight)))
 				{
 					InOutTexture = Candidate;
+					PreviewTexture = Candidate;
 					bChanged = true;
 				}
+
+				if (ImGui::IsItemHovered())
+				{
+					PreviewTexture = Candidate;
+				}
+
+				const ImVec2 RowSize = ImGui::GetItemRectSize();
+				ID3D11ShaderResourceView* CandidateSRV = GetTextureSRV(Candidate);
+				const float RowThumbSize = EditorUIScale::Px(34.0f);
+
+				if (CandidateSRV)
+				{
+					const ImVec2 ImageSize = GetFitSize(Candidate, RowThumbSize);
+					const ImVec2 ImageMin(RowMin.x + EditorUIScale::Px(5.0f) + (RowThumbSize - ImageSize.x) * 0.5f,
+						RowMin.y + (RowHeight - ImageSize.y) * 0.5f);
+
+					DrawList->AddImage(reinterpret_cast<ImTextureID>(CandidateSRV), ImageMin, ImVec2(ImageMin.x + ImageSize.x, ImageMin.y + ImageSize.y));
+				}
+				else
+				{
+					DrawList->AddRectFilled(ImVec2(RowMin.x + EditorUIScale::Px(5.0f), RowMin.y + EditorUIScale::Px(5.0f)),
+						ImVec2(RowMin.x + EditorUIScale::Px(39.0f), RowMin.y + EditorUIScale::Px(39.0f)), IM_COL32(65, 65, 65, 255));
+				}
+
+				const ImVec2 TextPosition(RowMin.x + EditorUIScale::Px(48.0f), RowMin.y + (RowHeight - ImGui::GetTextLineHeight()) * 0.5f);
+
+				DrawList->PushClipRect(ImVec2(TextPosition.x, RowMin.y),
+					ImVec2(RowMin.x + RowSize.x - EditorUIScale::Px(6.0f), RowMin.y + RowHeight), true);
+				DrawList->AddText(TextPosition, IM_COL32(220, 220, 225, 255), Candidate->GetPath().c_str());
+				DrawList->PopClipRect();
+
 				if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+				{
 					ImGui::CloseCurrentPopup();
+				}
+
 				if (bSelected && ImGui::IsWindowAppearing())
+				{
 					ImGui::SetScrollHereY();
+				}
+
 				ImGui::PopID();
 			}
 		}
@@ -1678,12 +1744,18 @@ bool FContentDrawerPanel::DrawTexturePicker(
 			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 		{
 			const float LargeThumbSize = EditorUIScale::Px(136.0f);
-			const float PadX = std::max(0.0f, (ImGui::GetContentRegionAvail().x - LargeThumbSize) * 0.5f);
-			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + PadX);
+			ID3D11ShaderResourceView* PreviewSRV = GetTextureSRV(PreviewTexture);
+			const FString HoverPreviewText = PreviewTexture && !PreviewTexture->GetPath().empty()
+				? PreviewTexture->GetPath()
+				: FString(NullLabel);
 
-			if (SelectedSRV)
+			if (PreviewSRV)
 			{
-				ImGui::Image(reinterpret_cast<ImTextureID>(SelectedSRV), ImVec2(LargeThumbSize, LargeThumbSize));
+				const ImVec2 PreviewSize = GetFitSize(PreviewTexture, LargeThumbSize);
+				const float PadX = std::max(0.0f, (ImGui::GetContentRegionAvail().x - PreviewSize.x) * 0.5f);
+
+				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + PadX);
+				ImGui::Image(reinterpret_cast<ImTextureID>(PreviewSRV), PreviewSize);
 			}
 			else
 			{
@@ -1693,9 +1765,12 @@ bool FContentDrawerPanel::DrawTexturePicker(
 			}
 
 			ImGui::Separator();
-			ImGui::TextWrapped("%s", PreviewText.c_str());
-			if (InOutTexture)
-				ImGui::TextDisabled("%u x %u", InOutTexture->GetWidth(), InOutTexture->GetHeight());
+			ImGui::TextWrapped("%s", HoverPreviewText.c_str());
+
+			if (PreviewTexture)
+			{
+				ImGui::TextDisabled("%u x %u", PreviewTexture->GetWidth(), PreviewTexture->GetHeight());
+			}
 		}
 		ImGui::EndChild();
 

@@ -52,6 +52,7 @@ public:
 		float Weight, TArray<FAnimNotifyQueueItem>& OutQueue) const;
 
 	int32 GetFrameIndex(float TimeSeconds) const;
+	bool InsertDuplicateFrames(int32 SourceKeyIndex, int32 InsertCount, bool bInsertAfter);
 	int32 GetRootBoneIndex() const;
 	bool SampleRawRoot(float TimeSeconds, FAnimBoneTransform& OutRoot) const;
 	bool ExtractRootMotion(float PreviousTime, float CurrentTime, int32 LoopCount, FMatrix& OutDelta) const;

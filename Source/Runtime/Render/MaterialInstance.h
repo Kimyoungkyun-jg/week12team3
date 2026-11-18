@@ -42,33 +42,35 @@ public:
 	void SetVectorParameterValue(const FName& ParameterName, const FVector4& Value);
 	void SetTextureParameterValue(const FName& ParameterName, UTexture2D* Texture);
 	void ClearParameterOverride(const FName& ParameterName);
+	void ClearParameterOverride(const FName& ParameterName, EMaterialParameterType Type);
 	bool HasParameterOverride(const FName& ParameterName) const;
+	bool HasParameterOverride(const FName& ParameterName, EMaterialParameterType Type) const;
 	const FMaterialParameterOverride* GetParameterOverride(const FName& ParameterName) const;
+	const FMaterialParameterOverride* GetParameterOverride(const FName& ParameterName, EMaterialParameterType Type) const;
 	const TArray<FMaterialParameterOverride>& GetParameterOverrides() const { return ParameterOverrides; }
 	void SetBaseColorOverride(const FVector4& Value) { SetVectorParameterValue(FName("BaseColor"), Value); }
 	void SetTexture0Override(UTexture2D* Texture) { SetTextureParameterValue(FName("Texture0"), Texture); }
+
 	bool HasBaseColorOverride() const
 	{
-		const FMaterialParameterOverride* Override = GetParameterOverride(FName("BaseColor"));
-		return Override && Override->Type == EMaterialParameterType::Vector;
+		return GetParameterOverride(FName("BaseColor"), EMaterialParameterType::Vector) != nullptr;
 	}
 
 	const FVector4& GetBaseColorOverride() const
 	{
-		const FMaterialParameterOverride* Override = GetParameterOverride(FName("BaseColor"));
-		return Override && Override->Type == EMaterialParameterType::Vector ? Override->VectorValue : DefaultBaseColor;
+		const FMaterialParameterOverride* Override = GetParameterOverride(FName("BaseColor"), EMaterialParameterType::Vector);
+		return Override ? Override->VectorValue : DefaultBaseColor;
 	}
 
 	bool HasTexture0Override() const
 	{
-		const FMaterialParameterOverride* Override = GetParameterOverride(FName("Texture0"));
-		return Override && Override->Type == EMaterialParameterType::Texture;
+		return GetParameterOverride(FName("Texture0"), EMaterialParameterType::Texture) != nullptr;
 	}
 
 	UTexture2D* GetTexture0Override() const
 	{
-		const FMaterialParameterOverride* Override = GetParameterOverride(FName("Texture0"));
-		return Override && Override->Type == EMaterialParameterType::Texture ? Override->TextureValue : nullptr;
+		const FMaterialParameterOverride* Override = GetParameterOverride(FName("Texture0"), EMaterialParameterType::Texture);
+		return Override ? Override->TextureValue : nullptr;
 	}
 
 	virtual bool IsDynamicInstance() const = 0;

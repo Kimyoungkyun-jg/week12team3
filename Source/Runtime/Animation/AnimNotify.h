@@ -2,6 +2,7 @@
 
 #include "Asset/AnimNotifyEvent.h"
 #include "Math/Vector.h"
+#include "Math/Vector4.h"
 #include "UObject/Object.h"
 #include "AnimNotify.generated.h"
 
@@ -154,5 +155,20 @@ public:
 	void NotifyBegin(const FAnimNotifyContext& Context) override;
 	void NotifyTick(const FAnimNotifyContext& Context) override;
 	void NotifyEnd(const FAnimNotifyContext& Context) override;
+	bool CanTriggerInEditorWorld() const override { return true; }
+};
+
+UCLASS()
+class UAnimNotify_StartDeathDissolve : public UAnimNotify
+{
+	GENERATED_BODY()
+public:
+	UPROPERTY(EditAnywhere)
+	float DissolveDuration = 1.45f;
+
+	UPROPERTY(EditAnywhere)
+	FVector4 DissolveEdgeColor = FVector4(0.75f, 0.78f, 0.85f, 1.0f);
+
+	void Notify(const FAnimNotifyContext& Context) override;
 	bool CanTriggerInEditorWorld() const override { return true; }
 };

@@ -106,6 +106,43 @@ namespace
 		return Next ? Next : 1u;
 	}
 
+	// 스켈레탈 메시의 스킨 정점 또는 본에서 스폰 위치를 샘플링한다
+	FVector SampleSkeletalMeshOrigin(
+		bool bEnabled,
+		const TArray<FVector>* SkinnedVerts,
+		const TArray<FMatrix>* BoneTransforms,
+		const FMatrix& SkeletalWorldMatrix,
+		const FMatrix& EmitterWorldToLocal,
+		bool bUseLocalSpace,
+		const FVector& FallbackOrigin,
+		FParticleRandom& Random)
+	{
+		if (!bEnabled)
+			return FallbackOrigin;
+
+		FVector LocalPos = FVector::ZeroVector;
+		bool bHasSample = false;
+		if (SkinnedVerts && !SkinnedVerts->IsEmpty())
+		{
+			const int32 MaxIdx = static_cast<int32>(SkinnedVerts->Num()) - 1;
+			const int32 VertIdx = std::clamp(static_cast<int32>(Random.Range(0.0f, static_cast<float>(MaxIdx) + 0.999f)), 0, MaxIdx);
+			LocalPos = (*SkinnedVerts)[VertIdx];
+			bHasSample = true;
+		}
+		else if (BoneTransforms && !BoneTransforms->IsEmpty())
+		{
+			const int32 MaxIdx = static_cast<int32>(BoneTransforms->Num()) - 1;
+			const int32 BoneIdx = std::clamp(static_cast<int32>(Random.Range(0.0f, static_cast<float>(MaxIdx) + 0.999f)), 0, MaxIdx);
+			LocalPos = (*BoneTransforms)[BoneIdx].TransformPosition(FVector::ZeroVector);
+			bHasSample = true;
+		}
+		if (!bHasSample)
+			return FallbackOrigin;
+
+		const FVector WorldPos = SkeletalWorldMatrix.TransformPosition(LocalPos);
+		return bUseLocalSpace ? EmitterWorldToLocal.TransformPosition(WorldPos) : WorldPos;
+	}
+
 	void ResolveBeamEndpoints(
 		const UParticleLODLevel* LOD,
 		const UParticleModuleTypeDataBeam* BeamType,
@@ -1110,6 +1147,8 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 	const UParticleModuleTypeDataRibbon* RibbonType = bIsRibbon ? Cast<UParticleModuleTypeDataRibbon>(CurrentLODLevel->EffectiveTypeData) : nullptr;
 	const UParticleModuleBeamNoise* BeamNoise = bIsBeam ? FindEnabledModule<UParticleModuleBeamNoise>(CurrentLODLevel) : nullptr;
 	const UParticleModuleSpawnPerUnit* SpawnPerUnitMod = bIsRibbon ? FindEnabledModule<UParticleModuleSpawnPerUnit>(CurrentLODLevel) : nullptr;
+	const UParticleModuleLocation* LocationMod = FindEnabledModule<UParticleModuleLocation>(CurrentLODLevel);
+	const bool bSampleSkeletalSurface = LocationMod && LocationMod->bSampleSkeletalMesh && AfterimageSource && AfterimageSource->GetSkeletalMesh();
 	const uint32 TypeDataOffset = (bIsBeam || bIsRibbon) ? GetModuleDataOffset(CurrentLODLevel->EffectiveTypeData) : 0u;
 	const int32 RawMaxAllowed = std::clamp(Required->MaxParticles, 0, 65535);
 	const int32 MaxAllowed = (bIsBeam && BeamType)
@@ -1302,12 +1341,24 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 		if (bIsBeam && ToSpawn == 0 && ActiveParticles == 0 && Available > 0 && SpawnTime > 0.0 && Rate > 0.0f)
 			ToSpawn = 1;
 	}
+	const TArray<FVector>* SkinnedVerts = nullptr;
+	const TArray<FMatrix>* BoneTransforms = nullptr;
+	FMatrix SkeletalWorldMatrix = FMatrix::Identity;
+	if (bSampleSkeletalSurface && ToSpawn > 0)
+	{
+		SkinnedVerts = &AfterimageSource->GetSkinnedPickPositions();
+		BoneTransforms = &AfterimageSource->GetGlobalBoneTransforms();
+		SkeletalWorldMatrix = AfterimageSource->GetWorldMatrix();
+	}
 	if (bIsGpu)
 	{
 		for (int32 Index = 0; Index < ToSpawn; ++Index)
 		{
 			FBaseParticle Base;
-			const FVector BaseOrigin = Required->bUseLocalSpace ? FVector::ZeroVector : Origin;
+			const FVector BaseOrigin = SampleSkeletalMeshOrigin(
+				bSampleSkeletalSurface, SkinnedVerts, BoneTransforms,
+				SkeletalWorldMatrix, EmitterWorldToLocal, Required->bUseLocalSpace,
+				Required->bUseLocalSpace ? FVector::ZeroVector : Origin, Random);
 			Base.Location = BaseOrigin;
 			Random.InstanceParams = InstanceParameters;
 			for (const UParticleModule* Module : CurrentLODLevel->SpawnModules)
@@ -1381,7 +1432,10 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 		{
 			Particle.Location = bUseRibbonParams
 				? EffectiveOrigin
-				: (Required->bUseLocalSpace ? FVector::ZeroVector : EffectiveOrigin);
+				: SampleSkeletalMeshOrigin(
+					bSampleSkeletalSurface, SkinnedVerts, BoneTransforms,
+					SkeletalWorldMatrix, EmitterWorldToLocal, Required->bUseLocalSpace,
+					Required->bUseLocalSpace ? FVector::ZeroVector : EffectiveOrigin, Random);
 		}
 		const FVector SpawnBaseLocation = Particle.Location;
 		Random.InstanceParams = InstanceParameters;
@@ -1395,7 +1449,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 			Particle.Velocity = Context.ComponentToWorld.TransformVector(Particle.Velocity);
 			Particle.BaseVelocity = Particle.Velocity;
 			if (EmitterType == EParticleEmitterType::Mesh)
-				Particle.Rotation += std::atan2(Context.ComponentToWorld.M[0][1], Context.ComponentToWorld.M[0][0]);
+				Particle.MeshRotation = Context.ComponentRotation;
 		}
 		Particle.BaseAlpha = Particle.Color.A;
 		Particle.Lifetime = std::max(Particle.Lifetime, 0.001f);
@@ -1915,6 +1969,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			ParticleData.Width = std::abs(Particle.Size.X * (bLocal ? Data.WorldScale.Y : 1.0f));
 			ParticleData.Height = std::abs(Particle.Size.Y * (bLocal ? Data.WorldScale.Z : 1.0f));
 			ParticleData.Rotation = Particle.Rotation;
+			ParticleData.MeshRotation = Particle.MeshRotation;
 			ParticleData.Material = EmitterMaterial;
 			float CurrentFrame = 0.0f;
 			if (SubUVModule && SubUVOffset > 0)
@@ -2371,17 +2426,37 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	FParticleTickContext Context;
 	Context.World = GetWorld();
 	Context.ComponentToWorld = GetWorldMatrix();
+	Context.ComponentRotation = GetWorldRotationQuat();
 	Context.Component = this;
 	for (FParticleEmitterInstance& Instance : EmitterInstances)
 	{
 		Instance.EmitterUpAxis = UpAxis;
 		Instance.EmitterWorldToLocal = WorldToLocal;
 		USkeletalMeshComponent* Source = nullptr;
-		if (Instance.CurrentLODLevel && Instance.CurrentLODLevel->EffectiveTypeData &&
-			Instance.CurrentLODLevel->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::Afterimage)
+		if (Instance.CurrentLODLevel && Instance.CurrentLODLevel->EffectiveTypeData)
 		{
-			if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
-				Source = Character->GetSkeletalMeshComponent();
+			const UParticleModuleLocation* LocMod = FindEnabledModule<UParticleModuleLocation>(Instance.CurrentLODLevel);
+			const bool bNeedsSkeletalSource =
+				Instance.CurrentLODLevel->EffectiveTypeData->GetEmitterType() == EParticleEmitterType::Afterimage ||
+				(LocMod && LocMod->bSampleSkeletalMesh);
+			if (bNeedsSkeletalSource)
+			{
+				if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
+					Source = Character->GetSkeletalMeshComponent();
+				else if (USkeletalMeshComponent* ParentSkel = Cast<USkeletalMeshComponent>(GetAttachParent()))
+					Source = ParentSkel;
+				else if (GetOwner())
+				{
+					for (UActorComponent* Sibling : GetOwner()->GetComponents())
+					{
+						if (USkeletalMeshComponent* SiblingSkel = Cast<USkeletalMeshComponent>(Sibling))
+						{
+							Source = SiblingSkel;
+							break;
+						}
+					}
+				}
+			}
 		}
 		Instance.Tick(ScaledDeltaTime, Origin, Context, Source);
 	}
