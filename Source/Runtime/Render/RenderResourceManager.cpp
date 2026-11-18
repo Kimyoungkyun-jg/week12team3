@@ -124,8 +124,22 @@ namespace
 			ParameterIndices[GetMaterialGraphParameterKey(GraphParameters[Index].Name, GraphParameters[Index].Type)] = Index;
 		}
 
+		TArray<int32> ReachableNodeIds;
+		Material.GetReachableExpressionNodeIds(ReachableNodeIds);
+
+		std::unordered_set<int32> ReachableNodeSet;
+		for (int32 NodeId : ReachableNodeIds)
+		{
+			ReachableNodeSet.insert(NodeId);
+		}
+
 		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
 		{
+			if (!ReachableNodeSet.contains(Node.Id))
+			{
+				continue;
+			}
+
 			if (Node.Type != EMaterialExpressionType::TextureSample &&
 				Node.Type != EMaterialExpressionType::TextureSampleParameter2D)
 			{

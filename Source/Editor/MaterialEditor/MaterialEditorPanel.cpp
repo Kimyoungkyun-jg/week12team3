@@ -1868,11 +1868,24 @@ void FMaterialEditorPanel::OnRender()
 				return EMaterialParameterType::Texture;
 			};
 
+			TArray<int32> ReachableParameterNodeIds;
+			ParentMaterial->GetReachableExpressionNodeIds(ReachableParameterNodeIds);
+
+			const auto IsParameterReachable = [&](int32 NodeId)
+			{
+				return std::find(ReachableParameterNodeIds.begin(), ReachableParameterNodeIds.end(), NodeId) != ReachableParameterNodeIds.end();
+			};
+
 			std::set<FString> DrawnGroups;
 			std::set<FString> DrawnParameters;
 
 			for (const FMaterialExpressionNode& ParameterNode : ParentMaterial->ExpressionNodes)
 			{
+				if (!IsParameterReachable(ParameterNode.Id))
+				{
+					continue;
+				}
+
 				if (ParameterNode.Type != EMaterialExpressionType::ScalarParameter &&
 					ParameterNode.Type != EMaterialExpressionType::VectorParameter &&
 					ParameterNode.Type != EMaterialExpressionType::TextureSampleParameter2D)
@@ -1894,6 +1907,11 @@ void FMaterialEditorPanel::OnRender()
 
 				for (const FMaterialExpressionNode& Node : ParentMaterial->ExpressionNodes)
 				{
+					if (!IsParameterReachable(Node.Id))
+					{
+						continue;
+					}
+
 					if (GetGroupName(Node) != GroupName)
 					{
 						continue;

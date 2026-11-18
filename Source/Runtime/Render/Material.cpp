@@ -421,10 +421,8 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 	case EMaterialExpressionType::DotProduct:
 	case EMaterialExpressionType::AppendVector:
 	case EMaterialExpressionType::Custom:
-	case EMaterialExpressionType::Saturate:
-	case EMaterialExpressionType::Cosine:
-	case EMaterialExpressionType::Floor:
-	case EMaterialExpressionType::Length:
+	case EMaterialExpressionType::Distance:
+	case EMaterialExpressionType::CrossProduct:
 		return PinIndex >= 0 && PinIndex < 2 ? BinaryNames[PinIndex] : nullptr;
 
 	case EMaterialExpressionType::Lerp:
@@ -439,6 +437,10 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 	case EMaterialExpressionType::Sine:
 	case EMaterialExpressionType::Normalize:
 	case EMaterialExpressionType::ComponentMask:
+	case EMaterialExpressionType::Saturate:
+	case EMaterialExpressionType::Cosine:
+	case EMaterialExpressionType::Floor:
+	case EMaterialExpressionType::Length:
 		return PinIndex == 0 ? "Input" : nullptr;
 
 	case EMaterialExpressionType::MaterialOutput:
@@ -655,12 +657,54 @@ EMaterialValueType UMaterial::GetExpressionOutputType(int32 NodeId, int32 Output
 	return Resolve(Resolve, NodeId);
 }
 
+void UMaterial::GetReachableExpressionNodeIds(TArray<int32>& OutNodeIds) const
+{
+	OutNodeIds.Reset();
+
+	std::unordered_set<int32> Visited;
+
+	const auto Visit = [&](auto&& Self, int32 NodeId) -> void
+	{
+		if (Visited.contains(NodeId) || !FindExpressionNode(*this, NodeId))
+		{
+			return;
+		}
+
+		Visited.insert(NodeId);
+		OutNodeIds.Add(NodeId);
+
+		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+		{
+			if (Connection.InputNodeId == NodeId)
+			{
+				Self(Self, Connection.OutputNodeId);
+			}
+		}
+	};
+
+	Visit(Visit, OutputNodeId);
+}
+
 void UMaterial::GetGraphParameterLayout(TArray<FMaterialGraphParameter>& OutParameters) const
 {
 	OutParameters.Reset();
 
+	TArray<int32> ReachableNodeIds;
+	GetReachableExpressionNodeIds(ReachableNodeIds);
+
+	std::unordered_set<int32> ReachableNodeSet;
+	for (int32 NodeId : ReachableNodeIds)
+	{
+		ReachableNodeSet.insert(NodeId);
+	}
+
 	for (const FMaterialExpressionNode& Node : ExpressionNodes)
 	{
+		if (!ReachableNodeSet.contains(Node.Id))
+		{
+			continue;
+		}
+
 		if (Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter)
 		{
 			continue;
@@ -746,6 +790,15 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 	int32 OutputCount = 0;
 	int32 TextureNodeCount = 0;
 
+	TArray<int32> ReachableNodeIds;
+	GetReachableExpressionNodeIds(ReachableNodeIds);
+
+	std::unordered_set<int32> ReachableNodeSet;
+	for (int32 NodeId : ReachableNodeIds)
+	{
+		ReachableNodeSet.insert(NodeId);
+	}
+
 	for (const FMaterialExpressionNode& Node : ExpressionNodes)
 	{
 		if (Node.Id <= 0 || !Nodes.emplace(Node.Id, &Node).second)
@@ -765,9 +818,10 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 			++OutputCount;
 		}
 
-		if (Node.Type == EMaterialExpressionType::ScalarParameter ||
-			Node.Type == EMaterialExpressionType::VectorParameter ||
-			Node.Type == EMaterialExpressionType::TextureSampleParameter2D)
+		if (ReachableNodeSet.contains(Node.Id) &&
+			(Node.Type == EMaterialExpressionType::ScalarParameter ||
+				Node.Type == EMaterialExpressionType::VectorParameter ||
+				Node.Type == EMaterialExpressionType::TextureSampleParameter2D))
 		{
 			if (Node.ParameterName.empty())
 			{
@@ -815,8 +869,9 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 			}
 		}
 
-		if (Node.Type == EMaterialExpressionType::TextureSample ||
-			Node.Type == EMaterialExpressionType::TextureSampleParameter2D)
+		if (ReachableNodeSet.contains(Node.Id) &&
+			(Node.Type == EMaterialExpressionType::TextureSample ||
+				Node.Type == EMaterialExpressionType::TextureSampleParameter2D))
 		{
 			++TextureNodeCount;
 		}
@@ -954,6 +1009,11 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 
 	for (const FMaterialExpressionNode& Node : ExpressionNodes)
 	{
+		if (!ReachableNodeSet.contains(Node.Id))
+		{
+			continue;
+		}
+
 		bool bUsed = false;
 
 		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
@@ -1306,8 +1366,22 @@ void UMaterial::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
 	OutProxy.GraphTextures.Reset();
 	OutProxy.GraphTextureNodeIds.Reset();
 
+	TArray<int32> ReachableNodeIds;
+	GetReachableExpressionNodeIds(ReachableNodeIds);
+
+	std::unordered_set<int32> ReachableNodeSet;
+	for (int32 NodeId : ReachableNodeIds)
+	{
+		ReachableNodeSet.insert(NodeId);
+	}
+
 	for (const FMaterialExpressionNode& Node : ExpressionNodes)
 	{
+		if (!ReachableNodeSet.contains(Node.Id))
+		{
+			continue;
+		}
+
 		if (Node.Type != EMaterialExpressionType::TextureSample &&
 			Node.Type != EMaterialExpressionType::TextureSampleParameter2D)
 		{

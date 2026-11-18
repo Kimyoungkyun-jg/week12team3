@@ -184,6 +184,7 @@ public:
 	bool bLegacyGraphMigrated = false;
 
 	void EnsureDefaultGraph();
+	void GetReachableExpressionNodeIds(TArray<int32>& OutNodeIds) const;
 
 	int32 GetExpressionInputPinCount(EMaterialExpressionType Type) const;
 	int32 GetExpressionOutputPinCount(EMaterialExpressionType Type) const;
