@@ -21,8 +21,10 @@
 #include "Render/SkyboxRenderer.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
+#include "Render/MeshBatch.h"
 #include "Engine/World.h"
 #include "Serialization/JsonArchive.h"
+#include "Core/Stats/LightweightStats.h"
 #include <implot.h>
 #include <commdlg.h>
 #include <algorithm>
@@ -387,6 +389,8 @@ FParticleSystemEditorPanel::~FParticleSystemEditorPanel()
 
 void FParticleSystemEditorPanel::Release()
 {
+	ParticleStats = {};
+
 	Client.SetWorld(nullptr);
 	Skybox.reset();
 	PreviewActor = nullptr;
@@ -995,6 +999,52 @@ void FParticleSystemEditorPanel::RenderPreview(UEditorEngine* Engine)
 
 		Engine->RenderPreviewViewport(&Client, PreviewWorld, nullptr, bShowSkybox ? Skybox.get() : nullptr, bShowGrid, bShowBounds ? PreviewComponent : nullptr, bShowOriginAxis, { BackgroundColor[0], BackgroundColor[1], BackgroundColor[2], 1.0f });
 
+		ParticleStats = {};
+
+		if (bShowParticleStats && PreviewComponent)
+		{
+
+			const TArray<FParticleEmitterInstance>& Instances = PreviewComponent->GetEmitterInstances();
+
+			for (const FParticleEmitterInstance& Instance : Instances)
+			{
+				if (Instance.IsGpuEmitter())
+				{
+					continue;
+				}
+
+				ParticleStats.CpuActiveParticles += static_cast<uint32>(std::max(0, Instance.ActiveParticles));
+				ParticleStats.CpuCapacity += static_cast<uint32>(std::max(0, Instance.MaxActiveParticles));
+
+				if (Instance.ParticleData && Instance.ParticleIndices)
+				{
+					ParticleStats.CpuBufferBytes += static_cast<uint64>(Instance.MaxActiveParticles) * (static_cast<uint64>(Instance.ParticleStride) + sizeof(uint16));
+				}
+			}
+
+			const float StatsDeltaTime = bPaused ? 0.0f : PreviewComponent->GetStatsDeltaTime();
+
+			if (StatsDeltaTime > 0.0f)
+			{
+				ParticleStats.SpawnRequestsPerSecond = static_cast<float>(PreviewComponent->GetStatsSpawnedThisTick()) / StatsDeltaTime;
+				ParticleStats.CpuExpiredPerSecond = static_cast<float>(PreviewComponent->GetStatsExpiredThisTick()) / StatsDeltaTime;
+			}
+
+			const FSceneRenderData& RenderData = Client.GetRenderData();
+			ParticleStats.DrawCalls = RenderData.RenderStats.ParticleDrawCalls;
+
+			for (const FMeshBatch& Batch : RenderData.Collector.GetMeshBatches())
+			{
+				if (Batch.bIsParticle)
+				{
+					++ParticleStats.MeshBatches;
+				}
+			}
+		}
+	}
+	else
+	{
+		ParticleStats = {};
 	}
 }
 
@@ -1333,20 +1383,59 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 	Client.TickInputFromImGui(ImGui::GetIO().DeltaTime, bCaptured, Hovered,
 		static_cast<int32>(Wheel * 120), 4.0f * CameraSpeed, 0.2f);
 
-	// 뷰포트 우하단에 이미터별 활성 파티클 수를 표시한다.
+	
+	// 뷰포트 왼쪽 위에 전체 통계와 이미터별 통계를 하나의 패널로 표시한다.
 	if (bShowParticleStats && PreviewActor && PreviewActor->GetParticleSystemComponent())
 	{
-		const TArray<FParticleEmitterInstance>& Instances =
-			PreviewActor->GetParticleSystemComponent()->GetEmitterInstances();
-		ImDrawList* DrawList = ImGui::GetWindowDrawList();
-		const float LineH = ImGui::GetTextLineHeightWithSpacing();
-		float Y = ImagePos.y + Size.y - LineH * static_cast<float>(Instances.Num()) - 6.0f;
+		const TArray<FParticleEmitterInstance>& Instances = PreviewActor->GetParticleSystemComponent()->GetEmitterInstances();
+		const FParticleEditorStats& Stats = ParticleStats;
+
+		float ParticleTickMs = 0.0f;
+		bool bFoundParticleTick = false;
+
+		for (const auto& [Name, Data] : FStatRegistry::GetAll())
+		{
+			if (Name && std::strcmp(Name, "Particle Tick") == 0)
+			{
+				ParticleTickMs = static_cast<float>(Data.GetLastMs());
+				bFoundParticleTick = true;
+				break;
+			}
+		}
+
+		TArray<FString> StatLines;
+		constexpr int32 SummaryLineCount = 5;
+		char Buffer[192];
+
+		snprintf(Buffer, sizeof(Buffer), "CPU Active %u / %u", Stats.CpuActiveParticles, Stats.CpuCapacity);
+		StatLines.Add(Buffer);
+
+		snprintf(Buffer, sizeof(Buffer), "Spawn Requests/s %.1f | CPU Expired/s %.1f", Stats.SpawnRequestsPerSecond, Stats.CpuExpiredPerSecond);
+		StatLines.Add(Buffer);
+
+		snprintf(Buffer, sizeof(Buffer), "CPU Buffer %.2f MB", static_cast<double>(Stats.CpuBufferBytes) / (1024.0 * 1024.0));
+		StatLines.Add(Buffer);
+
+		snprintf(Buffer, sizeof(Buffer), "Draw Calls %u | Mesh Batches %u", Stats.DrawCalls, Stats.MeshBatches);
+		StatLines.Add(Buffer);
+
+		if (bFoundParticleTick)
+		{
+			snprintf(Buffer, sizeof(Buffer), "Particle Tick %.3f ms", ParticleTickMs);
+		}
+		else
+		{
+			snprintf(Buffer, sizeof(Buffer), "Particle Tick --");
+		}
+
+		StatLines.Add(Buffer);
+
 		for (int32 Index = 0; Index < static_cast<int32>(Instances.Num()); ++Index)
 		{
 			const FParticleEmitterInstance& Instance = Instances[Index];
 			const char* EmitterName = Instance.SpriteTemplate ? Instance.SpriteTemplate->EmitterName.c_str() : "Emitter";
 
-			char Buf[160];
+			char EmitterBuffer[160];
 
 			const UParticleLODLevel* LOD = Instance.CurrentLODLevel;
 			const EParticleEmitterType Type = LOD && LOD->EffectiveTypeData ? LOD->EffectiveTypeData->GetEmitterType() : EParticleEmitterType::Sprite;
@@ -1368,18 +1457,39 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 
 			if (Type == EParticleEmitterType::GpuSprite || Type == EParticleEmitterType::GpuMesh)
 			{
-				snprintf(Buf, sizeof(Buf), "%s | %s | LOD %d | Capacity %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.MaxActiveParticles);
+				snprintf(EmitterBuffer, sizeof(EmitterBuffer), "%s | %s | LOD %d | Capacity %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.MaxActiveParticles);
 			}
 			else
 			{
-				snprintf(Buf, sizeof(Buf), "%s | %s | LOD %d | Active %d / %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.ActiveParticles, Instance.MaxActiveParticles);
+				snprintf(EmitterBuffer, sizeof(EmitterBuffer), "%s | %s | LOD %d | Active %d / %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.ActiveParticles, Instance.MaxActiveParticles);
 			}
 
-			const ImVec2 TextSize = ImGui::CalcTextSize(Buf);
-			DrawList->AddText(ImVec2(ImagePos.x + Size.x - TextSize.x - 10.0f, Y), IM_COL32(255, 160, 120, 255), Buf);
-			Y += LineH;
+			StatLines.Add(EmitterBuffer);
+		}
+
+		ImDrawList* DrawList = ImGui::GetWindowDrawList();
+		const float LineHeight = ImGui::GetTextLineHeightWithSpacing();
+		const float Padding = EditorUIScale::Px(8.0f);
+		const ImVec2 TextOrigin(ImagePos.x + EditorUIScale::Px(10.0f), ImagePos.y + EditorUIScale::Px(10.0f));
+
+		float MaxWidth = 0.0f;
+		for (int32 Index = 0; Index < static_cast<int32>(StatLines.Num()); ++Index)
+		{
+			MaxWidth = std::max(MaxWidth, ImGui::CalcTextSize(StatLines[Index].c_str()).x);
+		}
+
+		const ImVec2 BackgroundMin(TextOrigin.x - Padding, TextOrigin.y - Padding);
+		const ImVec2 BackgroundMax(TextOrigin.x + MaxWidth + Padding, TextOrigin.y + LineHeight * static_cast<float>(StatLines.Num()) + Padding);
+
+		DrawList->AddRectFilled(BackgroundMin, BackgroundMax, IM_COL32(0, 0, 0, 170), EditorUIScale::Px(4.0f));
+
+		for (int32 Index = 0; Index < static_cast<int32>(StatLines.Num()); ++Index)
+		{
+			const ImU32 TextColor = Index < SummaryLineCount ? IM_COL32(255, 210, 130, 255) : IM_COL32(255, 160, 120, 255);
+			DrawList->AddText(ImVec2(TextOrigin.x, TextOrigin.y + LineHeight * static_cast<float>(Index)), TextColor, StatLines[Index].c_str());
 		}
 	}
+
 
 	ImGui::EndChild();
 }

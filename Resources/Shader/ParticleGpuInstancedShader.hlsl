@@ -142,7 +142,7 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
 	color.rgb *= tintRGB;
 	color.a *= input.tintAndAlpha.a;
 #ifdef MATERIAL_GRAPH
-	float3 CameraWorldPosition = mul(float4(0.0f, 0.0f, 0.0f, 1.0f), inverse(View)).xyz;
+	float3 CameraWorldPosition = ViewTimeParams.yzw;
 	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(cellUV, input.worldPosition, normalize(CameraWorldPosition - input.worldPosition), normalize(input.worldNormal), input.tintAndAlpha, ViewTimeParams.x);
 
 #ifdef MATERIAL_GRAPH_HAS_BASE_COLOR

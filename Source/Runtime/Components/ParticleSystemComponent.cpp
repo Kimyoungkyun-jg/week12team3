@@ -15,6 +15,8 @@
 #include <cstring>
 #include <new>
 
+DECLARE_CYCLE_STAT("Particle Tick", STAT_ParticleTick);
+
 namespace
 {
 	void ExpandParticleBox(FBox& InOutBounds, bool& bInOutHasBounds, const FVector& Min, const FVector& Max)
@@ -1142,11 +1144,17 @@ bool FParticleEmitterInstance::HasCompleted() const
 	return EmitterTime >= static_cast<double>(Required->EmitterDuration) && ActiveParticles == 0;
 }
 
-void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, const FParticleTickContext& Context,  USkeletalMeshComponent* AfterimageSource)
+void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, const FParticleTickContext& Context, USkeletalMeshComponent* AfterimageSource, uint32& OutSpawned, uint32& OutExpired)
 {
+	OutSpawned = 0;
+	OutExpired = 0;
+
 	if (!CurrentLODLevel || !CurrentLODLevel->bEnabled || !CurrentLODLevel->EffectiveTypeData ||
 		!CurrentLODLevel->EffectiveRequired || !CurrentLODLevel->EffectiveSpawn ||
-		!std::isfinite(DeltaTime) || DeltaTime <= 0.0f) return;
+		!std::isfinite(DeltaTime) || DeltaTime <= 0.0f)
+	{
+		return;
+	}
 	if (SpriteTemplate)
 	{
 		DeltaTime *= std::max(0.0f, SpriteTemplate->PlayRate);
@@ -1216,6 +1224,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 					AfterimageSnapshots[ParticleIndices[Index]].reset();
 				std::swap(ParticleIndices[Index], ParticleIndices[ActiveParticles - 1]);
 				--ActiveParticles;
+				++OutExpired;
 				continue;
 			}
 			Particle.Location += Particle.Velocity * DeltaTime;
@@ -1465,6 +1474,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 			}
 			PendingGpuSpawns.Add(GpuP);
 			++ParticleCounter;
+			++OutSpawned;
 		}
 		return;
 	}
@@ -1585,6 +1595,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 
 		++ActiveParticles;
 		++ParticleCounter;
+		++OutSpawned;
 	}
 }
 
@@ -2482,6 +2493,11 @@ float UParticleSystemComponent::GetFloatParameter(const FString& Name, float Def
 
 void UParticleSystemComponent::TickComponent(float DeltaTime)
 {
+	SCOPE_CYCLE_COUNTER(STAT_ParticleTick);
+	StatsSpawnedThisTick = 0;
+	StatsExpiredThisTick = 0;
+	StatsDeltaTime = 0.0f;
+
 	Super::TickComponent(DeltaTime);
 	LoadTemplateIfNeeded();
 	if (!Template || !std::isfinite(DeltaTime) || DeltaTime <= 0.0f) return;
@@ -2491,10 +2507,14 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	if (ScaledDeltaTime <= 0.0f)
 	{
 		for (FParticleEmitterInstance& Instance : EmitterInstances)
+		{
 			Instance.LastGpuDeltaTime = 0.0f;
+		}
 		CollisionEvents.Reset();
 		return;
 	}
+
+	StatsDeltaTime = ScaledDeltaTime;
 	if (bFadingOut && FadeOutDuration > 0.0f)
 	{
 		FadeOutElapsed += DeltaTime;
@@ -2538,7 +2558,11 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 				}
 			}
 		}
-		Instance.Tick(ScaledDeltaTime, Origin, Context, Source);
+		uint32 Spawned = 0;
+		uint32 Expired = 0;
+		Instance.Tick(ScaledDeltaTime, Origin, Context, Source, Spawned, Expired);
+		StatsSpawnedThisTick += Spawned;
+		StatsExpiredThisTick += Expired;
 	}
 
 	for (auto& Event : CollisionEvents)

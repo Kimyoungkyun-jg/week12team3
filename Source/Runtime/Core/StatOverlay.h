@@ -6,14 +6,15 @@
 // Overlay로 표시할 Stat 항목. 여러 항목을 동시에 켤 수 있어 비트 플래그로 둔다.
 enum class EStatFlags : uint32
 {
-	None    = 0,
-	FPS     = 1 << 0,
-	Memory  = 1 << 1,
+	None = 0,
+	FPS = 1 << 0,
+	Memory = 1 << 1,
 	Profile = 1 << 2,
-	Light	= 1 << 3,
-	Decal   = 1 << 4,
+	Light = 1 << 3,
+	Decal = 1 << 4,
 	Skinning = 1 << 5,
 };
+
 DEFINE_ENUM_OPERATORS(EStatFlags)
 
 // 콘솔 stat 명령의 상태와 표시용 수치만 보관한다.

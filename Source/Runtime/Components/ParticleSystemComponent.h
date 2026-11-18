@@ -104,7 +104,7 @@ struct FParticleEmitterInstance
 	uint32 GetModuleDataOffset(const UParticleModule* Module) const;
 	void Resize(int32 NewMaxActiveParticles);
 	void SetLODLevel(int32 NewLODIndex);
-	void Tick(float DeltaTime, const FVector& Origin, const FParticleTickContext &Context, USkeletalMeshComponent* AfterimageSource = nullptr);
+	void Tick(float DeltaTime, const FVector& Origin, const FParticleTickContext& Context, USkeletalMeshComponent* AfterimageSource, uint32& OutSpawned, uint32& OutExpired);
 	void Reset();
 	bool HasCompleted() const;
 	bool IsGpuEmitter() const;
@@ -155,6 +155,10 @@ public:
 
 	void AddCollisionEvent(const FParticleEventCollideData& Event);
 
+	uint32 GetStatsSpawnedThisTick() const { return StatsSpawnedThisTick; }
+	uint32 GetStatsExpiredThisTick() const { return StatsExpiredThisTick; }
+	float GetStatsDeltaTime() const { return StatsDeltaTime; }
+
 	UPROPERTY()
 	FString TemplatePath;
 	UPROPERTY(EditAnywhere)
@@ -179,6 +183,10 @@ private:
 	float FadeOutElapsed = 0.0f;
 	bool bFadingOut = false;
 	int32 ForcedLODIndex = -1;
+
+	uint32 StatsSpawnedThisTick = 0;
+	uint32 StatsExpiredThisTick = 0;
+	float StatsDeltaTime = 0.0f;
 
 	TArray<FParticleEventCollideData> CollisionEvents;
 };

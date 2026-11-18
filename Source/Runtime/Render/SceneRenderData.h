@@ -23,6 +23,7 @@ struct FRenderStats
 	uint32 TotalPrimitives = 0;
 	uint32 VisiblePrimitives = 0;
 	uint32 DrawCalls = 0;
+	uint32 ParticleDrawCalls = 0;
 	uint64 Triangles = 0;
 	uint32 LODCounts[4] = {};
 	uint64 LODTriangles[4] = {};

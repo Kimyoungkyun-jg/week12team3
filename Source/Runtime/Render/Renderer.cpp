@@ -94,7 +94,8 @@ void FRenderer::UploadViewConstants(const FMatrix& ViewProjection, const FMatrix
 	Constants.VP = ViewProjection;
 	Constants.View = ViewMatrix;
 	Constants.Projection = ProjectionMatrix;
-	Constants.ViewTimeParams = FVector4(TotalTime, 0.0f, 0.0f, 0.0f);
+	const FVector CameraWorldPosition = ViewMatrix.Inverse().TransformPosition(FVector(0.0f, 0.0f, 0.0f));
+	Constants.ViewTimeParams = FVector4(TotalTime, CameraWorldPosition.X, CameraWorldPosition.Y, CameraWorldPosition.Z);
 	RenderCommand::UpdateBufferData(ViewCB.get(), &Constants, sizeof(Constants));
 }
 
@@ -121,7 +122,7 @@ void FRenderer::UnbindUnusedResources(const TArray<FMeshDrawShaderResource>& Nex
 
 void FRenderer::SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> Commands,
 	const FStructuredBuffer* GPUSceneBuffer, uint32* OutDrawCalls,
-	const std::shared_ptr<FGpuTimingHistory>& SkeletalTiming, ESkinningMode MeasuredMode)
+	const std::shared_ptr<FGpuTimingHistory>& SkeletalTiming, ESkinningMode MeasuredMode, uint32* OutParticleDrawCalls)
 {
 	if (Commands.empty())
 		return;
@@ -197,11 +198,17 @@ void FRenderer::SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> C
 	EShaderBindFlagBits PrevSamplerStages = EShaderBindFlagBits::None;
 	const FMeshDrawCommand* PrevCBCommand = nullptr;
 	TArray<FMeshDrawShaderResource> BoundResources;
+	uint32 ParticleDrawCallCount = 0;
 
 	for (const FDrawRun& Run : ScratchDrawRuns)
 	{
 		const FVisibleMeshDrawCommand& Vis = *Run.Visible;
 		const FMeshDrawCommand& Cmd = *Vis.Command;
+
+		if (Cmd.bIsParticle)
+		{
+			++ParticleDrawCallCount;
+		}
 
 		if (Profiler)
 		{
@@ -316,7 +323,14 @@ void FRenderer::SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> C
 	}
 
 	if (OutDrawCalls)
+	{
 		*OutDrawCalls += static_cast<uint32>(ScratchDrawRuns.Num());
+	}
+
+	if (OutParticleDrawCalls)
+	{
+		*OutParticleDrawCalls += ParticleDrawCallCount;
+	}
 
 	const TArray<FMeshDrawShaderResource> EmptyResources{};
 	UnbindUnusedResources(EmptyResources, BoundResources);
