@@ -111,10 +111,43 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		float rotScale = EvaluateDistribution(RotationRateScale, T).x;
 		p.RotationRate = p.BaseRotationRate * rotScale;
 	}
-
+	
 	p.Position += p.Velocity * DeltaTime;
 	p.Rotation += p.RotationRate * DeltaTime;
 
+    float Depth = 0.0f;
+    bool bHit = false;
+
+    if (HasCollision != 0)
+    {
+        float4 Clip = mul(float4(p.Position, 1), ViewProj);
+        if (Clip.w > 0)
+        {
+            float2 NDC = Clip.xy / Clip.w;
+            float U = (NDC.x +1) * 0.5f;
+            float V = (1 - NDC.y) * 0.5f;
+            if (U >= 0 && U < 1 && V >= 0 && V < 1)
+            {
+                int2 Pixel = int2(float2(U, V) * ScreenAndClip.xy);
+                Depth = SceneDepth.Load(int3(Pixel, 0));
+				
+                if (Depth < 1)
+                {
+                    float4 H = mul(float4(NDC, Depth, 1), InvViewProj);
+                    float3 HWorld = H.xyz / H.w;
+                    float WallDir = 1 / H.w;
+                    float ParticleDir = Clip.w;
+					
+                    float Penetration = ParticleDir - WallDir;
+                    if (Penetration >= -CollisionRadius && Penetration <= DepthThickness)
+                    {
+                        bHit = true;
+                    }
+                }
+            }
+        }
+    }
+	
 	if (SizeScale.AtlasUVAndMode.w > 0.5f)
 	{
 		float3 sizeScale = EvaluateDistribution(SizeScale, T).xyz;
@@ -148,12 +181,7 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		p.SubImageIndex = floor(clamp(RawIndex, 0.0f, TotalFrames - 1.0f));
 	}
 
-	
-	// 카메라 각도에 따른 테스트용..!!!! 
-	// 지워야함
-    float DeviceZ = SceneDepth.Load(int3(ScreenAndClip.xy * 0.5f, 0));
-    if (DeviceZ < 0.999f)
-        p.Color.rgb = float3(1, 0, 1);
+    p.Color.rgb = bHit ? float3(1, 0, 1) : float3(1, 1, 1);
 	
 	ParticleBuffer[Idx] = p;
 }
