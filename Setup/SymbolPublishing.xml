@@ -8,6 +8,6 @@
 	  
   </Rule.DataSource>
   <BoolProperty Name="HitoriPublishSymbols" DisplayName="공유폴더 게시" Default="false"
-                Description="빌드 성공 후 이 프로젝트의 EXE와 소스 인덱싱된 PDB를 게시합니다. 켜 두면 이후 빌드에도 적용됩니다." />
+                Description="빌드 성공 후 EXE와 Git 소스 인덱싱된 PDB를 공유폴더에 게시합니다. 로컬 PDB의 Git 소스 인덱싱은 이 옵션과 관계없이 실행됩니다." />
   <StringProperty Name="HitoriSymbolStore" DisplayName="공유폴더 경로" Subtype="folder" />
 </Rule>

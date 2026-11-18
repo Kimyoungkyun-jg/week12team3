@@ -1,11 +1,12 @@
-﻿# Visual Studio의 심볼 게시 옵션이 켜진 빌드에서 실행하는 게시 스크립트
-# 빌드 결과 사본 검증 → Git 소스 인덱스 작성 → PDB에 인덱스 삽입 → SymStore 등록 순서로 처리
+﻿# 빌드 성공 후 로컬 PDB를 인덱싱하고, 게시 옵션이 켜져 있으면 공유 저장소에도 게시
+# 빌드 결과 사본 검증 → Git 소스 인덱스 작성 → 사본·로컬 PDB 삽입 → 선택적 SymStore 등록
 # 공유 저장소에 올리는 빌드 산출물은 EXE와 PDB이며, 소스는 PDB가 가리키는 Git 커밋에서 복원
 
 param
 (
     [Parameter(Mandatory)] [string] $ExePath,
     [string] $PdbPath,
+    [switch] $IndexOnly,
     [string] $SymbolStore = '\\172.21.10.122\Symbols',
     [string] $DebuggingTools = "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64"
 )
@@ -34,20 +35,12 @@ try
     $symstore = Join-Path $DebuggingTools 'symstore.exe'
     $srctool = Join-Path $DebuggingTools 'srcsrv\srctool.exe'
     $pdbstr = Join-Path $DebuggingTools 'srcsrv\pdbstr.exe'
-    foreach ($tool in @($symstore, $srctool, $pdbstr))
+    $requiredTools = @($srctool, $pdbstr)
+    if (-not $IndexOnly) { $requiredTools += $symstore }
+    foreach ($tool in $requiredTools)
     {
         if (-not (Test-Path -LiteralPath $tool -PathType Leaf)) { throw "Debugging tool missing: $tool" }
     }
-
-    if (-not $SymbolStore.StartsWith('\\') -and -not (Test-Path -LiteralPath $SymbolStore))
-    {
-        New-Item -ItemType Directory -Path $SymbolStore -Force | Out-Null
-    }
-
-    $storeDirectory = Get-Item -LiteralPath $SymbolStore
-    if (-not $storeDirectory.PSIsContainer) { throw "Select a symbol store directory: $SymbolStore" }
-    $SymbolStore = $storeDirectory.FullName
-    if ($SymbolStore.StartsWith('\\')) { $SymbolStore = $SymbolStore.TrimEnd('\') }
 
     $repositoryRoot = (& git.exe -C $PSScriptRoot rev-parse --show-toplevel)
     # Git 조회 실패를 종료 코드로 확인
@@ -96,6 +89,22 @@ try
         $exeInfo.Age -ne $pdbInfo.Age -or [IO.Path]::GetFileName($exeInfo.PdbFile) -ne $pdb.Name)
     {
         throw 'The EXE and PDB do not match. Publish outputs from the same link.'
+    }
+
+    # 이미 인덱싱한 로컬 PDB를 재게시할 때도 최초 원본 해시를 유지
+    # 현재 파일 해시($pdbHash)는 게시 도중 파일이 바뀌었는지 검사하는 데 사용
+    $originalPdbHash = $pdbHash
+    $previousIndex = @(& $pdbstr -r "-p:$stagedPdb" -s:srcsrv)
+    if ($LASTEXITCODE -eq 0)
+    {
+        foreach ($line in $previousIndex)
+        {
+            if ($line -match '^HITORI_PDB_SHA256=([0-9A-Fa-f]{64})$')
+            {
+                $originalPdbHash = $Matches[1].ToUpperInvariant()
+                break
+            }
+        }
     }
 
     $trackedFiles = @{}
@@ -176,7 +185,7 @@ try
     {
         Write-Warning "Git source unavailable or differs from the compiled source: $path"
     }
-    if ($entries.Count -eq 0) { Write-Warning 'No compiled sources matched this Git commit. EXE/PDB publication will still proceed.' }
+    if ($entries.Count -eq 0) { Write-Warning 'No compiled sources matched this Git commit. Source retrieval will be unavailable.' }
 
     # PDB에 넣을 SrcSrv 인덱스 텍스트를 임시 폴더에 만듦
     $streamPath = Join-Path $stage 'srcsrv.txt'
@@ -187,7 +196,7 @@ try
         'VERCTRL=Git'
         'SRCSRV: variables ------------------------------------------'
         # 인덱스 삽입 전 PDB 해시를 남겨 재게시 때 같은 원본 PDB인지 확인
-        "HITORI_PDB_SHA256=$pdbHash"
+        "HITORI_PDB_SHA256=$originalPdbHash"
         # 복원 캐시는 커밋과 체크섬으로 구분
         'SRCSRVTRG=%targ%\Hitori\%var3%\%var7%\%fnfile%(%var1%)'
         # OpenCrash.ps1이 지정한 GitSource.ps1에 해당 파일의 7개 매핑 값을 전달
@@ -206,6 +215,39 @@ try
     {
         throw 'The staged PDB source index could not be verified.'
     }
+
+    # 공유 저장소 접근 전에 로컬 원본에 같은 인덱스를 기록
+    if ((Get-FileHash -LiteralPath $exe.FullName -Algorithm SHA256).Hash -ne $exeHash -or
+        (Get-FileHash -LiteralPath $pdb.FullName -Algorithm SHA256).Hash -ne $pdbHash)
+    {
+        throw 'Build outputs changed during source indexing. Retry after the build completes.'
+    }
+    & $pdbstr -w "-p:$($pdb.FullName)" "-i:$streamPath" -s:srcsrv
+    if ($LASTEXITCODE -ne 0) { throw 'Could not write the Git source index to the local PDB.' }
+
+    $localReadbackPath = Join-Path $stage 'srcsrv-local-readback.txt'
+    & $pdbstr -r "-p:$($pdb.FullName)" "-i:$localReadbackPath" -s:srcsrv
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $localReadbackPath) -or
+        (Get-FileHash -LiteralPath $localReadbackPath).Hash -ne (Get-FileHash -LiteralPath $streamPath).Hash)
+    {
+        throw 'The local PDB source index could not be verified.'
+    }
+    $localPdbInfo = [Hitori.Build.Symbols]::Read($pdb.FullName)
+    if ($localPdbInfo.Guid -ne $pdbInfo.Guid -or $localPdbInfo.Age -ne $pdbInfo.Age)
+    {
+        throw 'The local PDB symbol identity changed during source indexing.'
+    }
+    Write-Host "[Hitori] Local PDB indexed: $($pdb.FullName). Git sources indexed: $($entries.Count)."
+    if ($IndexOnly) { return }
+
+    if (-not $SymbolStore.StartsWith('\\') -and -not (Test-Path -LiteralPath $SymbolStore))
+    {
+        New-Item -ItemType Directory -Path $SymbolStore -Force | Out-Null
+    }
+    $storeDirectory = Get-Item -LiteralPath $SymbolStore
+    if (-not $storeDirectory.PSIsContainer) { throw "Select a symbol store directory: $SymbolStore" }
+    $SymbolStore = $storeDirectory.FullName
+    if ($SymbolStore.StartsWith('\\')) { $SymbolStore = $SymbolStore.TrimEnd('\') }
 
     $admin = Join-Path $SymbolStore '000Admin'
     if (-not (Test-Path -LiteralPath $admin))
@@ -249,7 +291,7 @@ try
                     $existingIndex = @(& $pdbstr -r "-p:$($file.Remote)" -s:srcsrv)
                     $sameOriginalPdb = $LASTEXITCODE -eq 0 -and
                         $existingInfo.Guid -eq $pdbInfo.Guid -and $existingInfo.Age -eq $pdbInfo.Age -and
-                        $existingIndex -contains "HITORI_PDB_SHA256=$pdbHash"
+                        $existingIndex -contains "HITORI_PDB_SHA256=$originalPdbHash"
                 }
 
                 if (-not $sameOriginalPdb)
@@ -287,12 +329,12 @@ try
             throw "Published file verification failed: $($file.Remote)"
         }
     }
-    Write-Host "[Hitori] Published $($exe.Name) and $($pdb.Name). Git sources indexed: $($entries.Count). Store: $SymbolStore"
+    Write-Host "[Hitori] Published $($exe.Name) and $($pdb.Name). Local PDB indexed. Git sources indexed: $($entries.Count). Store: $SymbolStore"
 }
 catch
 {
     $failure = $_
-    Write-Error -Message "[Hitori] Symbol publication failed. $($failure.Exception.Message)`n$($failure.ScriptStackTrace)" -ErrorAction Continue
+    Write-Error -Message "[Hitori] Source indexing or symbol publication failed. $($failure.Exception.Message)`n$($failure.ScriptStackTrace)" -ErrorAction Continue
     exit 1
 }
 finally

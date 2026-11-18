@@ -1,6 +1,8 @@
 param
 (
-    [string] $SymbolStore = '\\172.21.10.122\Symbols'
+    [string] $SymbolStore = (
+        Join-Path $PSScriptRoot '..\Symbols'
+    )
 )
 
 $ErrorActionPreference = 'Stop'
