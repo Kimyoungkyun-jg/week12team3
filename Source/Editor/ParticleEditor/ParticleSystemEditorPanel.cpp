@@ -1389,39 +1389,66 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 		static_cast<int32>(Wheel * 120), 4.0f * CameraSpeed, 0.2f);
 
 	// 뷰포트 우하단에 이미터별 활성 파티클 수를 표시한다.
+	// Stats 체크박스가 활성화된 경우 전체 통계와 이미터별 통계를 표시한다.
 	if (bShowParticleStats && PreviewActor && PreviewActor->GetParticleSystemComponent())
 	{
-		const TArray<FParticleEmitterInstance>& Instances =
-			PreviewActor->GetParticleSystemComponent()->GetEmitterInstances();
-		uint64 CpuMemoryBytes = 0;
-		int32 CpuActiveParticles = 0;
-		int32 CpuCapacity = 0;
+		const TArray<FParticleEmitterInstance>& Instances = PreviewActor->GetParticleSystemComponent()->GetEmitterInstances();
+		const FParticleStatSnapshot& Stats = FStatOverlay::GetParticleStats();
 
-		for (const FParticleEmitterInstance& Instance : Instances)
+		float ParticleTickMs = 0.0f;
+		bool bFoundParticleTick = false;
+
+		for (const auto& [Name, Data] : FStatRegistry::GetAll())
 		{
-			if (Instance.IsGpuEmitter())
+			if (Name && std::strcmp(Name, "Particle Tick") == 0)
 			{
-				continue;
-			}
-
-			CpuActiveParticles += Instance.ActiveParticles;
-			CpuCapacity += Instance.MaxActiveParticles;
-
-			if (Instance.ParticleData && Instance.ParticleIndices)
-			{
-				CpuMemoryBytes += static_cast<uint64>(Instance.MaxActiveParticles) *
-					(Instance.ParticleStride + sizeof(uint16));
+				ParticleTickMs = Data.GetLastMs();
+				bFoundParticleTick = true;
+				break;
 			}
 		}
+
 		ImDrawList* DrawList = ImGui::GetWindowDrawList();
 		const float LineH = ImGui::GetTextLineHeightWithSpacing();
-		float Y = ImagePos.y + Size.y - LineH * static_cast<float>(Instances.Num()) - 6.0f;
+		constexpr int32 SummaryLineCount = 5;
+		float Y = ImagePos.y + Size.y - LineH * static_cast<float>(SummaryLineCount + Instances.Num()) - 6.0f;
+
+		char Buf[192];
+
+		snprintf(Buf, sizeof(Buf), "CPU Active %u / %u", Stats.CpuActiveParticles, Stats.CpuCapacity);
+		DrawList->AddText(ImVec2(ImagePos.x + 10.0f, Y), IM_COL32(255, 210, 130, 255), Buf);
+		Y += LineH;
+
+		snprintf(Buf, sizeof(Buf), "Spawn Requests/s %.1f | CPU Expired/s %.1f", Stats.SpawnRequestsPerSecond, Stats.CpuExpiredPerSecond);
+		DrawList->AddText(ImVec2(ImagePos.x + 10.0f, Y), IM_COL32(255, 210, 130, 255), Buf);
+		Y += LineH;
+
+		snprintf(Buf, sizeof(Buf), "CPU Buffer %.2f MB", static_cast<double>(Stats.CpuBufferBytes) / (1024.0 * 1024.0));
+		DrawList->AddText(ImVec2(ImagePos.x + 10.0f, Y), IM_COL32(255, 210, 130, 255), Buf);
+		Y += LineH;
+
+		snprintf(Buf, sizeof(Buf), "Draw Calls %u | Mesh Batches %u", Stats.DrawCalls, Stats.MeshBatches);
+		DrawList->AddText(ImVec2(ImagePos.x + 10.0f, Y), IM_COL32(255, 210, 130, 255), Buf);
+		Y += LineH;
+
+		if (bFoundParticleTick)
+		{
+			snprintf(Buf, sizeof(Buf), "Particle Tick %.3f ms", ParticleTickMs);
+		}
+		else
+		{
+			snprintf(Buf, sizeof(Buf), "Particle Tick --");
+		}
+
+		DrawList->AddText(ImVec2(ImagePos.x + 10.0f, Y), IM_COL32(255, 210, 130, 255), Buf);
+		Y += LineH;
+
 		for (int32 Index = 0; Index < static_cast<int32>(Instances.Num()); ++Index)
 		{
 			const FParticleEmitterInstance& Instance = Instances[Index];
 			const char* EmitterName = Instance.SpriteTemplate ? Instance.SpriteTemplate->EmitterName.c_str() : "Emitter";
 
-			char Buf[160];
+			char EmitterBuf[160];
 
 			const UParticleLODLevel* LOD = Instance.CurrentLODLevel;
 			const EParticleEmitterType Type = LOD && LOD->EffectiveTypeData ? LOD->EffectiveTypeData->GetEmitterType() : EParticleEmitterType::Sprite;
@@ -1439,16 +1466,15 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 
 			if (Type == EParticleEmitterType::GpuSprite)
 			{
-				snprintf(Buf, sizeof(Buf), "%s | %s | LOD %d | Capacity %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.MaxActiveParticles);
+				snprintf(EmitterBuf, sizeof(EmitterBuf), "%s | %s | LOD %d | Capacity %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.MaxActiveParticles);
 			}
 			else
 			{
-				snprintf(Buf, sizeof(Buf), "%s | %s | LOD %d | Active %d / %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.ActiveParticles, Instance.MaxActiveParticles);
+				snprintf(EmitterBuf, sizeof(EmitterBuf), "%s | %s | LOD %d | Active %d / %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.ActiveParticles, Instance.MaxActiveParticles);
 			}
 
-			const ImVec2 TextSize = ImGui::CalcTextSize(Buf);
-			DrawList->AddText(ImVec2(ImagePos.x + Size.x - TextSize.x - 10.0f, Y), IM_COL32(255, 160, 120, 255), Buf);
-			Y += LineH;
+			const ImVec2 TextSize = ImGui::CalcTextSize(EmitterBuf);
+			DrawList->AddText(ImVec2(ImagePos.x + Size.x - TextSize.x - 10.0f, ImagePos.y + Size.y - LineH * static_cast<float>(Instances.Num() - Index) - 6.0f), IM_COL32(255, 160, 120, 255), EmitterBuf);
 		}
 	}
 
