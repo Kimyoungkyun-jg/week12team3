@@ -80,6 +80,30 @@ namespace
 		return Stream.str();
 	}
 
+	const char* GetMaterialHlslType(EMaterialValueType Type)
+	{
+		switch (Type)
+		{
+		case EMaterialValueType::Scalar:
+			return "float";
+		case EMaterialValueType::Vector2:
+			return "float2";
+		case EMaterialValueType::Vector3:
+			return "float3";
+		case EMaterialValueType::Vector4:
+			return "float4";
+		default:
+			return nullptr;
+		}
+	}
+
+	FString GetMaterialGraphParameterKey(const FString& Name, EMaterialExpressionType Type)
+	{
+		return Name + "#" + std::to_string(static_cast<uint8>(Type));
+	}
+
+
+	
 	bool GenerateMaterialGraphSource(const UMaterial& Material, FString& OutSource, FString& OutError)
 	{
 		if (!Material.ValidateExpressionGraph(OutError))
@@ -87,30 +111,47 @@ namespace
 			return false;
 		}
 
-		std::unordered_map<FString, int32> TextureIndices;
+		std::unordered_map<int32, int32> TextureIndices;
 		std::unordered_map<FString, int32> ParameterIndices;
 
-		TArray<FString> TexturePaths;
-		int32 ParameterCount = 0;
+		TArray<int32> TextureNodeIds;
+		TArray<FMaterialGraphParameter> GraphParameters;
+
+		Material.GetGraphParameterLayout(GraphParameters);
+
+		for (int32 Index = 0; Index < GraphParameters.Num(); ++Index)
+		{
+			ParameterIndices[GetMaterialGraphParameterKey(GraphParameters[Index].Name, GraphParameters[Index].Type)] = Index;
+		}
+
+		TArray<int32> ReachableNodeIds;
+		Material.GetReachableExpressionNodeIds(ReachableNodeIds);
+
+		std::unordered_set<int32> ReachableNodeSet;
+		for (int32 NodeId : ReachableNodeIds)
+		{
+			ReachableNodeSet.insert(NodeId);
+		}
 
 		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
 		{
-			if (Node.Type == EMaterialExpressionType::TextureSample && !Node.TexturePath.empty())
+			if (!ReachableNodeSet.contains(Node.Id))
 			{
-				if (!TextureIndices.contains(Node.TexturePath))
-				{
-					TextureIndices[Node.TexturePath] = TexturePaths.Num();
-					TexturePaths.Add(Node.TexturePath);
-				}
+				continue;
 			}
 
-			if (Node.Type == EMaterialExpressionType::ScalarParameter || Node.Type == EMaterialExpressionType::VectorParameter)
+			if (Node.Type != EMaterialExpressionType::TextureSample &&
+				Node.Type != EMaterialExpressionType::TextureSampleParameter2D)
 			{
-				ParameterIndices[Node.ParameterName] = ParameterCount++;
+				continue;
 			}
+
+			TextureIndices[Node.Id] = TextureNodeIds.Num();
+			TextureNodeIds.Add(Node.Id);
 		}
 
-		if (TexturePaths.Num() > MaxMaterialGraphTextures || ParameterCount > MaxMaterialGraphParameters)
+		if (TextureNodeIds.Num() > MaxMaterialGraphTextures ||
+			GraphParameters.Num() > MaxMaterialGraphParameters)
 		{
 			OutError = "Material Graph resource limit exceeded.";
 			return false;
@@ -163,6 +204,58 @@ namespace
 			return false;
 		}
 
+		const auto FindInputConnection = [&](int32 NodeId, int32 Pin) -> const FMaterialExpressionConnection*
+		{
+			for (const FMaterialExpressionConnection& Connection : Material.ExpressionConnections)
+			{
+				if (Connection.InputNodeId == NodeId && Connection.InputPin == Pin)
+				{
+					return &Connection;
+				}
+			}
+
+			return nullptr;
+		};
+
+		const auto GetInputType = [&](int32 NodeId, int32 Pin)
+		{
+			const FMaterialExpressionConnection* Connection = FindInputConnection(NodeId, Pin);
+			return Connection ? Material.GetExpressionOutputType(Connection->OutputNodeId, Connection->OutputPin) : EMaterialValueType::Unknown;
+		};
+
+		const auto GetInputVariable = [&](int32 NodeId, int32 Pin, EMaterialValueType TargetType = EMaterialValueType::Unknown) -> FString
+		{
+			const FMaterialExpressionConnection* Connection = FindInputConnection(NodeId, Pin);
+
+			if (!Connection)
+			{
+				return FString();
+			}
+
+			const FString Variable = GraphNodeVariable(Connection->OutputNodeId);
+			const EMaterialValueType SourceType = Material.GetExpressionOutputType(Connection->OutputNodeId, Connection->OutputPin);
+
+			if (TargetType == EMaterialValueType::Unknown || SourceType == TargetType || SourceType != EMaterialValueType::Scalar)
+			{
+				return Variable;
+			}
+
+			switch (TargetType)
+			{
+			case EMaterialValueType::Vector2:
+				return "float2(" + Variable + ", " + Variable + ")";
+
+			case EMaterialValueType::Vector3:
+				return "float3(" + Variable + ", " + Variable + ", " + Variable + ")";
+
+			case EMaterialValueType::Vector4:
+				return "float4(" + Variable + ", " + Variable + ", " + Variable + ", " + Variable + ")";
+
+			default:
+				return Variable;
+			}
+		};
+
 		OutSource.clear();
 
 		OutSource += "struct FMaterialGraphOutput\n";
@@ -172,7 +265,11 @@ namespace
 		OutSource += "    float Shininess;\n";
 		OutSource += "    float3 EmissiveColor;\n";
 		OutSource += "    float EmissiveFactor;\n";
+		OutSource += "    float Metallic;\n";
+		OutSource += "    float Roughness;\n";
 		OutSource += "    float OpacityMask;\n";
+		OutSource += "    float3 Normal;\n";
+		OutSource += "    float AmbientOcclusion;\n";
 		OutSource += "};\n";
 
 		OutSource += "cbuffer MaterialGraphParameters : register(b4)\n";
@@ -180,16 +277,46 @@ namespace
 		OutSource += "    float4 GraphParameterValues[16];\n";
 		OutSource += "};\n";
 
-		for (int32 Index = 0; Index < TexturePaths.Num(); ++Index)
+		for (int32 Index = 0; Index < TextureNodeIds.Num(); ++Index)
 		{
 			OutSource += "Texture2D GraphTexture" + std::to_string(Index) + " : register(t" + std::to_string(Index + 2) + ");\n";
 		}
 
-		const auto GetInputVariable = [&](int32 NodeId, int32 Pin) -> FString
+		for (const FMaterialExpressionNode* Node : EvaluationOrder)
 		{
-			const FMaterialExpressionConnection* Connection = FindGraphInput(Material, NodeId, Pin);
-			return Connection ? GraphNodeVariable(Connection->OutputNodeId) : FString();
-		};
+			if (Node->Type != EMaterialExpressionType::Custom)
+			{
+				continue;
+			}
+
+			const FMaterialExpressionConnection* InputA = FindGraphInput(Material, Node->Id, 0);
+			const FMaterialExpressionConnection* InputB = FindGraphInput(Material, Node->Id, 1);
+
+			if (!InputA || !InputB)
+			{
+				OutError = "Custom Expression requires two connected inputs.";
+				return false;
+			}
+
+			const EMaterialValueType TypeA = Material.GetExpressionOutputType(InputA->OutputNodeId, InputA->OutputPin);
+			const EMaterialValueType TypeB = Material.GetExpressionOutputType(InputB->OutputNodeId, InputB->OutputPin);
+
+			const char* HlslTypeA = GetMaterialHlslType(TypeA);
+			const char* HlslTypeB = GetMaterialHlslType(TypeB);
+			const char* HlslOutputType = GetMaterialHlslType(Node->CustomOutputType);
+
+			if (!HlslTypeA || !HlslTypeB || !HlslOutputType)
+			{
+				OutError = "Custom Expression has an unsupported input or output type.";
+				return false;
+			}
+
+			OutSource += FString(HlslOutputType) + " EvaluateCustomNode_" + std::to_string(Node->Id);
+			OutSource += "(" + FString(HlslTypeA) + " A, " + FString(HlslTypeB) + " B)\n";
+			OutSource += "{\n";
+			OutSource += "    return (" + Node->CustomCode + ");\n";
+			OutSource += "}\n";
+		}
 
 		OutSource += "float MaterialGraphHash21(float2 P)\n";
 		OutSource += "{\n";
@@ -212,43 +339,31 @@ namespace
 		OutSource += "{\n";
 		OutSource += "    return MaterialGraphValueNoise(P) * 0.65f + MaterialGraphValueNoise(P * 2.03f) * 0.35f;\n";
 		OutSource += "}\n";
-		OutSource += "FMaterialGraphOutput EvaluateMaterialGraph(float2 UV)\n";
+
+		OutSource += "FMaterialGraphOutput EvaluateMaterialGraph(float2 UV, float3 WorldPosition, float3 CameraVectorWS, float3 VertexNormalWS, float4 VertexColor, float Time)\n";
 		OutSource += "{\n";
 		OutSource += "    FMaterialGraphOutput Result = (FMaterialGraphOutput)0;\n";
 
 		for (const FMaterialExpressionNode* Node : EvaluationOrder)
 		{
 			const FString Variable = GraphNodeVariable(Node->Id);
-			const FString A = GetInputVariable(Node->Id, 0);
-			const FString B = GetInputVariable(Node->Id, 1);
-			const FString C = GetInputVariable(Node->Id, 2);
 
 			const EMaterialValueType OutputType = Material.GetExpressionOutputType(Node->Id, 0);
+			const char* HlslType = GetMaterialHlslType(OutputType);
 
-			const char* HlslType = nullptr;
-
-			switch (OutputType)
+			if (!HlslType)
 			{
-			case EMaterialValueType::Scalar:
-				HlslType = "float";
-				break;
-
-			case EMaterialValueType::Vector2:
-				HlslType = "float2";
-				break;
-
-			case EMaterialValueType::Vector3:
-				HlslType = "float3";
-				break;
-
-			case EMaterialValueType::Vector4:
-				HlslType = "float4";
-				break;
-
-			default:
-				OutError = "Cannot resolve expression output type.";
+				OutError = "Cannot resolve expression output type for node " + std::to_string(Node->Id);
 				return false;
 			}
+
+			const EMaterialValueType AType = GetInputType(Node->Id, 0);
+			const EMaterialValueType BType = GetInputType(Node->Id, 1);
+			const EMaterialValueType CType = GetInputType(Node->Id, 2);
+
+			const FString A = GetInputVariable(Node->Id, 0, OutputType);
+			const FString B = GetInputVariable(Node->Id, 1, OutputType);
+			const FString C = GetInputVariable(Node->Id, 2, OutputType);
 
 			switch (Node->Type)
 			{
@@ -269,39 +384,96 @@ namespace
 				break;
 
 			case EMaterialExpressionType::ScalarParameter:
-				OutSource += "    float " + Variable + " = GraphParameterValues[" + std::to_string(ParameterIndices[Node->ParameterName]) + "].x;\n";
-				break;
-
 			case EMaterialExpressionType::VectorParameter:
-				OutSource += "    float4 " + Variable + " = GraphParameterValues[" + std::to_string(ParameterIndices[Node->ParameterName]) + "];\n";
+			{
+				const FString Key = GetMaterialGraphParameterKey(Node->ParameterName, Node->Type);
+				const auto It = ParameterIndices.find(Key);
+
+				if (It == ParameterIndices.end())
+				{
+					OutError = "Material Graph parameter index was not generated.";
+					return false;
+				}
+
+				if (Node->Type == EMaterialExpressionType::ScalarParameter)
+				{
+					OutSource += "    float " + Variable + " = GraphParameterValues[" + std::to_string(It->second) + "].x;\n";
+				}
+				else
+				{
+					OutSource += "    float4 " + Variable + " = GraphParameterValues[" + std::to_string(It->second) + "];\n";
+				}
 				break;
+			}
 
 			case EMaterialExpressionType::TextureCoordinate:
 				OutSource += "    float2 " + Variable + " = UV;\n";
 				break;
 
 			case EMaterialExpressionType::TextureSample:
-				OutSource += "    float4 " + Variable + " = GraphTexture" + std::to_string(TextureIndices[Node->TexturePath]) + ".Sample(ColorSampler, " + A + ");\n";
+			case EMaterialExpressionType::TextureSampleParameter2D:
+			{
+				const auto It = TextureIndices.find(Node->Id);
+
+				if (It == TextureIndices.end())
+				{
+					OutError = "Material Graph texture index was not generated.";
+					return false;
+				}
+
+				const FString UVInput = GetInputVariable(Node->Id, 0);
+				OutSource += "    float4 " + Variable + " = GraphTexture" + std::to_string(It->second) + ".Sample(ColorSampler, " + UVInput + ");\n";
+
+				if (Node->bSRGB)
+				{
+					OutSource += "    " + Variable + ".rgb = pow(max(" + Variable + ".rgb, 0.0f), 2.2f);\n";
+				}
+
+				break;
+			}
+
+			case EMaterialExpressionType::Time:
+				OutSource += "    float " + Variable + " = Time;\n";
+				break;
+
+			case EMaterialExpressionType::VertexColor:
+				OutSource += "    float4 " + Variable + " = VertexColor;\n";
+				break;
+
+			case EMaterialExpressionType::WorldPosition:
+				OutSource += "    float3 " + Variable + " = WorldPosition;\n";
+				break;
+
+			case EMaterialExpressionType::CameraVectorWS:
+				OutSource += "    float3 " + Variable + " = CameraVectorWS;\n";
+				break;
+
+			case EMaterialExpressionType::VertexNormalWS:
+				OutSource += "    float3 " + Variable + " = normalize(VertexNormalWS);\n";
 				break;
 
 			case EMaterialExpressionType::Add:
 				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + A + " + " + B + ";\n";
 				break;
 
+			case EMaterialExpressionType::Subtract:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + A + " - " + B + ";\n";
+				break;
+
 			case EMaterialExpressionType::Multiply:
 				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + A + " * " + B + ";\n";
 				break;
 
+			case EMaterialExpressionType::Divide:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + A + " / " + B + ";\n";
+				break;
+
 			case EMaterialExpressionType::Lerp:
-				OutSource += "    " + FString(HlslType) + " " + Variable + " = lerp(" + A + ", " + B + ", " + C + ");\n";
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = lerp(" + A + ", " + B + ", " + GetInputVariable(Node->Id, 2) + ");\n";
 				break;
 
 			case EMaterialExpressionType::OneMinus:
-				OutSource += "    " + FString(HlslType) + " " + Variable + " = 1.0f - " + A + ";\n";
-				break;
-
-			case EMaterialExpressionType::Subtract:
-				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + A + " - " + B + ";\n";
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = 1.0f - " + GetInputVariable(Node->Id, 0) + ";\n";
 				break;
 
 			case EMaterialExpressionType::Step:
@@ -312,19 +484,162 @@ namespace
 				OutSource += "    float " + Variable + " = MaterialGraphNoise2D(" + A + ");\n";
 				break;
 
+			case EMaterialExpressionType::Clamp:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = clamp(" + A + ", " + GetInputVariable(Node->Id, 1, OutputType) + ", " + GetInputVariable(Node->Id, 2, OutputType) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Power:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = pow(" + A + ", " + B + ");\n";
+				break;
+
+			case EMaterialExpressionType::Abs:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = abs(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Frac:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = frac(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Sine:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = sin(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Min:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = min(" + A + ", " + B + ");\n";
+				break;
+
+			case EMaterialExpressionType::Max:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = max(" + A + ", " + B + ");\n";
+				break;
+
+			case EMaterialExpressionType::DotProduct:
+				OutSource += "    float " + Variable + " = dot(" + GetInputVariable(Node->Id, 0) + ", " + GetInputVariable(Node->Id, 1) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Normalize:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = normalize(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::AppendVector:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + FString(HlslType) + "(" + GetInputVariable(Node->Id, 0) + ", " + GetInputVariable(Node->Id, 1) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Custom:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = EvaluateCustomNode_" + std::to_string(Node->Id) + "(" + GetInputVariable(Node->Id, 0) + ", " + GetInputVariable(Node->Id, 1) + ");\n";
+				break;
+
+			case EMaterialExpressionType::ComponentMask:
+			{
+				FString Swizzle;
+				static const char Channels[] = { 'r', 'g', 'b', 'a' };
+
+				for (int32 Channel = 0; Channel < 4; ++Channel)
+				{
+					if ((Node->ComponentMask & (1u << Channel)) != 0)
+					{
+						Swizzle += Channels[Channel];
+					}
+				}
+
+				const FString Input = GetInputVariable(Node->Id, 0);
+				const FString Expression = Swizzle.size() == 1 ? Input + "." + Swizzle : Input + "." + Swizzle;
+
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + Expression + ";\n";
+				break;
+			}
+
+			case EMaterialExpressionType::Saturate:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = saturate(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Panner:
+				OutSource += "    float2 " + Variable + " = " + A + " + Time * " + B + ";\n";
+				break;
+
+			case EMaterialExpressionType::Fresnel:
+				OutSource += "    float " + Variable + " = " + C + " + (1.0f - " + C + ") * pow(1.0f - saturate(dot(normalize(" + GetInputVariable(Node->Id, 0) + "), normalize(CameraVectorWS))), " + B + ");\n";
+				break;
+
+			case EMaterialExpressionType::Cosine:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = cos(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Floor:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = floor(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Distance:
+				OutSource += "    float " + Variable + " = distance(" + GetInputVariable(Node->Id, 0) + ", " + GetInputVariable(Node->Id, 1) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Length:
+				OutSource += "    float " + Variable + " = length(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::CrossProduct:
+				OutSource += "    float3 " + Variable + " = cross(" + GetInputVariable(Node->Id, 0) + ", " + GetInputVariable(Node->Id, 1) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Desaturation:
+			{
+				const FString Color = GetInputVariable(Node->Id, 0);
+				const FString Fraction = GetInputVariable(Node->Id, 1);
+				const FString Gray = Variable + "_Gray";
+
+				OutSource += "    float " + Gray + " = dot(" + Color + ".rgb, float3(0.2126f, 0.7152f, 0.0722f));\n";
+
+				if (OutputType == EMaterialValueType::Vector4)
+				{
+					OutSource += "    float4 " + Variable + " = float4(lerp(" + Color + ".rgb, float3(" + Gray + ", " + Gray + ", " + Gray + "), saturate(" + Fraction + ")), " + Color + ".a);\n";
+				}
+				else
+				{
+					OutSource += "    float3 " + Variable + " = lerp(" + Color + ", float3(" + Gray + ", " + Gray + ", " + Gray + "), saturate(" + Fraction + "));\n";
+				}
+
+				break;
+			}
+
+			case EMaterialExpressionType::SphereMask:
+			{
+				const FString Radius = GetInputVariable(Node->Id, 2);
+				const FString Softness = GetInputVariable(Node->Id, 3);
+
+				OutSource += "    float " + Variable + " = 1.0f - smoothstep(" + Radius + " - max(" + Softness + ", 0.0001f), " + Radius + ", distance(" + A + ", " + B + "));\n";
+				break;
+			}
+
+			case EMaterialExpressionType::ConstantBiasScale:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = (" + A + " + " + B + ") * " + C + ";\n";
+				break;
+
+			case EMaterialExpressionType::Rotator:
+			{
+				const FString SinValue = Variable + "_Sin";
+				const FString CosValue = Variable + "_Cos";
+				const FString Offset = Variable + "_Offset";
+
+				OutSource += "    float " + SinValue + ";\n";
+				OutSource += "    float " + CosValue + ";\n";
+				OutSource += "    sincos(" + GetInputVariable(Node->Id, 2) + ", " + SinValue + ", " + CosValue + ");\n";
+				OutSource += "    float2 " + Offset + " = " + A + " - " + B + ";\n";
+				OutSource += "    float2 " + Variable + " = float2(" + Offset + ".x * " + CosValue + " - " + Offset + ".y * " + SinValue + ", " + Offset + ".x * " + SinValue + " + " + Offset + ".y * " + CosValue + ") + " + B + ";\n";
+				break;
+			}
+
 			default:
 				OutError = "Unsupported Material Expression.";
 				return false;
 			}
 		}
 
-		const auto EmitOutput = [&](int32 Pin, const char* Define, const char* Field, bool bVector4, bool bVector3) -> bool
+		const auto EmitOutput = [&](int32 Pin, const char* Define, const char* Field, bool bVector4, bool bVector3)
 		{
 			const FMaterialExpressionConnection* Connection = FindGraphInput(Material, Material.OutputNodeId, Pin);
 
 			if (!Connection)
 			{
-				return true;
+				return;
 			}
 
 			const FString Variable = GraphNodeVariable(Connection->OutputNodeId);
@@ -344,8 +659,6 @@ namespace
 			{
 				OutSource += "    Result." + FString(Field) + " = " + Variable + ";\n";
 			}
-
-			return true;
 		};
 
 		OutSource += "    Result.BaseColor = float4(1, 1, 1, 1);\n";
@@ -353,16 +666,29 @@ namespace
 		OutSource += "    Result.Shininess = 32.0f;\n";
 		OutSource += "    Result.EmissiveColor = float3(0, 0, 0);\n";
 		OutSource += "    Result.EmissiveFactor = 1.0f;\n";
+		OutSource += "    Result.Metallic = 0.0f;\n";
+		OutSource += "    Result.Roughness = 0.8f;\n";
 		OutSource += "    Result.OpacityMask = 1.0f;\n";
+		OutSource += "    Result.Normal = float3(0, 0, 1);\n";
+		OutSource += "    Result.AmbientOcclusion = 1.0f;\n";
 
 		EmitOutput(0, "MATERIAL_GRAPH_HAS_BASE_COLOR", "BaseColor", true, false);
 		EmitOutput(1, "MATERIAL_GRAPH_HAS_SPECULAR_COLOR", "SpecularColor", false, true);
 		EmitOutput(2, "MATERIAL_GRAPH_HAS_SHININESS", "Shininess", false, false);
 		EmitOutput(3, "MATERIAL_GRAPH_HAS_EMISSIVE_COLOR", "EmissiveColor", false, true);
 		EmitOutput(4, "MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR", "EmissiveFactor", false, false);
-		EmitOutput(5, "MATERIAL_GRAPH_HAS_OPACITY_MASK", "OpacityMask", false, false);
+		EmitOutput(5, "MATERIAL_GRAPH_HAS_METALLIC", "Metallic", false, false);
+		EmitOutput(6, "MATERIAL_GRAPH_HAS_ROUGHNESS", "Roughness", false, false);
+		EmitOutput(7, "MATERIAL_GRAPH_HAS_OPACITY_MASK", "OpacityMask", false, false);
+		EmitOutput(8, "MATERIAL_GRAPH_HAS_NORMAL", "Normal", false, true);
+		EmitOutput(9, "MATERIAL_GRAPH_HAS_AMBIENT_OCCLUSION", "AmbientOcclusion", false, false);
 
 		OutSource += "    return Result;\n";
+		OutSource += "}\n";
+
+		OutSource += "FMaterialGraphOutput EvaluateMaterialGraph(float2 UV)\n";
+		OutSource += "{\n";
+		OutSource += "    return EvaluateMaterialGraph(UV, float3(0, 0, 0), float3(0, 0, 1), float3(0, 0, 1), float4(1, 1, 1, 1), 0.0f);\n";
 		OutSource += "}\n";
 
 		OutError.clear();

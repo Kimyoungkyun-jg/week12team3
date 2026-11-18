@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Directory.Build.targets가 프로젝트 속성창에 등록하는 화면 정의 -->
+<Rule Name="HitoriSymbolPublishing" DisplayName="심볼 게시" PageTemplate="generic" Order="95"
+      xmlns="http://schemas.microsoft.com/build/2009/properties">
+  <Rule.DataSource>
+	  
+    <DataSource Persistence="UserFile" HasConfigurationCondition="true" />
+	  
+  </Rule.DataSource>
+  <BoolProperty Name="HitoriPublishSymbols" DisplayName="공유폴더 게시" Default="false"
+                Description="빌드 성공 후 이 프로젝트의 EXE와 소스 인덱싱된 PDB를 게시합니다. 켜 두면 이후 빌드에도 적용됩니다." />
+  <StringProperty Name="HitoriSymbolStore" DisplayName="공유폴더 경로" Subtype="folder" />
+</Rule>

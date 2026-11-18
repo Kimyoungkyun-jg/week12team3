@@ -22,7 +22,10 @@ struct FGpuParticle
 
 cbuffer constants : register(b0)
 {
-	matrix VP;
+    matrix VP;
+    matrix View;
+    matrix Projection;
+    float4 ViewTimeParams;
 };
 
 cbuffer gpuDrawConstants : register(b1)
@@ -63,6 +66,8 @@ struct PS_INPUT
 	float2 uv : TEXCOORD0;
 	float4 tintAndAlpha : TEXCOORD1;
 	float4 subUVParams : TEXCOORD2;
+    float3 worldPosition : TEXCOORD3;
+    float3 worldNormal : TEXCOORD4;
 };
 
 PS_INPUT mainVS(VS_INPUT input)
@@ -71,10 +76,12 @@ PS_INPUT mainVS(VS_INPUT input)
 	FGpuParticle p = GpuParticles[input.instanceId];
 	if (p.bAlive == 0)
 	{
-		output.position = float4(0.0f, 0.0f, 0.0f, 0.0f);
-		output.uv = float2(0.0f, 0.0f);
-		output.tintAndAlpha = float4(0.0f, 0.0f, 0.0f, 0.0f);
-		output.subUVParams = float4(0.0f, 1.0f, 1.0f, 0.0f);
+        output.position = float4(0.0f, 0.0f, 0.0f, 0.0f);
+        output.uv = float2(0.0f, 0.0f);
+        output.worldPosition = float3(0.0f, 0.0f, 0.0f);
+        output.worldNormal = float3(0.0f, 0.0f, 1.0f);
+        output.tintAndAlpha = float4(0.0f, 0.0f, 0.0f, 0.0f);
+        output.subUVParams = float4(0.0f, 1.0f, 1.0f, 0.0f);
 		return output;
 	}
 
@@ -93,9 +100,11 @@ PS_INPUT mainVS(VS_INPUT input)
 		+ input.position.y * RightAxis
 		+ input.position.z * UpAxis;
 
-	output.position = mul(float4(VertexWorld, 1.0f), VP);
-	output.uv = input.uv;
-	output.tintAndAlpha = p.Color;
+    output.position = mul(float4(VertexWorld, 1.0f), VP);
+    output.worldPosition = VertexWorld;
+    output.worldNormal = normalize(CameraFacing.xyz);
+    output.uv = input.uv;
+    output.tintAndAlpha = p.Color;
 	float Frame = (AtlasParams.w > 0.5f) ? p.SubImageIndex : 0.0f;
 	output.subUVParams = float4(Frame, AtlasParams.x, AtlasParams.y, AtlasParams.z);
 	return output;
@@ -129,7 +138,8 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
 	color.rgb *= tintRGB;
 	color.a *= input.tintAndAlpha.a;
 #ifdef MATERIAL_GRAPH
-	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(cellUV);
+	float3 CameraWorldPosition = mul(float4(0.0f, 0.0f, 0.0f, 1.0f), inverse(View)).xyz;
+	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(cellUV, input.worldPosition, normalize(CameraWorldPosition - input.worldPosition), normalize(input.worldNormal), input.tintAndAlpha, ViewTimeParams.x);
 
 #ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
 	color *= GraphOutput.BaseColor;
