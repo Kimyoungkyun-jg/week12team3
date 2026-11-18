@@ -82,6 +82,77 @@ void CSInjectSpawns(uint3 DTid : SV_DispatchThreadID)
 	ParticleBuffer[Slot] = SpawnBuffer[DTid.x];
 }
 
+float3 PixelToWorld(int2 Pixel, float DeviceZ)
+{
+    float2 UV = (Pixel + 0.5f) / ScreenAndClip.xy;
+    float2 NDC = float2(UV.x * 2 - 1, 1 - UV.y * 2);
+    float4 H = mul(float4(NDC, DeviceZ, 1), InvViewProj);
+	
+    return H / H.w;
+}
+
+float3 Bounce(float3 V, float3 N)
+{
+    float VdotN = dot(V, N);
+    if (VdotN >= 0)
+        return V;
+	
+    float3 PN = N * (-VdotN);
+    V += PN; // 벽방향 성분 제거
+    V *= (1 - CollisionFriction);
+    V += PN * CollisionRestitution;
+    return V;
+}
+
+int DepthCollision(float3 Position, out float3 Normal, out float3 A)
+{
+    Normal = float3(0, 0, 1);
+    A = Position;
+
+    // 좌표 변환 
+    float4 Clip = mul(float4(Position, 1), ViewProj);
+    if (Clip.w <= 0)
+        return 0;
+
+    float2 NDC = Clip.xy / Clip.w;
+    float U = (NDC.x + 1) * 0.5f;
+    float V = (1 - NDC.y) * 0.5f;
+    if (U < 0 || U >= 1 || V < 0 || V >= 1)
+        return 0;
+
+    int2 Pixel = int2(float2(U, V) * ScreenAndClip.xy);
+    Pixel = min(Pixel, int2(ScreenAndClip.xy) - 2);
+    float Depth = SceneDepth.Load(int3(Pixel, 0));
+    if (Depth >= 1)
+        return 0;
+
+    // 깊이를 선형 거리로 바꿔 Thickness 과 비교 
+    float4 H = mul(float4(NDC, Depth, 1), InvViewProj);
+    float WallDir = 1 / H.w;
+    float ParticleDir = Clip.w;
+    float Penetration = ParticleDir - WallDir;
+    if (Penetration < -CollisionRadius || Penetration > DepthThickness)
+        return 1;
+
+    // 이웃픽셸로 노멀 복원 
+    float DepthR = SceneDepth.Load(int3(Pixel + int2(1, 0), 0));
+    float DepthD = SceneDepth.Load(int3(Pixel + int2(0, 1), 0));
+    if (DepthR >= 1 || DepthD >= 1)
+        return 2;
+    
+    A = PixelToWorld(Pixel, Depth);
+    float3 B = PixelToWorld(Pixel + int2(1, 0), DepthR);
+    float3 C = PixelToWorld(Pixel + int2(0, 1), DepthD);
+    if (length(C - A) > DepthThickness || length(B - A) > DepthThickness)
+        return 3;
+
+    // 4단계: 물체 경계가 아니다 → 노멀 확정
+    Normal = normalize(cross(C - A, B - A));
+    float3 CamPoint = PixelToWorld(Pixel, 0);
+    Normal = (dot(Normal, CamPoint - A) < 0.0f ? -Normal : Normal);
+    return 4;
+}
+
 // 분포 모드에 따라 상수 또는 전역 아틀라스에서 값을 평가한다
 float4 EvaluateDistribution(FGpuDistributionDesc Desc, float T)
 {
@@ -89,28 +160,6 @@ float4 EvaluateDistribution(FGpuDistributionDesc Desc, float T)
 		return Desc.ValueScale;
 	float2 UV = float2(Desc.AtlasUVAndMode.x + saturate(T) * Desc.AtlasUVAndMode.y, Desc.AtlasUVAndMode.z);
 	return CurveAtlas.SampleLevel(CurveSampler, UV, 0) * Desc.ValueScale + Desc.ValueBias;
-}
-
-bool ReconstructSceneWorldPos(int2 Pixel, int2 MaxPixel, out float3 OutWorldPos, out float OutViewDepth)
-{
-	OutWorldPos = float3(0.0f, 0.0f, 0.0f);
-	OutViewDepth = 0.0f;
-	if (Pixel.x < 0 || Pixel.y < 0 || Pixel.x > MaxPixel.x || Pixel.y > MaxPixel.y)
-		return false;
-
-	float D = SceneDepth.Load(int3(Pixel, 0));
-	if (D >= 1.0f)
-		return false;
-
-	float2 PixelUV = (float2(Pixel) + 0.5f) / ScreenAndClip.xy;
-	float2 PixelNDC = float2(PixelUV.x * 2.0f - 1.0f, 1.0f - PixelUV.y * 2.0f);
-	float4 H = mul(float4(PixelNDC, D, 1.0f), InvViewProj);
-	if (abs(H.w) < 1e-6f)
-		return false;
-
-	OutWorldPos = H.xyz / H.w;
-	OutViewDepth = 1.0f / H.w;
-	return true;
 }
 
 [numthreads(256, 1, 1)]
@@ -166,97 +215,32 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		p.MeshRotation = normalize(NextQ);
 	}
 
-	if (HasCollision != 0 && p.CollisionCount < CollisionMaxCount)
-	{
-		float4 Clip = mul(float4(p.Position, 1.0f), ViewProj);
-		if (Clip.w > 0.0f && ScreenAndClip.x > 0.0f && ScreenAndClip.y > 0.0f)
-		{
-			float2 NDC = Clip.xy / Clip.w;
-			float U = (NDC.x + 1.0f) * 0.5f;
-			float V = (1.0f - NDC.y) * 0.5f;
-			if (U >= 0.0f && U < 1.0f && V >= 0.0f && V < 1.0f)
-			{
-				int2 MaxPixel = int2(ScreenAndClip.xy) - int2(1, 1);
-				int2 Pixel = clamp(int2(float2(U, V) * ScreenAndClip.xy), int2(0, 0), MaxPixel);
+    int Stage = 0;
+    bool bHit = false;
+    float3 Normal = float3(0, 0, 1);
+    float3 A = p.Position;
+	
+    if (HasCollision != 0 && p.CollisionCount < CollisionMaxCount)
+    {
+        Stage = DepthCollision(p.Position, Normal, A);
+        bHit = (Stage == 4);
+    }
 
-				float3 HWorld = float3(0.0f, 0.0f, 0.0f);
-				float WallDir = 0.0f;
-				if (ReconstructSceneWorldPos(Pixel, MaxPixel, HWorld, WallDir))
-				{
-					float ParticleDir = Clip.w;
-					float Penetration = ParticleDir - WallDir;
-					if (Penetration >= -CollisionRadius && Penetration <= DepthThickness)
-					{
-						float4 NearWH = mul(float4(NDC, 0.0f, 1.0f), InvViewProj);
-						float3 CamRay = abs(NearWH.w) > 1e-6f ? (HWorld - NearWH.xyz / NearWH.w) : p.Velocity;
+    if (bHit)
+    {
+        float d = dot(p.Position - A, Normal); // 표면->노멀방향 거리
+        if (d < CollisionRadius)
+            p.Position += Normal * (CollisionRadius - d); // 밀어내기
 
-						float3 HitNormal = length(p.Velocity) > 1e-5f ? -normalize(p.Velocity) : -normalize(CamRay);
-						float3 PosR, PosL, PosD, PosU;
-						float DepthUnused;
-						bool bHasR = ReconstructSceneWorldPos(Pixel + int2(1, 0), MaxPixel, PosR, DepthUnused);
-						bool bHasL = ReconstructSceneWorldPos(Pixel - int2(1, 0), MaxPixel, PosL, DepthUnused);
-						bool bHasD = ReconstructSceneWorldPos(Pixel + int2(0, 1), MaxPixel, PosD, DepthUnused);
-						bool bHasU = ReconstructSceneWorldPos(Pixel - int2(0, 1), MaxPixel, PosU, DepthUnused);
-
-						float3 dX = float3(0.0f, 0.0f, 0.0f);
-						if (bHasR && bHasL)
-						{
-							float3 DiffR = PosR - HWorld;
-							float3 DiffL = HWorld - PosL;
-							dX = dot(DiffR, DiffR) <= dot(DiffL, DiffL) ? DiffR : DiffL;
-						}
-						else if (bHasR)
-						{
-							dX = PosR - HWorld;
-						}
-						else if (bHasL)
-						{
-							dX = HWorld - PosL;
-						}
-
-						float3 dY = float3(0.0f, 0.0f, 0.0f);
-						if (bHasD && bHasU)
-						{
-							float3 DiffD = PosD - HWorld;
-							float3 DiffU = HWorld - PosU;
-							dY = dot(DiffD, DiffD) <= dot(DiffU, DiffU) ? DiffD : DiffU;
-						}
-						else if (bHasD)
-						{
-							dY = PosD - HWorld;
-						}
-						else if (bHasU)
-						{
-							dY = HWorld - PosU;
-						}
-
-						float3 SurfaceCross = cross(dX, dY);
-						float CrossLenSq = dot(SurfaceCross, SurfaceCross);
-						if (CrossLenSq > 1e-10f)
-						{
-							HitNormal = SurfaceCross * rsqrt(CrossLenSq);
-							if (dot(HitNormal, CamRay) > 0.0f)
-								HitNormal = -HitNormal;
-						}
-
-						float VDotN = dot(p.Velocity, HitNormal);
-						if (VDotN < 0.0f)
-						{
-							p.Position = HWorld + HitNormal * (CollisionRadius + 0.002f);
-
-							float3 ProjectedNormal = HitNormal * (-VDotN);
-							float3 Vt = p.Velocity + ProjectedNormal;
-							Vt *= (1.0f - CollisionFriction);
-							Vt += ProjectedNormal * CollisionRestitution;
-							p.Velocity = Vt;
-							p.AngularVelocity *= (1.0f - CollisionFriction);
-							p.CollisionCount += 1;
-						}
-					}
-				}
-			}
-		}
-	}
+        if (dot(p.Velocity, Normal) < 0)
+        {
+            p.CollisionCount += 1;
+            p.AngularVelocity *= (1.0f - CollisionFriction); // 메시 파티클 회전도 마찰로 감쇠
+        }
+		
+        p.Velocity = Bounce(p.Velocity, Normal);
+        p.BaseVelocity = Bounce(p.BaseVelocity, Normal);
+    }
 
 	if (SizeScale.AtlasUVAndMode.w > 0.5f)
 	{
@@ -290,6 +274,9 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		}
 		p.SubImageIndex = floor(clamp(RawIndex, 0.0f, TotalFrames - 1.0f));
 	}
+
+    if (p.CollisionCount > 0)
+        p.Color.rgb = float3(1.0f, 0.2f, 0.2f);
 
 	ParticleBuffer[Idx] = p;
 }
