@@ -215,6 +215,20 @@ ASwordCharacter::ASwordCharacter()
 	SwordRibbonComponent->bPreviewInEditor = false;
 	SwordRibbonComponent->SetVisibility(false);
 	SwordRibbonComponent->Deactivate();
+	for (const auto& Effect : { std::pair{ "SwordWaveComponent", "Assets/Particles/BlueSwordWave.particle" },
+		std::pair{ "BeamParticleComponent", "Assets/Particles/anit2beam.particle" } })
+	{
+		UParticleSystemComponent* Component = CreateDefaultSubobject<UParticleSystemComponent>(Effect.first);
+		Component->SetupAttachment(MeshComponent);
+		if (UParticleSystem* Template = UParticleSystem::LoadFromFile(Effect.second, Component))
+		{
+			Component->TemplatePath = Effect.second;
+			Component->SetTemplate(Template);
+		}
+		Component->bPreviewInEditor = false;
+		Component->SetVisibility(false);
+		Component->Deactivate();
+	}
 
 	USpringArmComponent* SpringArm = GetSpringArmComponent();
 	SpringArm->TargetArmLength = 3.0f;

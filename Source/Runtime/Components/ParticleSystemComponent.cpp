@@ -1307,10 +1307,19 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 		for (int32 Index = 0; Index < ToSpawn; ++Index)
 		{
 			FBaseParticle Base;
-			Base.Location = Required->bUseLocalSpace ? FVector::ZeroVector : Origin;
+			const FVector BaseOrigin = Required->bUseLocalSpace ? FVector::ZeroVector : Origin;
+			Base.Location = BaseOrigin;
 			Random.InstanceParams = InstanceParameters;
 			for (const UParticleModule* Module : CurrentLODLevel->SpawnModules)
 				if (Module) Module->Spawn(Base, Random);
+			if (!Required->bUseLocalSpace)
+			{
+				// 월드 스페이스 스폰 시 로컬 오프셋과 속도를 컴포넌트 회전으로 변환
+				const FVector LocalOffset = Base.Location - BaseOrigin;
+				Base.Location = BaseOrigin + Context.ComponentToWorld.TransformVector(LocalOffset);
+				Base.Velocity = Context.ComponentToWorld.TransformVector(Base.Velocity);
+				Base.BaseVelocity = Base.Velocity;
+			}
 			FGpuParticle GpuP;
 			GpuP.Position = Base.Location;
 			GpuP.RelativeTime = 0.0f;
@@ -1374,9 +1383,20 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 				? EffectiveOrigin
 				: (Required->bUseLocalSpace ? FVector::ZeroVector : EffectiveOrigin);
 		}
+		const FVector SpawnBaseLocation = Particle.Location;
 		Random.InstanceParams = InstanceParameters;
 		for (const UParticleModule* Module : CurrentLODLevel->SpawnModules)
 			if (Module) Module->Spawn(Particle, Random);
+		if (!Required->bUseLocalSpace && !bUseRibbonParams)
+		{
+			// 월드 스페이스 스폰 시 로컬 오프셋과 속도를 컴포넌트 회전으로 변환
+			const FVector LocalOffset = Particle.Location - SpawnBaseLocation;
+			Particle.Location = SpawnBaseLocation + Context.ComponentToWorld.TransformVector(LocalOffset);
+			Particle.Velocity = Context.ComponentToWorld.TransformVector(Particle.Velocity);
+			Particle.BaseVelocity = Particle.Velocity;
+			if (EmitterType == EParticleEmitterType::Mesh)
+				Particle.Rotation += std::atan2(Context.ComponentToWorld.M[0][1], Context.ComponentToWorld.M[0][0]);
+		}
 		Particle.BaseAlpha = Particle.Color.A;
 		Particle.Lifetime = std::max(Particle.Lifetime, 0.001f);
 		if (bIsAfterimage)

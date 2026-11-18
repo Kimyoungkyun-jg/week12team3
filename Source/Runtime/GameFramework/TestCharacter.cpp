@@ -88,6 +88,16 @@ ATestCharacter::ATestCharacter()
 	DashRibbonComponent->bPreviewInEditor = false;
 	DashRibbonComponent->SetVisibility(false);
 	DashRibbonComponent->Deactivate();
+	UParticleSystemComponent* DashAfterimageComponent = CreateDefaultSubobject<UParticleSystemComponent>("DashAfterimageComponent");
+	DashAfterimageComponent->SetupAttachment(SkeletalMeshComponent);
+	if (UParticleSystem* Template = UParticleSystem::LoadFromFile("Assets/Particles/DashAfterimage.particle", DashAfterimageComponent))
+	{
+		DashAfterimageComponent->TemplatePath = "Assets/Particles/DashAfterimage.particle";
+		DashAfterimageComponent->SetTemplate(Template);
+	}
+	DashAfterimageComponent->bPreviewInEditor = false;
+	DashAfterimageComponent->SetVisibility(false);
+	DashAfterimageComponent->Deactivate();
 	UScriptComponent* TuningScript = CreateDefaultSubobject<UScriptComponent>("CameraTuningScript");
 	TuningScript->SetScriptPath("Assets/Scripts/TestCharacterTuning.lua");
 }

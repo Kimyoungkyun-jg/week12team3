@@ -1,117 +1,91 @@
 {
-  "BlendInTime": 0.08,
-  "BlendOutTime": 0.15,
+  "BlendInTime": 0.07999999821186066,
+  "BlendOutTime": 0.15000000596046448,
   "Loop": false,
   "Notifies": [
     {
       "ClassName": "UAnimNotifyState_ParticleEffect",
-      "Duration": 0.12,
+      "Duration": 0.11999999731779099,
       "Name": "SwordWave_1",
       "Properties": {
-        "BaseParameterName": "RibbonBase",
-        "BoneName": "spine_02",
+        "BaseParameterName": "",
+        "BoneName": "",
         "BoneOffset": [
           0.0,
           0.0,
           0.0
         ],
-        "ComponentName": "SwordWaveComponent_1",
         "FadeOutDuration": 0.0,
         "ParticlePath": "Assets/Particles/BlueSwordWave.particle",
         "SecondBoneName": "",
-        "TipParameterName": "RibbonTip",
+        "TipParameterName": "",
         "bFollowBoneRotation": false,
         "bLoopDuringState": false
       },
-      "Time": 0.3
+      "Time": 0.22135433554649353
     },
     {
       "ClassName": "UAnimNotifyState_ParticleEffect",
-      "Duration": 0.12,
+      "Duration": 0.11999999731779099,
       "Name": "SwordWave_2",
       "Properties": {
-        "BaseParameterName": "RibbonBase",
-        "BoneName": "spine_02",
+        "BaseParameterName": "",
+        "BoneName": "",
         "BoneOffset": [
           0.0,
           0.0,
           0.0
         ],
-        "ComponentName": "SwordWaveComponent_2",
         "FadeOutDuration": 0.0,
         "ParticlePath": "Assets/Particles/BlueSwordWave.particle",
         "SecondBoneName": "",
-        "TipParameterName": "RibbonTip",
+        "TipParameterName": "",
         "bFollowBoneRotation": false,
         "bLoopDuringState": false
       },
-      "Time": 1.04
+      "Time": 0.9410820603370667
     },
     {
       "ClassName": "UAnimNotifyState_ParticleEffect",
-      "Duration": 0.12,
-      "Name": "SwordWave_3",
-      "Properties": {
-        "BaseParameterName": "RibbonBase",
-        "BoneName": "spine_02",
-        "BoneOffset": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "ComponentName": "SwordWaveComponent_3",
-        "FadeOutDuration": 0.0,
-        "ParticlePath": "Assets/Particles/BlueSwordWave.particle",
-        "SecondBoneName": "",
-        "TipParameterName": "RibbonTip",
-        "bFollowBoneRotation": false,
-        "bLoopDuringState": false
-      },
-      "Time": 1.4
-    },
-    {
-      "ClassName": "UAnimNotifyState_ParticleEffect",
-      "Duration": 0.12,
+      "Duration": 0.11999999731779099,
       "Name": "SwordWave_4",
       "Properties": {
-        "BaseParameterName": "RibbonBase",
-        "BoneName": "spine_02",
+        "BaseParameterName": "",
+        "BoneName": "",
         "BoneOffset": [
           0.0,
           0.0,
           0.0
         ],
-        "ComponentName": "SwordWaveComponent_4",
         "FadeOutDuration": 0.0,
         "ParticlePath": "Assets/Particles/BlueSwordWave.particle",
         "SecondBoneName": "",
-        "TipParameterName": "RibbonTip",
+        "TipParameterName": "",
         "bFollowBoneRotation": false,
         "bLoopDuringState": false
       },
-      "Time": 2.68
+      "Time": 1.7469985485076904
     },
     {
       "ClassName": "UAnimNotifyState_ParticleEffect",
-      "Duration": 0.12,
+      "Duration": 0.11999999731779099,
       "Name": "SwordWave_5",
       "Properties": {
-        "BaseParameterName": "RibbonBase",
-        "BoneName": "spine_02",
+        "BaseParameterName": "",
+        "BoneName": "",
         "BoneOffset": [
           0.0,
           0.0,
           0.0
         ],
-        "ComponentName": "SwordWaveComponent_5",
         "FadeOutDuration": 0.0,
         "ParticlePath": "Assets/Particles/BlueSwordWave.particle",
         "SecondBoneName": "",
-        "TipParameterName": "RibbonTip",
+        "TipParameterName": "",
         "bFollowBoneRotation": false,
         "bLoopDuringState": false
       },
-      "Time": 3.18
+      "Time": 2.1130869388580322
     }
   ],
   "PlayRate": 1.0,

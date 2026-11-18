@@ -15,7 +15,6 @@
           0.0,
           0.0
         ],
-        "ComponentName": "DashAfterimageComponent",
         "FadeOutDuration": 0.4,
         "ParticlePath": "Assets/Particles/DashAfterimage.particle",
         "SecondBoneName": "",

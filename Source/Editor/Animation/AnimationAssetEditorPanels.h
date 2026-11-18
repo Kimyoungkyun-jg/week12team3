@@ -6,6 +6,7 @@
 #include <functional>
 
 class UEditorEngine;
+class UClass;
 
 class FAnimationAssetEditorPanel : public IEditorPanel
 {
@@ -36,6 +37,8 @@ private:
 	void DrawSelectedDetails();
 	void DrawAssetBrowser();
 	void DrawTransport();
+	void AddNotify(UClass* Class, float Time, bool bState);
+	void DrawNotifyAddMenu(float Time);
 	bool IsCompatibleSequence(const FString& Path) const;
 	float SequenceLength() const;
 	FString SkeletonPath() const;
@@ -57,6 +60,12 @@ private:
 	int SelectedSection = -1;
 	int SelectedNotify = -1;
 	int DraggedMarker = -1;
+	enum class ENotifyDragMode { Move, ResizeStart, ResizeEnd };
+	ENotifyDragMode NotifyDragMode = ENotifyDragMode::Move;
+	float NotifyDragGrabOffset = 0.0f;
+	float NotifyDragFixedEnd = 0.0f;
+	float NotifyPopupTime = 0.0f;
+	int NotifyPopupTarget = -1;
 	float DragSegmentAnchorOffset = 0.0f;
 	char Search[128]{};
 	bool bPlaying = true;

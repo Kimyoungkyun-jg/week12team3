@@ -1290,9 +1290,9 @@
                                                                 "Value": {
                                                                     "Properties": {
                                                                         "Constant": {
-                                                                            "X": 6.0,
-                                                                            "Y": 6.0,
-                                                                            "Z": 6.0
+                                                                            "X": 3.0,
+                                                                            "Y": 3.0,
+                                                                            "Z": 3.0
                                                                         }
                                                                     }
                                                                 }
@@ -1448,7 +1448,7 @@
                                                         "Distance": 500.0,
                                                         "LODSlotId": 0,
                                                         "MaxBeamCount": 1,
-                                                        "Segments": 160,
+                                                        "Segments": 64,
                                                         "Sheets": 1,
                                                         "Speed": 2500.0,
                                                         "TaperFactor": {
@@ -1467,14 +1467,14 @@
                                                                     "Curve": {
                                                                         "Class": "UCurveFloat",
                                                                         "Value": {
-                                                                            "CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.11999999731779099\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.009999999776482582,\n      \"Value\": 0.550000011920929\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.02500000037252903,\n      \"Value\": 0.8999999761581421\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.04500000178813934,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.8999999761581421,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 6,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.8500000238418579\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                            "CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.05\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.1,\n      \"Value\": 0.25\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.25,\n      \"Value\": 0.65\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.45,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.15\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
                                                                         }
                                                                     }
                                                                 }
                                                             }
                                                         },
                                                         "TextureTile": 1.5,
-                                                        "TextureTileDistance": 10.0,
+                                                        "TextureTileDistance": 0.0,
                                                         "bEnabled": true
                                                     }
                                                 }
@@ -1529,9 +1529,9 @@
                                                                 "Value": {
                                                                     "Properties": {
                                                                         "Constant": {
-                                                                            "X": 14.0,
-                                                                            "Y": 14.0,
-                                                                            "Z": 14.0
+                                                                            "X": 6.5,
+                                                                            "Y": 6.5,
+                                                                            "Z": 6.5
                                                                         }
                                                                     }
                                                                 }
@@ -1687,7 +1687,7 @@
                                                         "Distance": 500.0,
                                                         "LODSlotId": 0,
                                                         "MaxBeamCount": 1,
-                                                        "Segments": 160,
+                                                        "Segments": 64,
                                                         "Sheets": 1,
                                                         "Speed": 2500.0,
                                                         "TaperFactor": {
@@ -1706,14 +1706,14 @@
                                                                     "Curve": {
                                                                         "Class": "UCurveFloat",
                                                                         "Value": {
-                                                                            "CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.11999999731779099\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.009999999776482582,\n      \"Value\": 0.550000011920929\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.02500000037252903,\n      \"Value\": 0.8999999761581421\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.04500000178813934,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.8999999761581421,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 6,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.8500000238418579\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                            "CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.05\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.1,\n      \"Value\": 0.25\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.25,\n      \"Value\": 0.65\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.45,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.15\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
                                                                         }
                                                                     }
                                                                 }
                                                             }
                                                         },
                                                         "TextureTile": 2.5,
-                                                        "TextureTileDistance": 10.0,
+                                                        "TextureTileDistance": 0.0,
                                                         "bEnabled": true
                                                     }
                                                 }
@@ -1768,9 +1768,9 @@
                                                                 "Value": {
                                                                     "Properties": {
                                                                         "Constant": {
-                                                                            "X": 9.5,
-                                                                            "Y": 9.5,
-                                                                            "Z": 9.5
+                                                                            "X": 4.5,
+                                                                            "Y": 4.5,
+                                                                            "Z": 4.5
                                                                         }
                                                                     }
                                                                 }
@@ -1913,7 +1913,7 @@
                                                         "Distance": 500.0,
                                                         "LODSlotId": 0,
                                                         "MaxBeamCount": 1,
-                                                        "Segments": 160,
+                                                        "Segments": 64,
                                                         "Sheets": 1,
                                                         "Speed": 2500.0,
                                                         "TaperFactor": {
@@ -1932,14 +1932,14 @@
                                                                     "Curve": {
                                                                         "Class": "UCurveFloat",
                                                                         "Value": {
-                                                                            "CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.11999999731779099\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.009999999776482582,\n      \"Value\": 0.550000011920929\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.02500000037252903,\n      \"Value\": 0.8999999761581421\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.04500000178813934,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.8999999761581421,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 6,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.8500000238418579\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+                                                                            "CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.05\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.1,\n      \"Value\": 0.25\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.25,\n      \"Value\": 0.65\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 4,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.45,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 5,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.15\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
                                                                         }
                                                                     }
                                                                 }
                                                             }
                                                         },
                                                         "TextureTile": 2.0,
-                                                        "TextureTileDistance": 10.0,
+                                                        "TextureTileDistance": 0.0,
                                                         "bEnabled": true
                                                     }
                                                 }

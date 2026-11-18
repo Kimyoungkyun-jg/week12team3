@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "Editor/Animation/AnimationAssetEditorPanels.h"
 #include "Editor/Animation/AnimationEditorSplitter.h"
+#include "Editor/Animation/AnimNotifyEditorUtils.h"
 #include "Editor/EditorUI/EditorUIScale.h"
 #include "Asset/AssetManager.h"
 #include "Asset/AnimSequence.h"
@@ -9,6 +10,7 @@
 #include "Animation/Skeleton.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Render/SkeletalMesh.h"
+#include <json.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -92,6 +94,9 @@ void FAnimationAssetEditorPanel::NewAsset(const FString& InPath)
 	Montage = {};
 	AimOffset = {};
 	SelectedSample = SelectedSegment = SelectedSection = SelectedNotify = DraggedMarker = -1;
+	NotifyPopupTarget = -1;
+	NotifyPopupTime = NotifyDragGrabOffset = NotifyDragFixedEnd = 0.0f;
+	NotifyDragMode = ENotifyDragMode::Move;
 	PreviewTime = PreviewPitch = 0.0f;
 	bPlaying = true;
 	bDirty = true;
@@ -158,6 +163,45 @@ void FAnimationAssetEditorPanel::Save()
 	bDirty = false;
 	Status = "Saved " + Path;
 	if (OnSaved) OnSaved();
+}
+
+void FAnimationAssetEditorPanel::AddNotify(UClass* Class, float Time, bool bState)
+{
+	if (!Class || SequenceLength() <= 0.0f) return;
+	FAnimMontageNotify Notify;
+	Notify.Name = AnimNotifyEditorUtils::GetDisplayName(Class);
+	Notify.Time = std::clamp(Time, 0.0f, SequenceLength());
+	Notify.ClassName = Class->Name;
+	if (bState)
+	{
+		const float MinDuration = std::min(UAnimSequence::GetMinNotifyStateDuration(), SequenceLength());
+		Notify.Time = std::min(Notify.Time, SequenceLength() - MinDuration);
+		Notify.Duration = std::min(0.3f, SequenceLength() - Notify.Time);
+	}
+	Montage.Notifies.push_back(std::move(Notify));
+	SelectedNotify = static_cast<int>(Montage.Notifies.size()) - 1;
+	SelectedSection = SelectedSegment = -1;
+	bDirty = true;
+}
+
+void FAnimationAssetEditorPanel::DrawNotifyAddMenu(float Time)
+{
+	if (ImGui::BeginMenu("Add Notify"))
+	{
+		TArray<UClass*> Classes;
+		AnimNotifyEditorUtils::GetClasses(UAnimNotify::StaticClass(), Classes);
+		for (UClass* Class : Classes)
+			if (ImGui::MenuItem(AnimNotifyEditorUtils::GetDisplayName(Class).c_str())) AddNotify(Class, Time, false);
+		ImGui::EndMenu();
+	}
+	if (ImGui::BeginMenu("Add Notify State"))
+	{
+		TArray<UClass*> Classes;
+		AnimNotifyEditorUtils::GetClasses(UAnimNotifyState::StaticClass(), Classes);
+		for (UClass* Class : Classes)
+			if (ImGui::MenuItem(AnimNotifyEditorUtils::GetDisplayName(Class).c_str())) AddNotify(Class, Time, true);
+		ImGui::EndMenu();
+	}
 }
 
 void FAnimationAssetEditorPanel::StartPreview()
@@ -364,10 +408,11 @@ void FAnimationAssetEditorPanel::DrawAssetDetails()
 			Montage.Sections.push_back({ "Section", std::min(PreviewTime, End - 0.001f), End, "" });
 			SelectedSection = static_cast<int>(Montage.Sections.size()) - 1; SelectedNotify = SelectedSegment = -1; bDirty = true;
 		}
-		if (ImGui::Button("Add Notify"))
+		if (ImGui::Button("Add Notify...")) ImGui::OpenPopup("AddMontageNotify");
+		if (ImGui::BeginPopup("AddMontageNotify"))
 		{
-			Montage.Notifies.push_back({ "Notify", PreviewTime });
-			SelectedNotify = static_cast<int>(Montage.Notifies.size()) - 1; SelectedSection = SelectedSegment = -1; bDirty = true;
+			DrawNotifyAddMenu(PreviewTime);
+			ImGui::EndPopup();
 		}
 		ImGui::EndDisabled();
 		for (int I = 0; I < static_cast<int>(Montage.Sections.size()); ++I)
@@ -489,6 +534,8 @@ void FAnimationAssetEditorPanel::DrawGraph()
 	const auto XAt = [&](float Time) { return Min.x + std::clamp(Time / Length, 0.0f, 1.0f) * Width; };
 	const auto TimeAt = [&](float X) { return std::clamp((X - Min.x) / Width * Length, 0.0f, Length); };
 	const float Row = (Max.y - Min.y) / 3.0f;
+	const float NotifyRowTop = Min.y + Row * 2.0f;
+	const float StateLaneTop = NotifyRowTop + Row * 0.45f;
 	const char* Labels[] = { "Sections", "Sequence", "Notifies" };
 	for (int I = 0; I < 3; ++I)
 	{
@@ -497,6 +544,7 @@ void FAnimationAssetEditorPanel::DrawGraph()
 			I == 1 ? IM_COL32(43, 61, 48, 255) : IM_COL32(37, 39, 45, 255));
 		Draw->AddText({ Origin.x + 4.0f, Y + 6.0f }, IM_COL32_WHITE, Labels[I]);
 	}
+	Draw->AddLine({ Min.x, StateLaneTop }, { Max.x, StateLaneTop }, IM_COL32(68, 72, 80, 255));
 	for (int I = 0; I <= 10; ++I)
 	{
 		const float X = Min.x + Width * I / 10.0f;
@@ -530,19 +578,48 @@ void FAnimationAssetEditorPanel::DrawGraph()
 	{
 		const FAnimMontageNotify& Notify = Montage.Notifies[I];
 		const float X = XAt(Notify.Time);
-		const float Y = Min.y + Row * 2.5f;
+		const float Y = NotifyRowTop + (StateLaneTop - NotifyRowTop) * 0.5f;
 		if (Notify.Duration > 0.0f)
 		{
-			const ImVec2 A(X, Min.y + Row * 2.0f + 4.0f);
+			const ImVec2 A(X, StateLaneTop + 3.0f);
 			const ImVec2 B(std::max(X + 6.0f, XAt(Notify.Time + Notify.Duration)), Min.y + Row * 3.0f - 5.0f);
 			Draw->AddRectFilled(A, B, I == SelectedNotify ? IM_COL32(160, 110, 45, 190) : IM_COL32(120, 82, 36, 170), 3.0f);
 			Draw->AddRect(A, B, I == SelectedNotify ? IM_COL32(255, 218, 100, 255) : IM_COL32(231, 169, 72, 220), 3.0f);
+			Draw->PushClipRect(A, B, true);
+			Draw->AddText({ A.x + 4.0f, A.y + 3.0f }, IM_COL32_WHITE, Notify.Name.c_str());
+			Draw->PopClipRect();
+			continue;
 		}
 		Draw->AddQuadFilled({ X, Y - 7.0f }, { X + 7.0f, Y }, { X, Y + 7.0f }, { X - 7.0f, Y },
 			I == SelectedNotify ? IM_COL32(255, 218, 100, 255) : IM_COL32(231, 169, 72, 255));
 		Draw->AddText({ X + 9.0f, Y - 7.0f }, IM_COL32_WHITE, Notify.Name.c_str());
 	}
 	Draw->AddLine({ XAt(PreviewTime), Min.y - 9.0f }, { XAt(PreviewTime), Max.y }, IM_COL32(255, 95, 82, 255), 2.0f);
+	int NotifyHit = -1;
+	ENotifyDragMode HitMode = ENotifyDragMode::Move;
+	if (Hovered && Mouse.y >= NotifyRowTop && Mouse.y <= Max.y)
+	{
+		const float EdgeZone = EditorUIScale::Px(5.0f);
+		for (int I = 0; I < static_cast<int>(Montage.Notifies.size()); ++I)
+		{
+			const FAnimMontageNotify& Notify = Montage.Notifies[I];
+			const float X0 = XAt(Notify.Time);
+			if (Notify.Duration > 0.0f)
+			{
+				if (Mouse.y < StateLaneTop) continue;
+				const float X1 = std::max(X0 + 6.0f, XAt(Notify.Time + Notify.Duration));
+				if (Mouse.x < X0 - EdgeZone || Mouse.x > X1 + EdgeZone) continue;
+				NotifyHit = I;
+				HitMode = Mouse.x <= X0 + EdgeZone ? ENotifyDragMode::ResizeStart
+					: (Mouse.x >= X1 - EdgeZone ? ENotifyDragMode::ResizeEnd : ENotifyDragMode::Move);
+			}
+			else if (Mouse.y < StateLaneTop && std::abs(Mouse.x - X0) <= EditorUIScale::Px(7.0f))
+			{
+				NotifyHit = I;
+				HitMode = ENotifyDragMode::Move;
+			}
+		}
+	}
 	if (Hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 	{
 		DraggedMarker = -1;
@@ -575,11 +652,24 @@ void FAnimationAssetEditorPanel::DrawGraph()
 		}
 		else
 		{
-			for (int I = 0; I < static_cast<int>(Montage.Notifies.size()); ++I)
-				if (std::abs(Mouse.x - XAt(Montage.Notifies[I].Time)) < 10.0f)
-				{ DraggedMarker = 1000 + I; SelectedNotify = I; SelectedSection = SelectedSegment = -1; break; }
+			SelectedNotify = NotifyHit;
+			if (NotifyHit >= 0)
+			{
+				DraggedMarker = 1000 + NotifyHit;
+				SelectedSection = SelectedSegment = -1;
+				NotifyDragMode = HitMode;
+				NotifyDragGrabOffset = TimeAt(Mouse.x) - Montage.Notifies[NotifyHit].Time;
+				NotifyDragFixedEnd = Montage.Notifies[NotifyHit].Time + Montage.Notifies[NotifyHit].Duration;
+			}
 		}
 		if (DraggedMarker < 0) { PreviewTime = TimeAt(Mouse.x); bPlaying = false; }
+	}
+	if (Hovered && Mouse.y >= NotifyRowTop && Mouse.y <= Max.y && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+	{
+		NotifyPopupTime = TimeAt(Mouse.x);
+		NotifyPopupTarget = NotifyHit;
+		if (NotifyHit >= 0) { SelectedNotify = NotifyHit; SelectedSection = SelectedSegment = -1; }
+		ImGui::OpenPopup("MontageNotifyContext");
 	}
 	if (Active && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
 	{
@@ -604,7 +694,51 @@ void FAnimationAssetEditorPanel::DrawGraph()
 			}
 		}
 		else if (DraggedMarker >= 1000 && static_cast<size_t>(DraggedMarker - 1000) < Montage.Notifies.size())
-		{ Montage.Notifies[DraggedMarker - 1000].Time = TimeAt(Mouse.x); bDirty = true; }
+		{
+			FAnimMontageNotify& Notify = Montage.Notifies[DraggedMarker - 1000];
+			float Time = TimeAt(Mouse.x);
+			if (!ImGui::GetIO().KeyAlt)
+			{
+				const FAnimMontageSegment* Segment = nullptr;
+				for (const FAnimMontageSegment& Candidate : Montage.Segments)
+					if (Notify.Time >= Candidate.StartTime && Notify.Time <= Candidate.EndTime) { Segment = &Candidate; break; }
+				UAnimSequence* Sequence = Segment ? UAssetManager::LoadAnimSequence(Segment->SequencePath) : nullptr;
+				const float FPS = Sequence && Sequence->GetDataModel() ? Sequence->GetDataModel()->FrameRate.AsDecimal() : 0.0f;
+				if (FPS > 0.0f && Segment)
+				{
+					const float SeqRate = std::isfinite(Sequence->RateScale) && Sequence->RateScale > 0.0f ? Sequence->RateScale : 1.0f;
+					const float Rate = FPS * SeqRate * std::max(0.01f, Segment->PlayRate);
+					Time = std::clamp(Segment->StartTime +
+						(std::round((Time - Segment->StartTime) * Rate + Segment->AnimStartOffset * FPS) - Segment->AnimStartOffset * FPS) / Rate,
+						0.0f, Length);
+				}
+			}
+			float NewStart = Notify.Time;
+			float NewDuration = Notify.Duration;
+			if (Notify.Duration <= 0.0f)
+				NewStart = Time;
+			else if (NotifyDragMode == ENotifyDragMode::ResizeEnd)
+				NewDuration = Time - Notify.Time;
+			else if (NotifyDragMode == ENotifyDragMode::ResizeStart)
+			{
+				NewStart = std::min(Time, NotifyDragFixedEnd - UAnimSequence::GetMinNotifyStateDuration());
+				NewDuration = NotifyDragFixedEnd - NewStart;
+			}
+			else
+				NewStart = Time - NotifyDragGrabOffset;
+			if (Notify.Duration > 0.0f)
+			{
+				const float MinDuration = std::min(UAnimSequence::GetMinNotifyStateDuration(), Length);
+				NewDuration = std::clamp(NewDuration, MinDuration, Length);
+				NewStart = std::clamp(NewStart, 0.0f, Length - NewDuration);
+			}
+			if (Notify.Time != NewStart || Notify.Duration != NewDuration)
+			{
+				Notify.Time = NewStart;
+				Notify.Duration = NewDuration;
+				bDirty = true;
+			}
+		}
 		else if (DraggedMarker >= 0 && static_cast<size_t>(DraggedMarker / 2) < Montage.Sections.size())
 		{
 			auto& Sec = Montage.Sections[DraggedMarker / 2];
@@ -613,6 +747,18 @@ void FAnimationAssetEditorPanel::DrawGraph()
 			bDirty = true;
 		}
 		else { PreviewTime = TimeAt(Mouse.x); bPlaying = false; }
+	}
+	if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) DraggedMarker = -1;
+	if (Hovered && NotifyHit >= 0 && HitMode != ENotifyDragMode::Move)
+		ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+	if (Hovered && NotifyHit >= 0 && DraggedMarker < 1000)
+	{
+		const FAnimMontageNotify& Notify = Montage.Notifies[NotifyHit];
+		if (Notify.Duration > 0.0f)
+			ImGui::SetTooltip("%s  %.3f ~ %.3f s (%.3f s)\n%s", Notify.Name.c_str(), Notify.Time,
+				Notify.Time + Notify.Duration, Notify.Duration, Notify.ClassName.c_str());
+		else
+			ImGui::SetTooltip("%s  %.3f s\n%s", Notify.Name.c_str(), Notify.Time, Notify.ClassName.c_str());
 	}
 	if (ImGui::BeginDragDropTarget())
 	{
@@ -631,6 +777,27 @@ void FAnimationAssetEditorPanel::DrawGraph()
 			}
 		}
 		ImGui::EndDragDropTarget();
+	}
+	if (ImGui::BeginPopup("MontageNotifyContext"))
+	{
+		if (NotifyPopupTarget >= 0 && static_cast<size_t>(NotifyPopupTarget) < Montage.Notifies.size())
+		{
+			if (ImGui::MenuItem(Montage.Notifies[NotifyPopupTarget].Duration > 0.0f ? "Delete Notify State" : "Delete Notify"))
+			{
+				Montage.Notifies.erase(Montage.Notifies.begin() + NotifyPopupTarget);
+				SelectedNotify = -1;
+				DraggedMarker = -1;
+				NotifyPopupTarget = -1;
+				bDirty = true;
+			}
+		}
+		else
+		{
+			ImGui::Text("%.3f s", NotifyPopupTime);
+			ImGui::Separator();
+			DrawNotifyAddMenu(NotifyPopupTime);
+		}
+		ImGui::EndPopup();
 	}
 }
 
@@ -711,10 +878,123 @@ void FAnimationAssetEditorPanel::DrawSelectedDetails()
 		FAnimMontageNotify& Notify = Montage.Notifies[SelectedNotify];
 		char Name[128]{}; strncpy_s(Name, Notify.Name.c_str(), sizeof(Name) - 1);
 		if (ImGui::InputText("Notify", Name, sizeof(Name))) { Notify.Name = Name; bDirty = true; }
-		bDirty |= ImGui::DragFloat("Time", &Notify.Time, 0.01f, 0.0f, SequenceLength());
-		bDirty |= ImGui::DragFloat("Duration", &Notify.Duration, 0.01f, 0.0f, SequenceLength());
+		if (ImGui::DragFloat("Time", &Notify.Time, 0.01f, 0.0f, SequenceLength()))
+		{
+			Notify.Time = std::clamp(Notify.Time, 0.0f, std::max(0.0f, SequenceLength() - Notify.Duration));
+			bDirty = true;
+		}
+		if (Notify.Duration > 0.0f)
+		{
+			float Duration = Notify.Duration;
+			if (ImGui::DragFloat("Duration", &Duration, 0.01f,
+				UAnimSequence::GetMinNotifyStateDuration(), std::max(UAnimSequence::GetMinNotifyStateDuration(), SequenceLength() - Notify.Time)))
+			{
+				Notify.Duration = std::clamp(Duration, UAnimSequence::GetMinNotifyStateDuration(),
+					std::max(UAnimSequence::GetMinNotifyStateDuration(), SequenceLength() - Notify.Time));
+				bDirty = true;
+			}
+		}
+		else ImGui::TextDisabled("Point Notify");
 		if (!Notify.ClassName.empty())
-			ImGui::TextWrapped("State Class: %s", Notify.ClassName.c_str());
+			ImGui::TextWrapped("Notify Class: %s", Notify.ClassName.c_str());
+		if (Notify.ClassName != "UAnimNotifyState_ParticleEffect" && ImGui::Button("Use Particle Effect State"))
+		{
+			Notify.ClassName = "UAnimNotifyState_ParticleEffect";
+			const float MinDuration = std::min(UAnimSequence::GetMinNotifyStateDuration(), SequenceLength());
+			Notify.Time = std::min(Notify.Time, SequenceLength() - MinDuration);
+			Notify.Duration = std::min(std::max(Notify.Duration, 0.12f), SequenceLength() - Notify.Time);
+			Notify.Properties.clear();
+			bDirty = true;
+		}
+		if (Notify.ClassName == "UAnimNotifyState_ParticleEffect")
+		{
+			json Props = json::parse(Notify.Properties, nullptr, false);
+			if (!Props.is_object()) Props = json::object();
+			bool bPropertiesChanged = false;
+			auto DrawString = [&](const char* Label, const char* Key, const FString& Default = FString{})
+			{
+				char Value[512]{};
+				const FString Current = Props.value(Key, Default);
+				strncpy_s(Value, sizeof(Value), Current.c_str(), _TRUNCATE);
+				if (ImGui::InputText(Label, Value, sizeof(Value)))
+				{
+					Props[Key] = Value;
+					bPropertiesChanged = true;
+				}
+			};
+			DrawString("Particle Path", "ParticlePath");
+			DrawString("Bone", "BoneName");
+			DrawString("Second Bone", "SecondBoneName");
+			DrawString("Base Parameter", "BaseParameterName", "RibbonBase");
+			DrawString("Tip Parameter", "TipParameterName", "RibbonTip");
+			float BoneOffset[3]{};
+			if (Props.contains("BoneOffset") && Props["BoneOffset"].is_array() && Props["BoneOffset"].size() == 3)
+				for (int Axis = 0; Axis < 3; ++Axis)
+					if (Props["BoneOffset"][Axis].is_number()) BoneOffset[Axis] = Props["BoneOffset"][Axis].get<float>();
+			if (ImGui::DragFloat3("Bone Offset", BoneOffset, 0.01f))
+			{
+				Props["BoneOffset"] = { BoneOffset[0], BoneOffset[1], BoneOffset[2] };
+				bPropertiesChanged = true;
+			}
+			bool bFollowBoneRotation = Props.value("bFollowBoneRotation", true);
+			if (ImGui::Checkbox("Follow Bone Rotation", &bFollowBoneRotation))
+			{
+				Props["bFollowBoneRotation"] = bFollowBoneRotation;
+				bPropertiesChanged = true;
+			}
+			bool bLoopDuringState = Props.value("bLoopDuringState", true);
+			if (ImGui::Checkbox("Loop During State", &bLoopDuringState))
+			{
+				Props["bLoopDuringState"] = bLoopDuringState;
+				bPropertiesChanged = true;
+			}
+			float FadeOutDuration = Props.value("FadeOutDuration", 0.35f);
+			if (ImGui::DragFloat("Fade Out Duration", &FadeOutDuration, 0.01f, 0.0f, 10.0f))
+			{
+				Props["FadeOutDuration"] = FadeOutDuration;
+				bPropertiesChanged = true;
+			}
+			if (bPropertiesChanged)
+			{
+				Notify.Properties = Props.dump(-1, ' ', false, json::error_handler_t::replace);
+				bDirty = true;
+			}
+		}
+		else if (Notify.ClassName == "UAnimNotify_Log" || Notify.ClassName == "UAnimNotify_PlaySound" ||
+			Notify.ClassName == "UAnimNotifyState_Log")
+		{
+			json Props = json::parse(Notify.Properties, nullptr, false);
+			if (!Props.is_object()) Props = json::object();
+			bool bPropertiesChanged = false;
+			auto DrawString = [&](const char* Label, const char* Key)
+			{
+				char Value[512]{};
+				const FString Current = Props.value(Key, FString{});
+				strncpy_s(Value, sizeof(Value), Current.c_str(), _TRUNCATE);
+				if (ImGui::InputText(Label, Value, sizeof(Value))) { Props[Key] = Value; bPropertiesChanged = true; }
+			};
+			if (Notify.ClassName == "UAnimNotify_Log" || Notify.ClassName == "UAnimNotifyState_Log")
+				DrawString("Message", "Message");
+			if (Notify.ClassName == "UAnimNotify_PlaySound")
+			{
+				DrawString("Sound Path", "SoundPath");
+				DrawString("Bone", "BoneName");
+				float Volume = Props.value("Volume", 1.0f);
+				float Pitch = Props.value("Pitch", 1.0f);
+				if (ImGui::DragFloat("Volume", &Volume, 0.01f, 0.0f, 10.0f)) { Props["Volume"] = Volume; bPropertiesChanged = true; }
+				if (ImGui::DragFloat("Pitch", &Pitch, 0.01f, 0.01f, 4.0f)) { Props["Pitch"] = Pitch; bPropertiesChanged = true; }
+			}
+			if (Notify.ClassName == "UAnimNotifyState_Log")
+			{
+				bool bLogTick = Props.value("bLogTick", false);
+				if (ImGui::Checkbox("Log Tick", &bLogTick)) { Props["bLogTick"] = bLogTick; bPropertiesChanged = true; }
+			}
+			if (bPropertiesChanged)
+			{
+				Notify.Properties = Props.dump(-1, ' ', false, json::error_handler_t::replace);
+				bDirty = true;
+			}
+		}
 		if (ImGui::Button("Delete Notify"))
 		{ Montage.Notifies.erase(Montage.Notifies.begin() + SelectedNotify); SelectedNotify = -1; bDirty = true; }
 	}
