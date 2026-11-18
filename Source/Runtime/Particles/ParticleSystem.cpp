@@ -1402,3 +1402,12 @@ void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float Delt
 		Context.Component->AddCollisionEvent(Event);
 	}
 }
+
+void UParticleModuleCollision::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	OutBuildInfo.bHasCollision = true;
+	OutBuildInfo.CollisionRestitution = std::max(0.0f, RestitutionMax);
+	OutBuildInfo.CollisionFriction = std::clamp(FrictionMax, 0.0f, 1.0f);
+	OutBuildInfo.CollisionMaxCount = std::max(0, MaxCollisions);
+	OutBuildInfo.CollisionRadius = std::max(0.0f, CollisionRadius);
+}

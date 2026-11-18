@@ -65,8 +65,15 @@ struct FGpuParticleSimParams
 	uint32 HasColorOverride = 0;
 	uint32 Pad[3] = {};
 	FVector4 ColorOverride = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+
+	uint32 HasCollision = 0;
+	float CollisionRestitution = 0.0f;
+	float CollisionFriction = 0.0f;
+	uint32 CollisionMaxCount = 0;
+	float CollisionRadius = 0.0f;
+	uint32 CollisionPad[3] = {};
 };
-static_assert(sizeof(FGpuParticleSimParams) == 304);
+static_assert(sizeof(FGpuParticleSimParams) == 336);
 
 struct FGpuParticleDrawParams
 {
