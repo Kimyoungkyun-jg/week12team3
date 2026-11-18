@@ -310,7 +310,7 @@ void FSceneRenderer::DrawBasePassMeshes(FRenderer* Renderer, const TArray<FVisib
 {
 	if (!FSkinningStats::IsCollecting())
 	{
-		Renderer->SubmitVisibleCommands(Commands, RenderData.GPUSceneBuffer, &RenderData.RenderStats.DrawCalls);
+		Renderer->SubmitVisibleCommands(Commands, RenderData.GPUSceneBuffer, &RenderData.RenderStats.DrawCalls, {}, ESkinningMode::CPU, &RenderData.RenderStats.ParticleDrawCalls);
 		return;
 	}
 
@@ -1127,7 +1127,7 @@ void FSceneRenderer::RenderTranslucent(FRenderer* Renderer, FConstantBuffer* Fog
 	{
 		Renderer->UploadViewConstants(View.ViewProjectionMatrix, View.ViewMatrix, View.ProjectionMatrix,
 			static_cast<float>(EngineTimer::GetTotalTime()));
-		Renderer->SubmitVisibleCommands(RenderData.VisibleTranslucencyCommands, RenderData.GPUSceneBuffer, &RenderData.RenderStats.DrawCalls);
+		Renderer->SubmitVisibleCommands(RenderData.VisibleTranslucencyCommands, RenderData.GPUSceneBuffer, &RenderData.RenderStats.DrawCalls, {}, ESkinningMode::CPU, &RenderData.RenderStats.ParticleDrawCalls);
 	}
 
 	RenderCommand::BindConstantBuffer(3, nullptr, EShaderBindFlagBits::Pixel);

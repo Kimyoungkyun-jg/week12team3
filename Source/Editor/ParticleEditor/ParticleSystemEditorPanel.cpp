@@ -23,6 +23,8 @@
 #include "Render/Mesh.h"
 #include "Engine/World.h"
 #include "Serialization/JsonArchive.h"
+#include "Core/StatOverlay.h"
+#include "Core/Stats/LightweightStats.h"
 #include <implot.h>
 #include <commdlg.h>
 #include <algorithm>
@@ -1338,6 +1340,26 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 	{
 		const TArray<FParticleEmitterInstance>& Instances =
 			PreviewActor->GetParticleSystemComponent()->GetEmitterInstances();
+		uint64 CpuMemoryBytes = 0;
+		int32 CpuActiveParticles = 0;
+		int32 CpuCapacity = 0;
+
+		for (const FParticleEmitterInstance& Instance : Instances)
+		{
+			if (Instance.IsGpuEmitter())
+			{
+				continue;
+			}
+
+			CpuActiveParticles += Instance.ActiveParticles;
+			CpuCapacity += Instance.MaxActiveParticles;
+
+			if (Instance.ParticleData && Instance.ParticleIndices)
+			{
+				CpuMemoryBytes += static_cast<uint64>(Instance.MaxActiveParticles) *
+					(Instance.ParticleStride + sizeof(uint16));
+			}
+		}
 		ImDrawList* DrawList = ImGui::GetWindowDrawList();
 		const float LineH = ImGui::GetTextLineHeightWithSpacing();
 		float Y = ImagePos.y + Size.y - LineH * static_cast<float>(Instances.Num()) - 6.0f;
