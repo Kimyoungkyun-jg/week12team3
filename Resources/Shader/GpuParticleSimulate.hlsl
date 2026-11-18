@@ -194,7 +194,7 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
     float3 Normal = float3(0, 0, 1);
     float3 A = p.Position;
 	
-    if (HasCollision != 0)
+    if (HasCollision != 0 && p.Pad.x < CollisionMaxCount)
     {
         Stage = DepthCollision(p.Position, Normal, A);
         bHit = (Stage == 4);
@@ -206,6 +206,9 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
         if (d < CollisionRadius)
             p.Position += Normal * (CollisionRadius - d); // 밀어내기
 
+        if (dot(p.Velocity, Normal) < 0)
+            p.Pad.x++;
+		
         p.Velocity = Bounce(p.Velocity, Normal);
         p.BaseVelocity = Bounce(p.BaseVelocity, Normal);
     }
@@ -243,14 +246,8 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		p.SubImageIndex = floor(clamp(RawIndex, 0.0f, TotalFrames - 1.0f));
 	}
 	
-    if (HasCollision != 0)
-    {
-        p.Size = p.BaseSize * (1.0f + Stage); // 0단계 1배 ~ 4단계 5배
-        p.Color.rgb = float3(1, 1, 1);
-    }
-
+    if (p.Pad.x > 0)
+        p.Color.rgb = float3(1.0f, 0.2f, 0.2f);
 	
 	ParticleBuffer[Idx] = p;
-	
-    
 }
