@@ -452,10 +452,6 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 	case EMaterialExpressionType::Fresnel:
 		return PinIndex >= 0 && PinIndex < 3 ? FresnelNames[PinIndex] : nullptr;
 
-	case EMaterialExpressionType::Distance:
-	case EMaterialExpressionType::CrossProduct:
-		return PinIndex >= 0 && PinIndex < 2 ? BinaryNames[PinIndex] : nullptr;
-
 	case EMaterialExpressionType::Desaturation:
 		return PinIndex >= 0 && PinIndex < 2 ? DesaturationNames[PinIndex] : nullptr;
 
