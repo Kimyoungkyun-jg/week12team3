@@ -16,11 +16,15 @@ public:
 	void BeginPlay() override;
 	void Tick(float DeltaTime) override;
 	void EndPlay() override;
+	void AddMovementInput(const FVector& WorldDirection, float ScaleValue) override;
 	void Jump() override;
 	void Attack() override;
 	void Dash();
 	void StartAim();
 	void StopAim();
+	void ReactToHit();
+	bool IsDead() const { return Health <= 0; }
+	int32 GetHealth() const { return Health; }
 	bool SetCameraTuning(float InNormalArmLength, float InNormalFOV, float InAimArmLength, float InAimFOV);
 	bool SetAimBlendAlphaOverride(float Alpha);
 	void ClearAimBlendAlphaOverride() { bAimBlendAlphaOverridden = false; }
@@ -50,6 +54,8 @@ private:
 	float AimArmLength = 1.0f;
 	UPROPERTY(EditAnywhere)
 	float AimFOV = 70.0f;
+	UPROPERTY(EditAnywhere)
+	int32 Health = 5;
 	UParticleSystemComponent* DashRibbonComponent = nullptr;
 	UUserWidget* AimWidget = nullptr;
 };

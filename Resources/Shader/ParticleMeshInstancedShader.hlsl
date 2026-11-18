@@ -59,7 +59,8 @@ PS_INPUT mainVS(VS_INPUT input)
     output.worldPosition = WorldPosition.xyz;
     output.worldNormal = mul(input.normal, (float3x3) inst.World);
     output.uv = input.uv;
-	output.tintAndAlpha = inst.TintAndAlpha * input.color;
+	// 기본 큐브 정점 색이 파티클 색상을 덮지 않도록 인스턴스 컬러만 전달
+	output.tintAndAlpha = inst.TintAndAlpha;
 	output.extraParams = inst.SubUVParams;
 	return output;
 }

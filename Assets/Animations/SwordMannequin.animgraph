@@ -56,6 +56,56 @@
       "SpeedOffsetY": 0.0,
       "X": 420.0,
       "Y": 140.0
+    },
+    {
+      "Asset": "Models/SwordModel/AS_hit_light_L_body.fbxbin",
+      "ConstantX": 0.0,
+      "ConstantY": 0.0,
+      "DirectionOffsetX": 0.0,
+      "DirectionOffsetY": 0.0,
+      "Id": 3,
+      "InputX": 0,
+      "InputY": 0,
+      "Loop": false,
+      "Name": "Hit",
+      "OutputOffsetX": 0.0,
+      "OutputOffsetY": 0.0,
+      "OutputPlayerId": 0,
+      "PlayRate": 1.0,
+      "PlayerOffsetX": 0.0,
+      "PlayerOffsetY": 0.0,
+      "Players": [],
+      "Pose": 0,
+      "PoseConnected": true,
+      "SpeedOffsetX": 0.0,
+      "SpeedOffsetY": 0.0,
+      "X": 420.0,
+      "Y": 320.0
+    },
+    {
+      "Asset": "Models/SwordModel/AS_Dead_Dead1.fbxbin",
+      "ConstantX": 0.0,
+      "ConstantY": 0.0,
+      "DirectionOffsetX": 0.0,
+      "DirectionOffsetY": 0.0,
+      "Id": 4,
+      "InputX": 0,
+      "InputY": 0,
+      "Loop": false,
+      "Name": "Death",
+      "OutputOffsetX": 0.0,
+      "OutputOffsetY": 0.0,
+      "OutputPlayerId": 0,
+      "PlayRate": 1.0,
+      "PlayerOffsetX": 0.0,
+      "PlayerOffsetY": 0.0,
+      "Players": [],
+      "Pose": 0,
+      "PoseConnected": true,
+      "SpeedOffsetX": 0.0,
+      "SpeedOffsetY": 0.0,
+      "X": 420.0,
+      "Y": 480.0
     }
   ],
   "Transitions": [
@@ -76,6 +126,33 @@
       "Compare": 1,
       "Threshold": 0.1,
       "BlendTime": 0.1
+    },
+    {
+      "Id": 3,
+      "From": -1,
+      "To": 3,
+      "Input": 8,
+      "Compare": 1,
+      "Threshold": 0.0,
+      "BlendTime": 0.08
+    },
+    {
+      "Id": 4,
+      "From": 3,
+      "To": 1,
+      "Input": 7,
+      "Compare": 1,
+      "Threshold": 0.1,
+      "BlendTime": 0.1
+    },
+    {
+      "Id": 5,
+      "From": -1,
+      "To": 4,
+      "Input": 14,
+      "Compare": 1,
+      "Threshold": 0.0,
+      "BlendTime": 0.08
     }
   ],
   "RootNodes": [

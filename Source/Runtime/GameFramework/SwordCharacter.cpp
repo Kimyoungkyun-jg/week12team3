@@ -14,6 +14,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GameFramework/Actor/ZombieActor.h"
 #include "Particles/ParticleSystem.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
@@ -205,6 +206,7 @@ namespace
 
 ASwordCharacter::ASwordCharacter()
 {
+	SetDeathParticlePath("Assets/Particles/CharacterDeath.particle");
 	USkeletalMeshComponent* MeshComponent = GetSkeletalMeshComponent();
 	if (USkeletalMesh* Mesh = UAssetManager::LoadFbxSkeletalMesh(
 		"Assets/Models/SwordModel/SK_SK_Mannequin_root.fbxbin"))
@@ -230,22 +232,9 @@ ASwordCharacter::ASwordCharacter()
 		SwordRibbonComponent->SetTemplate(RibbonTemplate);
 	}
 	SwordRibbonComponent->bPreviewInEditor = false;
+	SwordRibbonComponent->SetAutoActivate(false);
 	SwordRibbonComponent->SetVisibility(false);
 	SwordRibbonComponent->Deactivate();
-	for (const auto& Effect : { std::pair{ "SwordWaveComponent", "Assets/Particles/BlueSwordWave.particle" },
-		std::pair{ "BeamParticleComponent", "Assets/Particles/DragonBallBeam.particle" } })
-	{
-		UParticleSystemComponent* Component = CreateDefaultSubobject<UParticleSystemComponent>(Effect.first);
-		Component->SetupAttachment(MeshComponent);
-		if (UParticleSystem* Template = UParticleSystem::LoadFromFile(Effect.second, Component))
-		{
-			Component->TemplatePath = Effect.second;
-			Component->SetTemplate(Template);
-		}
-		Component->bPreviewInEditor = false;
-		Component->SetVisibility(false);
-		Component->Deactivate();
-	}
 
 	USpringArmComponent* SpringArm = GetSpringArmComponent();
 	SpringArm->TargetArmLength = 3.0f;
@@ -263,6 +252,8 @@ void ASwordCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	bBeamMontageActive = false;
+	ElapsedTime = 0.0f;
+	ZombieHitCooldowns.Empty();
 	GetSpringArmComponent()->ResetCameraLag();
 	ImportSwordAnimationsIfNeeded();
 	EnsureSwordAnimationSettings();
@@ -306,6 +297,27 @@ bool ASwordCharacter::IsPlayingFullBodyMontage() const
 void ASwordCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	if (std::isfinite(DeltaTime) && DeltaTime > 0.0f)
+		ElapsedTime += DeltaTime;
+	if (IsDead())
+	{
+		// 사망 후 이동을 멈추고 디졸브가 끝나면 검을 숨긴다
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+			Movement->StopMovementImmediately();
+		UpdateDeathDissolve(DeltaTime);
+		if (IsDeathDissolveFinished() && SwordMeshComponent)
+			SwordMeshComponent->SetVisibility(false);
+		return;
+	}
+	USkeletalMeshComponent* MeshComponent = GetSkeletalMeshComponent();
+	if (UAnimGraphInstance* AnimGraph = Cast<UAnimGraphInstance>(MeshComponent ? MeshComponent->GetAnimInstance() : nullptr))
+	{
+		if (AnimGraph->IsStateActiveOrPending("Hit"))
+		{
+			if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+				Movement->StopMovementImmediately();
+		}
+	}
 	const bool bFullBodyMontage = IsPlayingFullBodyMontage();
 	if (bFullBodyMontage)
 	{
@@ -326,21 +338,21 @@ void ASwordCharacter::Tick(float DeltaTime)
 
 void ASwordCharacter::AddMovementInput(const FVector& WorldDirection, float ScaleValue)
 {
-	if (IsPlayingFullBodyMontage())
+	if (IsDead() || IsPlayingFullBodyMontage())
 		return;
 	Super::AddMovementInput(WorldDirection, ScaleValue);
 }
 
 void ASwordCharacter::Jump()
 {
-	if (IsPlayingFullBodyMontage())
+	if (IsDead() || IsPlayingFullBodyMontage())
 		return;
 	Super::Jump();
 }
 
 void ASwordCharacter::Attack()
 {
-	if (IsPlayingFullBodyMontage()) return;
+	if (IsDead() || IsPlayingFullBodyMontage()) return;
 	if (PlayAnimMontage("Assets/Animations/combo02.animmontage") > 0.0f)
 	{
 		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
@@ -350,7 +362,7 @@ void ASwordCharacter::Attack()
 
 void ASwordCharacter::CastBeam()
 {
-	if (IsPlayingFullBodyMontage()) return;
+	if (IsDead() || IsPlayingFullBodyMontage()) return;
 	if (PlayAnimMontage("Assets/Animations/BeamMontage.animmontage") > 0.0f)
 	{
 		bBeamMontageActive = true;
@@ -358,5 +370,65 @@ void ASwordCharacter::CastBeam()
 			SwordMeshComponent->SetVisibility(false);
 		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 			Movement->StopMovementImmediately();
+	}
+}
+
+void ASwordCharacter::ReactToHit()
+{
+	if (IsDead()) return;
+	--Health;
+	UAnimGraphInstance* AnimGraph = Cast<UAnimGraphInstance>(GetSkeletalMeshComponent()->GetAnimInstance());
+	if (IsDead())
+	{
+		bBeamMontageActive = false;
+		// 사망 시 새 방출을 멈추고 남은 파티클을 서서히 페이드아웃시킨다
+		for (UActorComponent* Comp : GetComponents())
+		{
+			UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp);
+			if (ParticleComp && ParticleComp->GetName() != "DeathParticleComponent" && ParticleComp->IsActive())
+			{
+				ParticleComp->SetForceLooping(false);
+				ParticleComp->StopEmission(0.35f);
+			}
+		}
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+			Movement->StopMovementImmediately();
+		if (AnimGraph)
+		{
+			AnimGraph->StopMontage("", 0.08f);
+			AnimGraph->RequestDeath();
+		}
+	}
+	else if (AnimGraph)
+	{
+		AnimGraph->RequestHit();
+	}
+}
+
+void ASwordCharacter::OnParticleCollide(const FParticleEventCollideData& Event)
+{
+	if (IsDead() || !Event.Component) return;
+	AZombieActor* Zombie = Cast<AZombieActor>(Event.Component->GetOwner());
+	if (!Zombie || Zombie->IsDead()) return;
+	if (const float* LastHitTime = ZombieHitCooldowns.Find(Zombie))
+	{
+		if (ElapsedTime - *LastHitTime < 0.25f) return;
+	}
+	ZombieHitCooldowns.Add(Zombie, ElapsedTime);
+
+	Zombie->ReactToHit();
+	if (!Zombie->IsDead())
+	{
+		// 공격자에서 좀비 방향으로 소폭 띄워 밀어낸다
+		FVector LaunchDir = Zombie->GetActorLocation() - GetActorLocation();
+		LaunchDir.Z = 0.0f;
+		LaunchDir = LaunchDir.GetSafeNormal();
+		if (LaunchDir.SizeSquared() <= SMALL_NUMBER)
+			LaunchDir = FVector(-Event.Normal.X, -Event.Normal.Y, 0.0f).GetSafeNormal();
+		if (LaunchDir.SizeSquared() > SMALL_NUMBER)
+		{
+			LaunchDir = (LaunchDir + FVector(0.0f, 0.0f, 0.25f)).GetSafeNormal();
+			Zombie->LaunchCharacter(LaunchDir, 5.5f);
+		}
 	}
 }

@@ -1,0 +1,752 @@
+{
+	"Class": "UMaterial",
+	"Object": {
+		"BaseColor": {
+			"W": 1.0,
+			"X": 1.0,
+			"Y": 1.0,
+			"Z": 1.0
+		},
+		"BlendState": "AlphaBlend",
+		"EmissiveColor": {
+			"X": 0.0,
+			"Y": 0.0,
+			"Z": 0.0
+		},
+		"EmissiveFactor": 0.55,
+		"ExpressionConnections": [
+			{
+				"InputNodeId": 1,
+				"InputPin": 0,
+				"OutputNodeId": 24,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 1,
+				"InputPin": 3,
+				"OutputNodeId": 23,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 1,
+				"InputPin": 4,
+				"OutputNodeId": 25,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 3,
+				"InputPin": 0,
+				"OutputNodeId": 2,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 4,
+				"InputPin": 0,
+				"OutputNodeId": 2,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 8,
+				"InputPin": 0,
+				"OutputNodeId": 5,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 8,
+				"InputPin": 1,
+				"OutputNodeId": 6,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 8,
+				"InputPin": 2,
+				"OutputNodeId": 7,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 11,
+				"InputPin": 0,
+				"OutputNodeId": 9,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 11,
+				"InputPin": 1,
+				"OutputNodeId": 10,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 12,
+				"InputPin": 0,
+				"OutputNodeId": 11,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 14,
+				"InputPin": 0,
+				"OutputNodeId": 12,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 14,
+				"InputPin": 1,
+				"OutputNodeId": 13,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 16,
+				"InputPin": 0,
+				"OutputNodeId": 8,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 16,
+				"InputPin": 1,
+				"OutputNodeId": 15,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 17,
+				"InputPin": 0,
+				"OutputNodeId": 16,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 17,
+				"InputPin": 1,
+				"OutputNodeId": 14,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 19,
+				"InputPin": 0,
+				"OutputNodeId": 17,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 19,
+				"InputPin": 1,
+				"OutputNodeId": 18,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 20,
+				"InputPin": 0,
+				"OutputNodeId": 4,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 20,
+				"InputPin": 1,
+				"OutputNodeId": 19,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 21,
+				"InputPin": 0,
+				"OutputNodeId": 20,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 21,
+				"InputPin": 1,
+				"OutputNodeId": 3,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 23,
+				"InputPin": 0,
+				"OutputNodeId": 21,
+				"OutputPin": 0
+			},
+			{
+				"InputNodeId": 23,
+				"InputPin": 1,
+				"OutputNodeId": 22,
+				"OutputPin": 0
+			}
+		],
+		"ExpressionNodes": [
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 1,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					1120.0,
+					200.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 12,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 2,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					40.0,
+					180.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 28,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 8,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 3,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					220.0,
+					140.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 23,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 7,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 4,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					220.0,
+					240.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 23,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 5,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					40.0,
+					340.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 31,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 6,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					40.0,
+					420.0
+				],
+				"ScalarValue": 1.8,
+				"TexturePath": "",
+				"Type": 0,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 7,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					40.0,
+					500.0
+				],
+				"ScalarValue": 0.12,
+				"TexturePath": "",
+				"Type": 0,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 8,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					240.0,
+					380.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 35,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 9,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					40.0,
+					580.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 7,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 10,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					40.0,
+					660.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 1,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 2.5,
+					"Y": 12.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 11,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					220.0,
+					600.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 9,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 12,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					380.0,
+					600.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 46,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 13,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					380.0,
+					680.0
+				],
+				"ScalarValue": 0.28,
+				"TexturePath": "",
+				"Type": 0,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 14,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					540.0,
+					620.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 9,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 15,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					240.0,
+					480.0
+				],
+				"ScalarValue": 0.95,
+				"TexturePath": "",
+				"Type": 0,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 16,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					420.0,
+					400.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 9,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 17,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					600.0,
+					460.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 8,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 18,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					600.0,
+					560.0
+				],
+				"ScalarValue": 0.15,
+				"TexturePath": "",
+				"Type": 0,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 19,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					740.0,
+					460.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 8,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 20,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					740.0,
+					280.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 9,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 21,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					880.0,
+					260.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 9,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 22,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					860.0,
+					400.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 2,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 1.05,
+					"Y": 0.99,
+					"Z": 0.94
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 23,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					1000.0,
+					280.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 9,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 24,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					880.0,
+					80.0
+				],
+				"ScalarValue": 0.0,
+				"TexturePath": "",
+				"Type": 3,
+				"VectorValue": {
+					"W": 0.88,
+					"X": 0.94,
+					"Y": 0.92,
+					"Z": 0.89
+				}
+			},
+			{
+				"ComponentMask": 1,
+				"CoordinateIndex": 0,
+				"CustomCode": "",
+				"CustomOutputType": 2,
+				"Id": 25,
+				"ParameterGroup": "Default",
+				"ParameterName": "",
+				"Position": [
+					920.0,
+					180.0
+				],
+				"ScalarValue": 0.55,
+				"TexturePath": "",
+				"Type": 0,
+				"VectorValue": {
+					"W": 0.0,
+					"X": 0.0,
+					"Y": 0.0,
+					"Z": 0.0
+				}
+			}
+		],
+		"FlipNormalY": false,
+		"OutputNodeId": 1,
+		"OverrideShadingModel": false,
+		"PSOType": 46,
+		"Properties": {},
+		"SamplerState": "LinearClamp",
+		"ShadingModel": 2,
+		"Shininess": 20.0,
+		"SpecularColor": {
+			"X": 1.0,
+			"Y": 0.97,
+			"Z": 0.94
+		},
+		"SpecularFactor": 1.0,
+		"Textures": [],
+		"UVScrollSpeed": [
+			0.0,
+			0.0
+		],
+		"UVTiling": [
+			1.0,
+			1.0
+		],
+		"UsageFlags": 8,
+		"WorldUVLocalSpace": false,
+		"WorldUVTileSize": [
+			0.0,
+			0.0
+		]
+	},
+	"Version": 1
+}

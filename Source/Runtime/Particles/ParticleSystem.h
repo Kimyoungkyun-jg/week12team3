@@ -83,6 +83,7 @@ struct FParticleTickContext
 	FMatrix ComponentToWorld;
 	FQuat ComponentRotation = FQuat::Identity();
 	UParticleSystemComponent * Component = nullptr;
+	bool bUseLocalSpace = false;
 };
 
 enum class EParticleSysParamType : uint8
@@ -463,6 +464,12 @@ public:
 	UDistributionVector* StartLocation = nullptr;
 	UPROPERTY(EditAnywhere)
 	bool bSampleSkeletalMesh = false;
+	UPROPERTY(EditAnywhere)
+	bool bFilterByDissolveHeight = false;
+	UPROPERTY(EditAnywhere)
+	FString DissolveHeightParamName = "DissolveHeight";
+	UPROPERTY(EditAnywhere)
+	float DissolveBandHalfHeight = 0.25f;
 };
 
 UCLASS()
@@ -681,6 +688,8 @@ class UParticleModuleCollision : public UParticleModule
 public:
 	void TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, 
 		const FParticleTickContext& Context, const UParticleModuleEventGenerator* EventGenerator) const;
+	void TickSegmentCollision(FBaseParticle& Particle, const FVector& WorldStart, const FVector& WorldEnd,
+		uint32 Offset, const FParticleTickContext& Context, const UParticleModuleEventGenerator* EventGenerator) const;
 	
 	bool RunsOnUpdate() const override { return true; }
 	uint32 RequiredBytes() const override { return sizeof(FParticleCollisionPayload); }
@@ -707,6 +716,9 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float DepthThickness = 1.0f;
+
+	UPROPERTY(EditAnywhere)
+	bool bOverlapOnly = false;
 };
 
 UCLASS()
@@ -798,6 +810,8 @@ public:
 	bool SetLODDistance(int32 Index, float Distance);
 	const TArray<UParticleEmitter*>& GetEmitters() const { return Emitters; }
 	bool SaveToFile(const FString& Path);
+	static FString ResolveAssetPath(const FString& Path);
+	static UParticleSystem* LoadEditableFromFile(const FString& Path);
 	static UParticleSystem* LoadFromFile(const FString& Path, UObject* Outer = nullptr);
 
 	UPROPERTY(EditAnywhere)

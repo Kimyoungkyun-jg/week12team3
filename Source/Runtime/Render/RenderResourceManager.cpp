@@ -1033,94 +1033,67 @@ FShaderProgram* FRenderResourceManager::GetForwardShaderProgram(EReflectionModel
 	return nullptr;
 }
 
-FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMaterial& Material, EPSOType TargetPSO, EReflectionModel Reflection, bool bUnlit, bool bGPUSkinning, FString& OutError)
+static bool ResolveMaterialGraphShaderPath(EPSOType TargetPSO, FString& OutShaderPath)
 {
-	FString GeneratedSource;
-
-	if (!GenerateMaterialGraphSource(Material, GeneratedSource, OutError))
-	{
-		return nullptr;
-	}
-
-	const FString Hash = GetMaterialGraphHash(GeneratedSource);
-	const FString AssetId = GetMaterialGraphAssetId(Material);
-
-	FString ShaderPath;
-	FShaderProgram* BaseProgram = nullptr;
-
 	switch (TargetPSO)
 	{
 	case EPSOType::StaticMesh_Forward:
-		ShaderPath = "Resources/Shader/UberLit.hlsl";
-		BaseProgram = GetForwardShaderProgram(Reflection, EShadingModel::Phong, bGPUSkinning, bUnlit);
-		break;
+		OutShaderPath = "Resources/Shader/UberLit.hlsl";
+		return true;
 
 	case EPSOType::StaticMesh_GBuffer:
-		ShaderPath = "Resources/Shader/StaticMeshGBufferShader.hlsl";
-		BaseProgram = GetShaderProgram(ShaderPath);
-		break;
+		OutShaderPath = "Resources/Shader/StaticMeshGBufferShader.hlsl";
+		return true;
 
 	case EPSOType::StaticMesh_Translucent:
-		ShaderPath = "Resources/Shader/StaticMeshTranslucentShader.hlsl";
-		BaseProgram = GetTranslucentShaderProgram(bGPUSkinning);
-		break;
+		OutShaderPath = "Resources/Shader/StaticMeshTranslucentShader.hlsl";
+		return true;
 
 	case EPSOType::Particle_AlphaBlend:
 	case EPSOType::Particle_Additive:
-		ShaderPath = "Resources/Shader/ParticleSubUVShader.hlsl";
-		break;
+		OutShaderPath = "Resources/Shader/ParticleSubUVShader.hlsl";
+		return true;
 
 	case EPSOType::Particle_Sprite:
-		ShaderPath = "Resources/Shader/ParticleSpriteShader.hlsl";
-		break;
+		OutShaderPath = "Resources/Shader/ParticleSpriteShader.hlsl";
+		return true;
 
 	case EPSOType::Particle_Instanced:
-		ShaderPath = "Resources/Shader/ParticleInstancedShader.hlsl";
-		break;
+		OutShaderPath = "Resources/Shader/ParticleInstancedShader.hlsl";
+		return true;
 
 	case EPSOType::Particle_GpuInstanced:
-		ShaderPath = "Resources/Shader/ParticleGpuInstancedShader.hlsl";
-		break;
+		OutShaderPath = "Resources/Shader/ParticleGpuInstancedShader.hlsl";
+		return true;
 
 	case EPSOType::Particle_MeshOpaque:
 	case EPSOType::Particle_MeshTranslucent:
 	case EPSOType::Particle_MeshAdditive:
-		ShaderPath = "Resources/Shader/ParticleMeshInstancedShader.hlsl";
-		break;
+		OutShaderPath = "Resources/Shader/ParticleMeshInstancedShader.hlsl";
+		return true;
 
 	case EPSOType::Particle_GpuMeshOpaque:
 	case EPSOType::Particle_GpuMeshTranslucent:
 	case EPSOType::Particle_GpuMeshAdditive:
-		ShaderPath = "Resources/Shader/ParticleGpuMeshInstancedShader.hlsl";
-		break;
+		OutShaderPath = "Resources/Shader/ParticleGpuMeshInstancedShader.hlsl";
+		return true;
 
 	case EPSOType::SkeletalMesh_GBuffer:
-		ShaderPath = "Resources/Shader/SkeletalMeshGBufferShader.hlsl";
-		BaseProgram = GetSkeletalMeshGBufferShaderProgram(bGPUSkinning);
-		break;
+		OutShaderPath = "Resources/Shader/SkeletalMeshGBufferShader.hlsl";
+		return true;
 
 	case EPSOType::Particle_BeamTrailTranslucent:
 	case EPSOType::Particle_BeamTrailAdditive:
-		ShaderPath = "Resources/Shader/ParticleBeamTrailShader.hlsl";
-		break;
+		OutShaderPath = "Resources/Shader/ParticleBeamTrailShader.hlsl";
+		return true;
 
 	default:
-		OutError = "Unsupported Material Graph PSO.";
-		return nullptr;
+		return false;
 	}
+}
 
-	if (!BaseProgram)
-	{
-		FPipelineState* Pipeline = GetPSO(TargetPSO);
-		BaseProgram = Pipeline ? Pipeline->Shader : nullptr;
-	}
-
-	if (!BaseProgram || !BaseProgram->VertexShader)
-	{
-		OutError = "Base Material Shader is not available.";
-		return nullptr;
-	}
-
+static FString BuildMaterialGraphProgramKey(const FString& ShaderPath, const FString& Hash, EPSOType TargetPSO, EReflectionModel Reflection, bool bUnlit, bool bGPUSkinning)
+{
 	FString Key = ShaderPath + "#MaterialGraph_" + Hash + "#PSO_" + std::to_string(static_cast<uint8>(TargetPSO));
 
 	if (TargetPSO == EPSOType::StaticMesh_Forward)
@@ -1134,15 +1107,125 @@ FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMat
 		Key += "#GPU";
 	}
 
-	if (auto* Found = Get().ShaderProgramMap.Find(Key))
+	return Key;
+}
+
+static FShaderProgram* LookupCachedMaterialGraphProgram(
+	TMap<FString, TUniquePtr<FShaderProgram>>& ProgramMap,
+	TMap<FString, FString>& ErrorMap,
+	const FString& Key,
+	FString& OutError,
+	bool& bOutTerminal)
+{
+	bOutTerminal = false;
+
+	if (TUniquePtr<FShaderProgram>* Found = ProgramMap.Find(Key))
 	{
 		OutError.clear();
+		bOutTerminal = true;
 		return Found->get();
 	}
 
-	if (FString* PreviousError = Get().MaterialGraphErrorMap.Find(Key))
+	if (FString* PreviousError = ErrorMap.Find(Key))
 	{
 		OutError = *PreviousError;
+		bOutTerminal = true;
+		return nullptr;
+	}
+
+	return nullptr;
+}
+
+FShaderProgram* FRenderResourceManager::GetMaterialGraphShaderProgram(const UMaterial& Material, EPSOType TargetPSO, EReflectionModel Reflection, bool bUnlit, bool bGPUSkinning, FString& OutError)
+{
+	FString ShaderPath;
+	if (!ResolveMaterialGraphShaderPath(TargetPSO, ShaderPath))
+	{
+		OutError = "Unsupported Material Graph PSO.";
+		return nullptr;
+	}
+
+	// 캐시된 그래프 해시로 셰이더 맵을 선조회해 매 프레임 소스 생성 비용을 피한다
+	const uint64 GraphSignature = Material.ComputeGraphSignature();
+	FString Hash;
+	bool bCachedGraphOk = false;
+	FString CachedError;
+	const bool bHasCachedHash = Material.GetCachedGraphHash(GraphSignature, Hash, bCachedGraphOk, CachedError);
+
+	FString Key;
+	if (bHasCachedHash)
+	{
+		if (!bCachedGraphOk)
+		{
+			OutError = CachedError;
+			return nullptr;
+		}
+
+		Key = BuildMaterialGraphProgramKey(ShaderPath, Hash, TargetPSO, Reflection, bUnlit, bGPUSkinning);
+
+		bool bTerminal = false;
+		FShaderProgram* CachedProgram = LookupCachedMaterialGraphProgram(Get().ShaderProgramMap, Get().MaterialGraphErrorMap, Key, OutError, bTerminal);
+		if (bTerminal)
+		{
+			return CachedProgram;
+		}
+	}
+
+	FString GeneratedSource;
+	if (!GenerateMaterialGraphSource(Material, GeneratedSource, OutError))
+	{
+		Material.SetCachedGraphHash(GraphSignature, FString(), false, OutError);
+		return nullptr;
+	}
+
+	if (!bHasCachedHash)
+	{
+		Hash = GetMaterialGraphHash(GeneratedSource);
+		Material.SetCachedGraphHash(GraphSignature, Hash, true, FString());
+		Key = BuildMaterialGraphProgramKey(ShaderPath, Hash, TargetPSO, Reflection, bUnlit, bGPUSkinning);
+
+		bool bTerminal = false;
+		FShaderProgram* CachedProgram = LookupCachedMaterialGraphProgram(Get().ShaderProgramMap, Get().MaterialGraphErrorMap, Key, OutError, bTerminal);
+		if (bTerminal)
+		{
+			return CachedProgram;
+		}
+	}
+
+	const FString AssetId = GetMaterialGraphAssetId(Material);
+
+	FShaderProgram* BaseProgram = nullptr;
+	switch (TargetPSO)
+	{
+	case EPSOType::StaticMesh_Forward:
+		BaseProgram = GetForwardShaderProgram(Reflection, EShadingModel::Phong, bGPUSkinning, bUnlit);
+		break;
+
+	case EPSOType::StaticMesh_GBuffer:
+		BaseProgram = GetShaderProgram(ShaderPath);
+		break;
+
+	case EPSOType::StaticMesh_Translucent:
+		BaseProgram = GetTranslucentShaderProgram(bGPUSkinning);
+		break;
+
+	case EPSOType::SkeletalMesh_GBuffer:
+		BaseProgram = GetSkeletalMeshGBufferShaderProgram(bGPUSkinning);
+		break;
+
+	default:
+		break;
+	}
+
+	if (!BaseProgram)
+	{
+		FPipelineState* Pipeline = GetPSO(TargetPSO);
+		BaseProgram = Pipeline ? Pipeline->Shader : nullptr;
+	}
+
+	if (!BaseProgram || !BaseProgram->VertexShader)
+	{
+		OutError = "Base Material Shader is not available.";
 		return nullptr;
 	}
 

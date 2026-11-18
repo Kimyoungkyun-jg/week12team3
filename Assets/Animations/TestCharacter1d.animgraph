@@ -317,6 +317,31 @@
       "SpeedOffsetY": 0.0,
       "X": 900.0,
       "Y": 440.0
+    },
+    {
+      "Asset": "Models/UnrealModel/AS_MM_Death_Front_01.fbxbin",
+      "ConstantX": 0.0,
+      "ConstantY": 0.0,
+      "DirectionOffsetX": 0.0,
+      "DirectionOffsetY": 0.0,
+      "Id": 7,
+      "InputX": 0,
+      "InputY": 0,
+      "Loop": false,
+      "Name": "Death",
+      "OutputOffsetX": 0.0,
+      "OutputOffsetY": 0.0,
+      "OutputPlayerId": 0,
+      "PlayRate": 1.0,
+      "PlayerOffsetX": 0.0,
+      "PlayerOffsetY": 0.0,
+      "Players": [],
+      "Pose": 0,
+      "PoseConnected": true,
+      "SpeedOffsetX": 0.0,
+      "SpeedOffsetY": 0.0,
+      "X": 900.0,
+      "Y": 580.0
     }
   ],
   "Transitions": [
@@ -445,6 +470,15 @@
       "Input": 10,
       "Threshold": 0.11999999731779099,
       "To": 4
+    },
+    {
+      "BlendTime": 0.07999999821186066,
+      "Compare": 1,
+      "From": -1,
+      "Id": 15,
+      "Input": 14,
+      "Threshold": 0.0,
+      "To": 7
     }
   ],
   "Version": 1

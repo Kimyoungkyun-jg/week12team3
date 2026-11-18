@@ -20,6 +20,7 @@
 #include "Asset/AnimGraphAsset.h"
 #include "Asset/AssetManager.h"
 #include "Components/CharacterMovementComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "GameFramework/Character.h"
 #include "Physics/Collision.h"
 
@@ -790,6 +791,28 @@ FVertexBuffer* USkeletalMeshComponent::GetSkinnedVertexBuffer(uint32 LOD)
 	return Cached.Buffer.get();
 }
 
+namespace
+{
+	void SkinPickVertex(const FSkeletalVertex& Src, const TArray<FMatrix>& SkinningMatrices, FVector& OutPos)
+	{
+		FBlendMatrix Blend{};
+		float Total = 0.0f;
+		for (int32 I = 0; I < 4; ++I)
+		{
+			const int32 Bone = Src.BoneIndices[I];
+			const float Weight = Src.BoneWeights[I];
+			if (Bone < 0 || Bone >= SkinningMatrices.Num() || Weight <= 0.0f) continue;
+			for (int32 R = 0; R < 4; ++R)
+			{
+				for (int32 C = 0; C < 3; ++C) Blend[R][C] += SkinningMatrices[Bone].M[R][C] * Weight;
+			}
+			Total += Weight;
+		}
+		if (Total <= 0.0f) Blend[0][0] = Blend[1][1] = Blend[2][2] = 1.0f;
+		TransformPoint(Blend, Src.Position, OutPos);
+	}
+}
+
 void USkeletalMeshComponent::UpdatePickPositions()
 {
 	EnsureBoneState();
@@ -802,25 +825,48 @@ void USkeletalMeshComponent::UpdatePickPositions()
 	FVector Min(FLT_MAX, FLT_MAX, FLT_MAX), Max(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 	for (int32 V = 0; V < Vertices.Num(); ++V)
 	{
-		const FSkeletalVertex& Src = Vertices[V];
-		FBlendMatrix Blend{};
-		float Total = 0.0f;
-		for (int32 I = 0; I < 4; ++I)
-		{
-			const int32 Bone = Src.BoneIndices[I];
-			const float Weight = Src.BoneWeights[I];
-			if (Bone < 0 || Bone >= SkinningMatrices.Num() || Weight <= 0.0f) continue;
-			for (int32 R = 0; R < 4; ++R) for (int32 C = 0; C < 3; ++C) Blend[R][C] += SkinningMatrices[Bone].M[R][C] * Weight;
-			Total += Weight;
-		}
-		if (Total <= 0.0f) Blend[0][0] = Blend[1][1] = Blend[2][2] = 1.0f;
 		FVector& P = PickPositions[V];
-		TransformPoint(Blend, Src.Position, P);
+		SkinPickVertex(Vertices[V], SkinningMatrices, P);
 		Min = FVector(std::min(Min.X, P.X), std::min(Min.Y, P.Y), std::min(Min.Z, P.Z));
 		Max = FVector(std::max(Max.X, P.X), std::max(Max.Y, P.Y), std::max(Max.Z, P.Z));
 	}
 	PickBounds = FBox{ Min, Max };
 	PickRevision = PoseRevision;
+}
+
+void USkeletalMeshComponent::UpdateSampledPickPositions()
+{
+	EnsureBoneState();
+	if (!SkeletalMesh) return;
+	if (!SkinningMatrices.IsEmpty() && bSkinningMatricesDirty) UpdateSkinning();
+	if (SampledPickRevision == PoseRevision && !SampledPickPositions.IsEmpty()) return;
+
+	const TArray<FSkeletalVertex>& Vertices = SkeletalMesh->MeshData.SkinnedVertices;
+	const int32 TotalCount = Vertices.Num();
+	if (TotalCount == 0)
+	{
+		SampledPickPositions.Reset();
+		SampledPickRevision = PoseRevision;
+		return;
+	}
+	const int32 Step = std::max(1, TotalCount / 512);
+	SampledPickPositions.Reset();
+	SampledPickPositions.Reserve(TotalCount / Step + 1);
+	const bool bHasFull = (PickRevision == PoseRevision && PickPositions.Num() == TotalCount);
+	for (int32 V = 0; V < TotalCount; V += Step)
+	{
+		if (bHasFull)
+		{
+			SampledPickPositions.Add(PickPositions[V]);
+		}
+		else
+		{
+			FVector Pos;
+			SkinPickVertex(Vertices[V], SkinningMatrices, Pos);
+			SampledPickPositions.Add(Pos);
+		}
+	}
+	SampledPickRevision = PoseRevision;
 }
 
 bool USkeletalMeshComponent::LineTraceComponent(const FRay& WorldRay, FHitResult& OutHit)
@@ -940,12 +986,25 @@ void USkeletalMeshComponent::StartPreviewDissolve(float InDuration, const FVecto
 	PreviewDissolveElapsed = 0.0f;
 	bPreviewDissolveActive = true;
 	SetDissolveHidden(false);
+	const FBox MeshBounds = CalcBounds();
+	const float MinZ = MeshBounds.Min.Z;
+	const float MaxZ = std::max(MeshBounds.Max.Z, MinZ + 0.1f);
 	for (UMaterialInstanceDynamic* DynMat : PreviewDissolveMaterials)
 	{
 		if (!DynMat)
 			continue;
 		DynMat->SetScalarParameterValue(FName("DissolveAmount"), -0.05f);
+		DynMat->SetScalarParameterValue(FName("DissolveMinZ"), MinZ);
+		DynMat->SetScalarParameterValue(FName("DissolveMaxZ"), MaxZ);
 		DynMat->SetVectorParameterValue(FName("DissolveEdgeColor"), InEdgeColor);
+	}
+	if (AActor* Owner = GetOwner())
+	{
+		for (UActorComponent* Comp : Owner->GetComponents())
+		{
+			if (UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp))
+				ParticleComp->SetFloatParameter("DissolveHeight", MaxZ);
+		}
 	}
 }
 
@@ -956,10 +1015,27 @@ void USkeletalMeshComponent::UpdatePreviewDissolve(float DeltaTime)
 	PreviewDissolveElapsed += DeltaTime;
 	const float Alpha = std::clamp(PreviewDissolveElapsed / std::max(0.05f, PreviewDissolveDuration), 0.0f, 1.0f);
 	const float Amount = -0.05f + Alpha * 1.13f;
+	const FBox MeshBounds = CalcBounds();
+	const float MinZ = MeshBounds.Min.Z;
+	const float MaxZ = std::max(MeshBounds.Max.Z, MinZ + 0.1f);
 	for (UMaterialInstanceDynamic* DynMat : PreviewDissolveMaterials)
 	{
 		if (DynMat)
+		{
 			DynMat->SetScalarParameterValue(FName("DissolveAmount"), Amount);
+			DynMat->SetScalarParameterValue(FName("DissolveMinZ"), MinZ);
+			DynMat->SetScalarParameterValue(FName("DissolveMaxZ"), MaxZ);
+		}
+	}
+	if (AActor* Owner = GetOwner())
+	{
+		const float ActiveNormZ = std::clamp(1.0f - (Amount - 0.125f) / 0.80f, 0.0f, 1.0f);
+		const float DissolveWorldZ = MinZ + ActiveNormZ * (MaxZ - MinZ);
+		for (UActorComponent* Comp : Owner->GetComponents())
+		{
+			if (UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp))
+				ParticleComp->SetFloatParameter("DissolveHeight", DissolveWorldZ);
+		}
 	}
 	if (Alpha >= 1.0f)
 	{

@@ -95,6 +95,16 @@ float ACharacter::PlayAnimMontage(const FString& MontagePath, float InPlayRate, 
 	return AnimGraph ? AnimGraph->PlayMontage(MontagePath, InPlayRate, StartSection) : 0.0f;
 }
 
+void ACharacter::SetDeathParticlePath(const FString& InPath)
+{
+	DeathParticlePath = InPath;
+	if (DeathParticleComponent)
+	{
+		DeathParticleComponent->TemplatePath = InPath;
+		DeathParticleComponent->SetTemplate(nullptr);
+	}
+}
+
 void ACharacter::EnsureDeathDissolveSetup()
 {
 	if (!DeathParticleComponent)
@@ -161,13 +171,21 @@ void ACharacter::StartDeathDissolve()
 	if (SkeletalMeshComponent)
 		SkeletalMeshComponent->bCastShadow = false;
 
+	const FBox MeshBounds = SkeletalMeshComponent ? SkeletalMeshComponent->CalcBounds() : FBox{};
+	const float MinZ = SkeletalMeshComponent ? MeshBounds.Min.Z : (GetActorLocation().Z - 1.0f);
+	const float MaxZ = SkeletalMeshComponent ? std::max(MeshBounds.Max.Z, MinZ + 0.1f) : (MinZ + 1.8f);
+
 	for (UMaterialInstanceDynamic* DynMat : DissolveMaterials)
 	{
 		if (!DynMat)
 			continue;
 		DynMat->SetScalarParameterValue(FName("DissolveAmount"), -0.05f);
+		DynMat->SetScalarParameterValue(FName("DissolveMinZ"), MinZ);
+		DynMat->SetScalarParameterValue(FName("DissolveMaxZ"), MaxZ);
 		DynMat->SetVectorParameterValue(FName("DissolveEdgeColor"), DissolveEdgeColor);
 	}
+	if (DeathParticleComponent)
+		DeathParticleComponent->SetFloatParameter("DissolveHeight", MaxZ);
 }
 
 void ACharacter::UpdateDeathDissolve(float DeltaTime)
@@ -178,10 +196,23 @@ void ACharacter::UpdateDeathDissolve(float DeltaTime)
 	DissolveElapsed += DeltaTime;
 	const float Alpha = std::clamp(DissolveElapsed / std::max(0.05f, DissolveDuration), 0.0f, 1.0f);
 	const float DissolveAmount = -0.05f + Alpha * 1.13f;
+	const FBox MeshBounds = SkeletalMeshComponent ? SkeletalMeshComponent->CalcBounds() : FBox{};
+	const float MinZ = SkeletalMeshComponent ? MeshBounds.Min.Z : (GetActorLocation().Z - 1.0f);
+	const float MaxZ = SkeletalMeshComponent ? std::max(MeshBounds.Max.Z, MinZ + 0.1f) : (MinZ + 1.8f);
 	for (UMaterialInstanceDynamic* DynMat : DissolveMaterials)
 	{
 		if (DynMat)
+		{
 			DynMat->SetScalarParameterValue(FName("DissolveAmount"), DissolveAmount);
+			DynMat->SetScalarParameterValue(FName("DissolveMinZ"), MinZ);
+			DynMat->SetScalarParameterValue(FName("DissolveMaxZ"), MaxZ);
+		}
+	}
+	if (DeathParticleComponent)
+	{
+		const float ActiveNormZ = std::clamp(1.0f - (DissolveAmount - 0.125f) / 0.80f, 0.0f, 1.0f);
+		const float DissolveWorldZ = MinZ + ActiveNormZ * (MaxZ - MinZ);
+		DeathParticleComponent->SetFloatParameter("DissolveHeight", DissolveWorldZ);
 	}
 	if (Alpha >= 1.0f)
 	{

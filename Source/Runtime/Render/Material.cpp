@@ -28,6 +28,28 @@ namespace
 		return UAssetManager::Get().LoadTexture(Path);
 	}
 
+	template <typename T>
+	void MixGraphValue(uint64& Hash, const T& Value)
+	{
+		const unsigned char* Bytes = reinterpret_cast<const unsigned char*>(&Value);
+		for (size_t Index = 0; Index < sizeof(T); ++Index)
+		{
+			Hash ^= Bytes[Index];
+			Hash *= 1099511628211ull;
+		}
+	}
+
+	void MixGraphString(uint64& Hash, const FString& Text)
+	{
+		const size_t Length = Text.size();
+		MixGraphValue(Hash, Length);
+		for (unsigned char Ch : Text)
+		{
+			Hash ^= Ch;
+			Hash *= 1099511628211ull;
+		}
+	}
+
 	const FMaterialExpressionNode* FindExpressionNode(const UMaterial& Material, int32 NodeId)
 	{
 		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
@@ -689,15 +711,72 @@ void UMaterial::GetReachableExpressionNodeIds(TArray<int32>& OutNodeIds) const
 	Visit(Visit, OutputNodeId);
 }
 
-void UMaterial::GetGraphParameterLayout(TArray<FMaterialGraphParameter>& OutParameters) const
+uint64 UMaterial::ComputeGraphSignature() const
 {
-	OutParameters.Reset();
+	// 노드 배치 좌표를 제외한 그래프 구조와 값만 시그니처로 계산
+	uint64 Hash = 14695981039346656037ull;
+	MixGraphValue(Hash, OutputNodeId);
 
-	TArray<int32> ReachableNodeIds;
-	GetReachableExpressionNodeIds(ReachableNodeIds);
+	const int32 NodeCount = ExpressionNodes.Num();
+	MixGraphValue(Hash, NodeCount);
+	for (const FMaterialExpressionNode& Node : ExpressionNodes)
+	{
+		MixGraphValue(Hash, Node.Id);
+		MixGraphValue(Hash, Node.Type);
+		MixGraphValue(Hash, Node.ScalarValue);
+		MixGraphValue(Hash, Node.VectorValue.X);
+		MixGraphValue(Hash, Node.VectorValue.Y);
+		MixGraphValue(Hash, Node.VectorValue.Z);
+		MixGraphValue(Hash, Node.VectorValue.W);
+		MixGraphString(Hash, Node.ParameterName);
+		MixGraphString(Hash, Node.TexturePath);
+		MixGraphValue(Hash, Node.CoordinateIndex);
+		MixGraphValue(Hash, Node.ComponentMask);
+		MixGraphString(Hash, Node.CustomCode);
+		MixGraphValue(Hash, Node.CustomOutputType);
+		MixGraphValue(Hash, Node.bSRGB);
+	}
 
+	const int32 ConnectionCount = ExpressionConnections.Num();
+	MixGraphValue(Hash, ConnectionCount);
+	for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+	{
+		MixGraphValue(Hash, Connection.OutputNodeId);
+		MixGraphValue(Hash, Connection.OutputPin);
+		MixGraphValue(Hash, Connection.InputNodeId);
+		MixGraphValue(Hash, Connection.InputPin);
+	}
+
+	return Hash;
+}
+
+void UMaterial::EnsureGraphCache() const
+{
+	const uint64 Signature = ComputeGraphSignature();
+	if (bGraphCacheValid && CachedGraphSignature == Signature)
+	{
+		return;
+	}
+
+	CachedGraphSignature = Signature;
+	bGraphCacheValid = true;
+	bCachedGraphHashValid = false;
+	bCachedGraphCompiledOk = false;
+	CachedGraphHash.clear();
+	CachedGraphError.clear();
+	CachedReachableNodeIds.Reset();
+	CachedGraphParameters.Reset();
+	CachedGraphTextureNodeIds.Reset();
+	CachedGraphTextures.Reset();
+
+	if (ExpressionNodes.IsEmpty() || OutputNodeId == 0)
+	{
+		return;
+	}
+
+	GetReachableExpressionNodeIds(CachedReachableNodeIds);
 	std::unordered_set<int32> ReachableNodeSet;
-	for (int32 NodeId : ReachableNodeIds)
+	for (int32 NodeId : CachedReachableNodeIds)
 	{
 		ReachableNodeSet.insert(NodeId);
 	}
@@ -709,33 +788,66 @@ void UMaterial::GetGraphParameterLayout(TArray<FMaterialGraphParameter>& OutPara
 			continue;
 		}
 
-		if (Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter)
+		if (Node.Type == EMaterialExpressionType::ScalarParameter || Node.Type == EMaterialExpressionType::VectorParameter)
 		{
-			continue;
-		}
-
-		bool bAlreadyExists = false;
-
-		for (const FMaterialGraphParameter& Parameter : OutParameters)
-		{
-			if (Parameter.Name == Node.ParameterName && Parameter.Type == Node.Type)
+			bool bAlreadyExists = false;
+			for (const FMaterialGraphParameter& Parameter : CachedGraphParameters)
 			{
-				bAlreadyExists = true;
-				break;
+				if (Parameter.Name == Node.ParameterName && Parameter.Type == Node.Type)
+				{
+					bAlreadyExists = true;
+					break;
+				}
+			}
+			if (!bAlreadyExists)
+			{
+				FMaterialGraphParameter& Parameter = CachedGraphParameters.AddDefaulted_GetRef();
+				Parameter.Name = Node.ParameterName;
+				Parameter.Type = Node.Type;
+				Parameter.ScalarValue = Node.ScalarValue;
+				Parameter.VectorValue = Node.VectorValue;
 			}
 		}
-
-		if (bAlreadyExists)
+		else if (Node.Type == EMaterialExpressionType::TextureSample || Node.Type == EMaterialExpressionType::TextureSampleParameter2D)
 		{
-			continue;
+			CachedGraphTextureNodeIds.Add(Node.Id);
+			CachedGraphTextures.Add(Node.TexturePath.empty() ? nullptr : FindOrLoadTexture(Node.TexturePath));
 		}
-
-		FMaterialGraphParameter& Parameter = OutParameters.AddDefaulted_GetRef();
-		Parameter.Name = Node.ParameterName;
-		Parameter.Type = Node.Type;
-		Parameter.ScalarValue = Node.ScalarValue;
-		Parameter.VectorValue = Node.VectorValue;
 	}
+}
+
+bool UMaterial::GetCachedGraphHash(uint64 Signature, FString& OutHash, bool& OutValid, FString& OutError) const
+{
+	EnsureGraphCache();
+	if (!bGraphCacheValid || CachedGraphSignature != Signature || !bCachedGraphHashValid)
+	{
+		return false;
+	}
+
+	OutHash = CachedGraphHash;
+	OutValid = bCachedGraphCompiledOk;
+	OutError = CachedGraphError;
+	return true;
+}
+
+void UMaterial::SetCachedGraphHash(uint64 Signature, const FString& InHash, bool bInValid, const FString& InError) const
+{
+	EnsureGraphCache();
+	if (CachedGraphSignature != Signature)
+	{
+		return;
+	}
+
+	bCachedGraphHashValid = true;
+	bCachedGraphCompiledOk = bInValid;
+	CachedGraphHash = InHash;
+	CachedGraphError = InError;
+}
+
+void UMaterial::GetGraphParameterLayout(TArray<FMaterialGraphParameter>& OutParameters) const
+{
+	EnsureGraphCache();
+	OutParameters = CachedGraphParameters;
 }
 
 bool UMaterial::ConnectExpressionPins(int32 OutputId, int32 OutputPin, int32 InputId, int32 InputPin, FString& OutError)
@@ -1390,30 +1502,11 @@ void UMaterial::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
 	OutProxy.GraphTextures.Reset();
 	OutProxy.GraphTextureNodeIds.Reset();
 
-	TArray<int32> ReachableNodeIds;
-	GetReachableExpressionNodeIds(ReachableNodeIds);
-
-	std::unordered_set<int32> ReachableNodeSet;
-	for (int32 NodeId : ReachableNodeIds)
+	if (HasGraphOutput())
 	{
-		ReachableNodeSet.insert(NodeId);
-	}
-
-	for (const FMaterialExpressionNode& Node : ExpressionNodes)
-	{
-		if (!ReachableNodeSet.contains(Node.Id))
-		{
-			continue;
-		}
-
-		if (Node.Type != EMaterialExpressionType::TextureSample &&
-			Node.Type != EMaterialExpressionType::TextureSampleParameter2D)
-		{
-			continue;
-		}
-
-		OutProxy.GraphTextureNodeIds.Add(Node.Id);
-		OutProxy.GraphTextures.Add(Node.TexturePath.empty() ? nullptr : FindOrLoadTexture(Node.TexturePath));
+		EnsureGraphCache();
+		OutProxy.GraphTextureNodeIds = CachedGraphTextureNodeIds;
+		OutProxy.GraphTextures = CachedGraphTextures;
 	}
 
 	OutProxy.BaseColor = BaseColor;
@@ -1538,7 +1631,7 @@ UMaterial* UMaterial::GetOrCreateDissolveParent(UMaterial* SourceMat)
 	FMaterialExpressionNode EdgeWidthNode;
 	EdgeWidthNode.Id = 8;
 	EdgeWidthNode.Type = EMaterialExpressionType::Constant;
-	EdgeWidthNode.ScalarValue = 0.035f;
+	EdgeWidthNode.ScalarValue = 0.06f;
 
 	FMaterialExpressionNode StepNode;
 	StepNode.Id = 9;
@@ -1563,6 +1656,69 @@ UMaterial* UMaterial::GetOrCreateDissolveParent(UMaterial* SourceMat)
 	EmissiveLerpNode.Id = 13;
 	EmissiveLerpNode.Type = EMaterialExpressionType::Lerp;
 
+	FMaterialExpressionNode WorldPosNode;
+	WorldPosNode.Id = 14;
+	WorldPosNode.Type = EMaterialExpressionType::WorldPosition;
+
+	FMaterialExpressionNode WorldZMaskNode;
+	WorldZMaskNode.Id = 15;
+	WorldZMaskNode.Type = EMaterialExpressionType::ComponentMask;
+	WorldZMaskNode.ComponentMask = 1u << 2;
+
+	FMaterialExpressionNode MinZParamNode;
+	MinZParamNode.Id = 16;
+	MinZParamNode.Type = EMaterialExpressionType::ScalarParameter;
+	MinZParamNode.ParameterName = "DissolveMinZ";
+	MinZParamNode.ScalarValue = 0.0f;
+
+	FMaterialExpressionNode MaxZParamNode;
+	MaxZParamNode.Id = 17;
+	MaxZParamNode.Type = EMaterialExpressionType::ScalarParameter;
+	MaxZParamNode.ParameterName = "DissolveMaxZ";
+	MaxZParamNode.ScalarValue = 1.8f;
+
+	FMaterialExpressionNode RelZNode;
+	RelZNode.Id = 18;
+	RelZNode.Type = EMaterialExpressionType::Subtract;
+
+	FMaterialExpressionNode SpanZNode;
+	SpanZNode.Id = 19;
+	SpanZNode.Type = EMaterialExpressionType::Subtract;
+
+	FMaterialExpressionNode NormZNode;
+	NormZNode.Id = 20;
+	NormZNode.Type = EMaterialExpressionType::Divide;
+
+	FMaterialExpressionNode SatZNode;
+	SatZNode.Id = 21;
+	SatZNode.Type = EMaterialExpressionType::Saturate;
+
+	FMaterialExpressionNode RemainFromTopNode;
+	RemainFromTopNode.Id = 22;
+	RemainFromTopNode.Type = EMaterialExpressionType::OneMinus;
+
+	FMaterialExpressionNode HeightWeightNode;
+	HeightWeightNode.Id = 23;
+	HeightWeightNode.Type = EMaterialExpressionType::Constant;
+	HeightWeightNode.ScalarValue = 0.80f;
+
+	FMaterialExpressionNode WeightedHeightNode;
+	WeightedHeightNode.Id = 24;
+	WeightedHeightNode.Type = EMaterialExpressionType::Multiply;
+
+	FMaterialExpressionNode NoiseWeightNode;
+	NoiseWeightNode.Id = 25;
+	NoiseWeightNode.Type = EMaterialExpressionType::Constant;
+	NoiseWeightNode.ScalarValue = 0.25f;
+
+	FMaterialExpressionNode WeightedNoiseNode;
+	WeightedNoiseNode.Id = 26;
+	WeightedNoiseNode.Type = EMaterialExpressionType::Multiply;
+
+	FMaterialExpressionNode DissolveFieldNode;
+	DissolveFieldNode.Id = 27;
+	DissolveFieldNode.Type = EMaterialExpressionType::Add;
+
 	ParentMat->ExpressionNodes.Add(OutputNode);
 	ParentMat->ExpressionNodes.Add(UvNode);
 	ParentMat->ExpressionNodes.Add(ScaleNode);
@@ -1576,11 +1732,40 @@ UMaterial* UMaterial::GetOrCreateDissolveParent(UMaterial* SourceMat)
 	ParentMat->ExpressionNodes.Add(ZeroColorNode);
 	ParentMat->ExpressionNodes.Add(EdgeColorParamNode);
 	ParentMat->ExpressionNodes.Add(EmissiveLerpNode);
+	ParentMat->ExpressionNodes.Add(WorldPosNode);
+	ParentMat->ExpressionNodes.Add(WorldZMaskNode);
+	ParentMat->ExpressionNodes.Add(MinZParamNode);
+	ParentMat->ExpressionNodes.Add(MaxZParamNode);
+	ParentMat->ExpressionNodes.Add(RelZNode);
+	ParentMat->ExpressionNodes.Add(SpanZNode);
+	ParentMat->ExpressionNodes.Add(NormZNode);
+	ParentMat->ExpressionNodes.Add(SatZNode);
+	ParentMat->ExpressionNodes.Add(RemainFromTopNode);
+	ParentMat->ExpressionNodes.Add(HeightWeightNode);
+	ParentMat->ExpressionNodes.Add(WeightedHeightNode);
+	ParentMat->ExpressionNodes.Add(NoiseWeightNode);
+	ParentMat->ExpressionNodes.Add(WeightedNoiseNode);
+	ParentMat->ExpressionNodes.Add(DissolveFieldNode);
 
 	ParentMat->ExpressionConnections.Add({ 2, 0, 4, 0 });
 	ParentMat->ExpressionConnections.Add({ 3, 0, 4, 1 });
 	ParentMat->ExpressionConnections.Add({ 4, 0, 5, 0 });
-	ParentMat->ExpressionConnections.Add({ 5, 0, 7, 0 });
+	ParentMat->ExpressionConnections.Add({ 14, 0, 15, 0 });
+	ParentMat->ExpressionConnections.Add({ 15, 0, 18, 0 });
+	ParentMat->ExpressionConnections.Add({ 16, 0, 18, 1 });
+	ParentMat->ExpressionConnections.Add({ 17, 0, 19, 0 });
+	ParentMat->ExpressionConnections.Add({ 16, 0, 19, 1 });
+	ParentMat->ExpressionConnections.Add({ 18, 0, 20, 0 });
+	ParentMat->ExpressionConnections.Add({ 19, 0, 20, 1 });
+	ParentMat->ExpressionConnections.Add({ 20, 0, 21, 0 });
+	ParentMat->ExpressionConnections.Add({ 21, 0, 22, 0 });
+	ParentMat->ExpressionConnections.Add({ 22, 0, 24, 0 });
+	ParentMat->ExpressionConnections.Add({ 23, 0, 24, 1 });
+	ParentMat->ExpressionConnections.Add({ 5, 0, 26, 0 });
+	ParentMat->ExpressionConnections.Add({ 25, 0, 26, 1 });
+	ParentMat->ExpressionConnections.Add({ 24, 0, 27, 0 });
+	ParentMat->ExpressionConnections.Add({ 26, 0, 27, 1 });
+	ParentMat->ExpressionConnections.Add({ 27, 0, 7, 0 });
 	ParentMat->ExpressionConnections.Add({ 6, 0, 7, 1 });
 	ParentMat->ExpressionConnections.Add({ 8, 0, 9, 0 });
 	ParentMat->ExpressionConnections.Add({ 7, 0, 9, 1 });

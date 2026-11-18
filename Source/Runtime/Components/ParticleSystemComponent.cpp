@@ -1210,6 +1210,9 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 			}
 		}
 
+		FParticleTickContext EmitterContext = Context;
+		EmitterContext.bUseLocalSpace = Required->bUseLocalSpace;
+
 		// 살아 있는 파티클은 방출이 끝난 뒤에도 수명이 다할 때까지 갱신한다.
 		for (int32 Index = 0; Index < ActiveParticles;)
 		{
@@ -1231,9 +1234,12 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 				if (!Module) continue;
 				Module->Update(Particle, DeltaTime, GetModuleDataOffset(Module), InstanceParameters);
 
-				if (const UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
+				if (!bIsBeam)
 				{
-					Collision->TickCollision(Particle, DeltaTime, GetModuleDataOffset(Module), Context, EventGenerator);
+					if (const UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
+					{
+						Collision->TickCollision(Particle, DeltaTime, GetModuleDataOffset(Module), EmitterContext, EventGenerator);
+					}
 				}
 			}
 			if (bIsBeam && BeamType && TypeDataOffset > 0)
@@ -1266,6 +1272,20 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 							BeamPayload.NoiseLockTimer = std::fmod(BeamPayload.NoiseLockTimer, BeamNoise->NoiseLockTime);
 							BeamPayload.NoiseSeed = AdvanceNoiseSeed(BeamPayload.NoiseSeed);
 						}
+					}
+				}
+				const FVector LocalEnd = BeamPayload.SourcePoint + (BeamPayload.TargetPoint - BeamPayload.SourcePoint) * BeamPayload.TravelRatio;
+				const FVector WorldStart = Required->bUseLocalSpace
+					? EmitterContext.ComponentToWorld.TransformPosition(BeamPayload.SourcePoint)
+					: BeamPayload.SourcePoint;
+				const FVector WorldEnd = Required->bUseLocalSpace
+					? EmitterContext.ComponentToWorld.TransformPosition(LocalEnd)
+					: LocalEnd;
+				for (const UParticleModule* Module : CurrentLODLevel->UpdateModules)
+				{
+					if (const UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
+					{
+						Collision->TickSegmentCollision(Particle, WorldStart, WorldEnd, GetModuleDataOffset(Module), EmitterContext, EventGenerator);
 					}
 				}
 			}
@@ -1372,11 +1392,30 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 	const TArray<FVector>* SkinnedVerts = nullptr;
 	const TArray<FMatrix>* BoneTransforms = nullptr;
 	FMatrix SkeletalWorldMatrix = FMatrix::Identity;
+	TArray<FVector> DissolveBandVerts;
 	if (bSampleSkeletalSurface && ToSpawn > 0)
 	{
-		SkinnedVerts = &AfterimageSource->GetSkinnedPickPositions();
+		// 파티클 스폰용은 균등 샘플링된 경량 스킨 정점을 사용해 프레임 드랍을 막는다
+		SkinnedVerts = &AfterimageSource->GetSampledPickPositions();
 		BoneTransforms = &AfterimageSource->GetGlobalBoneTransforms();
 		SkeletalWorldMatrix = AfterimageSource->GetWorldMatrix();
+		if (SkinnedVerts && !SkinnedVerts->IsEmpty() && LocationMod && LocationMod->bFilterByDissolveHeight &&
+			InstanceParameters && !LocationMod->DissolveHeightParamName.empty())
+		{
+			if (const float* DissolveZPtr = InstanceParameters->FloatParams.Find(LocationMod->DissolveHeightParamName))
+			{
+				const float TargetZ = *DissolveZPtr;
+				const float HalfBand = std::max(0.02f, LocationMod->DissolveBandHalfHeight);
+				for (const FVector& Vert : *SkinnedVerts)
+				{
+					const float WorldZ = SkeletalWorldMatrix.TransformPosition(Vert).Z;
+					if (std::abs(WorldZ - TargetZ) <= HalfBand)
+						DissolveBandVerts.Add(Vert);
+				}
+				if (!DissolveBandVerts.IsEmpty())
+					SkinnedVerts = &DissolveBandVerts;
+			}
+		}
 	}
 	if (bIsGpu)
 	{
@@ -2530,6 +2569,10 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	for (auto& Event : CollisionEvents)
 	{
 		OnParticleCollision.Broadcast(Event);
+		if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
+		{
+			Character->OnParticleCollide(Event);
+		}
 	}
 	CollisionEvents.Reset();
 	MarkRenderStateDirty();
@@ -2538,6 +2581,8 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 		if (bFadingOut)
 			ResetParticles();
 		if (IsActive()) Deactivate();
+		SetVisibility(false);
+		PushRenderStateToProxy();
 		if (bAutoDestroy && bIsGame && GetOwner())
 			GetOwner()->Destroy();
 	}

@@ -1,11 +1,13 @@
 #pragma once
 
 #include "Asset/AnimNotifyEvent.h"
+#include "Containers/Map.h"
 #include "Math/Vector.h"
 #include "Math/Vector4.h"
 #include "UObject/Object.h"
 #include "AnimNotify.generated.h"
 
+class UParticleSystemComponent;
 class USkeletalMeshComponent;
 class UAnimSequence;
 
@@ -156,6 +158,9 @@ public:
 	void NotifyTick(const FAnimNotifyContext& Context) override;
 	void NotifyEnd(const FAnimNotifyContext& Context) override;
 	bool CanTriggerInEditorWorld() const override { return true; }
+
+private:
+	TMap<USkeletalMeshComponent*, UParticleSystemComponent*> ActiveComponents;
 };
 
 UCLASS()
