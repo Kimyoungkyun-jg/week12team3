@@ -13,6 +13,8 @@
 #include "ParticleSystem.generated.h"
 
 class UClass;
+class UWorld;
+class UParticleSystemComponent;
 
 struct FBaseParticle
 {
@@ -54,6 +56,30 @@ struct FRibbonTypeDataPayload
 	float WidthOverride = -1.0f;
 	FVector EdgeHalfOffset = FVector::ZeroVector;
 	bool bUseExplicitEdges = false;
+};
+
+struct FParticleCollisionPayload
+{
+	int32 CollisionCount = 0;
+	float Restitution = 0.0f;
+	float Friction = 0.0f;
+	bool bInitialized = false;
+};
+
+struct FParticleEventCollideData
+{
+	FString EventName;
+	FVector Location;
+	FVector Normal;
+	FVector Velocity;
+	UPrimitiveComponent* Component = nullptr;
+};
+
+struct FParticleTickContext
+{
+	UWorld* World = nullptr;
+	FMatrix ComponentToWorld;
+	UParticleSystemComponent * Component = nullptr;
 };
 
 enum class EParticleSysParamType : uint8
@@ -592,6 +618,52 @@ public:
 };
 
 UCLASS()
+class UParticleModuleEventGenerator : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	bool RunsOnUpdate() const override { return false; }
+	const char* GetDisplayName() const override { return "Event Generator"; }
+
+
+public:
+	UPROPERTY(EditAnywhere)
+	FString EventName = "Hit";
+	UPROPERTY(EditAnywhere)
+	int32 EventFrequency = 1;
+};
+
+UCLASS()
+class UParticleModuleCollision : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	void TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, 
+		const FParticleTickContext& Context, const UParticleModuleEventGenerator* EventGenerator) const;
+	
+	bool RunsOnUpdate() const override { return true; }
+	uint32 RequiredBytes() const override { return sizeof(FParticleCollisionPayload); }
+	const char* GetDisplayName() const override { return "Collision"; }
+
+public:
+	UPROPERTY(EditAnywhere)
+	float RestitutionMax = 0.5f;
+	UPROPERTY(EditAnywhere)
+	float RestitutionMin = 0.0f;
+
+	UPROPERTY(EditAnywhere)
+	float FrictionMax = 0.5f;
+	UPROPERTY(EditAnywhere)
+	float FrictionMin = 0.2f;
+
+	UPROPERTY(EditAnywhere)
+	int32 MaxCollisions = 10;
+
+	UPROPERTY(EditAnywhere)
+	float CollisionRadius = 1.0f;
+};
+
+UCLASS()
 class UParticleLODLevel : public UObject
 {
 	GENERATED_BODY()
@@ -705,3 +777,4 @@ private:
 	UPROPERTY(Instanced)
 	TArray<UParticleEmitter*> Emitters;
 };
+

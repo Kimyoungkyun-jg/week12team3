@@ -15,6 +15,8 @@
 
 #include "GameFramework/Actor/ParticleActor.h"
 #include "GameFramework/Actor/ParticleSystemActor.h"
+#include "GameFramework/Actor/ParticleEventmanager.h"
+#include "GameFramework/Actor/ParticleHitEffectActor.h"
 #include "GameFramework/Actor/StaticMeshActor.h"
 #include "GameFramework/Actor/DirectionalLightActor.h"
 #include "GameFramework/Actor/PointLightActor.h"
@@ -59,6 +61,8 @@ namespace
 		{ "Effects",  "Decal",             &ADecalActor::StaticClass },
 		{ "Effects",  "Particle",          &AParticleActor::StaticClass },
 		{ "Effects",  "Particle System",   &AParticleSystemActor::StaticClass },
+		{ "Effects",  "Particle Event Manager",   &AParticleEventManager::StaticClass },
+		{ "Effects",  "Particle Hit Effect",   &AParticleHitEffectActor::StaticClass },
 		{ "Effects",  "Height Fog",        &AExponentialHeightFogActor::StaticClass },
 		{ "Gameplay", "Projectile",        &AProjectileActor::StaticClass },
 		{ "Gameplay", "Rifle",             &ARifleActor::StaticClass },
