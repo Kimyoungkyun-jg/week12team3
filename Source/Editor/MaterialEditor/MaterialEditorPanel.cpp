@@ -1297,8 +1297,8 @@ void FMaterialEditorPanel::DrawMaterialGraph(UMaterial& Material)
 
 	ImGui::BeginChild("MaterialPreview", { 0.0f, PreviewHeight }, ImGuiChildFlags_Borders);
 	DrawPreview();
-	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 	ImGui::EndChild();
+	ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 
 	// 프리뷰와 노드 디테일 높이 비율을 드래그로 조절한다
 	ImGui::InvisibleButton("##MaterialPreviewSplitter", ImVec2(-1.0f, SplitterSize));
@@ -1615,8 +1615,8 @@ void FMaterialEditorPanel::OnRender()
 			}
 		}
 
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 		ImGui::EndChild();
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 
 		ImGui::InvisibleButton("##InstancePreviewSplitter", ImVec2(-1.0f, SplitterSize));
 		const bool bInstSplitterActive = ImGui::IsItemActive();
