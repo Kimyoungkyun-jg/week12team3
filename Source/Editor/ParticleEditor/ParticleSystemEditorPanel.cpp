@@ -1048,6 +1048,21 @@ void FParticleSystemEditorPanel::RenderPreview(UEditorEngine* Engine)
 	}
 }
 
+static void RestartPreviewSimulation(AParticleSystemActor* PreviewActor, bool& bOutPaused)
+{
+	if (!PreviewActor || !PreviewActor->GetParticleSystemComponent())
+	{
+		return;
+	}
+
+	// 완료 시 숨겨지고 비활성화된 프리뷰 컴포넌트를 다시 켜고 처음부터 재생
+	UParticleSystemComponent* Component = PreviewActor->GetParticleSystemComponent();
+	Component->SetVisibility(true);
+	Component->Activate(true);
+	Component->PushRenderStateToProxy();
+	bOutPaused = false;
+}
+
 void FParticleSystemEditorPanel::RenderMenuBar()
 {
 	if (!ImGui::BeginMenuBar()) return;
@@ -1100,8 +1115,7 @@ void FParticleSystemEditorPanel::RenderMenuBar()
 		}
 		if (ImGui::MenuItem("Restart Sim", nullptr, false, PreviewActor != nullptr))
 		{
-			if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-				PreviewActor->GetParticleSystemComponent()->ResetParticles();
+			RestartPreviewSimulation(PreviewActor, bPaused);
 		}
 		ImGui::EndMenu();
 	}
@@ -1144,10 +1158,7 @@ void FParticleSystemEditorPanel::RenderToolbar()
 
 	if (ImGui::Button("Restart"))
 	{
-		if (PreviewActor && PreviewActor->GetParticleSystemComponent())
-		{
-			PreviewActor->GetParticleSystemComponent()->ResetParticles();
-		}
+		RestartPreviewSimulation(PreviewActor, bPaused);
 	}
 
 	ImGui::SameLine();

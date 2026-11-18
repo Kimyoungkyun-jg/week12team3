@@ -1,6 +1,7 @@
 #include "EnginePCH.h"
 #include "GameFramework/Actor/ParticleHitEffectActor.h"
 #include "GameFramework/Actor/ParticleEventManager.h"
+#include "Particles/ParticleSystem.h"
 #include "UObject/UObjectIterator.h"
 #include "Engine/World.h"
 
@@ -12,6 +13,7 @@ AParticleHitEffectActor::AParticleHitEffectActor()
 		UParticleSystemComponent* Effect = CreateDefaultSubobject<UParticleSystemComponent>(Name);
 		EffectPool.Add(Effect);
 
+		Effect->bPreviewInEditor = false;
 		Effect->SetAutoActivate(false);
 		Effect->TemplatePath = "Assets/Particles/HitParticles.particle";
 		
@@ -43,11 +45,16 @@ void AParticleHitEffectActor::BeginPlay()
 
 void AParticleHitEffectActor::OnHit(const FParticleEventCollideData& Event)
 {
+	if (EffectPool.IsEmpty())
+	{
+		return;
+	}
+
 	UParticleSystemComponent* Chosen = nullptr;
 
-	for (auto& Effect : EffectPool)
+	for (UParticleSystemComponent* Effect : EffectPool)
 	{
-		if (!Effect->IsActive() || Effect->HasCompleted())
+		if (Effect && (!Effect->IsActive() || Effect->HasCompleted()))
 		{
 			Chosen = Effect;
 			break;
@@ -56,13 +63,23 @@ void AParticleHitEffectActor::OnHit(const FParticleEventCollideData& Event)
 
 	if (Chosen == nullptr)
 	{
-	
-	Chosen = EffectPool[NextIndex];
+		Chosen = EffectPool[NextIndex];
 		NextIndex = (NextIndex + 1) % PoolSize;
 	}
-	
+
+	if (!Chosen)
+	{
+		return;
+	}
+
+	if (!Chosen->GetTemplate() && !Chosen->TemplatePath.empty())
+	{
+		Chosen->SetTemplate(UParticleSystem::LoadFromFile(Chosen->TemplatePath, Chosen));
+	}
+
+	// 완료 시 꺼진 가시성을 다시 켜고 즉시 프록시 상태를 갱신
 	Chosen->SetWorldLocation(Event.Location, false);
-	Chosen->ResetParticles();
+	Chosen->SetVisibility(true);
 	Chosen->Activate(true);
-	
+	Chosen->PushRenderStateToProxy();
 }
