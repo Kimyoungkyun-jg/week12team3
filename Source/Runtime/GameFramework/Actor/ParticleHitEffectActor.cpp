@@ -32,6 +32,30 @@ void AParticleHitEffectActor::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// PIE 복제 시 생성자에서 담은 미등록 포인터 대신 현재 액터의 실제 컴포넌트로 풀을 재구성
+	EffectPool.Reset();
+	for (UActorComponent* Comp : GetComponents())
+	{
+		UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp);
+		if (!ParticleComp || ParticleComp->GetName().rfind("Effect_", 0) != 0)
+		{
+			continue;
+		}
+		ParticleComp->bPreviewInEditor = false;
+		if (ParticleComp->TemplatePath.empty())
+		{
+			ParticleComp->TemplatePath = "Assets/Particles/HitParticles.particle";
+		}
+		if (!ParticleComp->GetTemplate())
+		{
+			ParticleComp->SetTemplate(UParticleSystem::LoadFromFile(ParticleComp->TemplatePath, ParticleComp));
+		}
+		ParticleComp->SetVisibility(false);
+		ParticleComp->Deactivate();
+		EffectPool.Add(ParticleComp);
+	}
+	NextIndex = 0;
+
 	for (TObjectIterator<AParticleEventManager> Iter; Iter; ++Iter)
 	{
 		if (Iter->GetWorld() != GetWorld())
