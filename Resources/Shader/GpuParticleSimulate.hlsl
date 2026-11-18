@@ -1,3 +1,5 @@
+#pragma pack_matrix(row_major)
+
 struct FGpuParticle
 {
 	float3 Position;
@@ -96,6 +98,55 @@ float3 Bounce(float3 V, float3 N)
     return V;
 }
 
+int DepthCollision(float3 Position, out float3 Normal, out float3 A)
+{
+    Normal = float3(0, 0, 1);
+    A = Position;
+
+    // 좌표 변환 
+    float4 Clip = mul(float4(Position, 1), ViewProj);
+    if (Clip.w <= 0)
+        return 0;
+
+    float2 NDC = Clip.xy / Clip.w;
+    float U = (NDC.x + 1) * 0.5f;
+    float V = (1 - NDC.y) * 0.5f;
+    if (U < 0 || U >= 1 || V < 0 || V >= 1)
+        return 0;
+
+    int2 Pixel = int2(float2(U, V) * ScreenAndClip.xy);
+    Pixel = min(Pixel, int2(ScreenAndClip.xy) - 2);
+    float Depth = SceneDepth.Load(int3(Pixel, 0));
+    if (Depth >= 1)
+        return 0;
+
+    // 깊이를 선형 거리로 바꿔 Thickness 과 비교 
+    float4 H = mul(float4(NDC, Depth, 1), InvViewProj);
+    float WallDir = 1 / H.w;
+    float ParticleDir = Clip.w;
+    float Penetration = ParticleDir - WallDir;
+    if (Penetration < -CollisionRadius || Penetration > DepthThickness)
+        return 1;
+
+    // 이웃픽셸로 노멀 복원 
+    float DepthR = SceneDepth.Load(int3(Pixel + int2(1, 0), 0));
+    float DepthD = SceneDepth.Load(int3(Pixel + int2(0, 1), 0));
+    if (DepthR >= 1 || DepthD >= 1)
+        return 2;
+    
+    A = PixelToWorld(Pixel, Depth);
+    float3 B = PixelToWorld(Pixel + int2(1, 0), DepthR);
+    float3 C = PixelToWorld(Pixel + int2(0, 1), DepthD);
+    if (length(C - A) > DepthThickness || length(B - A) > DepthThickness)
+        return 3;
+
+    // 4단계: 물체 경계가 아니다 → 노멀 확정
+    Normal = normalize(cross(C - A, B - A));
+    float3 CamPoint = PixelToWorld(Pixel, 0);
+    Normal = (dot(Normal, CamPoint - A) < 0.0f ? -Normal : Normal);
+    return 4;
+}
+
 // 분포 모드에 따라 상수 또는 전역 아틀라스에서 값을 평가한다
 float4 EvaluateDistribution(FGpuDistributionDesc Desc, float T)
 {
@@ -138,65 +189,25 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 	p.Rotation += p.RotationRate * DeltaTime;
 
     float Depth = 0.0f;
+    int Stage = 0;
     bool bHit = false;
     float3 Normal = float3(0, 0, 1);
+    float3 A = p.Position;
 	
     if (HasCollision != 0)
     {
-        float4 Clip = mul(float4(p.Position, 1), ViewProj);
-        if (Clip.w > 0)
-        {
-            float2 NDC = Clip.xy / Clip.w;
-            float U = (NDC.x +1) * 0.5f;
-            float V = (1 - NDC.y) * 0.5f;
-            if (U >= 0 && U < 1 && V >= 0 && V < 1)
-            {
-                int2 Pixel = int2(float2(U, V) * ScreenAndClip.xy);
-                Pixel = min(Pixel, int2(ScreenAndClip.xy) - 2);
-                Depth = SceneDepth.Load(int3(Pixel, 0));
-				
-                if (Depth < 1)
-                {
-                    float4 H = mul(float4(NDC, Depth, 1), InvViewProj);
-                    float3 HWorld = H.xyz / H.w;
-                    float WallDir = 1 / H.w;
-                    float ParticleDir = Clip.w;
-					
-                    float Penetration = ParticleDir - WallDir;
-                    if (Penetration >= -CollisionRadius && Penetration <= DepthThickness)
-                    {
-						
-                        float DepthR = SceneDepth.Load(int3(Pixel + int2(1, 0), 0));
-                        float DepthD = SceneDepth.Load(int3(Pixel + int2(0, 1), 0));
-						
-                        if (DepthR < 1 && DepthD < 1)
-                        {
-                            float3 A = PixelToWorld(Pixel, Depth);
-                            float3 B = PixelToWorld(Pixel + int2(1, 0), DepthR);
-                            float3 C = PixelToWorld(Pixel + int2(0, 1), DepthD);
-						
-                            if (length(C - A) <= DepthThickness && length(B - A) <= DepthThickness)
-                            {
-								// 외적과 방향 맞추기 
-                                Normal = normalize(cross(C - A, B - A));
-                                float3 CamPoint = PixelToWorld(Pixel, 0);
-                                Normal = (dot(Normal, CamPoint - A) < 0.0f ? -Normal : Normal);
-                                bHit = true;
-								
-                                float d = dot(p.Position - A, Normal);	// 표면에서 노멀방향으로 얼마나 떨어져있는가?
-                                if (d < CollisionRadius)
-                                {
-                                    p.Position += Normal * (CollisionRadius - d);	// 밀어내기
-                                }
-                                
-                                p.Velocity = Bounce(p.Velocity, Normal);
-                                p.BaseVelocity = Bounce(p.BaseVelocity, Normal);
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        Stage = DepthCollision(p.Position, Normal, A);
+        bHit = (Stage == 4);
+    }
+
+    if (bHit)
+    {
+        float d = dot(p.Position - A, Normal); // 표면->노멀방향 거리
+        if (d < CollisionRadius)
+            p.Position += Normal * (CollisionRadius - d); // 밀어내기
+
+        p.Velocity = Bounce(p.Velocity, Normal);
+        p.BaseVelocity = Bounce(p.BaseVelocity, Normal);
     }
 	
 	if (SizeScale.AtlasUVAndMode.w > 0.5f)
@@ -231,8 +242,15 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		}
 		p.SubImageIndex = floor(clamp(RawIndex, 0.0f, TotalFrames - 1.0f));
 	}
+	
+    if (HasCollision != 0)
+    {
+        p.Size = p.BaseSize * (1.0f + Stage); // 0단계 1배 ~ 4단계 5배
+        p.Color.rgb = float3(1, 1, 1);
+    }
 
-    p.Color.rgb = bHit ? float3(1, 0, 1) : float3(1, 1, 1);
 	
 	ParticleBuffer[Idx] = p;
+	
+    
 }
