@@ -143,6 +143,7 @@ struct FParticleEmitterBuildInfo
 	float CollisionFriction = 0.5f;
 	int32 CollisionMaxCount = 10;
 	float CollisionRadius = 1.0f;
+	float DepthThickness = 1.0f;
 };
 
 UCLASS()
@@ -669,6 +670,9 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float CollisionRadius = 1.0f;
+
+	UPROPERTY(EditAnywhere)
+	float DepthThickness = 1.0f;
 };
 
 UCLASS()

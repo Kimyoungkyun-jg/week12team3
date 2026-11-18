@@ -1410,4 +1410,5 @@ void UParticleModuleCollision::CompileModules(FParticleEmitterBuildInfo& OutBuil
 	OutBuildInfo.CollisionFriction = std::clamp(FrictionMax, 0.0f, 1.0f);
 	OutBuildInfo.CollisionMaxCount = std::max(0, MaxCollisions);
 	OutBuildInfo.CollisionRadius = std::max(0.0f, CollisionRadius);
+	OutBuildInfo.DepthThickness = std::max(0.0f, DepthThickness);
 }

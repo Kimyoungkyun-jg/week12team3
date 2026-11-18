@@ -1734,6 +1734,7 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			GpuData->SimParams.CollisionFriction = Build.CollisionFriction;
 			GpuData->SimParams.CollisionMaxCount = Build.CollisionMaxCount;
 			GpuData->SimParams.CollisionRadius = Build.CollisionRadius;
+			GpuData->SimParams.DepthThickness = Build.DepthThickness;
 
 
 			if (!Build.ColorParameterName.empty())

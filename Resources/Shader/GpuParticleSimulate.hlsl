@@ -45,6 +45,15 @@ cbuffer SimParams : register(b0)
 	uint HasColorOverride;
 	float3 Pad;
 	float4 ColorOverride;
+	
+    uint HasCollision;
+    float CollisionRestitution;
+    float CollisionFriction;
+    uint CollisionMaxCount;
+
+    float CollisionRadius;
+    float DepthThickness;
+    float2 CollisionPad;
 };
 
 StructuredBuffer<FGpuParticle> SpawnBuffer : register(t0);

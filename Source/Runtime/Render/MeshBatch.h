@@ -71,7 +71,8 @@ struct FGpuParticleSimParams
 	float CollisionFriction = 0.0f;
 	uint32 CollisionMaxCount = 0;
 	float CollisionRadius = 0.0f;
-	uint32 CollisionPad[3] = {};
+	float DepthThickness = 0.0f;
+	uint32 CollisionPad[2] = {};
 };
 static_assert(sizeof(FGpuParticleSimParams) == 336);
 
