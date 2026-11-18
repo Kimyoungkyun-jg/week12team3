@@ -296,7 +296,16 @@ void UMaterialInstance::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
 				continue;
 			}
 
-			const FMaterialParameterOverride* Override = GetParameterOverride(FName(Node.ParameterName), EMaterialParameterType::Texture);
+			const FMaterialParameterOverride* Override = nullptr;
+
+			for (const FMaterialParameterOverride& Candidate : OutProxy.ParameterOverrides)
+			{
+				if (Candidate.ParameterName == FName(Node.ParameterName) && Candidate.Type == EMaterialParameterType::Texture)
+				{
+					Override = &Candidate;
+					break;
+				}
+			}
 
 			if (Override && OutProxy.GraphTextures.IsValidIndex(Index))
 			{

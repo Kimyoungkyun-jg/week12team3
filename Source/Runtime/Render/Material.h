@@ -57,8 +57,20 @@ enum class EMaterialExpressionType : uint8
 	CameraVectorWS = 30,
 	VertexNormalWS = 31,
 	Custom = 32,
+	Saturate = 33,
+	Panner = 34,
+	Fresnel = 35,
+	Cosine = 36,
+	Floor = 37,
+	Distance = 38,
+	Length = 39,
+	CrossProduct = 40,
+	Desaturation = 41,
+	SphereMask = 42,
+	ConstantBiasScale = 43,
+	Rotator = 44,
 
-	Count = 33
+	Count = 45
 };
 
 
@@ -86,6 +98,7 @@ struct FMaterialExpressionNode
 	uint8 ComponentMask = 0x01;
 	FString CustomCode = "cross(A, B)";
 	EMaterialValueType CustomOutputType = EMaterialValueType::Vector3;
+	bool bSRGB = true;
 };
 
 
@@ -168,6 +181,7 @@ public:
 	TArray<FMaterialExpressionNode> ExpressionNodes;
 	TArray<FMaterialExpressionConnection> ExpressionConnections;
 	int32 OutputNodeId = 0;
+	bool bLegacyGraphMigrated = false;
 
 	void EnsureDefaultGraph();
 

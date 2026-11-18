@@ -124,14 +124,16 @@ namespace
 			ParameterIndices[GetMaterialGraphParameterKey(GraphParameters[Index].Name, GraphParameters[Index].Type)] = Index;
 		}
 
-		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
+		for (const FMaterialExpressionNode* Node : EvaluationOrder)
 		{
-			if (Node.Type == EMaterialExpressionType::TextureSample ||
-				Node.Type == EMaterialExpressionType::TextureSampleParameter2D)
+			if (Node->Type != EMaterialExpressionType::TextureSample &&
+				Node->Type != EMaterialExpressionType::TextureSampleParameter2D)
 			{
-				TextureIndices[Node.Id] = TextureNodeIds.Num();
-				TextureNodeIds.Add(Node.Id);
+				continue;
 			}
+
+			TextureIndices[Node->Id] = TextureNodeIds.Num();
+			TextureNodeIds.Add(Node->Id);
 		}
 
 		if (TextureNodeIds.Num() > MaxMaterialGraphTextures ||
@@ -383,6 +385,12 @@ namespace
 
 				const FString UVInput = GetInputVariable(Node->Id, 0);
 				OutSource += "    float4 " + Variable + " = GraphTexture" + std::to_string(It->second) + ".Sample(ColorSampler, " + UVInput + ");\n";
+
+				if (Node->bSRGB)
+				{
+					OutSource += "    " + Variable + ".rgb = pow(max(" + Variable + ".rgb, 0.0f), 2.2f);\n";
+				}
+
 				break;
 			}
 
@@ -491,6 +499,85 @@ namespace
 				const FString Expression = Swizzle.size() == 1 ? Input + "." + Swizzle : Input + "." + Swizzle;
 
 				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + Expression + ";\n";
+				break;
+			}
+
+			case EMaterialExpressionType::Saturate:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = saturate(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Panner:
+				OutSource += "    float2 " + Variable + " = " + A + " + Time * " + B + ";\n";
+				break;
+
+			case EMaterialExpressionType::Fresnel:
+				OutSource += "    float " + Variable + " = " + C + " + (1.0f - " + C + ") * pow(1.0f - saturate(dot(normalize(" + GetInputVariable(Node->Id, 0) + "), normalize(CameraVectorWS))), " + B + ");\n";
+				break;
+
+			case EMaterialExpressionType::Cosine:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = cos(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Floor:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = floor(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Distance:
+				OutSource += "    float " + Variable + " = distance(" + GetInputVariable(Node->Id, 0) + ", " + GetInputVariable(Node->Id, 1) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Length:
+				OutSource += "    float " + Variable + " = length(" + GetInputVariable(Node->Id, 0) + ");\n";
+				break;
+
+			case EMaterialExpressionType::CrossProduct:
+				OutSource += "    float3 " + Variable + " = cross(" + GetInputVariable(Node->Id, 0) + ", " + GetInputVariable(Node->Id, 1) + ");\n";
+				break;
+
+			case EMaterialExpressionType::Desaturation:
+			{
+				const FString Color = GetInputVariable(Node->Id, 0);
+				const FString Fraction = GetInputVariable(Node->Id, 1);
+				const FString Gray = Variable + "_Gray";
+
+				OutSource += "    float " + Gray + " = dot(" + Color + ".rgb, float3(0.2126f, 0.7152f, 0.0722f));\n";
+
+				if (OutputType == EMaterialValueType::Vector4)
+				{
+					OutSource += "    float4 " + Variable + " = float4(lerp(" + Color + ".rgb, float3(" + Gray + ", " + Gray + ", " + Gray + "), saturate(" + Fraction + ")), " + Color + ".a);\n";
+				}
+				else
+				{
+					OutSource += "    float3 " + Variable + " = lerp(" + Color + ", float3(" + Gray + ", " + Gray + ", " + Gray + "), saturate(" + Fraction + "));\n";
+				}
+
+				break;
+			}
+
+			case EMaterialExpressionType::SphereMask:
+			{
+				const FString Radius = GetInputVariable(Node->Id, 2);
+				const FString Softness = GetInputVariable(Node->Id, 3);
+
+				OutSource += "    float " + Variable + " = 1.0f - smoothstep(" + Radius + " - max(" + Softness + ", 0.0001f), " + Radius + ", distance(" + A + ", " + B + "));\n";
+				break;
+			}
+
+			case EMaterialExpressionType::ConstantBiasScale:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = (" + A + " + " + B + ") * " + C + ";\n";
+				break;
+
+			case EMaterialExpressionType::Rotator:
+			{
+				const FString SinValue = Variable + "_Sin";
+				const FString CosValue = Variable + "_Cos";
+				const FString Offset = Variable + "_Offset";
+
+				OutSource += "    float " + SinValue + ";\n";
+				OutSource += "    float " + CosValue + ";\n";
+				OutSource += "    sincos(" + GetInputVariable(Node->Id, 2) + ", " + SinValue + ", " + CosValue + ");\n";
+				OutSource += "    float2 " + Offset + " = " + A + " - " + B + ";\n";
+				OutSource += "    float2 " + Variable + " = float2(" + Offset + ".x * " + CosValue + " - " + Offset + ".y * " + SinValue + ", " + Offset + ".x * " + SinValue + " + " + Offset + ".y * " + CosValue + ") + " + B + ";\n";
 				break;
 			}
 

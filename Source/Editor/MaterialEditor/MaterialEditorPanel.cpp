@@ -100,6 +100,30 @@ namespace
 			return "Append Vector";
 		case EMaterialExpressionType::Custom:
 			return "Custom";
+		case EMaterialExpressionType::Saturate:
+			return "Saturate";
+		case EMaterialExpressionType::Panner:
+			return "Panner";
+		case EMaterialExpressionType::Fresnel:
+			return "Fresnel";
+		case EMaterialExpressionType::Cosine:
+			return "Cosine";
+		case EMaterialExpressionType::Floor:
+			return "Floor";
+		case EMaterialExpressionType::Distance:
+			return "Distance";
+		case EMaterialExpressionType::Length:
+			return "Length";
+		case EMaterialExpressionType::CrossProduct:
+			return "Cross Product";
+		case EMaterialExpressionType::Desaturation:
+			return "Desaturation";
+		case EMaterialExpressionType::SphereMask:
+			return "Sphere Mask";
+		case EMaterialExpressionType::ConstantBiasScale:
+			return "Constant Bias Scale";
+		case EMaterialExpressionType::Rotator:
+			return "Rotator";
 		case EMaterialExpressionType::ComponentMask:
 			return "Component Mask";
 		case EMaterialExpressionType::DotProduct:
@@ -184,7 +208,40 @@ namespace
 			}
 
 			return Type == EMaterialValueType::Unknown ? FString("numeric") : FString(GetMaterialValueTypeName(Type));
+		case EMaterialExpressionType::Panner:
+			return "float2";
 
+		case EMaterialExpressionType::Rotator:
+			return PinIndex == 2 ? "float" : "float2";
+
+		case EMaterialExpressionType::Fresnel:
+			return PinIndex == 0 ? "float3" : "float";
+
+		case EMaterialExpressionType::Distance:
+			return "same vector type";
+
+		case EMaterialExpressionType::CrossProduct:
+			return "float3";
+
+		case EMaterialExpressionType::Desaturation:
+			return PinIndex == 0 ? "float3 / float4" : "float";
+
+		case EMaterialExpressionType::SphereMask:
+			return PinIndex < 2 ? "float3" : "float";
+
+		case EMaterialExpressionType::ConstantBiasScale:
+			if (PinIndex == 0)
+			{
+				return "numeric";
+			}
+
+			Type = GetConnectedType(0);
+			return Type == EMaterialValueType::Unknown
+				? FString("scalar or input type")
+				: FString(GetMaterialValueTypeName(Type));
+
+		case EMaterialExpressionType::Length:
+			return "float2 / float3 / float4";
 		case EMaterialExpressionType::Lerp:
 			if (PinIndex == 2)
 			{
@@ -206,6 +263,9 @@ namespace
 		case EMaterialExpressionType::Sine:
 		case EMaterialExpressionType::Normalize:
 		case EMaterialExpressionType::ComponentMask:
+		case EMaterialExpressionType::Saturate:
+		case EMaterialExpressionType::Cosine:
+		case EMaterialExpressionType::Floor:
 			Type = GetConnectedType(PinIndex);
 			return Type == EMaterialValueType::Unknown ? FString("numeric") : FString(GetMaterialValueTypeName(Type));
 		case EMaterialExpressionType::Clamp:
@@ -504,6 +564,12 @@ void FMaterialEditorPanel::OpenAsset(const FString& InPath)
 	{
 		Material->EnsureDefaultGraph();
 		SelectedNodeId = Material->OutputNodeId;
+
+		if (Material == Asset && Material->bLegacyGraphMigrated)
+		{
+			bDirty = true;
+			Status = "Legacy Material Graph generated. Save to keep the migrated graph.";
+		}
 	}
 
 	const EPSOType Type = Asset->GetPSOType();
@@ -596,6 +662,11 @@ void FMaterialEditorPanel::SaveMaterial()
 	{
 		Status = "Failed to save Material.";
 		return;
+	}
+
+	if (UMaterial* BaseMaterial = Cast<UMaterial>(Asset))
+	{
+		BaseMaterial->bLegacyGraphMigrated = false;
 	}
 
 	bDirty = false;
@@ -769,6 +840,14 @@ void FMaterialEditorPanel::DrawMaterialGraphPalette(UMaterial& Material)
 		AddItem("Min", EMaterialExpressionType::Min);
 		AddItem("Max", EMaterialExpressionType::Max);
 		AddItem("One Minus", EMaterialExpressionType::OneMinus);
+		AddItem("Saturate", EMaterialExpressionType::Saturate);
+		AddItem("Cosine", EMaterialExpressionType::Cosine);
+		AddItem("Floor", EMaterialExpressionType::Floor);
+		AddItem("Distance", EMaterialExpressionType::Distance);
+		AddItem("Length", EMaterialExpressionType::Length);
+		AddItem("Cross Product", EMaterialExpressionType::CrossProduct);
+		AddItem("Desaturation", EMaterialExpressionType::Desaturation);
+		AddItem("Constant Bias Scale", EMaterialExpressionType::ConstantBiasScale);
 		ImGui::TreePop();
 	}
 
@@ -778,6 +857,19 @@ void FMaterialEditorPanel::DrawMaterialGraphPalette(UMaterial& Material)
 		AddItem("Component Mask", EMaterialExpressionType::ComponentMask);
 		AddItem("Dot Product", EMaterialExpressionType::DotProduct);
 		AddItem("Normalize", EMaterialExpressionType::Normalize);
+		if (ImGui::TreeNodeEx("Coordinates", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			AddItem("Panner", EMaterialExpressionType::Panner);
+			AddItem("Rotator", EMaterialExpressionType::Rotator);
+			ImGui::TreePop();
+		}
+
+		if (ImGui::TreeNodeEx("Utility", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			AddItem("Fresnel", EMaterialExpressionType::Fresnel);
+			AddItem("Sphere Mask", EMaterialExpressionType::SphereMask);
+			ImGui::TreePop();
+		}
 		AddItem("Custom", EMaterialExpressionType::Custom);
 		ImGui::TreePop();
 	}
@@ -910,11 +1002,6 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 
 			Draw->AddCircleFilled(PinPosition, 5.0f * Scale, IM_COL32(130, 190, 230, 255));
 			Draw->AddText({ PinPosition.x + 10.0f * Scale, PinPosition.y - 7.0f * Scale }, IM_COL32(220, 220, 225, 255), PinLabel.c_str());
-
-			if (PinName)
-			{
-				Draw->AddText({ PinPosition.x + 10.0f * Scale, PinPosition.y - 7.0f * Scale }, IM_COL32(220, 220, 225, 255), PinName);
-			}
 
 			if (bDraggingConnection && ImGui::IsMouseReleased(ImGuiMouseButton_Left) &&
 				Mouse.x >= PinPosition.x - 10.0f * Scale && Mouse.x <= PinPosition.x + 10.0f * Scale &&
@@ -1297,6 +1384,10 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 				Selected->TexturePath = Current ? Current->GetPath() : FString();
 				MarkMaterialChanged();
 			}
+			if (ImGui::Checkbox("sRGB", &Selected->bSRGB))
+			{
+				MarkMaterialChanged();
+			}
 		}
 
 		break;
@@ -1534,7 +1625,7 @@ void FMaterialEditorPanel::OnRender()
 
 	if (ImGui::Button("Compile"))
 	{
-		if (UMaterial* Material = Cast<UMaterial>(Asset))
+		if (UMaterial* Material = Asset->GetBaseMaterial())
 		{
 			FString CompileError;
 
@@ -1634,6 +1725,22 @@ void FMaterialEditorPanel::OnRender()
 	}
 	else if (UMaterialInstance* Instance = Cast<UMaterialInstance>(Asset))
 	{
+		UMaterial* ParentMaterial = Instance->GetBaseMaterial();
+
+		if (ParentMaterial)
+		{
+			ImGui::Text("Parent Material: %s", ParentMaterial->GetPath().c_str());
+
+			if (ImGui::Button("Open Parent Material Graph"))
+			{
+				const FString ParentPath = ParentMaterial->GetPath();
+				OpenAsset(ParentPath);
+				ImGui::End();
+				return;
+			}
+
+			ImGui::Separator();
+		}
 		const ImVec2 InstanceAvail = ImGui::GetContentRegionAvail();
 		const float SplitterSize = EditorUIScale::Px(6.0f);
 		const float MinPaneH = EditorUIScale::Px(90.0f);
@@ -1675,24 +1782,44 @@ void FMaterialEditorPanel::OnRender()
 
 		ImGui::EndDisabled();
 
-		UMaterial* ParentMaterial = Instance->GetBaseMaterial();
-
 		if (ParentMaterial)
 		{
 			ImGui::Separator();
 			ImGui::TextUnformatted("Parameters");
 
+			const auto GetGroupName = [](const FMaterialExpressionNode& Node)
+			{
+				return Node.ParameterGroup.empty() ? FString("Default") : Node.ParameterGroup;
+			};
+
+			const auto GetParameterType = [](EMaterialExpressionType Type)
+			{
+				if (Type == EMaterialExpressionType::ScalarParameter)
+				{
+					return EMaterialParameterType::Scalar;
+				}
+
+				if (Type == EMaterialExpressionType::VectorParameter)
+				{
+					return EMaterialParameterType::Vector;
+				}
+
+				return EMaterialParameterType::Texture;
+			};
+
 			std::set<FString> DrawnGroups;
+			std::set<FString> DrawnParameters;
 
 			for (const FMaterialExpressionNode& ParameterNode : ParentMaterial->ExpressionNodes)
 			{
 				if (ParameterNode.Type != EMaterialExpressionType::ScalarParameter &&
-					ParameterNode.Type != EMaterialExpressionType::VectorParameter)
+					ParameterNode.Type != EMaterialExpressionType::VectorParameter &&
+					ParameterNode.Type != EMaterialExpressionType::TextureSampleParameter2D)
 				{
 					continue;
 				}
 
-				const FString GroupName = ParameterNode.ParameterGroup.empty() ? FString("Default") : ParameterNode.ParameterGroup;
+				const FString GroupName = GetGroupName(ParameterNode);
 
 				if (!DrawnGroups.insert(GroupName).second)
 				{
@@ -1706,19 +1833,31 @@ void FMaterialEditorPanel::OnRender()
 
 				for (const FMaterialExpressionNode& Node : ParentMaterial->ExpressionNodes)
 				{
-					if (Node.ParameterGroup != ParameterNode.ParameterGroup ||
-						(Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter))
+					if (GetGroupName(Node) != GroupName)
 					{
 						continue;
 					}
 
+					if (Node.Type != EMaterialExpressionType::ScalarParameter &&
+						Node.Type != EMaterialExpressionType::VectorParameter &&
+						Node.Type != EMaterialExpressionType::TextureSampleParameter2D)
+					{
+						continue;
+					}
+
+					const EMaterialParameterType OverrideType = GetParameterType(Node.Type);
 					const FName ParameterName(Node.ParameterName);
-					const FMaterialParameterOverride* Existing = Instance->GetParameterOverride(ParameterName);
-					const bool bScalar = Node.Type == EMaterialExpressionType::ScalarParameter;
+					const FString ParameterKey = Node.ParameterName + "#" + std::to_string(static_cast<uint8>(OverrideType));
 
-					bool bOverride = Existing && Existing->Type == (bScalar ? EMaterialParameterType::Scalar : EMaterialParameterType::Vector);
+					if (!DrawnParameters.insert(ParameterKey).second)
+					{
+						continue;
+					}
 
-					ImGui::PushID(Node.ParameterName.c_str());
+					const FMaterialParameterOverride* Existing = Instance->GetParameterOverride(ParameterName, OverrideType);
+					bool bOverride = Existing != nullptr;
+
+					ImGui::PushID(Node.Id);
 
 					ImGui::TextUnformatted(Node.ParameterName.c_str());
 					ImGui::SameLine();
@@ -1727,32 +1866,35 @@ void FMaterialEditorPanel::OnRender()
 					{
 						if (bOverride)
 						{
-							if (bScalar)
+							if (OverrideType == EMaterialParameterType::Scalar)
 							{
 								Instance->SetScalarParameterValue(ParameterName, Node.ScalarValue);
 							}
-							else
+							else if (OverrideType == EMaterialParameterType::Vector)
 							{
 								Instance->SetVectorParameterValue(ParameterName, Node.VectorValue);
+							}
+							else
+							{
+								UTexture2D* DefaultTexture = Node.TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Node.TexturePath);
+								Instance->SetTextureParameterValue(ParameterName, DefaultTexture);
 							}
 						}
 						else
 						{
-							Instance->ClearParameterOverride(ParameterName);
+							Instance->ClearParameterOverride(ParameterName, OverrideType);
 						}
 
 						MarkMaterialChanged();
 					}
 
-					const FMaterialParameterOverride* CurrentOverride = Instance->GetParameterOverride(ParameterName);
+					const FMaterialParameterOverride* CurrentOverride = Instance->GetParameterOverride(ParameterName, OverrideType);
 
 					ImGui::BeginDisabled(!bOverride);
 
-					if (bScalar)
+					if (OverrideType == EMaterialParameterType::Scalar)
 					{
-						float Value = CurrentOverride && CurrentOverride->Type == EMaterialParameterType::Scalar
-							? CurrentOverride->ScalarValue
-							: Node.ScalarValue;
+						float Value = CurrentOverride ? CurrentOverride->ScalarValue : Node.ScalarValue;
 
 						if (ImGui::DragFloat("Value", &Value, 0.01f))
 						{
@@ -1760,15 +1902,25 @@ void FMaterialEditorPanel::OnRender()
 							MarkMaterialChanged();
 						}
 					}
-					else
+					else if (OverrideType == EMaterialParameterType::Vector)
 					{
-						FVector4 Value = CurrentOverride && CurrentOverride->Type == EMaterialParameterType::Vector
-							? CurrentOverride->VectorValue
-							: Node.VectorValue;
+						FVector4 Value = CurrentOverride ? CurrentOverride->VectorValue : Node.VectorValue;
 
 						if (EditMaterialColor("Value", &Value.X, true))
 						{
 							Instance->SetVectorParameterValue(ParameterName, Value);
+							MarkMaterialChanged();
+						}
+					}
+					else
+					{
+						UTexture2D* Texture = CurrentOverride
+							? CurrentOverride->TextureValue
+							: (Node.TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Node.TexturePath));
+
+						if (FContentDrawerPanel::DrawTexturePicker("Texture", Texture, "None"))
+						{
+							Instance->SetTextureParameterValue(ParameterName, Texture);
 							MarkMaterialChanged();
 						}
 					}
@@ -1778,6 +1930,11 @@ void FMaterialEditorPanel::OnRender()
 				}
 
 				ImGui::TreePop();
+			}
+
+			if (DrawnParameters.empty())
+			{
+				ImGui::TextDisabled("This Material has no graph parameters.");
 			}
 		}
 

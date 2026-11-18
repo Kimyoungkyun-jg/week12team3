@@ -173,11 +173,36 @@ GBUFFER_OUTPUT mainPS(PS_INPUT Input)
             Normal = Combined * rsqrt(LengthSquared);
     }
 
-    // 현재 UMaterial에는 Metallic/Roughness 값이 없어 임시 상수를 쓴다.
-    Output.BaseColorMetallic = float4(LinearAlbedo, 0.0f);
-    // bReceiveShadow가 꺼진 물체는 w를 음수(-Roughness - 1)로 저장한다. Deferred 조명이 그림자 마스크를 무시한다.
-    const float Roughness = 0.8f;
+    
+    float Metallic = 0.0f;
+    float Roughness = 0.8f;
+
+#ifdef MATERIAL_GRAPH_HAS_METALLIC
+    Metallic = saturate(GraphOutput.Metallic);
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_ROUGHNESS
+    Roughness = clamp(GraphOutput.Roughness, 0.045f, 1.0f);
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_NORMAL
+{
+    float3 N = normalize(Input.WorldNormal);
+    float3 T = Input.WorldTangent.xyz - N * dot(N, Input.WorldTangent.xyz);
+    float TangentLengthSquared = dot(T, T);
+
+    if (TangentLengthSquared > 1.0e-8f)
+    {
+        T *= rsqrt(TangentLengthSquared);
+        float3 B = cross(N, T) * Input.WorldTangent.w;
+        Normal = normalize(T * GraphOutput.Normal.x + B * GraphOutput.Normal.y + N * GraphOutput.Normal.z);
+    }
+}
+#endif
+
+    Output.BaseColorMetallic = float4(LinearAlbedo, Metallic);
     Output.NormalRoughness = float4(Normal, Input.ReceiveShadow > 0.5f ? Roughness : -Roughness - 1.0f);
+
     float3 GraphEmissive = Emissive.rgb;
     float4 GraphSpecular = SpecularColorShininess;
 
