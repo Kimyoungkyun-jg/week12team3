@@ -83,6 +83,7 @@ struct FParticleTickContext
 	FMatrix ComponentToWorld;
 	FQuat ComponentRotation = FQuat::Identity();
 	UParticleSystemComponent * Component = nullptr;
+	bool bUseLocalSpace = false;
 };
 
 enum class EParticleSysParamType : uint8
@@ -463,6 +464,12 @@ public:
 	UDistributionVector* StartLocation = nullptr;
 	UPROPERTY(EditAnywhere)
 	bool bSampleSkeletalMesh = false;
+	UPROPERTY(EditAnywhere)
+	bool bFilterByDissolveHeight = false;
+	UPROPERTY(EditAnywhere)
+	FString DissolveHeightParamName = "DissolveHeight";
+	UPROPERTY(EditAnywhere)
+	float DissolveBandHalfHeight = 0.25f;
 };
 
 UCLASS()

@@ -1389,36 +1389,61 @@ void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float Delt
 		return;
 	}
 
-	FVector MoveDelta = Particle.Velocity * DeltaTime;
+	const FVector ParticleWorldLoc = Context.bUseLocalSpace
+		? Context.ComponentToWorld.TransformPosition(Particle.Location)
+		: Particle.Location;
+	const FVector ParticleWorldVel = Context.bUseLocalSpace
+		? Context.ComponentToWorld.TransformVector(Particle.Velocity)
+		: Particle.Velocity;
+
+	FVector MoveDelta = ParticleWorldVel * DeltaTime;
 	float MoveDist = MoveDelta.Length();
 	if (MoveDist < 0.001f)
 	{
 		return;
 	}
 
-	FVector PrevLocation = Particle.Location - MoveDelta;
+	FVector PrevLocation = ParticleWorldLoc - MoveDelta;
 	FRay WorldRay;
 	WorldRay.Origin = PrevLocation;
 	WorldRay.Direction = MoveDelta.Normalized();
 
 	FHitResult Hit;
 	Context.World->SweepSingle(WorldRay, MoveDist, CollisionRadius, Hit, Context.Component->GetOwner());
+	// 구 반경을 반영한 블로킹 캡슐 충돌도 함께 검사한다
+	FHitResult ShapeHit;
+	if (CollisionRadius > 0.0f && Context.World->SweepSingle(WorldRay, MoveDist, CollisionRadius, ShapeHit, Context.Component->GetOwner(), true))
+	{
+		if (!Hit.bBlockingHit || ShapeHit.Distance < Hit.Distance)
+		{
+			Hit = ShapeHit;
+		}
+	}
 	if (Hit.bBlockingHit)
 	{
-		Particle.Location = Hit.ImpactPoint + Hit.ImpactNormal * 0.001f;
-
-		float VDotNormal = Particle.Velocity.Dot(Hit.ImpactNormal);
+		float VDotNormal = ParticleWorldVel.Dot(Hit.ImpactNormal);
 		if (VDotNormal > 0)
 		{
 			return;
 		}
 
 		FVector ProjectedNormal = Hit.ImpactNormal * (-VDotNormal);
-		FVector Vt = Particle.Velocity + ProjectedNormal;
+		FVector Vt = ParticleWorldVel + ProjectedNormal;
 		Vt *= (1 - FrictionMax);
 		Vt += ProjectedNormal * RestitutionMax;
 
-		Particle.Velocity = Vt;
+		const FVector NewWorldLoc = Hit.ImpactPoint + Hit.ImpactNormal * 0.001f;
+		if (Context.bUseLocalSpace)
+		{
+			const FMatrix WorldToLocal = Context.ComponentToWorld.Inverse();
+			Particle.Location = WorldToLocal.TransformPosition(NewWorldLoc);
+			Particle.Velocity = WorldToLocal.TransformVector(Vt);
+		}
+		else
+		{
+			Particle.Location = NewWorldLoc;
+			Particle.Velocity = Vt;
+		}
 		Payload.CollisionCount++;
 
 		if (EventGenerator==nullptr || Payload.CollisionCount % std::max(1,EventGenerator->EventFrequency) != 0)

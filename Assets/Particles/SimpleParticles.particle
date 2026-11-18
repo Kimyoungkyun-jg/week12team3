@@ -167,6 +167,7 @@
                                                     "Value": {
                                                         "Properties": {
                                                             "CollisionRadius": 1.0,
+                                                            "DepthThickness": 1.0,
                                                             "FrictionMax": 0.5,
                                                             "FrictionMin": 0.20000000298023224,
                                                             "LODSlotId": 6,
@@ -226,6 +227,25 @@
                                             "bEnabled": true
                                         }
                                     }
+                                },
+                                {
+                                    "Class": "UParticleLODLevel",
+                                    "Value": {
+                                        "Properties": {
+                                            "Level": 1,
+                                            "Modules": [],
+                                            "RequiredModule": {
+                                                "Class": ""
+                                            },
+                                            "SpawnModule": {
+                                                "Class": ""
+                                            },
+                                            "TypeDataModule": {
+                                                "Class": ""
+                                            },
+                                            "bEnabled": true
+                                        }
+                                    }
                                 }
                             ],
                             "PlayRate": 0.30000001192092896,
@@ -246,7 +266,8 @@
                 "Z": -100.0
             },
             "LODDistances": [
-                0.0
+                0.0,
+                10.0
             ],
             "PlayRate": 1.0,
             "SecondsBeforeInactive": 1.0,

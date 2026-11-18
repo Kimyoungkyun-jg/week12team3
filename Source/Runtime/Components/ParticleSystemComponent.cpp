@@ -1202,6 +1202,9 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 			}
 		}
 
+		FParticleTickContext EmitterContext = Context;
+		EmitterContext.bUseLocalSpace = Required->bUseLocalSpace;
+
 		// 살아 있는 파티클은 방출이 끝난 뒤에도 수명이 다할 때까지 갱신한다.
 		for (int32 Index = 0; Index < ActiveParticles;)
 		{
@@ -1224,7 +1227,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 
 				if (const UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
 				{
-					Collision->TickCollision(Particle, DeltaTime, GetModuleDataOffset(Module), Context, EventGenerator);
+					Collision->TickCollision(Particle, DeltaTime, GetModuleDataOffset(Module), EmitterContext, EventGenerator);
 				}
 			}
 			if (bIsBeam && BeamType && TypeDataOffset > 0)
@@ -1363,11 +1366,29 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 	const TArray<FVector>* SkinnedVerts = nullptr;
 	const TArray<FMatrix>* BoneTransforms = nullptr;
 	FMatrix SkeletalWorldMatrix = FMatrix::Identity;
+	TArray<FVector> DissolveBandVerts;
 	if (bSampleSkeletalSurface && ToSpawn > 0)
 	{
 		SkinnedVerts = &AfterimageSource->GetSkinnedPickPositions();
 		BoneTransforms = &AfterimageSource->GetGlobalBoneTransforms();
 		SkeletalWorldMatrix = AfterimageSource->GetWorldMatrix();
+		if (SkinnedVerts && !SkinnedVerts->IsEmpty() && LocationMod && LocationMod->bFilterByDissolveHeight &&
+			InstanceParameters && !LocationMod->DissolveHeightParamName.empty())
+		{
+			if (const float* DissolveZPtr = InstanceParameters->FloatParams.Find(LocationMod->DissolveHeightParamName))
+			{
+				const float TargetZ = *DissolveZPtr;
+				const float HalfBand = std::max(0.02f, LocationMod->DissolveBandHalfHeight);
+				for (const FVector& Vert : *SkinnedVerts)
+				{
+					const float WorldZ = SkeletalWorldMatrix.TransformPosition(Vert).Z;
+					if (std::abs(WorldZ - TargetZ) <= HalfBand)
+						DissolveBandVerts.Add(Vert);
+				}
+				if (!DissolveBandVerts.IsEmpty())
+					SkinnedVerts = &DissolveBandVerts;
+			}
+		}
 	}
 	if (bIsGpu)
 	{

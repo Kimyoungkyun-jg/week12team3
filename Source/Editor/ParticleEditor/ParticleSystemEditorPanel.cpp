@@ -2293,6 +2293,28 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 				MarkSelectedLODBuildDirty();
 				MarkAssetModified();
 			}
+			if (Loc->bSampleSkeletalMesh)
+			{
+				if (ImGui::Checkbox("Filter By Dissolve Height", &Loc->bFilterByDissolveHeight))
+				{
+					MarkSelectedLODBuildDirty();
+					MarkAssetModified();
+				}
+				if (Loc->bFilterByDissolveHeight)
+				{
+					char ParamBuf[128] = {};
+					strncpy_s(ParamBuf, Loc->DissolveHeightParamName.c_str(), _TRUNCATE);
+					if (ImGui::InputText("Dissolve Height Param", ParamBuf, sizeof(ParamBuf)))
+					{
+						Loc->DissolveHeightParamName = ParamBuf;
+						MarkAssetModified();
+					}
+					if (ImGui::DragFloat("Band Half Height", &Loc->DissolveBandHalfHeight, 0.01f, 0.02f, 5.0f))
+					{
+						MarkAssetModified();
+					}
+				}
+			}
 		}
 		else if (UParticleModuleVelocity* Vel = Cast<UParticleModuleVelocity>(SelectedModule))
 		{

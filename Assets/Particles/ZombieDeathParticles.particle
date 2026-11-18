@@ -56,7 +56,10 @@
 																	}
 																}
 															},
+															"DissolveBandHalfHeight": 0.28,
+															"DissolveHeightParamName": "DissolveHeight",
 															"bEnabled": true,
+															"bFilterByDissolveHeight": true,
 															"bSampleSkeletalMesh": true
 														}
 													}
@@ -314,7 +317,10 @@
 																	}
 																}
 															},
+															"DissolveBandHalfHeight": 0.28,
+															"DissolveHeightParamName": "DissolveHeight",
 															"bEnabled": true,
+															"bFilterByDissolveHeight": true,
 															"bSampleSkeletalMesh": true
 														}
 													}
@@ -572,7 +578,10 @@
 																	}
 																}
 															},
+															"DissolveBandHalfHeight": 0.28,
+															"DissolveHeightParamName": "DissolveHeight",
 															"bEnabled": true,
+															"bFilterByDissolveHeight": true,
 															"bSampleSkeletalMesh": true
 														}
 													}
@@ -830,7 +839,10 @@
 																	}
 																}
 															},
+															"DissolveBandHalfHeight": 0.28,
+															"DissolveHeightParamName": "DissolveHeight",
 															"bEnabled": true,
+															"bFilterByDissolveHeight": true,
 															"bSampleSkeletalMesh": true
 														}
 													}
@@ -1132,7 +1144,10 @@
 																	}
 																}
 															},
+															"DissolveBandHalfHeight": 0.28,
+															"DissolveHeightParamName": "DissolveHeight",
 															"bEnabled": true,
+															"bFilterByDissolveHeight": true,
 															"bSampleSkeletalMesh": true
 														}
 													}
@@ -1430,7 +1445,10 @@
 																	}
 																}
 															},
+															"DissolveBandHalfHeight": 0.28,
+															"DissolveHeightParamName": "DissolveHeight",
 															"bEnabled": true,
+															"bFilterByDissolveHeight": true,
 															"bSampleSkeletalMesh": true
 														}
 													}
@@ -1699,6 +1717,439 @@
 											},
 											"TypeDataModule": {
 												"Class": "UParticleModuleTypeDataSprite",
+												"Value": {
+													"Properties": {
+														"LODSlotId": 0,
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bInheritLODModules": true,
+							"bIsSolo": false
+						}
+					}
+				},
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "LyraDissolveCubes",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 1,
+															"Lifetime": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 1.65,
+																		"Min": 0.9
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleLocation",
+													"Value": {
+														"Properties": {
+															"DissolveBandHalfHeight": 0.28,
+															"DissolveHeightParamName": "DissolveHeight",
+															"LODSlotId": 2,
+															"StartLocation": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.04,
+																			"Y": 0.04,
+																			"Z": 0.04
+																		},
+																		"Min": {
+																			"X": -0.04,
+																			"Y": -0.04,
+																			"Z": -0.04
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true,
+															"bFilterByDissolveHeight": true,
+															"bSampleSkeletalMesh": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleVelocity",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 3,
+															"StartVelocity": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 1.4,
+																			"Y": 1.4,
+																			"Z": 2.4
+																		},
+																		"Min": {
+																			"X": -1.4,
+																			"Y": -1.4,
+																			"Z": 0.5
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 4,
+															"StartSize": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.055,
+																			"Y": 0.055,
+																			"Z": 0.055
+																		},
+																		"Min": {
+																			"X": 0.025,
+																			"Y": 0.025,
+																			"Z": 0.025
+																		},
+																		"bLockAxes": true
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleRotation",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 5,
+															"StartRotation": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 3.14159,
+																		"Min": -3.14159
+																	}
+																}
+															},
+															"StartRotationRate": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 10.0,
+																		"Min": -10.0
+																	}
+																}
+															},
+															"bEnabled": true,
+															"bRandomAxis3D": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleAcceleration",
+													"Value": {
+														"Properties": {
+															"Acceleration": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.0,
+																			"Y": 0.0,
+																			"Z": -9.8
+																		}
+																	}
+																}
+															},
+															"LODSlotId": 6,
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleCollision",
+													"Value": {
+														"Properties": {
+															"CollisionRadius": 0.035,
+															"DepthThickness": 0.45,
+															"FrictionMax": 0.35,
+															"FrictionMin": 0.2,
+															"LODSlotId": 7,
+															"MaxCollisions": 5,
+															"RestitutionMax": 0.45,
+															"RestitutionMin": 0.2,
+															"bEnabled": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 1.45,
+														"LODSlotId": 0,
+														"Material": "Materials/DeathCubeFragment.material",
+														"MaxParticles": 240,
+														"bEnabled": true,
+														"bLooping": false,
+														"bUseLocalSpace": false
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [
+															{
+																"Count": 25,
+																"Time": 0.05
+															},
+															{
+																"Count": 30,
+																"Time": 0.35
+															},
+															{
+																"Count": 25,
+																"Time": 0.65
+															}
+														],
+														"LODSlotId": 0,
+														"Rate": 140.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataGpuMesh",
+												"Value": {
+													"Properties": {
+														"LODSlotId": 0,
+														"Mesh": "Cube",
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bInheritLODModules": true,
+							"bIsSolo": false
+						}
+					}
+				},
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "LyraDissolveSparks",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 1,
+															"Lifetime": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 0.55,
+																		"Min": 0.25
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleLocation",
+													"Value": {
+														"Properties": {
+															"DissolveBandHalfHeight": 0.25,
+															"DissolveHeightParamName": "DissolveHeight",
+															"LODSlotId": 2,
+															"StartLocation": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.03,
+																			"Y": 0.03,
+																			"Z": 0.03
+																		},
+																		"Min": {
+																			"X": -0.03,
+																			"Y": -0.03,
+																			"Z": -0.03
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true,
+															"bFilterByDissolveHeight": true,
+															"bSampleSkeletalMesh": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleVelocity",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 3,
+															"StartVelocity": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.85,
+																			"Y": 0.85,
+																			"Z": 1.6
+																		},
+																		"Min": {
+																			"X": -0.85,
+																			"Y": -0.85,
+																			"Z": 0.2
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 4,
+															"StartSize": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.08,
+																			"Y": 0.08,
+																			"Z": 0.08
+																		},
+																		"Min": {
+																			"X": 0.035,
+																			"Y": 0.035,
+																			"Z": 0.035
+																		},
+																		"bLockAxes": true
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.35,
+																			"Y": 0.9,
+																			"Z": 1.0
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.08,
+															"FadeOutStart": 0.35,
+															"LODSlotId": 5,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 1.45,
+														"LODSlotId": 0,
+														"Material": "Materials/EnergyOrb.material",
+														"MaxParticles": 320,
+														"bEnabled": true,
+														"bLooping": false,
+														"bUseLocalSpace": false
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [],
+														"LODSlotId": 0,
+														"Rate": 200.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataGpuSprite",
 												"Value": {
 													"Properties": {
 														"LODSlotId": 0,

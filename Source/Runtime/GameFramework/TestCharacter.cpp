@@ -154,6 +154,18 @@ void ATestCharacter::BeginPlay()
 void ATestCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	if (IsDead())
+	{
+		// 사망 후 이동을 멈추고 디졸브가 끝나면 총기를 정리한다
+		if (GetCharacterMovement()) GetCharacterMovement()->StopMovementImmediately();
+		UpdateDeathDissolve(DeltaTime);
+		if (IsDeathDissolveFinished() && IsValid(EquippedRifle) && !EquippedRifle->IsActorBeingDestroyed())
+		{
+			EquippedRifle->Destroy();
+			EquippedRifle = nullptr;
+		}
+		return;
+	}
 	if (!bAimBlendAlphaOverridden && std::isfinite(DeltaTime) && DeltaTime > 0.0f)
 		AimBlendAlpha = std::clamp(AimBlendAlpha + (bIsAiming ? 1.0f : -1.0f) * DeltaTime / 0.18f, 0.0f, 1.0f);
 	GetSpringArmComponent()->TargetArmLength = FMath::Lerp(NormalArmLength, AimArmLength, AimBlendAlpha);
@@ -199,9 +211,15 @@ void ATestCharacter::EndPlay()
 	Super::EndPlay();
 }
 
+void ATestCharacter::AddMovementInput(const FVector& WorldDirection, float ScaleValue)
+{
+	if (IsDead()) return;
+	Super::AddMovementInput(WorldDirection, ScaleValue);
+}
+
 void ATestCharacter::StartAim()
 {
-	if (bIsAiming) return;
+	if (IsDead() || bIsAiming) return;
 	bIsAiming = true;
 	if (UAnimGraphInstance* AnimGraph = Cast<UAnimGraphInstance>(GetSkeletalMeshComponent()->GetAnimInstance()))
 		AnimGraph->SetIsAiming(true);
@@ -226,7 +244,7 @@ void ATestCharacter::StopAim()
 
 void ATestCharacter::Attack()
 {
-	if (bAttackLocked || !IsValid(EquippedRifle)) return;
+	if (IsDead() || bAttackLocked || !IsValid(EquippedRifle)) return;
 	USkeletalMeshComponent* MeshComponent = GetSkeletalMeshComponent();
 	if (UAnimGraphInstance* AnimGraph = Cast<UAnimGraphInstance>(MeshComponent ? MeshComponent->GetAnimInstance() : nullptr))
 	{
@@ -268,15 +286,38 @@ void ATestCharacter::FireRifle()
 
 void ATestCharacter::Jump()
 {
+	if (IsDead()) return;
 	UCharacterMovementComponent* Movement = GetCharacterMovement();
 	if (!bJumpLocked && !bAttackLocked && Movement && Movement->CanJump()) ACharacter::Jump();
 }
 
 void ATestCharacter::Dash()
 {
+	if (IsDead()) return;
 	USkeletalMeshComponent* MeshComponent = GetSkeletalMeshComponent();
 	UAnimGraphInstance* AnimGraph = Cast<UAnimGraphInstance>(MeshComponent ? MeshComponent->GetAnimInstance() : nullptr);
 	if (AnimGraph && AnimGraph->IsPlayingMontage("FullBody")) return;
 	// 전신 슬롯 대시 몽타주를 실행한다
 	PlayAnimMontage("Assets/Animations/Dash.animmontage");
+}
+
+void ATestCharacter::ReactToHit()
+{
+	if (IsDead()) return;
+	--Health;
+	UAnimGraphInstance* AnimGraph = Cast<UAnimGraphInstance>(GetSkeletalMeshComponent()->GetAnimInstance());
+	if (IsDead())
+	{
+		StopAim();
+		if (GetCharacterMovement()) GetCharacterMovement()->StopMovementImmediately();
+		if (AnimGraph)
+		{
+			AnimGraph->StopMontage("", 0.08f);
+			AnimGraph->RequestDeath();
+		}
+	}
+	else if (AnimGraph)
+	{
+		AnimGraph->RequestHit();
+	}
 }

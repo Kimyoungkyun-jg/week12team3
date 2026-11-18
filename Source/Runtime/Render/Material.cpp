@@ -1538,7 +1538,7 @@ UMaterial* UMaterial::GetOrCreateDissolveParent(UMaterial* SourceMat)
 	FMaterialExpressionNode EdgeWidthNode;
 	EdgeWidthNode.Id = 8;
 	EdgeWidthNode.Type = EMaterialExpressionType::Constant;
-	EdgeWidthNode.ScalarValue = 0.035f;
+	EdgeWidthNode.ScalarValue = 0.06f;
 
 	FMaterialExpressionNode StepNode;
 	StepNode.Id = 9;
@@ -1563,6 +1563,69 @@ UMaterial* UMaterial::GetOrCreateDissolveParent(UMaterial* SourceMat)
 	EmissiveLerpNode.Id = 13;
 	EmissiveLerpNode.Type = EMaterialExpressionType::Lerp;
 
+	FMaterialExpressionNode WorldPosNode;
+	WorldPosNode.Id = 14;
+	WorldPosNode.Type = EMaterialExpressionType::WorldPosition;
+
+	FMaterialExpressionNode WorldZMaskNode;
+	WorldZMaskNode.Id = 15;
+	WorldZMaskNode.Type = EMaterialExpressionType::ComponentMask;
+	WorldZMaskNode.ComponentMask = 1u << 2;
+
+	FMaterialExpressionNode MinZParamNode;
+	MinZParamNode.Id = 16;
+	MinZParamNode.Type = EMaterialExpressionType::ScalarParameter;
+	MinZParamNode.ParameterName = "DissolveMinZ";
+	MinZParamNode.ScalarValue = 0.0f;
+
+	FMaterialExpressionNode MaxZParamNode;
+	MaxZParamNode.Id = 17;
+	MaxZParamNode.Type = EMaterialExpressionType::ScalarParameter;
+	MaxZParamNode.ParameterName = "DissolveMaxZ";
+	MaxZParamNode.ScalarValue = 1.8f;
+
+	FMaterialExpressionNode RelZNode;
+	RelZNode.Id = 18;
+	RelZNode.Type = EMaterialExpressionType::Subtract;
+
+	FMaterialExpressionNode SpanZNode;
+	SpanZNode.Id = 19;
+	SpanZNode.Type = EMaterialExpressionType::Subtract;
+
+	FMaterialExpressionNode NormZNode;
+	NormZNode.Id = 20;
+	NormZNode.Type = EMaterialExpressionType::Divide;
+
+	FMaterialExpressionNode SatZNode;
+	SatZNode.Id = 21;
+	SatZNode.Type = EMaterialExpressionType::Saturate;
+
+	FMaterialExpressionNode RemainFromTopNode;
+	RemainFromTopNode.Id = 22;
+	RemainFromTopNode.Type = EMaterialExpressionType::OneMinus;
+
+	FMaterialExpressionNode HeightWeightNode;
+	HeightWeightNode.Id = 23;
+	HeightWeightNode.Type = EMaterialExpressionType::Constant;
+	HeightWeightNode.ScalarValue = 0.80f;
+
+	FMaterialExpressionNode WeightedHeightNode;
+	WeightedHeightNode.Id = 24;
+	WeightedHeightNode.Type = EMaterialExpressionType::Multiply;
+
+	FMaterialExpressionNode NoiseWeightNode;
+	NoiseWeightNode.Id = 25;
+	NoiseWeightNode.Type = EMaterialExpressionType::Constant;
+	NoiseWeightNode.ScalarValue = 0.25f;
+
+	FMaterialExpressionNode WeightedNoiseNode;
+	WeightedNoiseNode.Id = 26;
+	WeightedNoiseNode.Type = EMaterialExpressionType::Multiply;
+
+	FMaterialExpressionNode DissolveFieldNode;
+	DissolveFieldNode.Id = 27;
+	DissolveFieldNode.Type = EMaterialExpressionType::Add;
+
 	ParentMat->ExpressionNodes.Add(OutputNode);
 	ParentMat->ExpressionNodes.Add(UvNode);
 	ParentMat->ExpressionNodes.Add(ScaleNode);
@@ -1576,11 +1639,40 @@ UMaterial* UMaterial::GetOrCreateDissolveParent(UMaterial* SourceMat)
 	ParentMat->ExpressionNodes.Add(ZeroColorNode);
 	ParentMat->ExpressionNodes.Add(EdgeColorParamNode);
 	ParentMat->ExpressionNodes.Add(EmissiveLerpNode);
+	ParentMat->ExpressionNodes.Add(WorldPosNode);
+	ParentMat->ExpressionNodes.Add(WorldZMaskNode);
+	ParentMat->ExpressionNodes.Add(MinZParamNode);
+	ParentMat->ExpressionNodes.Add(MaxZParamNode);
+	ParentMat->ExpressionNodes.Add(RelZNode);
+	ParentMat->ExpressionNodes.Add(SpanZNode);
+	ParentMat->ExpressionNodes.Add(NormZNode);
+	ParentMat->ExpressionNodes.Add(SatZNode);
+	ParentMat->ExpressionNodes.Add(RemainFromTopNode);
+	ParentMat->ExpressionNodes.Add(HeightWeightNode);
+	ParentMat->ExpressionNodes.Add(WeightedHeightNode);
+	ParentMat->ExpressionNodes.Add(NoiseWeightNode);
+	ParentMat->ExpressionNodes.Add(WeightedNoiseNode);
+	ParentMat->ExpressionNodes.Add(DissolveFieldNode);
 
 	ParentMat->ExpressionConnections.Add({ 2, 0, 4, 0 });
 	ParentMat->ExpressionConnections.Add({ 3, 0, 4, 1 });
 	ParentMat->ExpressionConnections.Add({ 4, 0, 5, 0 });
-	ParentMat->ExpressionConnections.Add({ 5, 0, 7, 0 });
+	ParentMat->ExpressionConnections.Add({ 14, 0, 15, 0 });
+	ParentMat->ExpressionConnections.Add({ 15, 0, 18, 0 });
+	ParentMat->ExpressionConnections.Add({ 16, 0, 18, 1 });
+	ParentMat->ExpressionConnections.Add({ 17, 0, 19, 0 });
+	ParentMat->ExpressionConnections.Add({ 16, 0, 19, 1 });
+	ParentMat->ExpressionConnections.Add({ 18, 0, 20, 0 });
+	ParentMat->ExpressionConnections.Add({ 19, 0, 20, 1 });
+	ParentMat->ExpressionConnections.Add({ 20, 0, 21, 0 });
+	ParentMat->ExpressionConnections.Add({ 21, 0, 22, 0 });
+	ParentMat->ExpressionConnections.Add({ 22, 0, 24, 0 });
+	ParentMat->ExpressionConnections.Add({ 23, 0, 24, 1 });
+	ParentMat->ExpressionConnections.Add({ 5, 0, 26, 0 });
+	ParentMat->ExpressionConnections.Add({ 25, 0, 26, 1 });
+	ParentMat->ExpressionConnections.Add({ 24, 0, 27, 0 });
+	ParentMat->ExpressionConnections.Add({ 26, 0, 27, 1 });
+	ParentMat->ExpressionConnections.Add({ 27, 0, 7, 0 });
 	ParentMat->ExpressionConnections.Add({ 6, 0, 7, 1 });
 	ParentMat->ExpressionConnections.Add({ 8, 0, 9, 0 });
 	ParentMat->ExpressionConnections.Add({ 7, 0, 9, 1 });

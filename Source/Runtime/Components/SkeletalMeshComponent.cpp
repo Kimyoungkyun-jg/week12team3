@@ -20,6 +20,7 @@
 #include "Asset/AnimGraphAsset.h"
 #include "Asset/AssetManager.h"
 #include "Components/CharacterMovementComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "GameFramework/Character.h"
 #include "Physics/Collision.h"
 
@@ -940,12 +941,25 @@ void USkeletalMeshComponent::StartPreviewDissolve(float InDuration, const FVecto
 	PreviewDissolveElapsed = 0.0f;
 	bPreviewDissolveActive = true;
 	SetDissolveHidden(false);
+	const FBox MeshBounds = CalcBounds();
+	const float MinZ = MeshBounds.Min.Z;
+	const float MaxZ = std::max(MeshBounds.Max.Z, MinZ + 0.1f);
 	for (UMaterialInstanceDynamic* DynMat : PreviewDissolveMaterials)
 	{
 		if (!DynMat)
 			continue;
 		DynMat->SetScalarParameterValue(FName("DissolveAmount"), -0.05f);
+		DynMat->SetScalarParameterValue(FName("DissolveMinZ"), MinZ);
+		DynMat->SetScalarParameterValue(FName("DissolveMaxZ"), MaxZ);
 		DynMat->SetVectorParameterValue(FName("DissolveEdgeColor"), InEdgeColor);
+	}
+	if (AActor* Owner = GetOwner())
+	{
+		for (UActorComponent* Comp : Owner->GetComponents())
+		{
+			if (UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp))
+				ParticleComp->SetFloatParameter("DissolveHeight", MaxZ);
+		}
 	}
 }
 
@@ -956,10 +970,27 @@ void USkeletalMeshComponent::UpdatePreviewDissolve(float DeltaTime)
 	PreviewDissolveElapsed += DeltaTime;
 	const float Alpha = std::clamp(PreviewDissolveElapsed / std::max(0.05f, PreviewDissolveDuration), 0.0f, 1.0f);
 	const float Amount = -0.05f + Alpha * 1.13f;
+	const FBox MeshBounds = CalcBounds();
+	const float MinZ = MeshBounds.Min.Z;
+	const float MaxZ = std::max(MeshBounds.Max.Z, MinZ + 0.1f);
 	for (UMaterialInstanceDynamic* DynMat : PreviewDissolveMaterials)
 	{
 		if (DynMat)
+		{
 			DynMat->SetScalarParameterValue(FName("DissolveAmount"), Amount);
+			DynMat->SetScalarParameterValue(FName("DissolveMinZ"), MinZ);
+			DynMat->SetScalarParameterValue(FName("DissolveMaxZ"), MaxZ);
+		}
+	}
+	if (AActor* Owner = GetOwner())
+	{
+		const float ActiveNormZ = std::clamp(1.0f - (Amount - 0.125f) / 0.80f, 0.0f, 1.0f);
+		const float DissolveWorldZ = MinZ + ActiveNormZ * (MaxZ - MinZ);
+		for (UActorComponent* Comp : Owner->GetComponents())
+		{
+			if (UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp))
+				ParticleComp->SetFloatParameter("DissolveHeight", DissolveWorldZ);
+		}
 	}
 	if (Alpha >= 1.0f)
 	{

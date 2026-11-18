@@ -6,6 +6,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/ScriptComponent.h"
+#include "GameFramework/SwordCharacter.h"
 #include "GameFramework/TestCharacter.h"
 #include "Render/SkeletalMesh.h"
 #include "Engine/Level.h"
@@ -75,6 +76,14 @@ void AZombieActor::Tick(float DeltaTime)
 	{
 		ACharacter* Candidate = Cast<ACharacter>(Actor);
 		if (!IsValid(Candidate) || Candidate == this || Cast<AZombieActor>(Candidate) || Candidate->IsActorBeingDestroyed()) continue;
+		if (ATestCharacter* PlayerCandidate = Cast<ATestCharacter>(Candidate))
+		{
+			if (PlayerCandidate->IsDead()) continue;
+		}
+		if (ASwordCharacter* SwordCandidate = Cast<ASwordCharacter>(Candidate))
+		{
+			if (SwordCandidate->IsDead()) continue;
+		}
 		const FVector Difference = Candidate->GetActorLocation() - GetActorLocation();
 		const float DistanceSquared = Difference.SizeSquared();
 		if (DistanceSquared < ClosestSquared)
@@ -110,10 +119,14 @@ void AZombieActor::Tick(float DeltaTime)
 void AZombieActor::OnRightHandOverlap(UPrimitiveComponent* Self, AActor* OtherActor, UPrimitiveComponent* OtherComponent)
 {
 	if (Self != RightHandHitCapsule || !RightHandHitCapsule->bGenerateOverlapEvents) return;
-	ATestCharacter* Character = Cast<ATestCharacter>(OtherActor);
-	if (!Character) return;
-	if (UAnimGraphInstance* Anim = Cast<UAnimGraphInstance>(Character->GetSkeletalMeshComponent()->GetAnimInstance()))
-		Anim->RequestHit();
+	if (ATestCharacter* Character = Cast<ATestCharacter>(OtherActor))
+	{
+		Character->ReactToHit();
+	}
+	else if (ASwordCharacter* SwordCharacter = Cast<ASwordCharacter>(OtherActor))
+	{
+		SwordCharacter->ReactToHit();
+	}
 }
 
 void AZombieActor::ReactToHit()
