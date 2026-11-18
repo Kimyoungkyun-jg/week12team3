@@ -1383,8 +1383,8 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 	Client.TickInputFromImGui(ImGui::GetIO().DeltaTime, bCaptured, Hovered,
 		static_cast<int32>(Wheel * 120), 4.0f * CameraSpeed, 0.2f);
 
-	// 뷰포트 우하단에 이미터별 활성 파티클 수를 표시한다.
-	// Stats 체크박스가 활성화된 경우 전체 통계와 이미터별 통계를 표시한다.
+	
+	// 뷰포트 왼쪽 위에 전체 통계와 이미터별 통계를 하나의 패널로 표시한다.
 	if (bShowParticleStats && PreviewActor && PreviewActor->GetParticleSystemComponent())
 	{
 		const TArray<FParticleEmitterInstance>& Instances = PreviewActor->GetParticleSystemComponent()->GetEmitterInstances();
@@ -1397,53 +1397,45 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 		{
 			if (Name && std::strcmp(Name, "Particle Tick") == 0)
 			{
-				ParticleTickMs = Data.GetLastMs();
+				ParticleTickMs = static_cast<float>(Data.GetLastMs());
 				bFoundParticleTick = true;
 				break;
 			}
 		}
 
-		ImDrawList* DrawList = ImGui::GetWindowDrawList();
-		const float LineH = ImGui::GetTextLineHeightWithSpacing();
+		TArray<FString> StatLines;
 		constexpr int32 SummaryLineCount = 5;
-		float Y = ImagePos.y + Size.y - LineH * static_cast<float>(SummaryLineCount + Instances.Num()) - 6.0f;
+		char Buffer[192];
 
-		char Buf[192];
+		snprintf(Buffer, sizeof(Buffer), "CPU Active %u / %u", Stats.CpuActiveParticles, Stats.CpuCapacity);
+		StatLines.Add(Buffer);
 
-		snprintf(Buf, sizeof(Buf), "CPU Active %u / %u", Stats.CpuActiveParticles, Stats.CpuCapacity);
-		DrawList->AddText(ImVec2(ImagePos.x + 10.0f, Y), IM_COL32(255, 210, 130, 255), Buf);
-		Y += LineH;
+		snprintf(Buffer, sizeof(Buffer), "Spawn Requests/s %.1f | CPU Expired/s %.1f", Stats.SpawnRequestsPerSecond, Stats.CpuExpiredPerSecond);
+		StatLines.Add(Buffer);
 
-		snprintf(Buf, sizeof(Buf), "Spawn Requests/s %.1f | CPU Expired/s %.1f", Stats.SpawnRequestsPerSecond, Stats.CpuExpiredPerSecond);
-		DrawList->AddText(ImVec2(ImagePos.x + 10.0f, Y), IM_COL32(255, 210, 130, 255), Buf);
-		Y += LineH;
+		snprintf(Buffer, sizeof(Buffer), "CPU Buffer %.2f MB", static_cast<double>(Stats.CpuBufferBytes) / (1024.0 * 1024.0));
+		StatLines.Add(Buffer);
 
-		snprintf(Buf, sizeof(Buf), "CPU Buffer %.2f MB", static_cast<double>(Stats.CpuBufferBytes) / (1024.0 * 1024.0));
-		DrawList->AddText(ImVec2(ImagePos.x + 10.0f, Y), IM_COL32(255, 210, 130, 255), Buf);
-		Y += LineH;
-
-		snprintf(Buf, sizeof(Buf), "Draw Calls %u | Mesh Batches %u", Stats.DrawCalls, Stats.MeshBatches);
-		DrawList->AddText(ImVec2(ImagePos.x + 10.0f, Y), IM_COL32(255, 210, 130, 255), Buf);
-		Y += LineH;
+		snprintf(Buffer, sizeof(Buffer), "Draw Calls %u | Mesh Batches %u", Stats.DrawCalls, Stats.MeshBatches);
+		StatLines.Add(Buffer);
 
 		if (bFoundParticleTick)
 		{
-			snprintf(Buf, sizeof(Buf), "Particle Tick %.3f ms", ParticleTickMs);
+			snprintf(Buffer, sizeof(Buffer), "Particle Tick %.3f ms", ParticleTickMs);
 		}
 		else
 		{
-			snprintf(Buf, sizeof(Buf), "Particle Tick --");
+			snprintf(Buffer, sizeof(Buffer), "Particle Tick --");
 		}
 
-		DrawList->AddText(ImVec2(ImagePos.x + 10.0f, Y), IM_COL32(255, 210, 130, 255), Buf);
-		Y += LineH;
+		StatLines.Add(Buffer);
 
 		for (int32 Index = 0; Index < static_cast<int32>(Instances.Num()); ++Index)
 		{
 			const FParticleEmitterInstance& Instance = Instances[Index];
 			const char* EmitterName = Instance.SpriteTemplate ? Instance.SpriteTemplate->EmitterName.c_str() : "Emitter";
 
-			char EmitterBuf[160];
+			char EmitterBuffer[160];
 
 			const UParticleLODLevel* LOD = Instance.CurrentLODLevel;
 			const EParticleEmitterType Type = LOD && LOD->EffectiveTypeData ? LOD->EffectiveTypeData->GetEmitterType() : EParticleEmitterType::Sprite;
@@ -1465,17 +1457,39 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 
 			if (Type == EParticleEmitterType::GpuSprite || Type == EParticleEmitterType::GpuMesh)
 			{
-				snprintf(EmitterBuf, sizeof(EmitterBuf), "%s | %s | LOD %d | Capacity %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.MaxActiveParticles);
+				snprintf(EmitterBuffer, sizeof(EmitterBuffer), "%s | %s | LOD %d | Capacity %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.MaxActiveParticles);
 			}
 			else
 			{
-				snprintf(EmitterBuf, sizeof(EmitterBuf), "%s | %s | LOD %d | Active %d / %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.ActiveParticles, Instance.MaxActiveParticles);
+				snprintf(EmitterBuffer, sizeof(EmitterBuffer), "%s | %s | LOD %d | Active %d / %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.ActiveParticles, Instance.MaxActiveParticles);
 			}
 
-			const ImVec2 TextSize = ImGui::CalcTextSize(EmitterBuf);
-			DrawList->AddText(ImVec2(ImagePos.x + Size.x - TextSize.x - 10.0f, ImagePos.y + Size.y - LineH * static_cast<float>(Instances.Num() - Index) - 6.0f), IM_COL32(255, 160, 120, 255), EmitterBuf);
+			StatLines.Add(EmitterBuffer);
+		}
+
+		ImDrawList* DrawList = ImGui::GetWindowDrawList();
+		const float LineHeight = ImGui::GetTextLineHeightWithSpacing();
+		const float Padding = EditorUIScale::Px(8.0f);
+		const ImVec2 TextOrigin(ImagePos.x + EditorUIScale::Px(10.0f), ImagePos.y + EditorUIScale::Px(10.0f));
+
+		float MaxWidth = 0.0f;
+		for (int32 Index = 0; Index < static_cast<int32>(StatLines.Num()); ++Index)
+		{
+			MaxWidth = std::max(MaxWidth, ImGui::CalcTextSize(StatLines[Index].c_str()).x);
+		}
+
+		const ImVec2 BackgroundMin(TextOrigin.x - Padding, TextOrigin.y - Padding);
+		const ImVec2 BackgroundMax(TextOrigin.x + MaxWidth + Padding, TextOrigin.y + LineHeight * static_cast<float>(StatLines.Num()) + Padding);
+
+		DrawList->AddRectFilled(BackgroundMin, BackgroundMax, IM_COL32(0, 0, 0, 170), EditorUIScale::Px(4.0f));
+
+		for (int32 Index = 0; Index < static_cast<int32>(StatLines.Num()); ++Index)
+		{
+			const ImU32 TextColor = Index < SummaryLineCount ? IM_COL32(255, 210, 130, 255) : IM_COL32(255, 160, 120, 255);
+			DrawList->AddText(ImVec2(TextOrigin.x, TextOrigin.y + LineHeight * static_cast<float>(Index)), TextColor, StatLines[Index].c_str());
 		}
 	}
+
 
 	ImGui::EndChild();
 }
