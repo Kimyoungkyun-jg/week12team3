@@ -80,6 +80,10 @@ namespace
 			return "One Minus";
 		case EMaterialExpressionType::Subtract:
 			return "Subtract";
+		case EMaterialExpressionType::Step:
+			return "Step";
+		case EMaterialExpressionType::Noise:
+			return "Noise";
 		case EMaterialExpressionType::Divide:
 			return "Divide";
 		case EMaterialExpressionType::Clamp:
@@ -188,8 +192,11 @@ namespace
 		switch (Node.Type)
 		{
 		case EMaterialExpressionType::TextureSample:
+		case EMaterialExpressionType::Noise:
 		case EMaterialExpressionType::TextureSampleParameter2D:
 			return "float2";
+		case EMaterialExpressionType::Step:
+			return "float";
 		case EMaterialExpressionType::Add:
 		case EMaterialExpressionType::Subtract:
 		case EMaterialExpressionType::Multiply:
@@ -288,8 +295,10 @@ namespace
 			case 4:
 			case 5:
 			case 6:
-				return "float";
 			case 7:
+			case 9:
+				return "float";
+			case 8:
 				return "float3";
 			default:
 				return "Unknown";
@@ -814,6 +823,7 @@ void FMaterialEditorPanel::DrawMaterialGraphPalette(UMaterial& Material)
 	{
 		AddItem("Texture Sample", EMaterialExpressionType::TextureSample);
 		AddItem("Texture Coordinate", EMaterialExpressionType::TextureCoordinate);
+		AddItem("Noise", EMaterialExpressionType::Noise);
 		ImGui::TreePop();
 	}
 
@@ -847,6 +857,7 @@ void FMaterialEditorPanel::DrawMaterialGraphPalette(UMaterial& Material)
 		AddItem("Min", EMaterialExpressionType::Min);
 		AddItem("Max", EMaterialExpressionType::Max);
 		AddItem("One Minus", EMaterialExpressionType::OneMinus);
+		AddItem("Step", EMaterialExpressionType::Step);
 		AddItem("Saturate", EMaterialExpressionType::Saturate);
 		AddItem("Cosine", EMaterialExpressionType::Cosine);
 		AddItem("Floor", EMaterialExpressionType::Floor);
@@ -1179,6 +1190,17 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 		}
 	}
 
+	if (bHovered && !bHandledClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+	{
+		// 빈 배경 클릭 시 노드와 연결선 선택 해제
+		SelectedNodeId = 0;
+		DraggingNodeId = 0;
+		SelectedConnectionOutputNodeId = 0;
+		SelectedConnectionOutputPin = 0;
+		SelectedConnectionInputNodeId = 0;
+		SelectedConnectionInputPin = 0;
+	}
+
 	if (DraggingNodeId != 0 && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 	{
 		DraggingNodeId = 0;
@@ -1355,6 +1377,22 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 				NewBlend = EBlendState::Additive;
 			Material.SetBlendState(NewBlend);
 			MarkMaterialChanged();
+		}
+
+		// 기본 텍스처 슬롯 표시 및 편집
+		const char* TextureSlotLabels[2] = { "Base Texture", "Normal Texture" };
+		for (int32 SlotIndex = 0; SlotIndex < 2; ++SlotIndex)
+		{
+			UTexture2D* SlotTexture = Material.Textures.IsValidIndex(SlotIndex) ? Material.Textures[SlotIndex] : nullptr;
+			if (FContentDrawerPanel::DrawTexturePicker(TextureSlotLabels[SlotIndex], SlotTexture, "None"))
+			{
+				while (Material.Textures.Num() <= SlotIndex)
+				{
+					Material.Textures.Add(nullptr);
+				}
+				Material.Textures[SlotIndex] = SlotTexture;
+				MarkMaterialChanged();
+			}
 		}
 
 		return;
@@ -1746,14 +1784,17 @@ void FMaterialEditorPanel::OnRender()
 					if (Material->GetBlendState() == EBlendState::Opaque)
 					{
 						CompileVariant(EPSOType::Particle_MeshOpaque);
+						CompileVariant(EPSOType::Particle_GpuMeshOpaque);
 					}
 					else if (Material->GetBlendState() == EBlendState::Additive)
 					{
 						CompileVariant(EPSOType::Particle_MeshAdditive);
+						CompileVariant(EPSOType::Particle_GpuMeshAdditive);
 					}
 					else
 					{
 						CompileVariant(EPSOType::Particle_MeshTranslucent);
+						CompileVariant(EPSOType::Particle_GpuMeshTranslucent);
 					}
 				}
 

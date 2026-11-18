@@ -13,10 +13,15 @@ class ASwordCharacter : public ACharacter
 public:
 	ASwordCharacter();
 	void BeginPlay() override;
+	void Tick(float DeltaTime) override;
+	void AddMovementInput(const FVector& WorldDirection, float ScaleValue) override;
+	void Jump() override;
 	void Attack() override;
 	void CastBeam();
 
 private:
+	bool IsPlayingFullBodyMontage() const;
 	UStaticMeshComponent* SwordMeshComponent = nullptr;
 	UParticleSystemComponent* SwordRibbonComponent = nullptr;
+	bool bBeamMontageActive = false;
 };

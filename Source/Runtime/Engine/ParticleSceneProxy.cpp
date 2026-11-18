@@ -40,6 +40,15 @@ namespace
 		return EPSOType::Particle_MeshTranslucent;
 	}
 
+	EPSOType ResolveGpuMeshParticlePSO(const UMaterialInterface& EntryMat)
+	{
+		if (EntryMat.GetBlendState() == EBlendState::Opaque)
+			return EPSOType::Particle_GpuMeshOpaque;
+		if (EntryMat.GetBlendState() == EBlendState::Additive)
+			return EPSOType::Particle_GpuMeshAdditive;
+		return EPSOType::Particle_GpuMeshTranslucent;
+	}
+
 	EPSOType ResolveBeamTrailPSO(const UMaterialInterface& EntryMat)
 	{
 		if (EntryMat.GetBlendState() == EBlendState::Additive)
@@ -348,12 +357,13 @@ void FDynamicMeshEmitterData::GetDynamicMeshElementsForView(const FParticleScene
 			const FParticleRenderData& ParticleData = Particles[Sorted[SortedIdx].Index];
 			const float C = std::cos(ParticleData.Rotation);
 			const float S = std::sin(ParticleData.Rotation);
-			FMatrix World = FMatrix::Identity;
-			World.M[0][0] = C * ParticleData.MeshScale.X;
-			World.M[0][1] = S * ParticleData.MeshScale.X;
-			World.M[1][0] = -S * ParticleData.MeshScale.Y;
-			World.M[1][1] = C * ParticleData.MeshScale.Y;
-			World.M[2][2] = ParticleData.MeshScale.Z;
+			FMatrix LocalMat = FMatrix::Identity;
+			LocalMat.M[0][0] = C * ParticleData.MeshScale.X;
+			LocalMat.M[0][1] = S * ParticleData.MeshScale.X;
+			LocalMat.M[1][0] = -S * ParticleData.MeshScale.Y;
+			LocalMat.M[1][1] = C * ParticleData.MeshScale.Y;
+			LocalMat.M[2][2] = ParticleData.MeshScale.Z;
+			FMatrix World = LocalMat * ParticleData.MeshRotation.ToFMatrix();
 			World.M[3][0] = ParticleData.Location.X;
 			World.M[3][1] = ParticleData.Location.Y;
 			World.M[3][2] = ParticleData.Location.Z;
@@ -452,13 +462,16 @@ void FDynamicAfterimageEmitterData::GetDynamicMeshElementsForView(const FParticl
 void FDynamicGpuSpriteEmitterData::GetDynamicMeshElementsForView(const FParticleSceneProxy* Proxy, UStaticMesh* QuadMesh,
 	UMaterialInterface* DefaultMaterial, const FViewContext& View, FMeshElementCollector& Collector) const
 {
-	if (!QuadMesh || !GpuResources || MaxParticles == 0)
+	UStaticMesh* RenderMesh = MeshAsset ? MeshAsset : QuadMesh;
+	if (!RenderMesh || !GpuResources || MaxParticles == 0)
 		return;
 
-	UMaterialInterface* EntryMat = Material ? Material : DefaultMaterial;
-	FVertexBuffer* QuadVB = QuadMesh->GetVertexBuffer(0);
-	FIndexBuffer* QuadIB = QuadMesh->GetIndexBuffer(0);
-	if (!EntryMat || !QuadVB || !QuadIB)
+	UMaterialInterface* FallbackMat = Material ? Material : DefaultMaterial;
+	FVertexBuffer* RenderVB = RenderMesh->GetVertexBuffer(0);
+	FIndexBuffer* RenderIB = RenderMesh->GetIndexBuffer(0);
+	if (!RenderVB || !RenderIB)
+		return;
+	if (!MeshAsset && !FallbackMat)
 		return;
 
 	FVector Forward = View.CameraForward.Normalized();
@@ -480,8 +493,8 @@ void FDynamicGpuSpriteEmitterData::GetDynamicMeshElementsForView(const FParticle
 
 	FGpuParticleBatch GpuBatch{};
 	GpuBatch.GpuResources = GpuResources;
-	GpuBatch.Mesh = QuadMesh;
-	GpuBatch.Material = EntryMat;
+	GpuBatch.Mesh = RenderMesh;
+	GpuBatch.Material = FallbackMat;
 	GpuBatch.MaxParticles = MaxParticles;
 	GpuBatch.ParticleStride = ParticleStride;
 	GpuBatch.bResetRequested = bResetRequested;
@@ -497,23 +510,72 @@ void FDynamicGpuSpriteEmitterData::GetDynamicMeshElementsForView(const FParticle
 	SimParams.SpawnCount = 0;
 
 	const FVector Delta = WorldLocation - View.CameraPosition;
+	const float CameraDistSq = Delta.Dot(Delta);
+
+	if (MeshAsset)
+	{
+		const FStaticMeshData& MeshData = MeshAsset->GetMeshData(0);
+		const bool bHasSections = !MeshData.Sections.IsEmpty();
+		const int32 SectionCount = bHasSections ? static_cast<int32>(MeshData.Sections.Num()) : 1;
+
+		for (int32 SecIdx = 0; SecIdx < SectionCount; ++SecIdx)
+		{
+			const uint32 SecStartIndex = bHasSections ? MeshData.Sections[SecIdx].StartIndex : 0;
+			const uint32 SecIndexCount = bHasSections ? MeshData.Sections[SecIdx].IndexCount : RenderIB->GetIndexCount();
+			if (SecIndexCount == 0)
+				continue;
+
+			const uint32 SlotIndex = bHasSections ? MeshData.Sections[SecIdx].MaterialSlotIndex : 0;
+			UMaterialInterface* EntryMat = Material ? Material : MeshAsset->GetMaterial(SlotIndex);
+			if (!EntryMat)
+				EntryMat = DefaultMaterial;
+			if (!EntryMat)
+				continue;
+
+			FMeshBatch Batch{};
+			Batch.VertexFactory.Type = EVertexFactoryType::ParticleGpuMesh;
+			Batch.VertexFactory.VertexBuffer = RenderVB;
+			Batch.VertexFactory.GpuResources = GpuResources.get();
+			Batch.VertexFactory.DrawParamsSize = sizeof(FGpuParticleDrawParams);
+			std::memcpy(Batch.VertexFactory.DrawParamsData.data(), &DrawParams, sizeof(FGpuParticleDrawParams));
+			Batch.Material = EntryMat;
+			Batch.OverridePSOType = ResolveGpuMeshParticlePSO(*EntryMat);
+			Batch.MeshSortID = MeshAsset->SortID;
+			Batch.CameraDistanceSq = CameraDistSq;
+			Batch.bIsParticle = true;
+			Batch.bCastShadow = false;
+
+			FMeshBatchElement Element{};
+			Element.Proxy = Proxy;
+			Element.IndexBuffer = RenderIB;
+			Element.FirstIndex = SecStartIndex;
+			Element.IndexCount = SecIndexCount;
+			Element.InstanceCount = MaxParticles;
+			Element.bReceiveShadow = false;
+			Element.bReceiveDecal = false;
+			Batch.Elements.Add(Element);
+			Collector.AddMesh(std::move(Batch));
+		}
+		return;
+	}
+
 	FMeshBatch Batch{};
 	Batch.VertexFactory.Type = EVertexFactoryType::ParticleGpuSprite;
-	Batch.VertexFactory.VertexBuffer = QuadVB;
+	Batch.VertexFactory.VertexBuffer = RenderVB;
 	Batch.VertexFactory.GpuResources = GpuResources.get();
 	Batch.VertexFactory.DrawParamsSize = sizeof(FGpuParticleDrawParams);
 	std::memcpy(Batch.VertexFactory.DrawParamsData.data(), &DrawParams, sizeof(FGpuParticleDrawParams));
-	Batch.Material = EntryMat;
+	Batch.Material = FallbackMat;
 	Batch.OverridePSOType = EPSOType::Particle_GpuInstanced;
 	Batch.MeshSortID = QuadMesh->SortID;
-	Batch.CameraDistanceSq = Delta.Dot(Delta);
+	Batch.CameraDistanceSq = CameraDistSq;
 	Batch.bIsParticle = true;
 	Batch.bCastShadow = false;
 
 	FMeshBatchElement Element{};
 	Element.Proxy = Proxy;
-	Element.IndexBuffer = QuadIB;
-	Element.IndexCount = QuadIB->GetIndexCount();
+	Element.IndexBuffer = RenderIB;
+	Element.IndexCount = RenderIB->GetIndexCount();
 	Element.InstanceCount = MaxParticles;
 	Element.bReceiveShadow = false;
 	Element.bReceiveDecal = false;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UObject/Object.h"
+#include "Math/Quat.h"
 #include "Math/Vector.h"
 #include "Math/Vector4.h"
 #include "Math/Color.h"
@@ -29,6 +30,7 @@ struct FBaseParticle
 	float Rotation = 0.0f;
 	float RotationRate = 0.0f;
 	float BaseRotationRate = 0.0f;
+	FQuat MeshRotation = FQuat::Identity();
 	uint8 BaseAlpha = 255;
 };
 
@@ -79,6 +81,7 @@ struct FParticleTickContext
 {
 	UWorld* World = nullptr;
 	FMatrix ComponentToWorld;
+	FQuat ComponentRotation = FQuat::Identity();
 	UParticleSystemComponent * Component = nullptr;
 };
 
@@ -137,6 +140,14 @@ struct FParticleEmitterBuildInfo
 	FGpuDistributionBuildChannel SubUV;
 	FGpuDistributionBuildChannel VelocityScale;
 	FGpuDistributionBuildChannel RotationRateScale;
+
+	bool bHasCollision = false;
+	float CollisionRestitution = 0.5f;
+	float CollisionFriction = 0.5f;
+	int32 CollisionMaxCount = 10;
+	float CollisionRadius = 1.0f;
+	float DepthThickness = 1.0f;
+	FVector Acceleration = FVector::ZeroVector;
 };
 
 UCLASS()
@@ -201,7 +212,7 @@ public:
 	TArray<FParticleBurst> Bursts;
 };
 
-enum class EParticleEmitterType : uint8 { Sprite, GpuSprite, Mesh, Beam, Ribbon, Afterimage };
+enum class EParticleEmitterType : uint8 { Sprite, GpuSprite, Mesh, Beam, Ribbon, Afterimage, GpuMesh };
 enum class EBeamMethod : uint8 { Distance = 0, Target = 1 };
 enum class EBeamEndpointMethod : uint8 { Emitter = 0, UserSet = 1, Parameter = 2 };
 enum class EBeamTaperMethod : uint8 { None = 0, Full = 1, Partial = 2 }; // 빔의 시작점에서 끝점으로 갈수록 굵기를 조절할 수 있는 옵션
@@ -242,6 +253,15 @@ public:
 	EParticleEmitterType GetEmitterType() const override { return EParticleEmitterType::Mesh; }
 	UPROPERTY(EditAnywhere)
 	UStaticMesh* Mesh = nullptr;
+};
+
+UCLASS()
+class UParticleModuleTypeDataGpuMesh : public UParticleModuleTypeDataMesh
+{
+	GENERATED_BODY()
+public:
+	const char* GetDisplayName() const override { return "TypeData GPU Mesh"; }
+	EParticleEmitterType GetEmitterType() const override { return EParticleEmitterType::GpuMesh; }
 };
 
 UCLASS()
@@ -441,6 +461,8 @@ public:
 
 	UPROPERTY(Instanced)
 	UDistributionVector* StartLocation = nullptr;
+	UPROPERTY(EditAnywhere)
+	bool bSampleSkeletalMesh = false;
 };
 
 UCLASS()
@@ -555,6 +577,25 @@ public:
 	UDistributionFloat* StartRotation = nullptr;
 	UPROPERTY(Instanced)
 	UDistributionFloat* StartRotationRate = nullptr;
+	UPROPERTY(EditAnywhere)
+	bool bRandomAxis3D = false;
+};
+
+UCLASS()
+class UParticleModuleAcceleration : public UParticleModule
+{
+	GENERATED_BODY()
+public:
+	UParticleModuleAcceleration();
+	bool RunsOnUpdate() const override { return true; }
+	void Update(FBaseParticle& Particle, float DeltaTime, uint32 Offset = 0, const FParticleInstanceParameters* InstanceParams = nullptr) const override;
+	const char* GetDisplayName() const override { return "Acceleration"; }
+	void CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const override;
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+	void InvalidateDistributions() const override;
+
+	UPROPERTY(Instanced)
+	UDistributionVector* Acceleration = nullptr;
 };
 
 UCLASS()
@@ -645,6 +686,8 @@ public:
 	uint32 RequiredBytes() const override { return sizeof(FParticleCollisionPayload); }
 	const char* GetDisplayName() const override { return "Collision"; }
 
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+
 public:
 	UPROPERTY(EditAnywhere)
 	float RestitutionMax = 0.5f;
@@ -661,6 +704,9 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float CollisionRadius = 1.0f;
+
+	UPROPERTY(EditAnywhere)
+	float DepthThickness = 1.0f;
 };
 
 UCLASS()

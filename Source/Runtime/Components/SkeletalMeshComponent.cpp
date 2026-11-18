@@ -1,6 +1,9 @@
 #include "EnginePCH.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Animation/Skeleton.h"
+#include "Render/Buffer.h"
+#include "Render/Material.h"
+#include "Render/MaterialInstance.h"
 #include "Render/RenderCommand.h"
 #include "Render/RenderResourceManager.h"
 #include "Render/MeshBatch.h"
@@ -18,6 +21,7 @@
 #include "Asset/AssetManager.h"
 #include "Components/CharacterMovementComponent.h"
 #include "GameFramework/Character.h"
+#include "Physics/Collision.h"
 
 namespace
 {
@@ -853,4 +857,141 @@ bool USkeletalMeshComponent::LineTraceComponentLocal(const FRay& LocalRay, float
 		}
 	}
 	return bHit;
+}
+
+bool USkeletalMeshComponent::SweepHitboxes(const FRay& WorldRay, float MaxDistance, float SphereRadius, float& OutDistance, FVector& OutNormal)
+{
+	EnsureBoneState();
+	if (!SkeletalMesh || MaxDistance <= 0.0f)
+		return false;
+	if (bSkinningMatricesDirty)
+		UpdateBoneMatrices();
+
+	const TArray<FBoneHitCapsule>& Capsules = SkeletalMesh->GetBoneHitCapsules();
+	if (Capsules.IsEmpty() || GlobalBoneTransforms.Num() != SkeletalMesh->MeshData.Bones.Num())
+	{
+		const FMatrix WorldToLocal = GetWorldMatrix().Inverse();
+		const FRay LocalRay{
+			.Origin = WorldToLocal.TransformPosition(WorldRay.Origin),
+			.Direction = WorldToLocal.TransformVector(WorldRay.Direction)
+		};
+		float T = MaxDistance;
+		if (!LineTraceComponentLocal(LocalRay, T) || T > MaxDistance)
+			return false;
+		OutDistance = T;
+		OutNormal = -WorldRay.Direction;
+		return true;
+	}
+
+	const FMatrix& WorldMatrix = GetWorldMatrix();
+	const FVector WorldScale = GetWorldScale3D();
+	const float MaxAxisScale = std::max({ std::abs(WorldScale.X), std::abs(WorldScale.Y), std::abs(WorldScale.Z) });
+
+	float NearestDistance = MaxDistance;
+	bool bHit = false;
+	for (const FBoneHitCapsule& Capsule : Capsules)
+	{
+		if (!GlobalBoneTransforms.IsValidIndex(Capsule.BoneIndex))
+			continue;
+		const FMatrix BoneToWorld = GlobalBoneTransforms[Capsule.BoneIndex] * WorldMatrix;
+		const FWorldCapsule WorldCapsule{
+			BoneToWorld.TransformPosition(Capsule.LocalA),
+			BoneToWorld.TransformPosition(Capsule.LocalB),
+			Capsule.Radius * MaxAxisScale
+		};
+		float CandidateDistance = NearestDistance;
+		FVector CandidateNormal = -WorldRay.Direction;
+		if (FCollision::SweepSphereCapsule(WorldRay, NearestDistance, SphereRadius, WorldCapsule, CandidateDistance, CandidateNormal) &&
+			(!bHit || CandidateDistance < NearestDistance))
+		{
+			NearestDistance = CandidateDistance;
+			OutNormal = CandidateNormal;
+			bHit = true;
+		}
+	}
+	if (!bHit)
+		return false;
+	OutDistance = NearestDistance;
+	return true;
+}
+
+void USkeletalMeshComponent::StartPreviewDissolve(float InDuration, const FVector4& InEdgeColor)
+{
+	if (!SkeletalMesh)
+		return;
+	if (PreviewDissolveSavedMaterials.IsEmpty())
+	{
+		const int32 SlotCount = static_cast<int32>(SkeletalMesh->Materials.Num());
+		PreviewDissolveSavedMaterials.SetNum(SlotCount);
+		for (int32 SlotIndex = 0; SlotIndex < SlotCount; ++SlotIndex)
+		{
+			UMaterialInterface* Original = GetMaterial(SlotIndex);
+			PreviewDissolveSavedMaterials[SlotIndex] = Original;
+			UMaterial* BaseMat = Original ? Original->GetBaseMaterial() : nullptr;
+			UMaterial* DissolveParent = UMaterial::GetOrCreateDissolveParent(BaseMat);
+			UMaterialInstanceDynamic* DynMat = DissolveParent ? UMaterial::CreateDynamicInstance(DissolveParent) : nullptr;
+			if (!DynMat)
+				continue;
+			SetMaterial(SlotIndex, DynMat);
+			PreviewDissolveMaterials.Add(DynMat);
+		}
+	}
+	PreviewDissolveDuration = std::max(0.05f, InDuration);
+	PreviewDissolveElapsed = 0.0f;
+	bPreviewDissolveActive = true;
+	SetDissolveHidden(false);
+	for (UMaterialInstanceDynamic* DynMat : PreviewDissolveMaterials)
+	{
+		if (!DynMat)
+			continue;
+		DynMat->SetScalarParameterValue(FName("DissolveAmount"), -0.05f);
+		DynMat->SetVectorParameterValue(FName("DissolveEdgeColor"), InEdgeColor);
+	}
+}
+
+void USkeletalMeshComponent::UpdatePreviewDissolve(float DeltaTime)
+{
+	if (!bPreviewDissolveActive || !std::isfinite(DeltaTime) || DeltaTime <= 0.0f)
+		return;
+	PreviewDissolveElapsed += DeltaTime;
+	const float Alpha = std::clamp(PreviewDissolveElapsed / std::max(0.05f, PreviewDissolveDuration), 0.0f, 1.0f);
+	const float Amount = -0.05f + Alpha * 1.13f;
+	for (UMaterialInstanceDynamic* DynMat : PreviewDissolveMaterials)
+	{
+		if (DynMat)
+			DynMat->SetScalarParameterValue(FName("DissolveAmount"), Amount);
+	}
+	if (Alpha >= 1.0f)
+	{
+		bPreviewDissolveActive = false;
+		SetDissolveHidden(true);
+	}
+}
+
+void USkeletalMeshComponent::ResetPreviewDissolve()
+{
+	if (!bPreviewDissolveActive && PreviewDissolveMaterials.IsEmpty() && PreviewDissolveSavedMaterials.IsEmpty())
+		return;
+	bPreviewDissolveActive = false;
+	PreviewDissolveElapsed = 0.0f;
+	for (int32 SlotIndex = 0; SlotIndex < PreviewDissolveSavedMaterials.Num(); ++SlotIndex)
+	{
+		SetMaterial(SlotIndex, PreviewDissolveSavedMaterials[SlotIndex]);
+	}
+	PreviewDissolveSavedMaterials.Reset();
+	PreviewDissolveMaterials.Reset();
+	SetDissolveHidden(false);
+}
+
+void USkeletalMeshComponent::SetDissolveHidden(bool bHidden)
+{
+	if (bDissolveHidden == bHidden)
+		return;
+	bDissolveHidden = bHidden;
+	MarkRenderStateDirty();
+}
+
+bool USkeletalMeshComponent::IsShown(bool bGameView) const
+{
+	return !bDissolveHidden && Super::IsShown(bGameView);
 }

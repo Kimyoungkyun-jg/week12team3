@@ -38,9 +38,13 @@ struct FGpuParticle
 	float BaseRotationRate = 0.0f;
 	float SubImageIndex = 0.0f;
 	uint32 bAlive = 0;
-	float Pad[2] = {};
+	uint32 CollisionCount = 0;
+	float Pad = 0.0f;
+	FQuat MeshRotation = FQuat::Identity();
+	FVector AngularVelocity = FVector::ZeroVector;
+	float SimPad = 0.0f;
 };
-static_assert(sizeof(FGpuParticle) == 128);
+static_assert(sizeof(FGpuParticle) == 160);
 
 struct FParticleEmitterInstance
 {

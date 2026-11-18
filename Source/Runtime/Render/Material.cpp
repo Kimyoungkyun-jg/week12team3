@@ -330,6 +330,7 @@ int32 UMaterial::GetExpressionInputPinCount(EMaterialExpressionType Type) const
 	{
 	case EMaterialExpressionType::TextureSample:
 	case EMaterialExpressionType::TextureSampleParameter2D:
+	case EMaterialExpressionType::Noise:
 	case EMaterialExpressionType::OneMinus:
 	case EMaterialExpressionType::Abs:
 	case EMaterialExpressionType::Frac:
@@ -356,6 +357,7 @@ int32 UMaterial::GetExpressionInputPinCount(EMaterialExpressionType Type) const
 	case EMaterialExpressionType::Distance:
 	case EMaterialExpressionType::CrossProduct:
 	case EMaterialExpressionType::Desaturation:
+	case EMaterialExpressionType::Step:
 		return 2;
 
 	case EMaterialExpressionType::Lerp:
@@ -369,8 +371,7 @@ int32 UMaterial::GetExpressionInputPinCount(EMaterialExpressionType Type) const
 		return 4;
 
 	case EMaterialExpressionType::MaterialOutput:
-		return 9;
-
+		return 10;
 	default:
 		return 0;
 	}
@@ -387,6 +388,7 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 {
 	static const char* BinaryNames[] = { "A", "B" };
 	static const char* TernaryNames[] = { "A", "B", "Alpha" };
+	static const char* StepNames[] = { "Edge", "Value" };
 	static const char* ClampNames[] = { "Input", "Min", "Max" };
 	static const char* PannerNames[] = { "Coordinate", "Speed" };
 	static const char* FresnelNames[] = { "Normal", "Exponent", "Base Reflect Fraction" };
@@ -402,6 +404,7 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 		"Emissive Factor",
 		"Metallic",
 		"Roughness",
+		"Opacity Mask",
 		"Normal",
 		"Ambient Occlusion"
 	};
@@ -409,6 +412,7 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 	switch (Type)
 	{
 	case EMaterialExpressionType::TextureSample:
+	case EMaterialExpressionType::Noise:
 	case EMaterialExpressionType::TextureSampleParameter2D:
 		return PinIndex == 0 ? "UV" : nullptr;
 
@@ -426,6 +430,8 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 	case EMaterialExpressionType::CrossProduct:
 		return PinIndex >= 0 && PinIndex < 2 ? BinaryNames[PinIndex] : nullptr;
 
+	case EMaterialExpressionType::Step:
+		return PinIndex >= 0 && PinIndex < 2 ? StepNames[PinIndex] : nullptr;
 	case EMaterialExpressionType::Lerp:
 		return PinIndex >= 0 && PinIndex < 3 ? TernaryNames[PinIndex] : nullptr;
 
@@ -445,7 +451,7 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 		return PinIndex == 0 ? "Input" : nullptr;
 
 	case EMaterialExpressionType::MaterialOutput:
-		return PinIndex >= 0 && PinIndex < 9 ? OutputNames[PinIndex] : nullptr;
+		return PinIndex >= 0 && PinIndex < 10 ? OutputNames[PinIndex] : nullptr;
 
 	case EMaterialExpressionType::Panner:
 		return PinIndex >= 0 && PinIndex < 2 ? PannerNames[PinIndex] : nullptr;
@@ -464,7 +470,6 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 
 	case EMaterialExpressionType::Rotator:
 		return PinIndex >= 0 && PinIndex < 3 ? RotatorNames[PinIndex] : nullptr;
-
 	default:
 		return nullptr;
 	}
@@ -522,6 +527,8 @@ EMaterialValueType UMaterial::GetExpressionOutputType(int32 NodeId, int32 Output
 		{
 		case EMaterialExpressionType::Constant:
 		case EMaterialExpressionType::ScalarParameter:
+		case EMaterialExpressionType::Step:
+		case EMaterialExpressionType::Noise:
 		case EMaterialExpressionType::Time:
 			Result = EMaterialValueType::Scalar;
 			break;
@@ -1033,6 +1040,7 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 		{
 		case EMaterialExpressionType::TextureSample:
 		case EMaterialExpressionType::TextureSampleParameter2D:
+		case EMaterialExpressionType::Noise:
 		case EMaterialExpressionType::OneMinus:
 		case EMaterialExpressionType::Abs:
 		case EMaterialExpressionType::Frac:
@@ -1060,6 +1068,7 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 		case EMaterialExpressionType::Distance:
 		case EMaterialExpressionType::CrossProduct:
 		case EMaterialExpressionType::Desaturation:
+		case EMaterialExpressionType::Step:
 			RequiredInputCount = 2;
 			break;
 
@@ -1111,6 +1120,22 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 			if (A != EMaterialValueType::Vector2)
 			{
 				OutError = "Texture Sample requires a float2 UV input.";
+				return false;
+			}
+			break;
+
+		case EMaterialExpressionType::Noise:
+			if (A != EMaterialValueType::Vector2)
+			{
+				OutError = "Noise requires a float2 UV input.";
+				return false;
+			}
+			break;
+
+		case EMaterialExpressionType::Step:
+			if (A != EMaterialValueType::Scalar || B != EMaterialValueType::Scalar)
+			{
+				OutError = "Step requires scalar Edge and Value inputs.";
 				return false;
 			}
 			break;
@@ -1322,11 +1347,12 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 		case 4:
 		case 5:
 		case 6:
-		case 8:
+		case 7:
+		case 9:
 			bValidType = SourceType == EMaterialValueType::Scalar;
 			break;
 
-		case 7:
+		case 8:
 			bValidType = SourceType == EMaterialValueType::Vector3;
 			break;
 
@@ -1434,6 +1460,139 @@ UMaterialInstanceDynamic* UMaterial::CreateDynamicInstance(UMaterialInterface* P
 
 	Instance->SetParent(Parent);
 	return Instance;
+}
+
+UMaterial* UMaterial::GetOrCreateDissolveParent(UMaterial* SourceMat)
+{
+	if (!SourceMat)
+	{
+		return nullptr;
+	}
+
+	// 원본 머티리얼의 텍스처와 속성을 유지한 공용 Dissolve 부모 머티리얼을 캐싱한다
+	static std::unordered_map<UMaterial*, UMaterial*> CachedParents;
+	std::unordered_map<UMaterial*, UMaterial*>::iterator Found = CachedParents.find(SourceMat);
+	if (Found != CachedParents.end() && IsValid(Found->second) && Found->second->GetOuter() == SourceMat)
+	{
+		return Found->second;
+	}
+
+	UMaterial* ParentMat = NewObject<UMaterial>(SourceMat);
+	if (!ParentMat)
+	{
+		return nullptr;
+	}
+
+	ParentMat->UsageFlags = SourceMat->UsageFlags | static_cast<uint32>(EMaterialUsage::SkeletalMesh);
+	ParentMat->PSOType = SourceMat->PSOType;
+	ParentMat->BlendState = SourceMat->BlendState;
+	ParentMat->DepthStencilState = SourceMat->DepthStencilState;
+	ParentMat->SamplerState = SourceMat->SamplerState;
+	ParentMat->Textures = SourceMat->Textures;
+	ParentMat->BaseColor = SourceMat->BaseColor;
+	ParentMat->SpecularColor = SourceMat->SpecularColor;
+	ParentMat->SpecularFactor = SourceMat->SpecularFactor;
+	ParentMat->Shininess = SourceMat->Shininess;
+	ParentMat->EmissiveColor = SourceMat->EmissiveColor;
+	ParentMat->EmissiveFactor = SourceMat->EmissiveFactor;
+	ParentMat->UVScrollSpeed = SourceMat->UVScrollSpeed;
+	ParentMat->UVTiling = SourceMat->UVTiling;
+	ParentMat->WorldUVTileSize = SourceMat->WorldUVTileSize;
+	ParentMat->bWorldUVLocalSpace = SourceMat->bWorldUVLocalSpace;
+	ParentMat->bFlipNormalY = SourceMat->bFlipNormalY;
+	ParentMat->ShadingModel = SourceMat->ShadingModel;
+	ParentMat->bOverrideShadingModel = SourceMat->bOverrideShadingModel;
+
+	FMaterialExpressionNode OutputNode;
+	OutputNode.Id = 1;
+	OutputNode.Type = EMaterialExpressionType::MaterialOutput;
+	ParentMat->OutputNodeId = 1;
+
+	FMaterialExpressionNode UvNode;
+	UvNode.Id = 2;
+	UvNode.Type = EMaterialExpressionType::TextureCoordinate;
+
+	FMaterialExpressionNode ScaleNode;
+	ScaleNode.Id = 3;
+	ScaleNode.Type = EMaterialExpressionType::Constant2Vector;
+	ScaleNode.VectorValue = FVector4(28.0f, 28.0f, 0.0f, 0.0f);
+
+	FMaterialExpressionNode ScaledUvNode;
+	ScaledUvNode.Id = 4;
+	ScaledUvNode.Type = EMaterialExpressionType::Multiply;
+
+	FMaterialExpressionNode NoiseNode;
+	NoiseNode.Id = 5;
+	NoiseNode.Type = EMaterialExpressionType::Noise;
+
+	FMaterialExpressionNode DissolveParamNode;
+	DissolveParamNode.Id = 6;
+	DissolveParamNode.Type = EMaterialExpressionType::ScalarParameter;
+	DissolveParamNode.ParameterName = "DissolveAmount";
+	DissolveParamNode.ScalarValue = -0.10f;
+
+	FMaterialExpressionNode MaskNode;
+	MaskNode.Id = 7;
+	MaskNode.Type = EMaterialExpressionType::Subtract;
+
+	FMaterialExpressionNode EdgeWidthNode;
+	EdgeWidthNode.Id = 8;
+	EdgeWidthNode.Type = EMaterialExpressionType::Constant;
+	EdgeWidthNode.ScalarValue = 0.035f;
+
+	FMaterialExpressionNode StepNode;
+	StepNode.Id = 9;
+	StepNode.Type = EMaterialExpressionType::Step;
+
+	FMaterialExpressionNode EdgeMaskNode;
+	EdgeMaskNode.Id = 10;
+	EdgeMaskNode.Type = EMaterialExpressionType::OneMinus;
+
+	FMaterialExpressionNode ZeroColorNode;
+	ZeroColorNode.Id = 11;
+	ZeroColorNode.Type = EMaterialExpressionType::Constant4Vector;
+	ZeroColorNode.VectorValue = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
+
+	FMaterialExpressionNode EdgeColorParamNode;
+	EdgeColorParamNode.Id = 12;
+	EdgeColorParamNode.Type = EMaterialExpressionType::VectorParameter;
+	EdgeColorParamNode.ParameterName = "DissolveEdgeColor";
+	EdgeColorParamNode.VectorValue = FVector4(0.0f, 0.0f, 0.0f, 1.0f);
+
+	FMaterialExpressionNode EmissiveLerpNode;
+	EmissiveLerpNode.Id = 13;
+	EmissiveLerpNode.Type = EMaterialExpressionType::Lerp;
+
+	ParentMat->ExpressionNodes.Add(OutputNode);
+	ParentMat->ExpressionNodes.Add(UvNode);
+	ParentMat->ExpressionNodes.Add(ScaleNode);
+	ParentMat->ExpressionNodes.Add(ScaledUvNode);
+	ParentMat->ExpressionNodes.Add(NoiseNode);
+	ParentMat->ExpressionNodes.Add(DissolveParamNode);
+	ParentMat->ExpressionNodes.Add(MaskNode);
+	ParentMat->ExpressionNodes.Add(EdgeWidthNode);
+	ParentMat->ExpressionNodes.Add(StepNode);
+	ParentMat->ExpressionNodes.Add(EdgeMaskNode);
+	ParentMat->ExpressionNodes.Add(ZeroColorNode);
+	ParentMat->ExpressionNodes.Add(EdgeColorParamNode);
+	ParentMat->ExpressionNodes.Add(EmissiveLerpNode);
+
+	ParentMat->ExpressionConnections.Add({ 2, 0, 4, 0 });
+	ParentMat->ExpressionConnections.Add({ 3, 0, 4, 1 });
+	ParentMat->ExpressionConnections.Add({ 4, 0, 5, 0 });
+	ParentMat->ExpressionConnections.Add({ 5, 0, 7, 0 });
+	ParentMat->ExpressionConnections.Add({ 6, 0, 7, 1 });
+	ParentMat->ExpressionConnections.Add({ 8, 0, 9, 0 });
+	ParentMat->ExpressionConnections.Add({ 7, 0, 9, 1 });
+	ParentMat->ExpressionConnections.Add({ 9, 0, 10, 0 });
+	ParentMat->ExpressionConnections.Add({ 11, 0, 13, 0 });
+	ParentMat->ExpressionConnections.Add({ 12, 0, 13, 1 });
+	ParentMat->ExpressionConnections.Add({ 10, 0, 13, 2 });
+	ParentMat->ExpressionConnections.Add({ 7, 0, 1, 7 });
+	ParentMat->ExpressionConnections.Add({ 13, 0, 1, 3 });
+
+	CachedParents[SourceMat] = ParentMat;
+	return ParentMat;
 }
 
 json UMaterial::SaveMaterial(const UMaterialInterface* Material)

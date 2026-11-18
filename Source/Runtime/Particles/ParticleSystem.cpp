@@ -565,6 +565,39 @@ void UParticleModuleRotation::CollectCurves(TArray<FParticleCurveTrack>& OutCurv
 	if (StartRotationRate) StartRotationRate->CollectCurves("RotationRate", FColor(160, 220, 255, 255), OutCurves);
 }
 
+UParticleModuleAcceleration::UParticleModuleAcceleration()
+{
+	UDistributionVectorConstant* AccDist = NewObject<UDistributionVectorConstant>(this);
+	AccDist->Constant = FVector(0.0f, 0.0f, -9.8f);
+	Acceleration = AccDist;
+}
+
+void UParticleModuleAcceleration::Update(FBaseParticle& Particle, float DeltaTime, uint32, const FParticleInstanceParameters* InstanceParams) const
+{
+	if (!Acceleration)
+		return;
+	const FVector Acc = Acceleration->GetValue(Particle.RelativeTime, InstanceParams, nullptr);
+	Particle.Velocity += Acc * DeltaTime;
+}
+
+void UParticleModuleAcceleration::CollectCurves(TArray<FParticleCurveTrack>& OutCurves) const
+{
+	if (Acceleration)
+		Acceleration->CollectCurves("Acceleration", FColor(255, 180, 100, 255), OutCurves);
+}
+
+void UParticleModuleAcceleration::InvalidateDistributions() const
+{
+	if (Acceleration) Acceleration->InvalidateLookupTable();
+}
+
+void UParticleModuleAcceleration::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	if (!Acceleration)
+		return;
+	OutBuildInfo.Acceleration += Acceleration->GetValue(0.0f, nullptr, nullptr);
+}
+
 UParticleModuleSubUV::UParticleModuleSubUV()
 {
 	UDistributionFloatConstantCurve* CurveDist = NewObject<UDistributionFloatConstantCurve>(this);
@@ -1401,4 +1434,14 @@ void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float Delt
 		Event.Component = Hit.HitComponent;
 		Context.Component->AddCollisionEvent(Event);
 	}
+}
+
+void UParticleModuleCollision::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const
+{
+	OutBuildInfo.bHasCollision = true;
+	OutBuildInfo.CollisionRestitution = std::max(0.0f, RestitutionMax);
+	OutBuildInfo.CollisionFriction = std::clamp(FrictionMax, 0.0f, 1.0f);
+	OutBuildInfo.CollisionMaxCount = std::max(0, MaxCollisions);
+	OutBuildInfo.CollisionRadius = std::max(0.0f, CollisionRadius);
+	OutBuildInfo.DepthThickness = std::max(0.0f, DepthThickness);
 }

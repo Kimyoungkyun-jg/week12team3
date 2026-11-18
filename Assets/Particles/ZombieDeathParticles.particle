@@ -1,0 +1,1743 @@
+{
+	"Class": "UParticleSystem",
+	"Object": {
+		"Properties": {
+			"Emitters": [
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "DissolveLightAshDust",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 1,
+															"Lifetime": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 1.75,
+																		"Min": 0.85
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleLocation",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 2,
+															"StartLocation": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.03,
+																			"Y": 0.03,
+																			"Z": 0.03
+																		},
+																		"Min": {
+																			"X": -0.03,
+																			"Y": -0.03,
+																			"Z": -0.03
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true,
+															"bSampleSkeletalMesh": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleVelocity",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 3,
+															"StartVelocity": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.3,
+																			"Y": 0.3,
+																			"Z": 0.78
+																		},
+																		"Min": {
+																			"X": -0.3,
+																			"Y": -0.3,
+																			"Z": 0.16
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 4,
+															"StartSize": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.026,
+																			"Y": 0.026,
+																			"Z": 0.026
+																		},
+																		"Min": {
+																			"X": 0.01,
+																			"Y": 0.01,
+																			"Z": 0.01
+																		},
+																		"bLockAxes": true
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSizeByLife",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 5,
+															"LifeScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.75\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.25,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.1\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.75\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.25,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.1\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColor",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 6,
+															"StartAlpha": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 0.9
+																	}
+																}
+															},
+															"StartColor": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.88,
+																			"Y": 0.88,
+																			"Z": 0.88
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.68,
+																			"Y": 0.68,
+																			"Z": 0.68
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.08,
+															"FadeOutStart": 0.55,
+															"LODSlotId": 7,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 1.35,
+														"LODSlotId": 0,
+														"Material": "Materials/DeathAshMote.material",
+														"MaxParticles": 2400,
+														"bEnabled": true,
+														"bLooping": false,
+														"bUseLocalSpace": false
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [
+															{
+																"Count": 320,
+																"Time": 0.0
+															}
+														],
+														"LODSlotId": 0,
+														"Rate": 1400.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataGpuSprite",
+												"Value": {
+													"Properties": {
+														"LODSlotId": 0,
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bInheritLODModules": true,
+							"bIsSolo": false
+						}
+					}
+				},
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "DissolveMidGreyAsh",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 1,
+															"Lifetime": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 1.65,
+																		"Min": 0.8
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleLocation",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 2,
+															"StartLocation": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.04,
+																			"Y": 0.04,
+																			"Z": 0.04
+																		},
+																		"Min": {
+																			"X": -0.04,
+																			"Y": -0.04,
+																			"Z": -0.04
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true,
+															"bSampleSkeletalMesh": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleVelocity",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 3,
+															"StartVelocity": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.32,
+																			"Y": 0.32,
+																			"Z": 0.8
+																		},
+																		"Min": {
+																			"X": -0.32,
+																			"Y": -0.32,
+																			"Z": 0.14
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 4,
+															"StartSize": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.038,
+																			"Y": 0.038,
+																			"Z": 0.038
+																		},
+																		"Min": {
+																			"X": 0.015,
+																			"Y": 0.015,
+																			"Z": 0.015
+																		},
+																		"bLockAxes": true
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSizeByLife",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 5,
+															"LifeScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.85\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.15\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.85\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.15\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColor",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 6,
+															"StartAlpha": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 0.82
+																	}
+																}
+															},
+															"StartColor": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.42,
+																			"Y": 0.42,
+																			"Z": 0.42
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.3,
+																			"Y": 0.3,
+																			"Z": 0.3
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.08,
+															"FadeOutStart": 0.5,
+															"LODSlotId": 7,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 1.35,
+														"LODSlotId": 0,
+														"Material": "Materials/DeathAshMote.material",
+														"MaxParticles": 900,
+														"bEnabled": true,
+														"bLooping": false,
+														"bUseLocalSpace": false
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [
+															{
+																"Count": 110,
+																"Time": 0.0
+															}
+														],
+														"LODSlotId": 0,
+														"Rate": 520.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataSprite",
+												"Value": {
+													"Properties": {
+														"LODSlotId": 0,
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bInheritLODModules": true,
+							"bIsSolo": false
+						}
+					}
+				},
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "DissolveCharcoalAsh",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 1,
+															"Lifetime": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 1.6,
+																		"Min": 0.8
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleLocation",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 2,
+															"StartLocation": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.04,
+																			"Y": 0.04,
+																			"Z": 0.04
+																		},
+																		"Min": {
+																			"X": -0.04,
+																			"Y": -0.04,
+																			"Z": -0.04
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true,
+															"bSampleSkeletalMesh": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleVelocity",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 3,
+															"StartVelocity": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.32,
+																			"Y": 0.32,
+																			"Z": 0.78
+																		},
+																		"Min": {
+																			"X": -0.32,
+																			"Y": -0.32,
+																			"Z": 0.14
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 4,
+															"StartSize": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.04,
+																			"Y": 0.04,
+																			"Z": 0.04
+																		},
+																		"Min": {
+																			"X": 0.016,
+																			"Y": 0.016,
+																			"Z": 0.016
+																		},
+																		"bLockAxes": true
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSizeByLife",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 5,
+															"LifeScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.85\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.15\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.85\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.15\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColor",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 6,
+															"StartAlpha": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 0.85
+																	}
+																}
+															},
+															"StartColor": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.06,
+																			"Y": 0.06,
+																			"Z": 0.06
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.03,
+																			"Y": 0.03,
+																			"Z": 0.03
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.08,
+															"FadeOutStart": 0.5,
+															"LODSlotId": 7,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 1.35,
+														"LODSlotId": 0,
+														"Material": "Materials/DeathAshMote.material",
+														"MaxParticles": 900,
+														"bEnabled": true,
+														"bLooping": false,
+														"bUseLocalSpace": false
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [
+															{
+																"Count": 110,
+																"Time": 0.0
+															}
+														],
+														"LODSlotId": 0,
+														"Rate": 520.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataSprite",
+												"Value": {
+													"Properties": {
+														"LODSlotId": 0,
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bInheritLODModules": true,
+							"bIsSolo": false
+						}
+					}
+				},
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "DissolveDarkSmokeMist",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 1,
+															"Lifetime": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 2.05,
+																		"Min": 1.15
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleLocation",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 2,
+															"StartLocation": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.1,
+																			"Y": 0.1,
+																			"Z": 0.1
+																		},
+																		"Min": {
+																			"X": -0.1,
+																			"Y": -0.1,
+																			"Z": -0.08
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true,
+															"bSampleSkeletalMesh": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleVelocity",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 3,
+															"StartVelocity": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.35,
+																			"Y": 0.35,
+																			"Z": 0.72
+																		},
+																		"Min": {
+																			"X": -0.35,
+																			"Y": -0.35,
+																			"Z": 0.18
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 4,
+															"StartSize": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.52,
+																			"Y": 0.52,
+																			"Z": 0.52
+																		},
+																		"Min": {
+																			"X": 0.24,
+																			"Y": 0.24,
+																			"Z": 0.24
+																		},
+																		"bLockAxes": true
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSizeByLife",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 5,
+															"LifeScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.7\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.75\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.7\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.75\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleRotation",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 6,
+															"StartRotation": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 6.283185,
+																		"Min": 0.0
+																	}
+																}
+															},
+															"StartRotationRate": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 1.1,
+																		"Min": -1.1
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColor",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 7,
+															"StartAlpha": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 0.62
+																	}
+																}
+															},
+															"StartColor": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.58,
+																			"Y": 0.58,
+																			"Z": 0.58
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.42,
+																			"Y": 0.42,
+																			"Z": 0.42
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.12,
+															"FadeOutStart": 0.52,
+															"LODSlotId": 8,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSubUV",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 9,
+															"PlayRate": 1.0,
+															"SubImagesHorizontal": 8,
+															"SubImagesVertical": 8,
+															"bEnabled": true,
+															"bUseLinearOverLife": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 1.35,
+														"LODSlotId": 0,
+														"Material": "Materials/DeathSmokeCloud.material",
+														"MaxParticles": 450,
+														"bEnabled": true,
+														"bLooping": false,
+														"bUseLocalSpace": false
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [
+															{
+																"Count": 45,
+																"Time": 0.0
+															},
+															{
+																"Count": 35,
+																"Time": 0.45
+															}
+														],
+														"LODSlotId": 0,
+														"Rate": 240.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataSprite",
+												"Value": {
+													"Properties": {
+														"LODSlotId": 0,
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bInheritLODModules": true,
+							"bIsSolo": false
+						}
+					}
+				},
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "DissolveLightSmokeWisps",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 1,
+															"Lifetime": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 1.85,
+																		"Min": 1.05
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleLocation",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 2,
+															"StartLocation": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.09,
+																			"Y": 0.09,
+																			"Z": 0.09
+																		},
+																		"Min": {
+																			"X": -0.09,
+																			"Y": -0.09,
+																			"Z": -0.06
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true,
+															"bSampleSkeletalMesh": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleVelocity",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 3,
+															"StartVelocity": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.3,
+																			"Y": 0.3,
+																			"Z": 0.78
+																		},
+																		"Min": {
+																			"X": -0.3,
+																			"Y": -0.3,
+																			"Z": 0.22
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 4,
+															"StartSize": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.4,
+																			"Y": 0.4,
+																			"Z": 0.4
+																		},
+																		"Min": {
+																			"X": 0.18,
+																			"Y": 0.18,
+																			"Z": 0.18
+																		},
+																		"bLockAxes": true
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSizeByLife",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 5,
+															"LifeScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.75\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.65\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.75\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.65\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleRotation",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 6,
+															"StartRotation": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 6.283185,
+																		"Min": 0.0
+																	}
+																}
+															},
+															"StartRotationRate": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 1.2,
+																		"Min": -1.2
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColor",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 7,
+															"StartAlpha": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 0.48
+																	}
+																}
+															},
+															"StartColor": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.95,
+																			"Y": 0.95,
+																			"Z": 0.95
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.72,
+																			"Y": 0.72,
+																			"Z": 0.72
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.12,
+															"FadeOutStart": 0.48,
+															"LODSlotId": 8,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSubUV",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 9,
+															"PlayRate": 1.0,
+															"SubImagesHorizontal": 8,
+															"SubImagesVertical": 8,
+															"bEnabled": true,
+															"bUseLinearOverLife": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 1.35,
+														"LODSlotId": 0,
+														"Material": "Materials/DeathSmokeCloud.material",
+														"MaxParticles": 280,
+														"bEnabled": true,
+														"bLooping": false,
+														"bUseLocalSpace": false
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [
+															{
+																"Count": 30,
+																"Time": 0.0
+															}
+														],
+														"LODSlotId": 0,
+														"Rate": 150.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataSprite",
+												"Value": {
+													"Properties": {
+														"LODSlotId": 0,
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bInheritLODModules": true,
+							"bIsSolo": false
+						}
+					}
+				},
+				{
+					"Class": "UParticleEmitter",
+					"Value": {
+						"Properties": {
+							"EmitterName": "DissolveDriftingSmoke",
+							"LODLevels": [
+								{
+									"Class": "UParticleLODLevel",
+									"Value": {
+										"Properties": {
+											"Level": 0,
+											"Modules": [
+												{
+													"Class": "UParticleModuleLifetime",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 1,
+															"Lifetime": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 2.4,
+																		"Min": 1.4
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleLocation",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 2,
+															"StartLocation": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.18,
+																			"Y": 0.18,
+																			"Z": 0.15
+																		},
+																		"Min": {
+																			"X": -0.18,
+																			"Y": -0.18,
+																			"Z": -0.1
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true,
+															"bSampleSkeletalMesh": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleVelocity",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 3,
+															"StartVelocity": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 1.15,
+																			"Y": 1.15,
+																			"Z": 0.55
+																		},
+																		"Min": {
+																			"X": -1.15,
+																			"Y": -1.15,
+																			"Z": 0.06
+																		},
+																		"bLockAxes": false
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleVelocityOverLife",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 4,
+															"VelocityScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.45,\n      \"Value\": 0.55\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.18\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.45,\n      \"Value\": 0.55\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.18\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.45,\n      \"Value\": 0.55\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 0.18\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSize",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 5,
+															"StartSize": {
+																"Class": "UDistributionVectorUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": {
+																			"X": 0.46,
+																			"Y": 0.46,
+																			"Z": 0.46
+																		},
+																		"Min": {
+																			"X": 0.22,
+																			"Y": 0.22,
+																			"Z": 0.22
+																		},
+																		"bLockAxes": true
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSizeByLife",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 6,
+															"LifeScale": {
+																"Class": "UDistributionVectorConstantCurve",
+																"Value": {
+																	"Properties": {
+																		"CurveX": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.65\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.45,\n      \"Value\": 1.45\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 2.35\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveY": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 0.65\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.45,\n      \"Value\": 1.45\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 3,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 2.35\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		},
+																		"CurveZ": {
+																			"Class": "UCurveFloat",
+																			"Value": {
+																				"CurveData": "{\n  \"DefaultValue\": 1.0,\n  \"Keys\": [\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 1,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 0.0,\n      \"Value\": 1.0\n    },\n    {\n      \"ArriveTangent\": 0.0,\n      \"Id\": 2,\n      \"InterpMode\": 1,\n      \"LeaveTangent\": 0.0,\n      \"Time\": 1.0,\n      \"Value\": 1.0\n    }\n  ],\n  \"Type\": \"CurveFloat\",\n  \"Version\": 1\n}"
+																			}
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleRotation",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 7,
+															"StartRotation": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 6.283185,
+																		"Min": 0.0
+																	}
+																}
+															},
+															"StartRotationRate": {
+																"Class": "UDistributionFloatUniform",
+																"Value": {
+																	"Properties": {
+																		"Max": 1.8,
+																		"Min": -1.8
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColor",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 8,
+															"StartAlpha": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 0.4
+																	}
+																}
+															},
+															"StartColor": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.72,
+																			"Y": 0.72,
+																			"Z": 0.72
+																		}
+																	}
+																}
+															},
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleColorOverLife",
+													"Value": {
+														"Properties": {
+															"AlphaScale": {
+																"Class": "UDistributionFloatConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": 1.0
+																	}
+																}
+															},
+															"ColorScale": {
+																"Class": "UDistributionVectorConstant",
+																"Value": {
+																	"Properties": {
+																		"Constant": {
+																			"X": 0.55,
+																			"Y": 0.55,
+																			"Z": 0.55
+																		}
+																	}
+																}
+															},
+															"FadeInEnd": 0.12,
+															"FadeOutStart": 0.45,
+															"LODSlotId": 9,
+															"bEnabled": true,
+															"bUseFadeInOut": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleSubUV",
+													"Value": {
+														"Properties": {
+															"LODSlotId": 10,
+															"PlayRate": 1.0,
+															"SubImagesHorizontal": 8,
+															"SubImagesVertical": 8,
+															"bEnabled": true,
+															"bUseLinearOverLife": true
+														}
+													}
+												}
+											],
+											"RequiredModule": {
+												"Class": "UParticleModuleRequired",
+												"Value": {
+													"Properties": {
+														"EmitterDuration": 1.35,
+														"LODSlotId": 0,
+														"Material": "Materials/DeathSmokeCloud.material",
+														"MaxParticles": 260,
+														"bEnabled": true,
+														"bLooping": false,
+														"bUseLocalSpace": false
+													}
+												}
+											},
+											"SpawnModule": {
+												"Class": "UParticleModuleSpawn",
+												"Value": {
+													"Properties": {
+														"Bursts": [
+															{
+																"Count": 35,
+																"Time": 0.0
+															},
+															{
+																"Count": 30,
+																"Time": 0.35
+															},
+															{
+																"Count": 25,
+																"Time": 0.75
+															}
+														],
+														"LODSlotId": 0,
+														"Rate": 120.0,
+														"bEnabled": true
+													}
+												}
+											},
+											"TypeDataModule": {
+												"Class": "UParticleModuleTypeDataSprite",
+												"Value": {
+													"Properties": {
+														"LODSlotId": 0,
+														"bEnabled": true
+													}
+												}
+											},
+											"bEnabled": true
+										}
+									}
+								}
+							],
+							"PlayRate": 1.0,
+							"bInheritLODModules": true,
+							"bIsSolo": false
+						}
+					}
+				}
+			],
+			"FixedBoundsMax": {
+				"X": 3.5,
+				"Y": 3.5,
+				"Z": 3.5
+			},
+			"FixedBoundsMin": {
+				"X": -3.5,
+				"Y": -3.5,
+				"Z": -3.5
+			},
+			"LODDistances": [
+				0.0
+			],
+			"PlayRate": 1.0,
+			"SecondsBeforeInactive": 1.0,
+			"UpdateTimeFPS": 60.0,
+			"WarmupTickRate": 0.0,
+			"WarmupTime": 0.0,
+			"bUseFixedRelativeBoundingBox": false
+		}
+	},
+	"Version": 1
+}

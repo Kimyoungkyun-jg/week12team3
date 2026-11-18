@@ -65,8 +65,22 @@ struct FGpuParticleSimParams
 	uint32 HasColorOverride = 0;
 	uint32 Pad[3] = {};
 	FVector4 ColorOverride = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
+
+	uint32 HasCollision = 0;
+	float CollisionRestitution = 0.0f;
+	float CollisionFriction = 0.0f;
+	uint32 CollisionMaxCount = 0;
+	float CollisionRadius = 0.0f;
+	float DepthThickness = 0.0f;
+	uint32 CollisionPad[2] = {};
+
+	FMatrix ViewProj = FMatrix::Identity;
+	FMatrix InvViewProj = FMatrix::Identity;
+	FVector4 ScreenAndClip = { 0, 0, 0, 0 };
+	FVector Acceleration = FVector::ZeroVector;
+	float AccelPad = 0.0f;
 };
-static_assert(sizeof(FGpuParticleSimParams) == 304);
+static_assert(sizeof(FGpuParticleSimParams) == 496);
 
 struct FGpuParticleDrawParams
 {
@@ -224,6 +238,7 @@ enum class EVertexFactoryType : uint8
 	ParticleSprite,
 	ParticleMesh,
 	ParticleGpuSprite,
+	ParticleGpuMesh,
 	ParticleBeamTrail
 };
 

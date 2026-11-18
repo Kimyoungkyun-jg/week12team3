@@ -2,6 +2,7 @@
 
 #include "Components/BillboardComponent.h"
 #include "Math/Box.h"
+#include "Math/Quat.h"
 #include "Engine/PrimitiveSceneProxy.h"
 #include "Render/MeshBatch.h"
 #include "Render/SceneRenderData.h"
@@ -38,6 +39,7 @@ struct FParticleRenderData
 	FSubUVConstants Constants{};
 	UStaticMesh* Mesh = nullptr;
 	FVector MeshScale = FVector::OneVector;
+	FQuat MeshRotation = FQuat::Identity();
 	bool bIsMesh = false;
 	bool bUseLocalSpace = false;
 };
@@ -91,6 +93,7 @@ class FDynamicGpuSpriteEmitterData : public FDynamicEmitterDataBase
 {
 public:
 	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
+	UStaticMesh* MeshAsset = nullptr;
 	UMaterialInterface* Material = nullptr;
 	mutable FGpuParticleSimParams SimParams{};
 	mutable TArray<uint8> PendingSpawnBytes;

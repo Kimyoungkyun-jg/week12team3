@@ -1459,12 +1459,16 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 			{
 				TypeName = "GPU Sprite";
 			}
+			else if (Type == EParticleEmitterType::GpuMesh)
+			{
+				TypeName = "GPU Mesh";
+			}
 			else if (Type == EParticleEmitterType::Mesh)
 			{
 				TypeName = "Mesh";
 			}
 
-			if (Type == EParticleEmitterType::GpuSprite)
+			if (Type == EParticleEmitterType::GpuSprite || Type == EParticleEmitterType::GpuMesh)
 			{
 				snprintf(EmitterBuf, sizeof(EmitterBuf), "%s | %s | LOD %d | Capacity %d", EmitterName, TypeName, Instance.CurrentLODLevelIndex, Instance.MaxActiveParticles);
 			}
@@ -1655,11 +1659,15 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 				{
 					TypeIndex = 5;
 				}
+				else if (TypeData && TypeData->GetEmitterType() == EParticleEmitterType::GpuMesh)
+				{
+					TypeIndex = 6;
+				}
 
 				ImGui::SetNextItemWidth(-1.0f);
 
 				ImGui::BeginDisabled(!LOD->OwnsModule(TypeData));
-				if (ImGui::Combo("##EmitterType", &TypeIndex, "Sprite\0GPU Sprite\0Mesh\0Beam\0Ribbon\0Afterimage\0"))
+				if (ImGui::Combo("##EmitterType", &TypeIndex, "Sprite\0GPU Sprite\0Mesh\0Beam\0Ribbon\0Afterimage\0GPU Mesh\0"))
 				{
 					UClass* TargetClass = UParticleModuleTypeDataSprite::StaticClass();
 
@@ -1682,6 +1690,10 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 					else if (TypeIndex == 5)
 					{
 						TargetClass = UParticleModuleTypeDataAfterimage::StaticClass();
+					}
+					else if (TypeIndex == 6)
+					{
+						TargetClass = UParticleModuleTypeDataGpuMesh::StaticClass();
 					}
 
 					const bool bWasSelected = SelectedEmitter == Emitter && SelectedModule == TypeData;
@@ -1917,6 +1929,7 @@ void FParticleSystemEditorPanel::RenderEmittersPanel(float Width, float Height)
 							{ "Size By Life", "Particle Update", UParticleModuleSizeByLife::StaticClass() },
 							{ "Velocity Over Life", "Particle Update", UParticleModuleVelocityOverLife::StaticClass() },
 							{ "Rotation Rate Over Life", "Particle Update", UParticleModuleRotationRateOverLife::StaticClass() },
+							{ "Acceleration", "Particle Update", UParticleModuleAcceleration::StaticClass() },
 							{ "SubImage Index", "Particle Update", UParticleModuleSubUV::StaticClass() },
 							{ "Beam Source", "Beam", UParticleModuleBeamSource::StaticClass() },
 							{ "Beam Target", "Beam", UParticleModuleBeamTarget::StaticClass() },
@@ -2376,6 +2389,11 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		{
 			DrawSection("INITIAL LOCATION");
 			DrawDistributionVector("Start Location", Loc->StartLocation, Loc, FVector::ZeroVector, false, 0.05f);
+			if (ImGui::Checkbox("Sample Skeletal Mesh", &Loc->bSampleSkeletalMesh))
+			{
+				MarkSelectedLODBuildDirty();
+				MarkAssetModified();
+			}
 		}
 		else if (UParticleModuleVelocity* Vel = Cast<UParticleModuleVelocity>(SelectedModule))
 		{
@@ -2417,11 +2435,21 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 			DrawSection("VELOCITY OVER LIFE");
 			DrawDistributionVector("Velocity Scale", VelLife->VelocityScale, VelLife, FVector::OneVector, false, 0.05f);
 		}
-		else if (auto* Rot = Cast<UParticleModuleRotation>(SelectedModule))
+		else if (UParticleModuleRotation* Rot = Cast<UParticleModuleRotation>(SelectedModule))
 		{
 			DrawSection("INITIAL ROTATION");
 			DrawDistributionFloat("Start Rotation", Rot->StartRotation, Rot, 0.0f, 0.05f, -360.0f, 360.0f);
 			DrawDistributionFloat("Rotation Rate", Rot->StartRotationRate, Rot, 0.0f, 0.05f, -360.0f, 360.0f);
+			if (ImGui::Checkbox("Random 3D Axis", &Rot->bRandomAxis3D))
+			{
+				MarkSelectedLODBuildDirty();
+				MarkAssetModified();
+			}
+		}
+		else if (UParticleModuleAcceleration* Acc = Cast<UParticleModuleAcceleration>(SelectedModule))
+		{
+			DrawSection("ACCELERATION");
+			DrawDistributionVector("Acceleration", Acc->Acceleration, Acc, FVector(0.0f, 0.0f, -9.8f), false, 0.05f);
 		}
 		else if (auto* RotLife = Cast<UParticleModuleRotationRateOverLife>(SelectedModule))
 		{
@@ -2442,12 +2470,17 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		}
 		else if (auto* Collision = Cast<UParticleModuleCollision>(SelectedModule))
 		{
-			ImGui::DragFloat("Restitution Min", &Collision->RestitutionMin, 0.01f, 0.0f, 1.0f);
-			ImGui::DragFloat("Restitution Max", &Collision->RestitutionMax, 0.01f, 0.0f, 1.0f);
-			ImGui::DragFloat("Friction Min", &Collision->FrictionMin, 0.01f, 0.0f, 1.0f);
-			ImGui::DragFloat("Friction Max", &Collision->FrictionMax, 0.01f, 0.0f, 1.0f);
-			ImGui::DragInt("Max Collisions", &Collision->MaxCollisions, 1.0f, 0, 1000);
-			ImGui::DragFloat("Collision Radius", &Collision->CollisionRadius, 0.01f, 0.0f, 100.0f);
+			bool bChanged = false;
+			bChanged |= ImGui::DragFloat("Restitution Min", &Collision->RestitutionMin, 0.01f, 0.0f, 1.0f);
+			bChanged |= ImGui::DragFloat("Restitution Max", &Collision->RestitutionMax, 0.01f, 0.0f, 1.0f);
+			bChanged |= ImGui::DragFloat("Friction Min", &Collision->FrictionMin, 0.01f, 0.0f, 1.0f);
+			bChanged |= ImGui::DragFloat("Friction Max", &Collision->FrictionMax, 0.01f, 0.0f, 1.0f);
+			bChanged |= ImGui::DragInt("Max Collisions", &Collision->MaxCollisions, 1.0f, 0, 1000);
+			bChanged |= ImGui::DragFloat("Collision Radius", &Collision->CollisionRadius, 0.01f, 0.0f, 100.0f);
+			bChanged |= ImGui::DragFloat("Depth Thickness", &Collision->DepthThickness, 0.01f, 0.0f, 100.0f);
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("GPU only: how far behind the depth surface still counts as inside the wall.");
+			if (bChanged) { MarkSelectedLODBuildDirty(); MarkAssetModified(); }
 		}
 		else if (auto* EventGen = Cast<UParticleModuleEventGenerator>(SelectedModule))
 		{

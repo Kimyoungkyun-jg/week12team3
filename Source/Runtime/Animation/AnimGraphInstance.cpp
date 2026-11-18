@@ -111,6 +111,17 @@ bool UAnimGraphInstance::IsStateSequenceFinished(const FString& Name) const
 	return false;
 }
 
+float UAnimGraphInstance::GetStateSequenceRemainingTime(const FString& Name) const
+{
+	const int32 ActiveId = GetActiveStateId();
+	for (const FAnimGraphState& State : Graph.States)
+		if (State.Id == ActiveId && State.Name == Name)
+			for (const auto& Entry : SequencePlayers)
+				if (Entry.first == ActiveId && Entry.second)
+					return Entry.second->IsFinished() ? 0.0f : Entry.second->GetRemainingTime();
+	return -1.0f;
+}
+
 void UAnimGraphInstance::RequestHit()
 {
 	if (bDeathRequested || IsStateActiveOrPending("Death")) return;

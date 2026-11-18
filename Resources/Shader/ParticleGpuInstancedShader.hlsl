@@ -17,7 +17,11 @@ struct FGpuParticle
 	float BaseRotationRate;
 	float SubImageIndex;
 	uint bAlive;
-	float2 Pad;
+	uint CollisionCount;
+	float Pad;
+	float4 MeshRotation;
+	float3 AngularVelocity;
+	float SimPad;
 };
 
 cbuffer constants : register(b0)

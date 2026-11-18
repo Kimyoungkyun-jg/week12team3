@@ -1,0 +1,8 @@
+{
+    "Class": "UMaterialInstanceConstant",
+    "Object": {
+        "ParentAsset": "Materials/SwordTrail.material",
+        "Properties": {}
+    },
+    "Version": 1
+}

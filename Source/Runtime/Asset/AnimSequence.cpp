@@ -24,6 +24,101 @@ int32 UAnimSequence::GetFrameIndex(float TimeSeconds) const
 	return static_cast<int32>(Sample);
 }
 
+namespace
+{
+	template <typename T>
+	void DuplicateTrackKeys(TArray<T>& Keys, int32 ExpectedCount, int32 SourceIndex, int32 InsertPos, int32 InsertCount)
+	{
+		if (Keys.Num() != ExpectedCount || ExpectedCount <= 0 || InsertCount <= 0)
+		{
+			return;
+		}
+		const T PoseValue = Keys[SourceIndex];
+		TArray<T> Expanded;
+		Expanded.Reserve(ExpectedCount + InsertCount);
+		for (int32 Index = 0; Index < InsertPos; ++Index)
+		{
+			Expanded.Add(Keys[Index]);
+		}
+		for (int32 Repeat = 0; Repeat < InsertCount; ++Repeat)
+		{
+			Expanded.Add(PoseValue);
+		}
+		for (int32 Index = InsertPos; Index < ExpectedCount; ++Index)
+		{
+			Expanded.Add(Keys[Index]);
+		}
+		Keys = std::move(Expanded);
+	}
+}
+
+bool UAnimSequence::InsertDuplicateFrames(int32 SourceKeyIndex, int32 InsertCount, bool bInsertAfter)
+{
+	if (!DataModel || InsertCount <= 0 || DataModel->NumberOfKeys <= 0)
+	{
+		return false;
+	}
+	const float FramesPerSecond = DataModel->FrameRate.AsDecimal();
+	if (FramesPerSecond <= 0.0f)
+	{
+		return false;
+	}
+
+	const int32 OldNumKeys = DataModel->NumberOfKeys;
+	const int32 ClampedSource = std::clamp(SourceKeyIndex, 0, OldNumKeys - 1);
+	const int32 InsertPos = bInsertAfter ? (ClampedSource + 1) : ClampedSource;
+
+	for (const FBoneAnimationTrack& BoneTrack : DataModel->BoneAnimationTracks)
+	{
+		const FRawAnimSequenceTrack& Track = BoneTrack.InternalTrack;
+		if ((Track.PosKeys.Num() != 1 && Track.PosKeys.Num() != OldNumKeys) ||
+			(Track.RotKeys.Num() != 1 && Track.RotKeys.Num() != OldNumKeys) ||
+			(Track.ScaleKeys.Num() != 1 && Track.ScaleKeys.Num() != OldNumKeys))
+		{
+			return false;
+		}
+	}
+
+	// 모든 트랙의 해당 키 포즈를 복제해 앞 또는 뒤에 끼워 넣는다
+	for (FBoneAnimationTrack& BoneTrack : DataModel->BoneAnimationTracks)
+	{
+		DuplicateTrackKeys(BoneTrack.InternalTrack.PosKeys, OldNumKeys, ClampedSource, InsertPos, InsertCount);
+		DuplicateTrackKeys(BoneTrack.InternalTrack.RotKeys, OldNumKeys, ClampedSource, InsertPos, InsertCount);
+		DuplicateTrackKeys(BoneTrack.InternalTrack.ScaleKeys, OldNumKeys, ClampedSource, InsertPos, InsertCount);
+	}
+
+	DataModel->NumberOfKeys = OldNumKeys + InsertCount;
+	DataModel->NumberOfFrames = std::max(0, DataModel->NumberOfKeys - 1);
+	DataModel->PlayLength = static_cast<float>(std::max(1, DataModel->NumberOfFrames)) / FramesPerSecond;
+
+	const float InsertTime = static_cast<float>(InsertPos) / FramesPerSecond;
+	const float AddedDuration = static_cast<float>(InsertCount) / FramesPerSecond;
+	for (FAnimNotifyEvent& Event : Notifies)
+	{
+		if (Event.IsState())
+		{
+			if (Event.TriggerTime >= InsertTime)
+			{
+				Event.TriggerTime += AddedDuration;
+			}
+			else if (Event.TriggerTime + Event.Duration > InsertTime)
+			{
+				Event.Duration += AddedDuration;
+			}
+			ClampNotifyStateRange(Event.TriggerTime, Event.Duration);
+		}
+		else
+		{
+			if (Event.TriggerTime >= InsertTime)
+			{
+				Event.TriggerTime += AddedDuration;
+			}
+			Event.TriggerTime = std::clamp(Event.TriggerTime, 0.0f, DataModel->PlayLength);
+		}
+	}
+	return true;
+}
+
 int32 UAnimSequence::GetRootBoneIndex() const
 {
 	if (!Skeleton || Skeleton->RefSkeleton.GetNum() == 0)

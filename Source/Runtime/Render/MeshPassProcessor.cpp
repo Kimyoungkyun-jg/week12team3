@@ -143,6 +143,9 @@ namespace
 		case EPSOType::Particle_MeshOpaque:
 		case EPSOType::Particle_MeshTranslucent:
 		case EPSOType::Particle_MeshAdditive:
+		case EPSOType::Particle_GpuMeshOpaque:
+		case EPSOType::Particle_GpuMeshTranslucent:
+		case EPSOType::Particle_GpuMeshAdditive:
 			return EMaterialUsage::ParticleMesh;
 
 		case EPSOType::Particle_BeamTrailTranslucent:
@@ -345,6 +348,12 @@ namespace
 			return EPSOType::Particle_Instanced;
 		case EVertexFactoryType::ParticleGpuSprite:
 			return EPSOType::Particle_GpuInstanced;
+		case EVertexFactoryType::ParticleGpuMesh:
+			if (Batch.Material && Batch.Material->GetBlendState() == EBlendState::Opaque)
+				return EPSOType::Particle_GpuMeshOpaque;
+			if (Batch.Material && Batch.Material->GetBlendState() == EBlendState::Additive)
+				return EPSOType::Particle_GpuMeshAdditive;
+			return EPSOType::Particle_GpuMeshTranslucent;
 		case EVertexFactoryType::ParticleMesh:
 			if (Batch.Material && Batch.Material->GetBlendState() == EBlendState::Opaque)
 				return EPSOType::Particle_MeshOpaque;
@@ -527,7 +536,7 @@ namespace
 		if (!VB)
 			return;
 
-		const EPSOType PSOType = EPSOType::Particle_GpuInstanced;
+		const EPSOType PSOType = ResolveParticlePSO(Batch);
 		FPipelineState* PSO = FRenderResourceManager::GetPSO(PSOType);
 		if (!PSO || !PSO->Shader || !PSO->Shader->VertexShader || !PSO->Shader->PixelShader)
 			return;
@@ -713,6 +722,10 @@ bool FDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FScene
 	if (!Batch.IsOpaque() || Batch.bIsParticle)
 		return true;
 
+	// 알파 컷아웃 머티리얼은 깊이 프리패스를 건너뛰어 잘린 픽셀 뒤가 가려지지 않게 한다
+	if (Batch.Material && Batch.Material->GetBaseMaterial() && Batch.Material->GetBaseMaterial()->HasOpacityMask())
+		return true;
+
 	FVertexBuffer* VB = ResolveBatchVertexBuffer(Batch.VertexFactory, Collector);
 	if (!VB)
 		return true;
@@ -792,6 +805,17 @@ bool FWorldNormalPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const 
 bool FTranslucencyPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FSceneRenderOptions& Options,
 	const FMeshElementCollector* Collector, TArray<FMeshDrawCommand>& OutCommands) const
 {
+	if (Batch.VertexFactory.Type == EVertexFactoryType::ParticleGpuMesh)
+	{
+		if (!Batch.Material)
+			return true;
+		const uint64 GpuMeshSortKey = (ResolveParticlePSO(Batch) == EPSOType::Particle_GpuMeshOpaque)
+			? 0ull
+			: MakeTranslucentSortKey(Batch.CameraDistanceSq);
+		BuildParticleGpuCommands(Batch, Collector, GpuMeshSortKey, OutCommands);
+		return true;
+	}
+
 	if (Batch.IsOpaque() || !Batch.Material)
 		return true;
 

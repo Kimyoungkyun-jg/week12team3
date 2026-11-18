@@ -13,6 +13,14 @@
 class FPrimitiveSceneProxy;
 class USkeleton;
 
+struct FBoneHitCapsule
+{
+	int32 BoneIndex = -1;
+	FVector LocalA = FVector::ZeroVector;
+	FVector LocalB = FVector::ZeroVector;
+	float Radius = 0.0f;
+};
+
 struct FSkeletalMeshLODResource
 {
 	FSkeletalMeshData Data;
@@ -57,6 +65,7 @@ public:
     const FBox& GetRenderBounds() const { return RenderBounds; }
     FBox CalcSkinnedBounds(const TArray<FMatrix>& SkinningMatrices) const;
     const FBox* GetBoneInfluenceBounds(int32 BoneIndex) const;
+	const TArray<FBoneHitCapsule>& GetBoneHitCapsules() const { return BoneHitCapsules; }
     FStructuredBuffer* GetOrCreateComputeSkinningSource(uint32 LOD, ID3D11Device* Device);
     uint64 GetRenderDataRevision() const { return RenderDataRevision; }
     void RegisterProxy(FPrimitiveSceneProxy* Proxy);
@@ -73,6 +82,7 @@ private:
     uint64 RenderDataRevision = 0;
     void RebuildSkinningBounds();
     TArray<FBox> BoneInfluenceBounds;
+	TArray<FBoneHitCapsule> BoneHitCapsules;
     FBox UnweightedVertexBounds;
     float MinSkinWeightSum = 1.0f;
     float MaxSkinWeightSum = 1.0f;

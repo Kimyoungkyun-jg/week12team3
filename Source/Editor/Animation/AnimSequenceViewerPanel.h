@@ -74,8 +74,10 @@ private:
 	// Notify를 새로 골랐을 때 오른쪽 Notify 탭으로 전환하기 위한 요청
 	bool bFocusNotifyTab = false;
 	float PreviewRate = 1.0f;
+	int32 FrameInsertCount = 10;
 	bool bPlaying = true;
 	bool bLoop = true;
+	bool bTickEffectsAfterEnd = false;
 	bool bShowGrid = true;
 	bool bShowBounds = false;
 	bool bShowSkybox = true;
