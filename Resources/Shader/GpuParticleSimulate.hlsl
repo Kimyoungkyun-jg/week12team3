@@ -62,6 +62,7 @@ cbuffer SimParams : register(b0)
 
 StructuredBuffer<FGpuParticle> SpawnBuffer : register(t0);
 Texture2D CurveAtlas : register(t1);
+Texture2D <float> SceneDepth : register(t2);
 SamplerState CurveSampler : register(s0);
 RWStructuredBuffer<FGpuParticle> ParticleBuffer : register(u0);
 
@@ -147,5 +148,12 @@ void CSSimulate(uint3 DTid : SV_DispatchThreadID)
 		p.SubImageIndex = floor(clamp(RawIndex, 0.0f, TotalFrames - 1.0f));
 	}
 
+	
+	// 카메라 각도에 따른 테스트용..!!!! 
+	// 지워야함
+    float DeviceZ = SceneDepth.Load(int3(ScreenAndClip.xy * 0.5f, 0));
+    if (DeviceZ < 0.999f)
+        p.Color.rgb = float3(1, 0, 1);
+	
 	ParticleBuffer[Idx] = p;
 }
