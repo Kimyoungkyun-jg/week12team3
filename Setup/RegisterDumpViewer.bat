@@ -1,10 +1,12 @@
 @echo off
 setlocal
 
+set "HITORI_SETUP_DIR=%~dp0"
+
 "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" ^
     -NoProfile ^
     -ExecutionPolicy RemoteSigned ^
-    -File "%~dp0RegisterDumpViewer.ps1"
+    -Command "$ErrorActionPreference='Stop'; foreach ($name in @('RegisterDumpViewer.ps1','OpenCrash.ps1','GitSource.ps1')) { Unblock-File -LiteralPath (Join-Path $env:HITORI_SETUP_DIR $name) }; & (Join-Path $env:HITORI_SETUP_DIR 'RegisterDumpViewer.ps1')"
 
 set "REGISTER_RESULT=%ERRORLEVEL%"
 
