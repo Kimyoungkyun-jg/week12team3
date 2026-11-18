@@ -4,6 +4,9 @@
 cbuffer ViewConstants : register(b0)
 {
     matrix VP;
+    matrix View;
+    matrix Projection;
+    float4 ViewTimeParams;
 };
 
 cbuffer WorldConstants : register(b2)
@@ -45,6 +48,7 @@ struct PS_INPUT
     float3 LocalPos : TEXCOORD3;
     float3 LocalNormal : TEXCOORD4;
     nointerpolation float ReceiveDecal : TEXCOORD5;
+    float4 VertexColor : TEXCOORD6;
 };
 
 struct GBUFFER_OUTPUT
@@ -100,6 +104,7 @@ PS_INPUT mainVS(VS_INPUT Input)
     float Handedness = Input.Tangent.w * (determinant((float3x3)World) < 0.0f ? -1.0f : 1.0f);
     Output.WorldTangent = float4(T, Handedness);
     Output.UV = Input.UV;
+    Output.VertexColor = Input.Color;
     Output.WorldPos = WorldPosition.xyz;
     Output.LocalPos = Input.Position;
     Output.LocalNormal = Input.Normal;
@@ -118,7 +123,8 @@ GBUFFER_OUTPUT mainPS(PS_INPUT Input)
     WorldUVParams.x > 0.5f, ProjectedT, ProjectedB);
 
 #ifdef MATERIAL_GRAPH
-    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV);
+    float3 CameraWorldPosition = mul(float4(0, 0, 0, 1), inverse(View)).xyz;
+    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV, Input.WorldPos, normalize(CameraWorldPosition - Input.WorldPos), normalize(Input.WorldNormal), Input.VertexColor, ViewTimeParams.x);
 #endif
 
     float4 TextureColor = ColorTexture.Sample(ColorSampler, UV);
@@ -153,10 +159,33 @@ GBUFFER_OUTPUT mainPS(PS_INPUT Input)
             Normal = Combined * rsqrt(LengthSquared);
     }
 
-    // 현재 UMaterial에는 Metallic/Roughness 값이 없어 임시 상수를 쓴다.
-    Output.BaseColorMetallic = float4(LinearAlbedo, 0.0f);
-    // bReceiveShadow가 꺼진 물체는 w를 음수(-Roughness - 1)로 저장한다. Deferred 조명이 그림자 마스크를 무시한다.
-    const float Roughness = 0.8f;
+    float Metallic = 0.0f;
+    float Roughness = 0.8f;
+
+#ifdef MATERIAL_GRAPH_HAS_METALLIC
+    Metallic = saturate(GraphOutput.Metallic);
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_ROUGHNESS
+    Roughness = clamp(GraphOutput.Roughness, 0.045f, 1.0f);
+#endif
+
+#ifdef MATERIAL_GRAPH_HAS_NORMAL
+{
+    float3 N = normalize(Input.WorldNormal);
+    float3 T = Input.WorldTangent.xyz - N * dot(N, Input.WorldTangent.xyz);
+    float TangentLengthSquared = dot(T, T);
+
+    if (TangentLengthSquared > 1.0e-8f)
+    {
+        T *= rsqrt(TangentLengthSquared);
+        float3 B = cross(N, T) * Input.WorldTangent.w;
+        Normal = normalize(T * GraphOutput.Normal.x + B * GraphOutput.Normal.y + N * GraphOutput.Normal.z);
+    }
+}
+#endif
+
+    Output.BaseColorMetallic = float4(LinearAlbedo, Metallic);
     Output.NormalRoughness = float4(Normal, Input.ReceiveShadow > 0.5f ? Roughness : -Roughness - 1.0f);
     float3 GraphEmissive = Emissive.rgb;
     float4 GraphSpecular = SpecularColorShininess;

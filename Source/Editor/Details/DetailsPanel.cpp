@@ -688,6 +688,28 @@ namespace
 		ImGui::PopID();
 	}
 
+	void DrawParameterOverrideReset(UMaterialInterface* Override, const FName& ParameterName, EMaterialParameterType Type)
+	{
+		UMaterialInstanceDynamic* Dynamic = Cast<UMaterialInstanceDynamic>(Override);
+
+		if (!Dynamic || !Dynamic->HasParameterOverride(ParameterName, Type))
+		{
+			return;
+		}
+
+		const FString ID = ParameterName.ToString() + "_" + std::to_string(static_cast<uint8>(Type));
+
+		ImGui::SameLine();
+		ImGui::PushID(ID.c_str());
+
+		if (ImGui::SmallButton("Reset"))
+		{
+			Dynamic->ClearParameterOverride(ParameterName, Type);
+		}
+
+		ImGui::PopID();
+	}
+
 	template<typename TEnsureOverride>
 	bool SetMaterialTexture(UMeshComponent* MeshComponent, int32 MaterialSlot, int32 TextureSlot, const FName& ParameterName, UTexture2D* Texture, UMaterialInterface*& Effective, UMaterialInterface*& Override, TEnsureOverride&& EnsureOverride)
 	{
@@ -949,8 +971,122 @@ namespace
 					DrawParameterOverrideReset(Override, FName("WorldUVLocalSpace"));
 					Row("Override Shading");
 					ImGui::TextDisabled("Inherited from Parent Material");
+
 					Row("Shading Model");
 					ImGui::TextDisabled("Inherited from Parent Material");
+
+					UMaterial* GraphBase = Effective ? Effective->GetBaseMaterial() : nullptr;
+
+					if (GraphBase)
+					{
+						FMaterialRenderProxy GraphProxy = ReadProxy();
+
+						for (int32 NodeIndex = 0; NodeIndex < GraphBase->ExpressionNodes.Num(); ++NodeIndex)
+						{
+							const FMaterialExpressionNode& Node = GraphBase->ExpressionNodes[NodeIndex];
+
+							if (Node.Type != EMaterialExpressionType::ScalarParameter &&
+								Node.Type != EMaterialExpressionType::VectorParameter &&
+								Node.Type != EMaterialExpressionType::TextureSampleParameter2D)
+							{
+								continue;
+							}
+
+							bool bAlreadyDrawn = false;
+
+							for (int32 PreviousIndex = 0; PreviousIndex < NodeIndex; ++PreviousIndex)
+							{
+								const FMaterialExpressionNode& Previous = GraphBase->ExpressionNodes[PreviousIndex];
+
+								if (Previous.ParameterName == Node.ParameterName && Previous.Type == Node.Type)
+								{
+									bAlreadyDrawn = true;
+									break;
+								}
+							}
+
+							if (bAlreadyDrawn)
+							{
+								continue;
+							}
+
+							const FName ParameterName(Node.ParameterName);
+							const EMaterialParameterType ParameterType =
+								Node.Type == EMaterialExpressionType::ScalarParameter ? EMaterialParameterType::Scalar : Node.Type == EMaterialExpressionType::VectorParameter ? EMaterialParameterType::Vector
+																																											   : EMaterialParameterType::Texture;
+
+							const FMaterialParameterOverride* ExistingOverride = nullptr;
+
+							for (const FMaterialParameterOverride& Candidate : GraphProxy.ParameterOverrides)
+							{
+								if (Candidate.ParameterName == ParameterName && Candidate.Type == ParameterType)
+								{
+									ExistingOverride = &Candidate;
+									break;
+								}
+							}
+
+							const FString Label = Node.ParameterGroup + " / " + Node.ParameterName;
+
+							ImGui::PushID(Node.Id);
+
+							Row(Label.c_str());
+
+							if (Node.Type == EMaterialExpressionType::ScalarParameter)
+							{
+								float Value = ExistingOverride ? ExistingOverride->ScalarValue : Node.ScalarValue;
+
+								if (ImGui::DragFloat("##GraphScalar", &Value, 0.02f))
+								{
+									if (UMaterialInstanceDynamic* Dynamic = EnsureOverride())
+									{
+										Dynamic->SetScalarParameterValue(ParameterName, Value);
+										Effective = Dynamic;
+										Override = Dynamic;
+									}
+								}
+
+								DrawParameterOverrideReset(Override, ParameterName, EMaterialParameterType::Scalar);
+							}
+							else if (Node.Type == EMaterialExpressionType::VectorParameter)
+							{
+								FVector4 Value = ExistingOverride ? ExistingOverride->VectorValue : Node.VectorValue;
+
+								if (EditLinearColor("##GraphVector", &Value.X, true))
+								{
+									if (UMaterialInstanceDynamic* Dynamic = EnsureOverride())
+									{
+										Dynamic->SetVectorParameterValue(ParameterName, Value);
+										Effective = Dynamic;
+										Override = Dynamic;
+									}
+								}
+
+								DrawParameterOverrideReset(Override, ParameterName, EMaterialParameterType::Vector);
+							}
+							else if (Node.Type == EMaterialExpressionType::TextureSampleParameter2D)
+							{
+								UTexture2D* Texture = ExistingOverride
+									? ExistingOverride->TextureValue
+									: (Node.TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Node.TexturePath));
+
+								if (FContentDrawerPanel::DrawTexturePicker("##GraphTexture", Texture, "None"))
+								{
+									if (UMaterialInstanceDynamic* Dynamic = EnsureOverride())
+									{
+										Dynamic->SetTextureParameterValue(ParameterName, Texture);
+										Effective = Dynamic;
+										Override = Dynamic;
+									}
+								}
+
+								DrawParameterOverrideReset(Override, ParameterName, EMaterialParameterType::Texture);
+							}
+
+							ImGui::PopID();
+						}
+					}
+
 					ImGui::EndTable();
 				}
 				ImGui::TreePop();

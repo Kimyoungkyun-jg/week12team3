@@ -480,10 +480,26 @@ FUberOutput Uber_PS(VS_OUT Input)
 	float3 ActiveEmissive = Emissive.rgb;
 
 #ifdef MATERIAL_GRAPH
-	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(Input.UV);
+	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(Input.UV, Input.MaterialWorldPos, normalize(CameraPosition.xyz - Input.MaterialWorldPos), normalize(Input.WorldNormal), Input.Color, ViewTimeParams.x);
 
 #ifdef MATERIAL_GRAPH_HAS_SPECULAR_COLOR
 	ActiveSpecular.rgb = GraphOutput.SpecularColor;
+#endif
+	
+#ifdef MATERIAL_GRAPH_HAS_NORMAL
+{
+    float3 N = normalize(Input.WorldNormal);
+    float3 T = Input.WorldTangent.xyz - N * dot(N, Input.WorldTangent.xyz);
+    float TangentLengthSquared = dot(T, T);
+
+    if (TangentLengthSquared > 1.0e-8f)
+    {
+        T *= rsqrt(TangentLengthSquared);
+        float3 B = cross(N, T) * Input.WorldTangent.w;
+
+        ShadingNormal = normalize(T * GraphOutput.Normal.x + B * GraphOutput.Normal.y + N * GraphOutput.Normal.z);
+    }
+}
 #endif
 
 #ifdef MATERIAL_GRAPH_HAS_SHININESS
@@ -514,6 +530,26 @@ FUberOutput Uber_PS(VS_OUT Input)
 		SurfaceColor = Input.Color;
 	}
 	float3 Albedo = SurfaceColor.rgb * BaseColor.rgb;
+#endif
+	
+#if defined(MATERIAL_GRAPH_HAS_METALLIC) || defined(MATERIAL_GRAPH_HAS_ROUGHNESS)
+{
+    const float PI = 3.14159265359f;
+
+    float Metallic = saturate(GraphOutput.Metallic);
+    float Roughness = clamp(GraphOutput.Roughness, 0.045f, 1.0f);
+
+    float3 F0 = lerp(float3(0.04f, 0.04f, 0.04f), Albedo, Metallic);
+
+    float3 ToCamera = normalize(CameraPosition.xyz - Input.MaterialWorldPos);
+    float NoV = saturate(dot(ShadingNormal, ToCamera));
+
+    float3 Fview = F0 + (1.0f - F0) * pow(1.0f - NoV, 5.0f);
+
+    Albedo *= (1.0f - Metallic) * (1.0f - Fview) / PI;
+
+    ActiveSpecular = float4(F0, -Roughness);
+}
 #endif
 
 	int3 PixelCoord = int3(int2(Input.Position.xy), 0);
@@ -546,7 +582,13 @@ FUberOutput Uber_PS(VS_OUT Input)
 	Diffuse = Input.VertexDiffuse;
 	Specular = Input.VertexSpecular;
 #elif SHADING_MODEL_PHONG
-	FLightResult Lit = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, !REFLECTION_MODEL_LAMBERT, Prim.Flags.x, ActiveSpecular);
+    bool bIncludeSpecular = !REFLECTION_MODEL_LAMBERT;
+
+#if defined(MATERIAL_GRAPH_HAS_METALLIC) || defined(MATERIAL_GRAPH_HAS_ROUGHNESS)
+	bIncludeSpecular = true;
+#endif
+
+    FLightResult Lit = CalculateTiledLighting(Input.Position.xyz, Input.WorldPosition, Input.ViewDepth, ShadingNormal, bIncludeSpecular, Prim.Flags.x, ActiveSpecular);
 	Diffuse = Lit.Diffuse;
 	Specular = Lit.Specular;
 #elif VIEW_MODE_UNLIT

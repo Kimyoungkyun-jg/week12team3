@@ -5,6 +5,9 @@
 cbuffer ViewConstants : register(b0)
 {
     matrix VP;
+    matrix View;
+    matrix Projection;
+    float4 ViewTimeParams;
 };
 
 cbuffer WorldConstants : register(b2)
@@ -50,6 +53,7 @@ struct PS_INPUT
     float3 LocalPos : TEXCOORD3;
     float3 LocalNormal : TEXCOORD4;
     nointerpolation float ReceiveDecal : TEXCOORD5;
+    float4 VertexColor : TEXCOORD6;
 };
 
 struct GBUFFER_OUTPUT
@@ -114,6 +118,7 @@ PS_INPUT mainVS(VS_INPUT Input)
     float Handedness = Tangent.w * (determinant((float3x3) World) < 0.0f ? -1.0f : 1.0f);
     Output.WorldTangent = float4(T, Handedness);
     Output.UV = Input.UV;
+    Output.VertexColor = Input.Color;
     Output.WorldPos = WorldPosition.xyz;
     Output.LocalPos = Position;
     Output.LocalNormal = Normal;
@@ -132,7 +137,8 @@ GBUFFER_OUTPUT mainPS(PS_INPUT Input)
     WorldUVParams.x > 0.5f, ProjectedT, ProjectedB);
 
 #ifdef MATERIAL_GRAPH
-    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV);
+    float3 CameraWorldPosition = mul(float4(0, 0, 0, 1), inverse(View)).xyz;
+    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV, Input.WorldPos, normalize(CameraWorldPosition - Input.WorldPos), normalize(Input.WorldNormal), Input.VertexColor, ViewTimeParams.x);
 #endif
 
     float4 TextureColor = ColorTexture.Sample(ColorSampler, UV);

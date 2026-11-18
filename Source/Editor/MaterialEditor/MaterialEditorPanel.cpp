@@ -78,6 +78,46 @@ namespace
 			return "Lerp";
 		case EMaterialExpressionType::OneMinus:
 			return "One Minus";
+		case EMaterialExpressionType::Subtract:
+			return "Subtract";
+		case EMaterialExpressionType::Divide:
+			return "Divide";
+		case EMaterialExpressionType::Clamp:
+			return "Clamp";
+		case EMaterialExpressionType::Power:
+			return "Power";
+		case EMaterialExpressionType::Abs:
+			return "Abs";
+		case EMaterialExpressionType::Frac:
+			return "Frac";
+		case EMaterialExpressionType::Sine:
+			return "Sine";
+		case EMaterialExpressionType::Min:
+			return "Min";
+		case EMaterialExpressionType::Max:
+			return "Max";
+		case EMaterialExpressionType::AppendVector:
+			return "Append Vector";
+		case EMaterialExpressionType::Custom:
+			return "Custom";
+		case EMaterialExpressionType::ComponentMask:
+			return "Component Mask";
+		case EMaterialExpressionType::DotProduct:
+			return "Dot Product";
+		case EMaterialExpressionType::Normalize:
+			return "Normalize";
+		case EMaterialExpressionType::TextureSampleParameter2D:
+			return "Texture Sample Parameter 2D";
+		case EMaterialExpressionType::Time:
+			return "Time";
+		case EMaterialExpressionType::VertexColor:
+			return "Vertex Color";
+		case EMaterialExpressionType::WorldPosition:
+			return "World Position";
+		case EMaterialExpressionType::CameraVectorWS:
+			return "Camera Vector WS";
+		case EMaterialExpressionType::VertexNormalWS:
+			return "Vertex Normal WS";
 		case EMaterialExpressionType::MaterialOutput:
 			return "Material Output";
 		default:
@@ -124,10 +164,18 @@ namespace
 		switch (Node.Type)
 		{
 		case EMaterialExpressionType::TextureSample:
+		case EMaterialExpressionType::TextureSampleParameter2D:
 			return "float2";
-
 		case EMaterialExpressionType::Add:
+		case EMaterialExpressionType::Subtract:
 		case EMaterialExpressionType::Multiply:
+		case EMaterialExpressionType::Divide:
+		case EMaterialExpressionType::Power:
+		case EMaterialExpressionType::Min:
+		case EMaterialExpressionType::Max:
+		case EMaterialExpressionType::DotProduct:
+		case EMaterialExpressionType::AppendVector:
+		case EMaterialExpressionType::Custom:
 			Type = GetConnectedType(PinIndex);
 
 			if (Type == EMaterialValueType::Unknown)
@@ -135,7 +183,7 @@ namespace
 				Type = GetConnectedType(1 - PinIndex);
 			}
 
-			return Type == EMaterialValueType::Unknown ? FString("same numeric type") : FString(GetMaterialValueTypeName(Type));
+			return Type == EMaterialValueType::Unknown ? FString("numeric") : FString(GetMaterialValueTypeName(Type));
 
 		case EMaterialExpressionType::Lerp:
 			if (PinIndex == 2)
@@ -153,9 +201,22 @@ namespace
 			return Type == EMaterialValueType::Unknown ? FString("same numeric type") : FString(GetMaterialValueTypeName(Type));
 
 		case EMaterialExpressionType::OneMinus:
+		case EMaterialExpressionType::Abs:
+		case EMaterialExpressionType::Frac:
+		case EMaterialExpressionType::Sine:
+		case EMaterialExpressionType::Normalize:
+		case EMaterialExpressionType::ComponentMask:
 			Type = GetConnectedType(PinIndex);
 			return Type == EMaterialValueType::Unknown ? FString("numeric") : FString(GetMaterialValueTypeName(Type));
+		case EMaterialExpressionType::Clamp:
+			if (PinIndex == 0)
+			{
+				return "numeric";
+			}
 
+			return GetConnectedType(0) == EMaterialValueType::Unknown
+				? FString("scalar or input type")
+				: FString(GetMaterialValueTypeName(GetConnectedType(0)));
 		case EMaterialExpressionType::MaterialOutput:
 			switch (PinIndex)
 			{
@@ -165,7 +226,11 @@ namespace
 				return "float3 / float4";
 			case 2:
 			case 4:
+			case 5:
+			case 6:
 				return "float";
+			case 7:
+				return "float3";
 			default:
 				return "Unknown";
 			}
@@ -607,6 +672,10 @@ void FMaterialEditorPanel::AddMaterialExpression(UMaterial& Material, EMaterialE
 	{
 		Node.ParameterName = "VectorParameter_" + std::to_string(NewId);
 	}
+	if (Type == EMaterialExpressionType::TextureSampleParameter2D)
+	{
+		Node.ParameterName = "TextureParameter_" + std::to_string(NewId);
+	}
 
 	Material.ExpressionNodes.Add(Node);
 
@@ -659,6 +728,7 @@ void FMaterialEditorPanel::DrawMaterialGraphPalette(UMaterial& Material)
 	{
 		AddItem("Scalar Parameter", EMaterialExpressionType::ScalarParameter);
 		AddItem("Vector Parameter", EMaterialExpressionType::VectorParameter);
+		AddItem("Texture Sample Parameter 2D", EMaterialExpressionType::TextureSampleParameter2D);
 		ImGui::TreePop();
 	}
 
@@ -669,12 +739,46 @@ void FMaterialEditorPanel::DrawMaterialGraphPalette(UMaterial& Material)
 		ImGui::TreePop();
 	}
 
+	if (ImGui::TreeNodeEx("Input", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		AddItem("Time", EMaterialExpressionType::Time);
+		AddItem("Vertex Color", EMaterialExpressionType::VertexColor);
+		ImGui::TreePop();
+	}
+
+	if (ImGui::TreeNodeEx("World", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		AddItem("World Position", EMaterialExpressionType::WorldPosition);
+		AddItem("Camera Vector WS", EMaterialExpressionType::CameraVectorWS);
+		AddItem("Vertex Normal WS", EMaterialExpressionType::VertexNormalWS);
+		ImGui::TreePop();
+	}
+
 	if (ImGui::TreeNodeEx("Math", ImGuiTreeNodeFlags_DefaultOpen))
 	{
 		AddItem("Add", EMaterialExpressionType::Add);
+		AddItem("Subtract", EMaterialExpressionType::Subtract);
 		AddItem("Multiply", EMaterialExpressionType::Multiply);
-		AddItem("Lerp", EMaterialExpressionType::Lerp);
+		AddItem("Divide", EMaterialExpressionType::Divide);
+		AddItem("Linear Interpolate", EMaterialExpressionType::Lerp);
+		AddItem("Clamp", EMaterialExpressionType::Clamp);
+		AddItem("Power", EMaterialExpressionType::Power);
+		AddItem("Abs", EMaterialExpressionType::Abs);
+		AddItem("Frac", EMaterialExpressionType::Frac);
+		AddItem("Sine", EMaterialExpressionType::Sine);
+		AddItem("Min", EMaterialExpressionType::Min);
+		AddItem("Max", EMaterialExpressionType::Max);
 		AddItem("One Minus", EMaterialExpressionType::OneMinus);
+		ImGui::TreePop();
+	}
+
+	if (ImGui::TreeNodeEx("Vector", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		AddItem("Append Vector", EMaterialExpressionType::AppendVector);
+		AddItem("Component Mask", EMaterialExpressionType::ComponentMask);
+		AddItem("Dot Product", EMaterialExpressionType::DotProduct);
+		AddItem("Normalize", EMaterialExpressionType::Normalize);
+		AddItem("Custom", EMaterialExpressionType::Custom);
 		ImGui::TreePop();
 	}
 
@@ -1149,6 +1253,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 
 	case EMaterialExpressionType::ScalarParameter:
 	case EMaterialExpressionType::VectorParameter:
+	case EMaterialExpressionType::TextureSampleParameter2D:
 	{
 		char Name[128]{};
 		strncpy_s(Name, sizeof(Name), Selected->ParameterName.c_str(), _TRUNCATE);
@@ -1168,6 +1273,7 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 			MarkMaterialChanged();
 		}
 
+		
 		if (Selected->Type == EMaterialExpressionType::ScalarParameter)
 		{
 			if (ImGui::DragFloat("Default Value", &Selected->ScalarValue, 0.01f))
@@ -1175,9 +1281,22 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 				MarkMaterialChanged();
 			}
 		}
-		else if (EditMaterialColor("Default Value", &Selected->VectorValue.X, true))
+		else if (Selected->Type == EMaterialExpressionType::VectorParameter)
 		{
-			MarkMaterialChanged();
+			if (EditMaterialColor("Default Value", &Selected->VectorValue.X, true))
+			{
+				MarkMaterialChanged();
+			}
+		}
+		else if (Selected->Type == EMaterialExpressionType::TextureSampleParameter2D)
+		{
+			UTexture2D* Current = Selected->TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Selected->TexturePath);
+
+			if (FContentDrawerPanel::DrawTexturePicker("Default Texture", Current, "None"))
+			{
+				Selected->TexturePath = Current ? Current->GetPath() : FString();
+				MarkMaterialChanged();
+			}
 		}
 
 		break;
@@ -1195,11 +1314,58 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 	}
 
 	case EMaterialExpressionType::TextureCoordinate:
-		if (ImGui::DragInt("Coordinate Index", &Selected->CoordinateIndex, 1.0f, 0, 7))
+		ImGui::TextDisabled("Coordinate Index: 0");
+		break;
+
+	case EMaterialExpressionType::ComponentMask:
+	{
+		bool R = (Selected->ComponentMask & 0x01) != 0;
+		bool G = (Selected->ComponentMask & 0x02) != 0;
+		bool B = (Selected->ComponentMask & 0x04) != 0;
+		bool A = (Selected->ComponentMask & 0x08) != 0;
+
+		bool bChanged = false;
+		bChanged |= ImGui::Checkbox("R", &R);
+		ImGui::SameLine();
+		bChanged |= ImGui::Checkbox("G", &G);
+		ImGui::SameLine();
+		bChanged |= ImGui::Checkbox("B", &B);
+		ImGui::SameLine();
+		bChanged |= ImGui::Checkbox("A", &A);
+
+		if (bChanged)
 		{
+			Selected->ComponentMask = static_cast<uint8>((R ? 0x01 : 0) | (G ? 0x02 : 0) | (B ? 0x04 : 0) | (A ? 0x08 : 0));
 			MarkMaterialChanged();
 		}
+
 		break;
+	}
+
+	case EMaterialExpressionType::Custom:
+	{
+		ImGui::TextDisabled("Use A and B as input variable names.");
+
+		char Code[4096]{};
+		strncpy_s(Code, sizeof(Code), Selected->CustomCode.c_str(), _TRUNCATE);
+
+		if (ImGui::InputTextMultiline("HLSL Expression", Code, sizeof(Code), ImVec2(-1.0f, 120.0f)))
+		{
+			Selected->CustomCode = Code;
+			MarkMaterialChanged();
+		}
+
+		int32 OutputType = static_cast<int32>(Selected->CustomOutputType);
+
+		if (ImGui::Combo("Output Type", &OutputType, "Scalar\0Vector2\0Vector3\0Vector4\0"))
+		{
+			Selected->CustomOutputType = static_cast<EMaterialValueType>(OutputType);
+			MarkMaterialChanged();
+		}
+
+		ImGui::TextDisabled("Example: cross(A, B)");
+		break;
+	}
 
 	default:
 		ImGui::TextDisabled("This node has no editable properties.");

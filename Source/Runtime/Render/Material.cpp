@@ -40,6 +40,94 @@ namespace
 
 		return nullptr;
 	}
+
+	int32 GetMaterialValueWidth(EMaterialValueType Type)
+	{
+		switch (Type)
+		{
+		case EMaterialValueType::Scalar:
+			return 1;
+		case EMaterialValueType::Vector2:
+			return 2;
+		case EMaterialValueType::Vector3:
+			return 3;
+		case EMaterialValueType::Vector4:
+			return 4;
+		default:
+			return 0;
+		}
+	}
+
+	EMaterialValueType GetMaterialValueTypeFromWidth(int32 Width)
+	{
+		switch (Width)
+		{
+		case 1:
+			return EMaterialValueType::Scalar;
+		case 2:
+			return EMaterialValueType::Vector2;
+		case 3:
+			return EMaterialValueType::Vector3;
+		case 4:
+			return EMaterialValueType::Vector4;
+		default:
+			return EMaterialValueType::Unknown;
+		}
+	}
+
+	EMaterialValueType ResolveMaterialBinaryType(EMaterialValueType A, EMaterialValueType B)
+	{
+		if (A == EMaterialValueType::Unknown)
+		{
+			return B;
+		}
+		if (B == EMaterialValueType::Unknown)
+		{
+			return A;
+		}
+
+		if (A == EMaterialValueType::Scalar)
+		{
+			return B;
+		}
+		if (B == EMaterialValueType::Scalar)
+		{
+			return A;
+		}
+
+		return A == B ? A : EMaterialValueType::Unknown;
+	}
+
+	bool IsMaterialNumericType(EMaterialValueType Type)
+	{
+		return Type == EMaterialValueType::Scalar ||
+			Type == EMaterialValueType::Vector2 ||
+			Type == EMaterialValueType::Vector3 ||
+			Type == EMaterialValueType::Vector4;
+	}
+
+	bool IsMaterialVectorType(EMaterialValueType Type)
+	{
+		return Type == EMaterialValueType::Vector2 ||
+			Type == EMaterialValueType::Vector3 ||
+			Type == EMaterialValueType::Vector4;
+	}
+
+	int32 GetMaterialComponentMaskCount(uint8 Mask)
+	{
+		int32 Count = 0;
+
+		for (int32 Channel = 0; Channel < 4; ++Channel)
+		{
+			if ((Mask & (1u << Channel)) != 0)
+			{
+				++Count;
+			}
+		}
+
+		return Count;
+	}
+
 }
 
 void UMaterial::EnsureDefaultGraph()
@@ -88,48 +176,103 @@ int32 UMaterial::GetExpressionInputPinCount(EMaterialExpressionType Type) const
 	switch (Type)
 	{
 	case EMaterialExpressionType::TextureSample:
-		return 1;
-	case EMaterialExpressionType::Add:
-	case EMaterialExpressionType::Multiply:
-		return 2;
-	case EMaterialExpressionType::Lerp:
-		return 3;
+	case EMaterialExpressionType::TextureSampleParameter2D:
 	case EMaterialExpressionType::OneMinus:
+	case EMaterialExpressionType::Abs:
+	case EMaterialExpressionType::Frac:
+	case EMaterialExpressionType::Sine:
+	case EMaterialExpressionType::Normalize:
+	case EMaterialExpressionType::ComponentMask:
 		return 1;
+
+	case EMaterialExpressionType::Add:
+	case EMaterialExpressionType::Subtract:
+	case EMaterialExpressionType::Multiply:
+	case EMaterialExpressionType::Divide:
+	case EMaterialExpressionType::Power:
+	case EMaterialExpressionType::Min:
+	case EMaterialExpressionType::Max:
+	case EMaterialExpressionType::DotProduct:
+	case EMaterialExpressionType::AppendVector:
+	case EMaterialExpressionType::Custom:
+		return 2;
+
+	case EMaterialExpressionType::Lerp:
+	case EMaterialExpressionType::Clamp:
+		return 3;
+
 	case EMaterialExpressionType::MaterialOutput:
-		return 5;
+		return 8;
+
 	default:
 		return 0;
 	}
 }
+
 
 int32 UMaterial::GetExpressionOutputPinCount(EMaterialExpressionType Type) const
 {
 	return Type == EMaterialExpressionType::MaterialOutput ? 0 : 1;
 }
 
+
 const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, int32 PinIndex) const
 {
-	static const char* MathNames[] = { "A", "B", "Alpha" };
-	static const char* OutputNames[] = { "Base Color", "Specular Color", "Shininess", "Emissive Color", "Emissive Factor" };
+	static const char* BinaryNames[] = { "A", "B" };
+	static const char* TernaryNames[] = { "A", "B", "Alpha" };
+	static const char* ClampNames[] = { "Input", "Min", "Max" };
+
+	static const char* OutputNames[] = {
+		"Base Color",
+		"Specular Color",
+		"Shininess",
+		"Emissive Color",
+		"Emissive Factor",
+		"Metallic",
+		"Roughness",
+		"Normal"
+	};
 
 	switch (Type)
 	{
 	case EMaterialExpressionType::TextureSample:
+	case EMaterialExpressionType::TextureSampleParameter2D:
 		return PinIndex == 0 ? "UV" : nullptr;
+
 	case EMaterialExpressionType::Add:
+	case EMaterialExpressionType::Subtract:
 	case EMaterialExpressionType::Multiply:
-		return PinIndex >= 0 && PinIndex < 2 ? MathNames[PinIndex] : nullptr;
+	case EMaterialExpressionType::Divide:
+	case EMaterialExpressionType::Power:
+	case EMaterialExpressionType::Min:
+	case EMaterialExpressionType::Max:
+	case EMaterialExpressionType::DotProduct:
+	case EMaterialExpressionType::AppendVector:
+	case EMaterialExpressionType::Custom:
+		return PinIndex >= 0 && PinIndex < 2 ? BinaryNames[PinIndex] : nullptr;
+
 	case EMaterialExpressionType::Lerp:
-		return PinIndex >= 0 && PinIndex < 3 ? MathNames[PinIndex] : nullptr;
+		return PinIndex >= 0 && PinIndex < 3 ? TernaryNames[PinIndex] : nullptr;
+
+	case EMaterialExpressionType::Clamp:
+		return PinIndex >= 0 && PinIndex < 3 ? ClampNames[PinIndex] : nullptr;
+
 	case EMaterialExpressionType::OneMinus:
+	case EMaterialExpressionType::Abs:
+	case EMaterialExpressionType::Frac:
+	case EMaterialExpressionType::Sine:
+	case EMaterialExpressionType::Normalize:
+	case EMaterialExpressionType::ComponentMask:
 		return PinIndex == 0 ? "Input" : nullptr;
+
 	case EMaterialExpressionType::MaterialOutput:
-		return PinIndex >= 0 && PinIndex < 5 ? OutputNames[PinIndex] : nullptr;
+		return PinIndex >= 0 && PinIndex < 8 ? OutputNames[PinIndex] : nullptr;
+
 	default:
 		return nullptr;
 	}
 }
+
 
 const char* UMaterial::GetExpressionOutputPinName(EMaterialExpressionType Type, int32 PinIndex) const
 {
@@ -172,12 +315,17 @@ EMaterialValueType UMaterial::GetExpressionOutputType(int32 NodeId, int32 Output
 			return EMaterialValueType::Unknown;
 		};
 
+		const EMaterialValueType A = GetInputType(0);
+		const EMaterialValueType B = GetInputType(1);
+		const EMaterialValueType C = GetInputType(2);
+
 		EMaterialValueType Result = EMaterialValueType::Unknown;
 
 		switch (Node->Type)
 		{
 		case EMaterialExpressionType::Constant:
 		case EMaterialExpressionType::ScalarParameter:
+		case EMaterialExpressionType::Time:
 			Result = EMaterialValueType::Scalar;
 			break;
 
@@ -187,52 +335,84 @@ EMaterialValueType UMaterial::GetExpressionOutputType(int32 NodeId, int32 Output
 			break;
 
 		case EMaterialExpressionType::Constant3Vector:
+		case EMaterialExpressionType::WorldPosition:
+		case EMaterialExpressionType::CameraVectorWS:
+		case EMaterialExpressionType::VertexNormalWS:
 			Result = EMaterialValueType::Vector3;
 			break;
 
 		case EMaterialExpressionType::Constant4Vector:
 		case EMaterialExpressionType::VectorParameter:
 		case EMaterialExpressionType::TextureSample:
+		case EMaterialExpressionType::TextureSampleParameter2D:
+		case EMaterialExpressionType::VertexColor:
 			Result = EMaterialValueType::Vector4;
 			break;
 
 		case EMaterialExpressionType::Add:
+		case EMaterialExpressionType::Subtract:
 		case EMaterialExpressionType::Multiply:
-		{
-			const EMaterialValueType A = GetInputType(0);
-			const EMaterialValueType B = GetInputType(1);
-
-			if (A != EMaterialValueType::Unknown && B != EMaterialValueType::Unknown && A != B)
-			{
-				Result = EMaterialValueType::Unknown;
-			}
-			else
-			{
-				Result = A != EMaterialValueType::Unknown ? A : B;
-			}
+		case EMaterialExpressionType::Divide:
+		case EMaterialExpressionType::Power:
+		case EMaterialExpressionType::Min:
+		case EMaterialExpressionType::Max:
+			Result = ResolveMaterialBinaryType(A, B);
 			break;
-		}
 
 		case EMaterialExpressionType::Lerp:
-		{
-			const EMaterialValueType A = GetInputType(0);
-			const EMaterialValueType B = GetInputType(1);
+			Result = ResolveMaterialBinaryType(A, B);
+			break;
 
-			if (A != EMaterialValueType::Unknown && B != EMaterialValueType::Unknown && A != B)
+		case EMaterialExpressionType::Clamp:
+			Result = IsMaterialNumericType(A) ? A : EMaterialValueType::Unknown;
+			break;
+
+		case EMaterialExpressionType::OneMinus:
+		case EMaterialExpressionType::Abs:
+		case EMaterialExpressionType::Frac:
+		case EMaterialExpressionType::Sine:
+			Result = IsMaterialNumericType(A) ? A : EMaterialValueType::Unknown;
+			break;
+
+		case EMaterialExpressionType::Normalize:
+			Result = IsMaterialVectorType(A) ? A : EMaterialValueType::Unknown;
+			break;
+
+		case EMaterialExpressionType::DotProduct:
+			if (IsMaterialVectorType(A) && A == B)
 			{
-				Result = EMaterialValueType::Unknown;
+				Result = EMaterialValueType::Scalar;
 			}
-			else
+			break;
+
+		case EMaterialExpressionType::AppendVector:
+		{
+			const int32 WidthA = GetMaterialValueWidth(A);
+			const int32 WidthB = GetMaterialValueWidth(B);
+			Result = WidthA > 0 && WidthB > 0
+				? GetMaterialValueTypeFromWidth(WidthA + WidthB)
+				: EMaterialValueType::Unknown;
+			break;
+		}
+
+		case EMaterialExpressionType::ComponentMask:
+		{
+			const int32 InputWidth = GetMaterialValueWidth(A);
+			const int32 SelectedCount = GetMaterialComponentMaskCount(Node->ComponentMask);
+			const uint8 ValidMask = InputWidth >= 4 ? 0x0F : static_cast<uint8>((1u << InputWidth) - 1u);
+
+			if (InputWidth > 0 && (Node->ComponentMask & ~ValidMask) == 0)
 			{
-				Result = A != EMaterialValueType::Unknown ? A : B;
+				Result = GetMaterialValueTypeFromWidth(SelectedCount);
 			}
 			break;
 		}
 
-		case EMaterialExpressionType::OneMinus:
-			Result = GetInputType(0);
+		case EMaterialExpressionType::Custom:
+			Result = IsMaterialNumericType(Node->CustomOutputType)
+				? Node->CustomOutputType
+				: EMaterialValueType::Unknown;
 			break;
-
 		default:
 			break;
 		}
@@ -242,6 +422,41 @@ EMaterialValueType UMaterial::GetExpressionOutputType(int32 NodeId, int32 Output
 	};
 
 	return Resolve(Resolve, NodeId);
+}
+
+void UMaterial::GetGraphParameterLayout(TArray<FMaterialGraphParameter>& OutParameters) const
+{
+	OutParameters.Reset();
+
+	for (const FMaterialExpressionNode& Node : ExpressionNodes)
+	{
+		if (Node.Type != EMaterialExpressionType::ScalarParameter && Node.Type != EMaterialExpressionType::VectorParameter)
+		{
+			continue;
+		}
+
+		bool bAlreadyExists = false;
+
+		for (const FMaterialGraphParameter& Parameter : OutParameters)
+		{
+			if (Parameter.Name == Node.ParameterName && Parameter.Type == Node.Type)
+			{
+				bAlreadyExists = true;
+				break;
+			}
+		}
+
+		if (bAlreadyExists)
+		{
+			continue;
+		}
+
+		FMaterialGraphParameter& Parameter = OutParameters.AddDefaulted_GetRef();
+		Parameter.Name = Node.ParameterName;
+		Parameter.Type = Node.Type;
+		Parameter.ScalarValue = Node.ScalarValue;
+		Parameter.VectorValue = Node.VectorValue;
+	}
 }
 
 bool UMaterial::ConnectExpressionPins(int32 OutputId, int32 OutputPin, int32 InputId, int32 InputPin, FString& OutError)
@@ -292,14 +507,13 @@ bool UMaterial::ConnectExpressionPins(int32 OutputId, int32 OutputPin, int32 Inp
 	return true;
 }
 
+
 bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 {
 	std::unordered_map<int32, const FMaterialExpressionNode*> Nodes;
-	std::set<FString> ParameterNames;
-	std::set<FString> TexturePaths;
-
+	std::set<std::pair<FString, uint8>> ParameterKeys;
 	int32 OutputCount = 0;
-	int32 ParameterCount = 0;
+	int32 TextureNodeCount = 0;
 
 	for (const FMaterialExpressionNode& Node : ExpressionNodes)
 	{
@@ -309,7 +523,7 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 			return false;
 		}
 
-		if (static_cast<uint8>(Node.Type) > static_cast<uint8>(EMaterialExpressionType::MaterialOutput))
+		if (static_cast<uint8>(Node.Type) >= static_cast<uint8>(EMaterialExpressionType::Count))
 		{
 			OutError = "Invalid expression node type.";
 			return false;
@@ -320,37 +534,73 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 			++OutputCount;
 		}
 
-		if (Node.Type == EMaterialExpressionType::ScalarParameter || Node.Type == EMaterialExpressionType::VectorParameter)
+		if (Node.Type == EMaterialExpressionType::ScalarParameter ||
+			Node.Type == EMaterialExpressionType::VectorParameter ||
+			Node.Type == EMaterialExpressionType::TextureSampleParameter2D)
 		{
-			++ParameterCount;
-
-			if (Node.ParameterName.empty() || !ParameterNames.insert(Node.ParameterName).second)
+			if (Node.ParameterName.empty())
 			{
-				OutError = "Parameter names must be unique and non-empty.";
+				OutError = "Parameter names must not be empty.";
 				return false;
 			}
 
-			if (ParameterCount > MaxMaterialGraphParameters)
+			const uint8 ParameterType = static_cast<uint8>(Node.Type);
+			const auto Key = std::make_pair(Node.ParameterName, ParameterType);
+
+			if (!ParameterKeys.insert(Key).second)
 			{
-				OutError = "Material Graph supports up to 16 parameters.";
-				return false;
+				for (const FMaterialExpressionNode& Other : ExpressionNodes)
+				{
+					if (&Other == &Node)
+					{
+						break;
+					}
+
+					if (Other.ParameterName != Node.ParameterName || Other.Type != Node.Type)
+					{
+						continue;
+					}
+
+					const bool bSameScalar = Node.Type != EMaterialExpressionType::ScalarParameter ||
+						std::abs(Other.ScalarValue - Node.ScalarValue) <= 0.000001f;
+
+					const bool bSameVector = Node.Type != EMaterialExpressionType::VectorParameter ||
+						(std::abs(Other.VectorValue.X - Node.VectorValue.X) <= 0.000001f &&
+							std::abs(Other.VectorValue.Y - Node.VectorValue.Y) <= 0.000001f &&
+							std::abs(Other.VectorValue.Z - Node.VectorValue.Z) <= 0.000001f &&
+							std::abs(Other.VectorValue.W - Node.VectorValue.W) <= 0.000001f);
+
+					const bool bSameTexture = Node.Type != EMaterialExpressionType::TextureSampleParameter2D ||
+						Other.TexturePath == Node.TexturePath;
+
+					if (!bSameScalar || !bSameVector || !bSameTexture)
+					{
+						OutError = "Duplicated parameters must have matching default values.";
+						return false;
+					}
+
+					break;
+				}
 			}
 		}
 
-		if (Node.Type == EMaterialExpressionType::TextureSample && !Node.TexturePath.empty())
+		if (Node.Type == EMaterialExpressionType::TextureSample ||
+			Node.Type == EMaterialExpressionType::TextureSampleParameter2D)
 		{
-			TexturePaths.insert(Node.TexturePath);
-
-			if (TexturePaths.size() > MaxMaterialGraphTextures)
-			{
-				OutError = "Material Graph supports up to 6 unique textures.";
-				return false;
-			}
+			++TextureNodeCount;
 		}
 
-		if (Node.Type == EMaterialExpressionType::TextureCoordinate && Node.CoordinateIndex != 0)
+		if (Node.Type == EMaterialExpressionType::TextureCoordinate &&
+			Node.CoordinateIndex != 0)
 		{
 			OutError = "Only Texture Coordinate index 0 is supported.";
+			return false;
+		}
+
+		if (Node.Type == EMaterialExpressionType::ComponentMask &&
+			(Node.ComponentMask & 0x0F) == 0)
+		{
+			OutError = "Component Mask must select at least one channel.";
 			return false;
 		}
 	}
@@ -362,12 +612,27 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 		return false;
 	}
 
+	TArray<FMaterialGraphParameter> GraphParameters;
+	GetGraphParameterLayout(GraphParameters);
+
+	if (GraphParameters.Num() > MaxMaterialGraphParameters)
+	{
+		OutError = "Material Graph supports up to 16 unique scalar/vector parameters.";
+		return false;
+	}
+
+	if (TextureNodeCount > MaxMaterialGraphTextures)
+	{
+		OutError = "Material Graph supports up to 6 texture nodes.";
+		return false;
+	}
+
 	std::set<std::pair<int32, int32>> ConnectedInputs;
 
 	for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
 	{
-		auto OutputIt = Nodes.find(Connection.OutputNodeId);
-		auto InputIt = Nodes.find(Connection.InputNodeId);
+		const auto OutputIt = Nodes.find(Connection.OutputNodeId);
+		const auto InputIt = Nodes.find(Connection.InputNodeId);
 
 		if (OutputIt == Nodes.end() || InputIt == Nodes.end())
 		{
@@ -375,8 +640,8 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 			return false;
 		}
 
-		const auto* Output = OutputIt->second;
-		const auto* Input = InputIt->second;
+		const FMaterialExpressionNode* Output = OutputIt->second;
+		const FMaterialExpressionNode* Input = InputIt->second;
 
 		if (Connection.OutputNodeId == Connection.InputNodeId ||
 			Connection.OutputPin < 0 || Connection.OutputPin >= GetExpressionOutputPinCount(Output->Type) ||
@@ -401,6 +666,7 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 		{
 			return false;
 		}
+
 		if (VisitState[NodeId] == 2)
 		{
 			return true;
@@ -429,20 +695,46 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 		}
 	}
 
+	const auto GetInputType = [&](int32 NodeId, int32 Pin)
+	{
+		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+		{
+			if (Connection.InputNodeId == NodeId && Connection.InputPin == Pin)
+			{
+				return GetExpressionOutputType(Connection.OutputNodeId, Connection.OutputPin);
+			}
+		}
+
+		return EMaterialValueType::Unknown;
+	};
+
+	const auto IsConnected = [&](int32 NodeId, int32 Pin)
+	{
+		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+		{
+			if (Connection.InputNodeId == NodeId && Connection.InputPin == Pin)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	};
+
 	for (const FMaterialExpressionNode& Node : ExpressionNodes)
 	{
-		bool bOutputConnected = false;
+		bool bUsed = false;
 
 		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
 		{
 			if (Connection.OutputNodeId == Node.Id)
 			{
-				bOutputConnected = true;
+				bUsed = true;
 				break;
 			}
 		}
 
-		if (!bOutputConnected)
+		if (!bUsed)
 		{
 			continue;
 		}
@@ -451,38 +743,42 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 
 		switch (Node.Type)
 		{
+		case EMaterialExpressionType::TextureSample:
+		case EMaterialExpressionType::TextureSampleParameter2D:
+		case EMaterialExpressionType::OneMinus:
+		case EMaterialExpressionType::Abs:
+		case EMaterialExpressionType::Frac:
+		case EMaterialExpressionType::Sine:
+		case EMaterialExpressionType::Normalize:
+		case EMaterialExpressionType::ComponentMask:
+			RequiredInputCount = 1;
+			break;
+
 		case EMaterialExpressionType::Add:
+		case EMaterialExpressionType::Subtract:
 		case EMaterialExpressionType::Multiply:
+		case EMaterialExpressionType::Divide:
+		case EMaterialExpressionType::Power:
+		case EMaterialExpressionType::Min:
+		case EMaterialExpressionType::Max:
+		case EMaterialExpressionType::DotProduct:
+		case EMaterialExpressionType::AppendVector:
+		case EMaterialExpressionType::Custom:
 			RequiredInputCount = 2;
 			break;
 
 		case EMaterialExpressionType::Lerp:
+		case EMaterialExpressionType::Clamp:
 			RequiredInputCount = 3;
 			break;
 
-		case EMaterialExpressionType::OneMinus:
-		case EMaterialExpressionType::TextureSample:
-			RequiredInputCount = 1;
-			break;
-
 		default:
-			continue;
+			break;
 		}
 
 		for (int32 Pin = 0; Pin < RequiredInputCount; ++Pin)
 		{
-			bool bConnected = false;
-
-			for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
-			{
-				if (Connection.InputNodeId == Node.Id && Connection.InputPin == Pin)
-				{
-					bConnected = true;
-					break;
-				}
-			}
-
-			if (!bConnected)
+			if (!IsConnected(Node.Id, Pin))
 			{
 				OutError = "Expression node has an unconnected required input.";
 				return false;
@@ -494,17 +790,116 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 			OutError = "Texture Sample requires a texture.";
 			return false;
 		}
-	}
 
-	const auto IsNumeric = [](EMaterialValueType Type)
-	{
-		return Type == EMaterialValueType::Scalar || Type == EMaterialValueType::Vector2 ||
-			Type == EMaterialValueType::Vector3 || Type == EMaterialValueType::Vector4;
-	};
+		if (Node.Type == EMaterialExpressionType::TextureSampleParameter2D &&
+			Node.ParameterName.empty())
+		{
+			OutError = "Texture Sample Parameter 2D requires a parameter name.";
+			return false;
+		}
+
+		const EMaterialValueType A = GetInputType(Node.Id, 0);
+		const EMaterialValueType B = GetInputType(Node.Id, 1);
+		const EMaterialValueType C = GetInputType(Node.Id, 2);
+
+		switch (Node.Type)
+		{
+		case EMaterialExpressionType::TextureSample:
+		case EMaterialExpressionType::TextureSampleParameter2D:
+			if (A != EMaterialValueType::Vector2)
+			{
+				OutError = "Texture Sample requires a float2 UV input.";
+				return false;
+			}
+			break;
+
+		case EMaterialExpressionType::Add:
+		case EMaterialExpressionType::Subtract:
+		case EMaterialExpressionType::Multiply:
+		case EMaterialExpressionType::Divide:
+		case EMaterialExpressionType::Power:
+		case EMaterialExpressionType::Min:
+		case EMaterialExpressionType::Max:
+		case EMaterialExpressionType::Lerp:
+			if (ResolveMaterialBinaryType(A, B) == EMaterialValueType::Unknown)
+			{
+				OutError = "Math node inputs must have matching types or one scalar input.";
+				return false;
+			}
+
+			if (Node.Type == EMaterialExpressionType::Lerp && C != EMaterialValueType::Scalar)
+			{
+				OutError = "Linear Interpolate Alpha must be a scalar.";
+				return false;
+			}
+			break;
+
+		case EMaterialExpressionType::Clamp:
+			if (!IsMaterialNumericType(A) ||
+				(B != EMaterialValueType::Scalar && B != A) ||
+				(C != EMaterialValueType::Scalar && C != A))
+			{
+				OutError = "Clamp requires scalar or matching numeric Min and Max inputs.";
+				return false;
+			}
+			break;
+
+		case EMaterialExpressionType::DotProduct:
+			if (!IsMaterialVectorType(A) || A != B)
+			{
+				OutError = "Dot Product requires vectors of the same dimension.";
+				return false;
+			}
+			break;
+
+		case EMaterialExpressionType::AppendVector:
+			if (GetMaterialValueWidth(A) + GetMaterialValueWidth(B) > 4 ||
+				GetMaterialValueWidth(A) == 0 || GetMaterialValueWidth(B) == 0)
+			{
+				OutError = "Append Vector supports a maximum of four components.";
+				return false;
+			}
+			break;
+
+		case EMaterialExpressionType::Normalize:
+			if (!IsMaterialVectorType(A))
+			{
+				OutError = "Normalize requires a vector input.";
+				return false;
+			}
+			break;
+
+		case EMaterialExpressionType::ComponentMask:
+		{
+			const int32 Width = GetMaterialValueWidth(A);
+			const uint8 ValidMask = Width >= 4 ? 0x0F : static_cast<uint8>((1u << Width) - 1u);
+
+			if (Width == 0 || (Node.ComponentMask & ~ValidMask) != 0 ||
+				GetMaterialComponentMaskCount(Node.ComponentMask) == 0)
+			{
+				OutError = "Component Mask has invalid channels for its input type.";
+				return false;
+			}
+			break;
+		}
+
+		case EMaterialExpressionType::Custom:
+			if (!IsMaterialNumericType(A) || !IsMaterialNumericType(B) ||
+				!IsMaterialNumericType(Node.CustomOutputType) || Node.CustomCode.empty())
+			{
+				OutError = "Custom Expression requires two numeric inputs, a numeric output type, and HLSL code.";
+				return false;
+			}
+			break;
+
+		default:
+			break;
+		}
+	}
 
 	for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
 	{
-		const auto* Input = Nodes[Connection.InputNodeId];
+		const FMaterialExpressionNode* Input = Nodes[Connection.InputNodeId];
 		const EMaterialValueType SourceType = GetExpressionOutputType(Connection.OutputNodeId, Connection.OutputPin);
 
 		if (SourceType == EMaterialValueType::Unknown)
@@ -513,33 +908,31 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 			return false;
 		}
 
-		bool bValidType = true;
-
-		switch (Input->Type)
+		if (Input->Type != EMaterialExpressionType::MaterialOutput)
 		{
-		case EMaterialExpressionType::TextureSample:
-			bValidType = SourceType == EMaterialValueType::Vector2;
+			continue;
+		}
+
+		bool bValidType = false;
+
+		switch (Connection.InputPin)
+		{
+		case 0:
+		case 1:
+		case 3:
+			bValidType = SourceType == EMaterialValueType::Vector3 ||
+				SourceType == EMaterialValueType::Vector4;
 			break;
 
-		case EMaterialExpressionType::Add:
-		case EMaterialExpressionType::Multiply:
-		case EMaterialExpressionType::OneMinus:
-			bValidType = IsNumeric(SourceType);
+		case 2:
+		case 4:
+		case 5:
+		case 6:
+			bValidType = SourceType == EMaterialValueType::Scalar;
 			break;
 
-		case EMaterialExpressionType::Lerp:
-			bValidType = Connection.InputPin == 2 ? SourceType == EMaterialValueType::Scalar : IsNumeric(SourceType);
-			break;
-
-		case EMaterialExpressionType::MaterialOutput:
-			if (Connection.InputPin == 0 || Connection.InputPin == 1 || Connection.InputPin == 3)
-			{
-				bValidType = SourceType == EMaterialValueType::Vector3 || SourceType == EMaterialValueType::Vector4;
-			}
-			else
-			{
-				bValidType = SourceType == EMaterialValueType::Scalar;
-			}
+		case 7:
+			bValidType = SourceType == EMaterialValueType::Vector3;
 			break;
 
 		default:
@@ -548,33 +941,8 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 
 		if (!bValidType)
 		{
-			OutError = "Expression pin type mismatch.";
+			OutError = "Material Output pin type mismatch.";
 			return false;
-		}
-
-		if (Input->Type == EMaterialExpressionType::Add || Input->Type == EMaterialExpressionType::Multiply ||
-			Input->Type == EMaterialExpressionType::Lerp)
-		{
-			for (const FMaterialExpressionConnection& Other : ExpressionConnections)
-			{
-				if (Other.InputNodeId != Connection.InputNodeId || Other.InputPin == Connection.InputPin)
-				{
-					continue;
-				}
-
-				if (Input->Type == EMaterialExpressionType::Lerp && (Other.InputPin == 2 || Connection.InputPin == 2))
-				{
-					continue;
-				}
-
-				const EMaterialValueType OtherType = GetExpressionOutputType(Other.OutputNodeId, Other.OutputPin);
-
-				if (OtherType != EMaterialValueType::Unknown && OtherType != SourceType)
-				{
-					OutError = "Math node inputs must have matching types.";
-					return false;
-				}
-			}
 		}
 	}
 
@@ -599,16 +967,20 @@ void UMaterial::GetRenderProxy(FMaterialRenderProxy& OutProxy) const
 	OutProxy.BaseMaterial = this;
 	OutProxy.Textures = Textures;
 	OutProxy.GraphTextures.Reset();
-
-	std::set<FString> GraphTexturePaths;
+	OutProxy.GraphTextureNodeIds.Reset();
 
 	for (const FMaterialExpressionNode& Node : ExpressionNodes)
 	{
-		if (Node.Type == EMaterialExpressionType::TextureSample && !Node.TexturePath.empty() && GraphTexturePaths.insert(Node.TexturePath).second)
+		if (Node.Type != EMaterialExpressionType::TextureSample &&
+			Node.Type != EMaterialExpressionType::TextureSampleParameter2D)
 		{
-			OutProxy.GraphTextures.Add(FindOrLoadTexture(Node.TexturePath));
+			continue;
 		}
+
+		OutProxy.GraphTextureNodeIds.Add(Node.Id);
+		OutProxy.GraphTextures.Add(Node.TexturePath.empty() ? nullptr : FindOrLoadTexture(Node.TexturePath));
 	}
+
 	OutProxy.BaseColor = BaseColor;
 	OutProxy.SpecularColor = SpecularColor;
 	OutProxy.Shininess = Shininess;
@@ -973,9 +1345,34 @@ void UMaterial::Serialize(FStructuredArchive::FRecord Record)
 			NodeRecord << SA_VALUE("TexturePath", Node.TexturePath);
 			NodeRecord << SA_VALUE("CoordinateIndex", Node.CoordinateIndex);
 
+			if (auto MaskSlot = NodeRecord.TryEnterField("ComponentMask", Ar.IsSaving()))
+			{
+				MaskSlot.GetValue() << Node.ComponentMask;
+			}
+
+			if (auto CustomCodeSlot = NodeRecord.TryEnterField("CustomCode", Ar.IsSaving()))
+			{
+				CustomCodeSlot.GetValue() << Node.CustomCode;
+			}
+
+			uint8 CustomType = static_cast<uint8>(Node.CustomOutputType);
+
+			if (auto CustomTypeSlot = NodeRecord.TryEnterField("CustomOutputType", Ar.IsSaving()))
+			{
+				CustomTypeSlot.GetValue() << CustomType;
+			}
+
 			if (Ar.IsLoading())
 			{
-				if (Type > static_cast<uint8>(EMaterialExpressionType::MaterialOutput))
+				Node.CustomOutputType = CustomType <= static_cast<uint8>(EMaterialValueType::Vector4)
+					? static_cast<EMaterialValueType>(CustomType)
+					: EMaterialValueType::Vector3;
+			}
+
+
+			if (Ar.IsLoading())
+			{
+				if (Type >= static_cast<uint8>(EMaterialExpressionType::Count))
 				{
 					continue;
 				}

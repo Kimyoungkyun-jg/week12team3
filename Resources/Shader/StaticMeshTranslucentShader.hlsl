@@ -147,7 +147,7 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
 	texColor.a *= BaseColor.a;
 
 #ifdef MATERIAL_GRAPH
-	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV);
+	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV, input.worldPosition, normalize(FogCameraPosition.xyz - input.worldPosition), normalize(input.normal), input.color, ViewTimeParams.x);
 
 #ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
 	texColor.rgb = GraphOutput.BaseColor.rgb;
