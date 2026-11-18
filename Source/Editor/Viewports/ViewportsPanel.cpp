@@ -592,7 +592,6 @@ void FViewportsPanel::OnRender() {
 		if (FStatOverlay::IsEnabled(EStatFlags::Profile) ||
 			FStatOverlay::IsEnabled(EStatFlags::Decal) ||
 			FStatOverlay::IsEnabled(EStatFlags::Skinning) ||
-			FStatOverlay::IsEnabled(EStatFlags::Particle) ||
 			FStatRegistry::Find(EditorStats::STAT_PickingTime))
 		{
 			ImGui::SetCursorScreenPos({ OverlayMax.x + EditorUIScale::Px(4.0f), OverlayMin.y });
@@ -849,43 +848,6 @@ bool FViewportsPanel::DrawStatOverlay(ImDrawList* DrawList, const ImVec2& ViewMi
 			FStatOverlay::GetProcessWorkingSetBytes()) /
 			BytesPerMegabyte),
 			ValueColor });
-	}
-
-	if (FStatOverlay::IsEnabled(EStatFlags::Particle))
-	{
-		const FParticleStatSnapshot& Particle = FStatOverlay::GetParticleStats();
-
-		Lines.Add({ "Particle", TitleColor });
-
-		if (!Particle.bValid)
-		{
-			Lines.Add({ "  No active Particle Editor preview", ValueColor });
-		}
-		else
-		{
-			Lines.Add({ std::format("  CPU Active {} / {}", Particle.CpuActiveParticles, Particle.CpuCapacity), ValueColor });
-			Lines.Add({ std::format("  Spawn Requests/s {:.1f}", Particle.SpawnRequestsPerSecond), ValueColor });
-			Lines.Add({ std::format("  CPU Expired/s {:.1f}", Particle.CpuExpiredPerSecond), ValueColor });
-			Lines.Add({ std::format("  CPU Buffers {:.2f} MB", static_cast<double>(Particle.CpuBufferBytes) / BytesPerMegabyte), ValueColor });
-			Lines.Add({ std::format("  Draw Calls {} / Mesh Batches {}", Particle.DrawCalls, Particle.MeshBatches), ValueColor });
-		}
-
-		bool bFoundParticleTick = false;
-
-		for (const auto& [Name, Data] : FStatRegistry::GetAll())
-		{
-			if (Name && std::strcmp(Name, "Particle Tick") == 0)
-			{
-				Lines.Add({ std::format("  Particle Tick {:.3f} ms", Data.GetLastMs()), ValueColor });
-				bFoundParticleTick = true;
-				break;
-			}
-		}
-
-		if (!bFoundParticleTick)
-		{
-			Lines.Add({ "  Particle Tick --", ValueColor });
-		}
 	}
 
 	struct FProfileStatLine {

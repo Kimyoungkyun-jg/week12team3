@@ -13,20 +13,10 @@ enum class EStatFlags : uint32
 	Light = 1 << 3,
 	Decal = 1 << 4,
 	Skinning = 1 << 5,
-	Particle = 1 << 6,
 };
+
 DEFINE_ENUM_OPERATORS(EStatFlags)
-struct FParticleStatSnapshot
-{
-	bool bValid = false;
-	uint32 CpuActiveParticles = 0;
-	uint32 CpuCapacity = 0;
-	float SpawnRequestsPerSecond = 0.0f;
-	float CpuExpiredPerSecond = 0.0f;
-	uint64 CpuBufferBytes = 0;
-	uint32 DrawCalls = 0;
-	uint32 MeshBatches = 0;
-};
+
 // 콘솔 stat 명령의 상태와 표시용 수치만 보관한다.
 // 그리기는 Viewport를 소유한 에디터 쪽이 맡아 엔진이 ImGui에 의존하지 않게 한다.
 class FStatOverlay
@@ -52,9 +42,6 @@ public:
 	static uint32 GetObjectAllocationCount();
 	// 프로세스 전체가 점유한 물리 메모리(Working Set).
 	static uint64 GetProcessWorkingSetBytes();
-	static void SetParticleStats(const FParticleStatSnapshot& InStats) { ParticleStats = InStats; }
-	static const FParticleStatSnapshot& GetParticleStats() { return ParticleStats; }
-	static void ClearParticleStats() { ParticleStats = {}; }
 
 private:
 	// 표시 수치 갱신 주기(초). 너무 짧으면 숫자가 읽히지 않는다.
@@ -65,5 +52,4 @@ private:
 	inline static int32 AccumulatedFrames = 0;
 	inline static float DisplayFPS = 0.0f;
 	inline static float DisplayFrameTimeMs = 0.0f;
-	inline static FParticleStatSnapshot ParticleStats{};
 };

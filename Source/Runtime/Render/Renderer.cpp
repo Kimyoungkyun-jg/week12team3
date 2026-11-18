@@ -94,7 +94,8 @@ void FRenderer::UploadViewConstants(const FMatrix& ViewProjection, const FMatrix
 	Constants.VP = ViewProjection;
 	Constants.View = ViewMatrix;
 	Constants.Projection = ProjectionMatrix;
-	Constants.ViewTimeParams = FVector4(TotalTime, 0.0f, 0.0f, 0.0f);
+	const FVector CameraWorldPosition = ViewMatrix.Inverse().TransformPosition(FVector(0.0f, 0.0f, 0.0f));
+	Constants.ViewTimeParams = FVector4(TotalTime, CameraWorldPosition.X, CameraWorldPosition.Y, CameraWorldPosition.Z);
 	RenderCommand::UpdateBufferData(ViewCB.get(), &Constants, sizeof(Constants));
 }
 

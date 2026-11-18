@@ -24,7 +24,6 @@
 #include "Render/MeshBatch.h"
 #include "Engine/World.h"
 #include "Serialization/JsonArchive.h"
-#include "Core/StatOverlay.h"
 #include "Core/Stats/LightweightStats.h"
 #include <implot.h>
 #include <commdlg.h>
@@ -390,7 +389,7 @@ FParticleSystemEditorPanel::~FParticleSystemEditorPanel()
 
 void FParticleSystemEditorPanel::Release()
 {
-	FStatOverlay::ClearParticleStats();
+	ParticleStats = {};
 
 	Client.SetWorld(nullptr);
 	Skybox.reset();
@@ -1000,11 +999,10 @@ void FParticleSystemEditorPanel::RenderPreview(UEditorEngine* Engine)
 
 		Engine->RenderPreviewViewport(&Client, PreviewWorld, nullptr, bShowSkybox ? Skybox.get() : nullptr, bShowGrid, bShowBounds ? PreviewComponent : nullptr, bShowOriginAxis, { BackgroundColor[0], BackgroundColor[1], BackgroundColor[2], 1.0f });
 
-		FParticleStatSnapshot ParticleStats{};
+		ParticleStats = {};
 
-		if (PreviewComponent)
+		if (bShowParticleStats && PreviewComponent)
 		{
-			ParticleStats.bValid = true;
 
 			const TArray<FParticleEmitterInstance>& Instances = PreviewComponent->GetEmitterInstances();
 
@@ -1043,13 +1041,10 @@ void FParticleSystemEditorPanel::RenderPreview(UEditorEngine* Engine)
 				}
 			}
 		}
-
-		FStatOverlay::SetParticleStats(ParticleStats);
-
 	}
 	else
 	{
-		FStatOverlay::ClearParticleStats();
+		ParticleStats = {};
 	}
 }
 
@@ -1393,7 +1388,7 @@ void FParticleSystemEditorPanel::RenderViewportPanel(float Width, float Height)
 	if (bShowParticleStats && PreviewActor && PreviewActor->GetParticleSystemComponent())
 	{
 		const TArray<FParticleEmitterInstance>& Instances = PreviewActor->GetParticleSystemComponent()->GetEmitterInstances();
-		const FParticleStatSnapshot& Stats = FStatOverlay::GetParticleStats();
+		const FParticleEditorStats& Stats = ParticleStats;
 
 		float ParticleTickMs = 0.0f;
 		bool bFoundParticleTick = false;
