@@ -196,7 +196,7 @@
                                                 }
                                             },
                                             "TypeDataModule": {
-                                                "Class": "UParticleModuleTypeDataGpuSprite",
+                                                "Class": "UParticleModuleTypeDataSprite",
                                                 "Value": {
                                                     "Properties": {
                                                         "LODSlotId": 0,
