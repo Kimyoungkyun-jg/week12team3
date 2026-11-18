@@ -268,6 +268,7 @@ namespace
 		OutSource += "    float Metallic;\n";
 		OutSource += "    float Roughness;\n";
 		OutSource += "    float3 Normal;\n";
+		OutSource += "    float AmbientOcclusion;\n";
 		OutSource += "};\n";
 
 		OutSource += "cbuffer MaterialGraphParameters : register(b4)\n";
@@ -637,6 +638,7 @@ namespace
 		OutSource += "    Result.Metallic = 0.0f;\n";
 		OutSource += "    Result.Roughness = 0.8f;\n";
 		OutSource += "    Result.Normal = float3(0, 0, 1);\n";
+		OutSource += "    Result.AmbientOcclusion = 1.0f;\n";
 
 		EmitOutput(0, "MATERIAL_GRAPH_HAS_BASE_COLOR", "BaseColor", true, false);
 		EmitOutput(1, "MATERIAL_GRAPH_HAS_SPECULAR_COLOR", "SpecularColor", false, true);
@@ -646,6 +648,7 @@ namespace
 		EmitOutput(5, "MATERIAL_GRAPH_HAS_METALLIC", "Metallic", false, false);
 		EmitOutput(6, "MATERIAL_GRAPH_HAS_ROUGHNESS", "Roughness", false, false);
 		EmitOutput(7, "MATERIAL_GRAPH_HAS_NORMAL", "Normal", false, true);
+		EmitOutput(8, "MATERIAL_GRAPH_HAS_AMBIENT_OCCLUSION", "AmbientOcclusion", false, false);
 
 		OutSource += "    return Result;\n";
 		OutSource += "}\n";

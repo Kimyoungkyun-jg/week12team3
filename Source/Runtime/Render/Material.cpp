@@ -369,7 +369,7 @@ int32 UMaterial::GetExpressionInputPinCount(EMaterialExpressionType Type) const
 		return 4;
 
 	case EMaterialExpressionType::MaterialOutput:
-		return 8;
+		return 9;
 
 	default:
 		return 0;
@@ -402,7 +402,8 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 		"Emissive Factor",
 		"Metallic",
 		"Roughness",
-		"Normal"
+		"Normal",
+		"Ambient Occlusion"
 	};
 
 	switch (Type)
@@ -444,7 +445,7 @@ const char* UMaterial::GetExpressionInputPinName(EMaterialExpressionType Type, i
 		return PinIndex == 0 ? "Input" : nullptr;
 
 	case EMaterialExpressionType::MaterialOutput:
-		return PinIndex >= 0 && PinIndex < 8 ? OutputNames[PinIndex] : nullptr;
+		return PinIndex >= 0 && PinIndex < 9 ? OutputNames[PinIndex] : nullptr;
 
 	case EMaterialExpressionType::Panner:
 		return PinIndex >= 0 && PinIndex < 2 ? PannerNames[PinIndex] : nullptr;
@@ -1321,6 +1322,7 @@ bool UMaterial::ValidateExpressionGraph(FString& OutError) const
 		case 4:
 		case 5:
 		case 6:
+		case 8:
 			bValidType = SourceType == EMaterialValueType::Scalar;
 			break;
 

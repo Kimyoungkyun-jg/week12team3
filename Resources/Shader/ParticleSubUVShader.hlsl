@@ -4,6 +4,9 @@
 cbuffer constants : register(b0)
 {
     matrix VP;
+    matrix View;
+    matrix Projection;
+    float4 ViewTimeParams;
 };
 
 cbuffer Worldconstants : register(b2)
@@ -41,13 +44,20 @@ struct PS_INPUT
 {
     float4 position : SV_POSITION;
     float2 uv : TEXCOORD0;
+    float3 worldPosition : TEXCOORD1;
+    float3 worldNormal : TEXCOORD2;
+    float4 vertexColor : TEXCOORD3;
 };
 
 // Todo: VS shader code duplicated
 PS_INPUT mainVS(VS_INPUT input)
 {
     PS_INPUT output;
-    output.position = mul(mul(float4(input.position, 1.0f), World), VP);
+    float4 WorldPosition = mul(float4(input.position, 1.0f), World);
+    output.position = mul(WorldPosition, VP);
+    output.worldPosition = WorldPosition.xyz;
+    output.worldNormal = normalize(mul(float4(1.0f, 0.0f, 0.0f, 0.0f), World).xyz);
+    output.vertexColor = float4(Tint.rgb, ParticleAlpha);
     output.uv = input.uv;
 
     return output;
@@ -68,7 +78,8 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
     color.a *= ParticleAlpha;
 
 #ifdef MATERIAL_GRAPH
-    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(cellUV);
+    float3 CameraWorldPosition = mul(float4(0.0f, 0.0f, 0.0f, 1.0f), inverse(View)).xyz;
+    FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(cellUV, input.worldPosition, normalize(CameraWorldPosition - input.worldPosition), normalize(input.worldNormal), input.vertexColor, ViewTimeParams.x);
 
 #ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
     color *= GraphOutput.BaseColor;

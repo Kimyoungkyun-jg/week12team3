@@ -3,7 +3,10 @@
 
 cbuffer constants : register(b0)
 {
-	matrix VP;
+    matrix VP;
+    matrix View;
+    matrix Projection;
+    float4 ViewTimeParams;
 };
 
 cbuffer particleMaterialConstants : register(b2)
@@ -35,14 +38,18 @@ struct PS_INPUT
 	float4 position : SV_POSITION;
 	float2 uv : TEXCOORD0;
 	float4 color : COLOR;
+    float3 worldPosition : TEXCOORD1;
+    float3 worldNormal : TEXCOORD2;
 };
 
 PS_INPUT mainVS(VS_INPUT input)
 {
 	PS_INPUT output;
-	output.position = mul(float4(input.position, 1.0f), VP);
-	output.uv = input.uv;
-	output.color = input.color;
+    output.position = mul(float4(input.position, 1.0f), VP);
+    output.worldPosition = input.position;
+    output.worldNormal = input.normal;
+    output.uv = input.uv;
+    output.color = input.color;
 	return output;
 }
 
@@ -58,7 +65,8 @@ float4 mainPS(PS_INPUT input) : SV_TARGET
 	color.rgb *= SRGBToLinear(input.color.rgb);
 	color.a *= input.color.a;
 #ifdef MATERIAL_GRAPH
-	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(input.uv);
+	float3 CameraWorldPosition = mul(float4(0.0f, 0.0f, 0.0f, 1.0f), inverse(View)).xyz;
+	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(input.uv, input.worldPosition, normalize(CameraWorldPosition - input.worldPosition), normalize(input.worldNormal), input.color, ViewTimeParams.x);
 
 #ifdef MATERIAL_GRAPH_HAS_BASE_COLOR
 	color *= GraphOutput.BaseColor;
