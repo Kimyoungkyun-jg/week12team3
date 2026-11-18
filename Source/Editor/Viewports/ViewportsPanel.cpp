@@ -592,7 +592,8 @@ void FViewportsPanel::OnRender() {
 		if (FStatOverlay::IsEnabled(EStatFlags::Profile) ||
 			FStatOverlay::IsEnabled(EStatFlags::Decal) ||
 			FStatOverlay::IsEnabled(EStatFlags::Skinning) ||
-			FStatRegistry::Find(EditorStats::STAT_PickingTime)) {
+			FStatRegistry::Find(EditorStats::STAT_PickingTime))
+		{
 			ImGui::SetCursorScreenPos({ OverlayMax.x + EditorUIScale::Px(4.0f), OverlayMin.y });
 			ImGui::PushID(300 + ViewIndex);
 			// 뷰 툴바 버튼과 같은 여백·모서리로 그려 크기와 모양을 맞춘다.

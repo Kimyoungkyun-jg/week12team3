@@ -104,7 +104,7 @@ bool FStatOverlay::ExecCommand(const FString& CommandLine, FString& OutMessage)
 	{
 		const bool bEnable = Explicit != 0;
 		Flags = bEnable ? (EStatFlags::FPS | EStatFlags::Memory | EStatFlags::Profile | EStatFlags::Light | EStatFlags::Decal | EStatFlags::Skinning)
-			: EStatFlags::None;
+						: EStatFlags::None;
 		OutMessage = bEnable ? "stat all: all overlays enabled" : "stat all: all overlays disabled";
 		return true;
 	}
@@ -127,7 +127,8 @@ bool FStatOverlay::ExecCommand(const FString& CommandLine, FString& OutMessage)
 	{
 		OutMessage = std::format(
 			"stat: unknown stat '{}'. Available: "
-			"fps, memory, profile, light, decal, skinning, all, none", Arg);
+			"fps, memory, profile, light, decal, skinning, all, none",
+			Arg);
 		return true;
 	}
 

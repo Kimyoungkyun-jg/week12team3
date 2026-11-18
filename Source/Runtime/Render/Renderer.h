@@ -34,11 +34,9 @@ public:
 	void UploadViewConstants(const FMatrix& ViewProjection, const FMatrix& ViewMatrix,
 		const FMatrix& ProjectionMatrix, float TotalTime = 0.0f);
 
-	void SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> Commands,
-		const FStructuredBuffer* GPUSceneBuffer = nullptr,
-		uint32* OutDrawCalls = nullptr,
-		const std::shared_ptr<FGpuTimingHistory>& SkeletalTiming = {},
-		ESkinningMode MeasuredMode = ESkinningMode::CPU);
+	void SubmitVisibleCommands(std::span<const FVisibleMeshDrawCommand> Commands, const FStructuredBuffer* GPUSceneBuffer = nullptr,
+		uint32* OutDrawCalls = nullptr, const std::shared_ptr<FGpuTimingHistory>& SkeletalTiming = {},
+		ESkinningMode MeasuredMode = ESkinningMode::CPU, uint32* OutParticleDrawCalls = nullptr);
 
 	FGPUOcclusion& GetGPUOcclusion() { return GPUOcclusion; }
 

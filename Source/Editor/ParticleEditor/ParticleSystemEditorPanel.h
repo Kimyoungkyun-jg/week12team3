@@ -16,6 +16,17 @@ class UWorld;
 class FSkyboxRenderer;
 class UEditorEngine;
 
+struct FParticleEditorStats
+{
+	uint32 CpuActiveParticles = 0;
+	uint32 CpuCapacity = 0;
+	float SpawnRequestsPerSecond = 0.0f;
+	float CpuExpiredPerSecond = 0.0f;
+	uint64 CpuBufferBytes = 0;
+	uint32 DrawCalls = 0;
+	uint32 MeshBatches = 0;
+};
+
 class FParticleSystemEditorPanel : public IEditorPanel
 {
 public:
@@ -78,6 +89,7 @@ private:
 	AParticleSystemActor* PreviewActor = nullptr;
 	FEditorViewportClient Client;
 	TUniquePtr<FSkyboxRenderer> Skybox;
+	FParticleEditorStats ParticleStats{};
 
 	TArray<uint8> LastUndoSnapshot;
 	TArray<TArray<uint8>> UndoStack;
