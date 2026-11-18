@@ -300,6 +300,12 @@ namespace
 		}
 	}
 
+	bool HasMaterialTexturePreview(EMaterialExpressionType Type)
+	{
+		return Type == EMaterialExpressionType::TextureSample ||
+			Type == EMaterialExpressionType::TextureSampleParameter2D;
+	}
+
 	bool HasInlineMaterialValue(EMaterialExpressionType Type)
 	{
 		switch (Type)
@@ -319,7 +325,8 @@ namespace
 	ImVec2 GetMaterialNodeSize(const UMaterial& Material, const FMaterialExpressionNode& Node)
 	{
 		const float ValueHeight = HasInlineMaterialValue(Node.Type) ? 42.0f : 0.0f;
-		const float Height = std::max(76.0f, 48.0f + Material.GetExpressionInputPinCount(Node.Type) * 25.0f + ValueHeight);
+		const float TexturePreviewHeight = HasMaterialTexturePreview(Node.Type) ? 78.0f : 0.0f;
+		const float Height = std::max(76.0f, 48.0f + Material.GetExpressionInputPinCount(Node.Type) * 25.0f + ValueHeight + TexturePreviewHeight);
 		return ImVec2(230.0f, Height);
 	}
 
@@ -1054,6 +1061,54 @@ void FMaterialEditorPanel::DrawMaterialGraphCanvas(UMaterial& Material)
 			}
 		}
 
+		if (HasMaterialTexturePreview(Node.Type))
+		{
+			const float PreviewTop = 48.0f + InputCount * 25.0f;
+			const float ThumbnailSize = 64.0f;
+
+			const ImVec2 ThumbnailMin(Min.x + 10.0f * Scale, Min.y + PreviewTop * Scale);
+			const ImVec2 ThumbnailMax(ThumbnailMin.x + ThumbnailSize * Scale, ThumbnailMin.y + ThumbnailSize * Scale);
+
+			Draw->AddRectFilled(ThumbnailMin, ThumbnailMax, IM_COL32(25, 27, 30, 255), 4.0f * Scale);
+
+			UTexture2D* Texture = Node.TexturePath.empty() ? nullptr : UAssetManager::Get().LoadTexture(Node.TexturePath);
+			ID3D11ShaderResourceView* TextureSRV = Texture && Texture->GetResource() ? Texture->GetResource()->GetSRV() : nullptr;
+
+			if (TextureSRV && Texture->GetWidth() > 0 && Texture->GetHeight() > 0)
+			{
+				const float FitScale = ThumbnailSize / static_cast<float>(std::max(Texture->GetWidth(), Texture->GetHeight()));
+				const ImVec2 ImageSize(Texture->GetWidth() * FitScale * Scale, Texture->GetHeight() * FitScale * Scale);
+				const ImVec2 ImageMin(ThumbnailMin.x + (ThumbnailSize * Scale - ImageSize.x) * 0.5f,
+					ThumbnailMin.y + (ThumbnailSize * Scale - ImageSize.y) * 0.5f);
+
+				Draw->AddImage(reinterpret_cast<ImTextureID>(TextureSRV), ImageMin, ImVec2(ImageMin.x + ImageSize.x, ImageMin.y + ImageSize.y));
+			}
+			else
+			{
+				Draw->AddText(ImVec2(ThumbnailMin.x + 7.0f * Scale, ThumbnailMin.y + 25.0f * Scale),
+					IM_COL32(170, 170, 170, 255), Node.TexturePath.empty() ? "No Texture" : "No Preview");
+			}
+
+			Draw->AddRect(ThumbnailMin, ThumbnailMax, IM_COL32(100, 105, 115, 255), 4.0f * Scale);
+
+			const FString TextureLabel = Node.TexturePath.empty()
+				? FString("No Texture")
+				: FbxPath::ToString(FbxPath::FromString(Node.TexturePath).filename());
+
+			const ImVec2 LabelMin(ThumbnailMax.x + 8.0f * Scale, ThumbnailMin.y + 5.0f * Scale);
+			const ImVec2 LabelMax(Max.x - 8.0f * Scale, ThumbnailMin.y + 36.0f * Scale);
+
+			Draw->PushClipRect(LabelMin, LabelMax, true);
+			Draw->AddText(LabelMin, IM_COL32(230, 230, 235, 255), TextureLabel.c_str());
+			Draw->PopClipRect();
+
+			if (Texture)
+			{
+				const FString TextureSize = std::to_string(Texture->GetWidth()) + " x " + std::to_string(Texture->GetHeight());
+				Draw->AddText(ImVec2(LabelMin.x, ThumbnailMin.y + 42.0f * Scale), IM_COL32(155, 160, 170, 255), TextureSize.c_str());
+			}
+		}
+
 		if (HasInlineMaterialValue(Node.Type))
 		{
 			ImGui::PushID(Node.Id);
@@ -1401,6 +1456,12 @@ void FMaterialEditorPanel::DrawMaterialGraphDetails(UMaterial& Material)
 			Selected->TexturePath = Current ? Current->GetPath() : FString();
 			MarkMaterialChanged();
 		}
+
+		if (ImGui::Checkbox("sRGB", &Selected->bSRGB))
+		{
+			MarkMaterialChanged();
+		}
+
 		break;
 	}
 

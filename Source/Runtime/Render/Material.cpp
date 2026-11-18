@@ -1550,7 +1550,6 @@ void UMaterial::CopySettingsFrom(const UMaterial& Source)
 	ExpressionNodes = Source.ExpressionNodes;
 	ExpressionConnections = Source.ExpressionConnections;
 	OutputNodeId = Source.OutputNodeId;
-	EnsureDefaultGraph();
 
 	ParamBuffer.reset();
 	if (Source.ParamBuffer)
