@@ -10,6 +10,7 @@ class UMaterialInstanceDynamic;
 class UParticleSystemComponent;
 class USkeletalMeshComponent;
 class USpringArmComponent;
+struct FParticleEventCollideData;
 
 UCLASS()
 class ACharacter : public APawn
@@ -36,7 +37,9 @@ public:
 	void UpdateDeathDissolve(float DeltaTime);
 	bool HasStartedDeathDissolve() const { return bDissolveStarted; }
 	bool IsDeathDissolveFinished() const;
+	virtual void OnParticleCollide(const FParticleEventCollideData& Event) {}
 protected:
+	void SetDeathParticlePath(const FString& InPath);
 	FString DeathParticlePath = "Assets/Particles/ZombieDeathParticles.particle";
 	FVector4 DissolveEdgeColor = FVector4(0.75f, 0.78f, 0.85f, 1.0f);
 	float DissolveDuration = 1.45f;

@@ -21,16 +21,14 @@ public:
 	void Attack() override;
 	void CastBeam();
 	void ReactToHit();
+	void OnParticleCollide(const FParticleEventCollideData& Event) override;
 	bool IsDead() const { return Health <= 0; }
 	int32 GetHealth() const { return Health; }
 
 private:
 	bool IsPlayingFullBodyMontage() const;
-	void OnAttackParticleCollision(const FParticleEventCollideData& Event);
 	UStaticMeshComponent* SwordMeshComponent = nullptr;
 	UParticleSystemComponent* SwordRibbonComponent = nullptr;
-	UParticleSystemComponent* SwordWaveComponent = nullptr;
-	UParticleSystemComponent* BeamParticleComponent = nullptr;
 	TMap<AZombieActor*, float> ZombieHitCooldowns;
 	float ElapsedTime = 0.0f;
 	UPROPERTY(EditAnywhere)

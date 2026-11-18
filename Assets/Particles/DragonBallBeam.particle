@@ -1376,6 +1376,33 @@
 															"bUseFadeInOut": true
 														}
 													}
+												},
+												{
+													"Class": "UParticleModuleCollision",
+													"Value": {
+														"Properties": {
+															"CollisionRadius": 1.0,
+															"DepthThickness": 1.0,
+															"FrictionMax": 0.0,
+															"FrictionMin": 0.0,
+															"LODSlotId": 6,
+															"MaxCollisions": 1000,
+															"RestitutionMax": 0.0,
+															"RestitutionMin": 0.0,
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleEventGenerator",
+													"Value": {
+														"Properties": {
+															"EventFrequency": 1,
+															"EventName": "Hit",
+															"LODSlotId": 7,
+															"bEnabled": true
+														}
+													}
 												}
 											],
 											"RequiredModule": {
@@ -1602,6 +1629,33 @@
 															"bUseFadeInOut": true
 														}
 													}
+												},
+												{
+													"Class": "UParticleModuleCollision",
+													"Value": {
+														"Properties": {
+															"CollisionRadius": 0.8,
+															"DepthThickness": 1.0,
+															"FrictionMax": 0.0,
+															"FrictionMin": 0.0,
+															"LODSlotId": 6,
+															"MaxCollisions": 1000,
+															"RestitutionMax": 0.0,
+															"RestitutionMin": 0.0,
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleEventGenerator",
+													"Value": {
+														"Properties": {
+															"EventFrequency": 1,
+															"EventName": "Hit",
+															"LODSlotId": 7,
+															"bEnabled": true
+														}
+													}
 												}
 											],
 											"RequiredModule": {
@@ -1826,6 +1880,33 @@
 															"LODSlotId": 5,
 															"bEnabled": true,
 															"bUseFadeInOut": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleCollision",
+													"Value": {
+														"Properties": {
+															"CollisionRadius": 0.6,
+															"DepthThickness": 1.0,
+															"FrictionMax": 0.0,
+															"FrictionMin": 0.0,
+															"LODSlotId": 6,
+															"MaxCollisions": 1000,
+															"RestitutionMax": 0.0,
+															"RestitutionMin": 0.0,
+															"bEnabled": true
+														}
+													}
+												},
+												{
+													"Class": "UParticleModuleEventGenerator",
+													"Value": {
+														"Properties": {
+															"EventFrequency": 1,
+															"EventName": "Hit",
+															"LODSlotId": 7,
+															"bEnabled": true
 														}
 													}
 												}

@@ -109,34 +109,68 @@ namespace
 		if (!Owner)
 			return nullptr;
 
+		UParticleSystemComponent* Matched = nullptr;
 		UParticleSystemComponent* Fallback = nullptr;
 		for (UActorComponent* Comp : Owner->GetComponents())
 		{
 			UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp);
 			if (!ParticleComp)
 				continue;
+			const bool bIsDeathComp = ParticleComp->GetName() == "DeathParticleComponent";
 			if (!ParticlePath.empty() && (ParticleComp->TemplatePath == ParticlePath ||
 				ParticleComp->TemplatePath == "Assets/" + ParticlePath))
-				return ParticleComp;
-			if (!Fallback || (Fallback->IsActive() && !ParticleComp->IsActive()))
+			{
+				// 시작 시에는 비활성 컴포넌트를 우선 재사용하고 틱이나 종료 시에는 활성 컴포넌트를 찾는다
+				if (bCreateIfMissing)
+				{
+					if (!ParticleComp->IsActive())
+						return ParticleComp;
+				}
+				else
+				{
+					if (!Matched || (!Matched->IsActive() && ParticleComp->IsActive()))
+						Matched = ParticleComp;
+				}
+			}
+			if (bAllowFallback && !bIsDeathComp && !ParticleComp->IsActive() && !Fallback)
 				Fallback = ParticleComp;
 		}
+		if (Matched)
+			return Matched;
 		if (bAllowFallback && Fallback)
 			return Fallback;
 		if (bCreateIfMissing)
 		{
 			if (UParticleSystemComponent* Created = Cast<UParticleSystemComponent>(
-				Owner->AddComponent(UParticleSystemComponent::StaticClass(), "NotifyParticlePreview")))
+				Owner->AddComponent(UParticleSystemComponent::StaticClass(), FName("None"))))
 			{
 				Created->SetupAttachment(Mesh);
 				Created->bAutoDestroy = false;
 				Created->bPreviewInEditor = false;
+				Created->SetAutoActivate(false);
 				Created->SetVisibility(false);
 				Created->Deactivate();
 				return Created;
 			}
 		}
 		return nullptr;
+	}
+
+	UParticleSystemComponent* FindTrackedParticleComponent(USkeletalMeshComponent* Mesh,
+		TMap<USkeletalMeshComponent*, UParticleSystemComponent*>& ActiveComponents, const FString& ParticlePath)
+	{
+		AActor* Owner = Mesh ? Mesh->GetOwner() : nullptr;
+		if (!Owner)
+			return nullptr;
+		if (UParticleSystemComponent** Tracked = ActiveComponents.Find(Mesh))
+		{
+			for (UActorComponent* Comp : Owner->GetComponents())
+			{
+				if (Comp == *Tracked)
+					return *Tracked;
+			}
+		}
+		return FindTargetParticleComponent(Mesh, ParticlePath, false, false);
 	}
 
 	FRotator ExtractRotationFromMatrix(const FMatrix& Matrix)
@@ -234,6 +268,7 @@ void UAnimNotifyState_ParticleEffect::NotifyBegin(const FAnimNotifyContext& Cont
 		ParticleComp->SetTemplate(Loaded);
 	}
 
+	ActiveComponents.Add(Context.MeshComponent, ParticleComp);
 	SyncParticleToBone(Context.MeshComponent, ParticleComp, BoneName, SecondBoneName,
 		BaseParameterName, TipParameterName, BoneOffset, bFollowBoneRotation);
 	ParticleComp->SetForceLooping(bLoopDuringState);
@@ -243,7 +278,7 @@ void UAnimNotifyState_ParticleEffect::NotifyBegin(const FAnimNotifyContext& Cont
 
 void UAnimNotifyState_ParticleEffect::NotifyTick(const FAnimNotifyContext& Context)
 {
-	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, false, false);
+	UParticleSystemComponent* ParticleComp = FindTrackedParticleComponent(Context.MeshComponent, ActiveComponents, ParticlePath);
 	if (!ParticleComp)
 		return;
 
@@ -259,7 +294,8 @@ void UAnimNotifyState_ParticleEffect::NotifyTick(const FAnimNotifyContext& Conte
 
 void UAnimNotifyState_ParticleEffect::NotifyEnd(const FAnimNotifyContext& Context)
 {
-	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, false, false);
+	UParticleSystemComponent* ParticleComp = FindTrackedParticleComponent(Context.MeshComponent, ActiveComponents, ParticlePath);
+	ActiveComponents.Remove(Context.MeshComponent);
 	if (!ParticleComp)
 		return;
 

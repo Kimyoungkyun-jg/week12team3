@@ -1375,10 +1375,50 @@ UParticleSystem* UParticleSystem::LoadFromFile(const FString& Path, UObject* Out
 	return System;
 }
 
+namespace
+{
+	bool SweepParticleWorld(UWorld* World, AActor* IgnoreActor, const FVector& Origin, const FVector& Direction,
+		float Distance, float Radius, FHitResult& OutHit)
+	{
+		if (!World || Distance < 0.001f)
+		{
+			return false;
+		}
+		const FRay WorldRay(Origin, Direction);
+		World->SweepSingle(WorldRay, Distance, Radius, OutHit, IgnoreActor);
+		// 구 반경을 반영한 블로킹 캡슐 충돌도 함께 검사한다
+		FHitResult ShapeHit;
+		if (Radius > 0.0f && World->SweepSingle(WorldRay, Distance, Radius, ShapeHit, IgnoreActor, true))
+		{
+			if (!OutHit.bBlockingHit || ShapeHit.Distance < OutHit.Distance)
+			{
+				OutHit = ShapeHit;
+			}
+		}
+		return OutHit.bBlockingHit;
+	}
+
+	void EmitCollisionEvent(const FParticleTickContext& Context, const UParticleModuleEventGenerator* EventGenerator,
+		int32 CollisionCount, const FHitResult& Hit, const FVector& Velocity)
+	{
+		if (!EventGenerator || CollisionCount % std::max(1, EventGenerator->EventFrequency) != 0)
+		{
+			return;
+		}
+		FParticleEventCollideData Event;
+		Event.EventName = EventGenerator->EventName;
+		Event.Location = Hit.Location;
+		Event.Normal = Hit.ImpactNormal;
+		Event.Velocity = Velocity;
+		Event.Component = Hit.HitComponent;
+		Context.Component->AddCollisionEvent(Event);
+	}
+}
+
 void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, 
 	const FParticleTickContext& Context, const UParticleModuleEventGenerator * EventGenerator) const
 {
-	if (Offset == 0)
+	if (Offset == 0 || !Context.World || !Context.Component)
 	{
 		return;
 	}
@@ -1404,61 +1444,69 @@ void UParticleModuleCollision::TickCollision(FBaseParticle& Particle, float Delt
 	}
 
 	FVector PrevLocation = ParticleWorldLoc - MoveDelta;
-	FRay WorldRay;
-	WorldRay.Origin = PrevLocation;
-	WorldRay.Direction = MoveDelta.Normalized();
-
 	FHitResult Hit;
-	Context.World->SweepSingle(WorldRay, MoveDist, CollisionRadius, Hit, Context.Component->GetOwner());
-	// 구 반경을 반영한 블로킹 캡슐 충돌도 함께 검사한다
-	FHitResult ShapeHit;
-	if (CollisionRadius > 0.0f && Context.World->SweepSingle(WorldRay, MoveDist, CollisionRadius, ShapeHit, Context.Component->GetOwner(), true))
+	if (!SweepParticleWorld(Context.World, Context.Component->GetOwner(), PrevLocation, MoveDelta / MoveDist, MoveDist, CollisionRadius, Hit))
 	{
-		if (!Hit.bBlockingHit || ShapeHit.Distance < Hit.Distance)
-		{
-			Hit = ShapeHit;
-		}
+		return;
 	}
-	if (Hit.bBlockingHit)
+
+	float VDotNormal = ParticleWorldVel.Dot(Hit.ImpactNormal);
+	if (VDotNormal > 0)
 	{
-		float VDotNormal = ParticleWorldVel.Dot(Hit.ImpactNormal);
-		if (VDotNormal > 0)
-		{
-			return;
-		}
-
-		FVector ProjectedNormal = Hit.ImpactNormal * (-VDotNormal);
-		FVector Vt = ParticleWorldVel + ProjectedNormal;
-		Vt *= (1 - FrictionMax);
-		Vt += ProjectedNormal * RestitutionMax;
-
-		const FVector NewWorldLoc = Hit.ImpactPoint + Hit.ImpactNormal * 0.001f;
-		if (Context.bUseLocalSpace)
-		{
-			const FMatrix WorldToLocal = Context.ComponentToWorld.Inverse();
-			Particle.Location = WorldToLocal.TransformPosition(NewWorldLoc);
-			Particle.Velocity = WorldToLocal.TransformVector(Vt);
-		}
-		else
-		{
-			Particle.Location = NewWorldLoc;
-			Particle.Velocity = Vt;
-		}
-		Payload.CollisionCount++;
-
-		if (EventGenerator==nullptr || Payload.CollisionCount % std::max(1,EventGenerator->EventFrequency) != 0)
-		{
-			return;
-		}
-
-		FParticleEventCollideData Event;
-		Event.EventName = EventGenerator->EventName;
-		Event.Location = Hit.Location;
-		Event.Normal = Hit.ImpactNormal;
-		Event.Velocity = Vt;
-		Event.Component = Hit.HitComponent;
-		Context.Component->AddCollisionEvent(Event);
+		return;
 	}
+
+	FVector ProjectedNormal = Hit.ImpactNormal * (-VDotNormal);
+	FVector Vt = ParticleWorldVel + ProjectedNormal;
+	Vt *= (1 - FrictionMax);
+	Vt += ProjectedNormal * RestitutionMax;
+
+	const FVector NewWorldLoc = Hit.ImpactPoint + Hit.ImpactNormal * 0.001f;
+	if (Context.bUseLocalSpace)
+	{
+		const FMatrix WorldToLocal = Context.ComponentToWorld.Inverse();
+		Particle.Location = WorldToLocal.TransformPosition(NewWorldLoc);
+		Particle.Velocity = WorldToLocal.TransformVector(Vt);
+	}
+	else
+	{
+		Particle.Location = NewWorldLoc;
+		Particle.Velocity = Vt;
+	}
+	Payload.CollisionCount++;
+	EmitCollisionEvent(Context, EventGenerator, Payload.CollisionCount, Hit, Vt);
+}
+
+void UParticleModuleCollision::TickSegmentCollision(FBaseParticle& Particle, const FVector& WorldStart, const FVector& WorldEnd,
+	uint32 Offset, const FParticleTickContext& Context, const UParticleModuleEventGenerator* EventGenerator) const
+{
+	if (Offset == 0 || !Context.World || !Context.Component)
+	{
+		return;
+	}
+
+	FParticleCollisionPayload& Payload = *reinterpret_cast<FParticleCollisionPayload*>(reinterpret_cast<uint8*>(&Particle) + Offset);
+	if (Payload.CollisionCount >= MaxCollisions)
+	{
+		return;
+	}
+
+	const FVector SegmentDelta = WorldEnd - WorldStart;
+	const float SegmentDist = SegmentDelta.Length();
+	if (SegmentDist < 0.001f)
+	{
+		return;
+	}
+
+	const FVector SegmentDir = SegmentDelta / SegmentDist;
+	FHitResult Hit;
+	if (!SweepParticleWorld(Context.World, Context.Component->GetOwner(), WorldStart, SegmentDir, SegmentDist, CollisionRadius, Hit))
+	{
+		return;
+	}
+
+	Payload.CollisionCount++;
+	EmitCollisionEvent(Context, EventGenerator, Payload.CollisionCount, Hit, SegmentDir);
 }
 
 void UParticleModuleCollision::CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const

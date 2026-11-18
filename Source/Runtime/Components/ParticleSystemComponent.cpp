@@ -1225,9 +1225,12 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 				if (!Module) continue;
 				Module->Update(Particle, DeltaTime, GetModuleDataOffset(Module), InstanceParameters);
 
-				if (const UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
+				if (!bIsBeam)
 				{
-					Collision->TickCollision(Particle, DeltaTime, GetModuleDataOffset(Module), EmitterContext, EventGenerator);
+					if (const UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
+					{
+						Collision->TickCollision(Particle, DeltaTime, GetModuleDataOffset(Module), EmitterContext, EventGenerator);
+					}
 				}
 			}
 			if (bIsBeam && BeamType && TypeDataOffset > 0)
@@ -1260,6 +1263,20 @@ void FParticleEmitterInstance::Tick(float DeltaTime, const FVector& Origin, cons
 							BeamPayload.NoiseLockTimer = std::fmod(BeamPayload.NoiseLockTimer, BeamNoise->NoiseLockTime);
 							BeamPayload.NoiseSeed = AdvanceNoiseSeed(BeamPayload.NoiseSeed);
 						}
+					}
+				}
+				const FVector LocalEnd = BeamPayload.SourcePoint + (BeamPayload.TargetPoint - BeamPayload.SourcePoint) * BeamPayload.TravelRatio;
+				const FVector WorldStart = Required->bUseLocalSpace
+					? EmitterContext.ComponentToWorld.TransformPosition(BeamPayload.SourcePoint)
+					: BeamPayload.SourcePoint;
+				const FVector WorldEnd = Required->bUseLocalSpace
+					? EmitterContext.ComponentToWorld.TransformPosition(LocalEnd)
+					: LocalEnd;
+				for (const UParticleModule* Module : CurrentLODLevel->UpdateModules)
+				{
+					if (const UParticleModuleCollision* Collision = Cast<UParticleModuleCollision>(Module))
+					{
+						Collision->TickSegmentCollision(Particle, WorldStart, WorldEnd, GetModuleDataOffset(Module), EmitterContext, EventGenerator);
 					}
 				}
 			}
@@ -2527,6 +2544,10 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	for (auto& Event : CollisionEvents)
 	{
 		OnParticleCollision.Broadcast(Event);
+		if (ACharacter* Character = Cast<ACharacter>(GetOwner()))
+		{
+			Character->OnParticleCollide(Event);
+		}
 	}
 	CollisionEvents.Reset();
 	MarkRenderStateDirty();
@@ -2535,6 +2556,8 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 		if (bFadingOut)
 			ResetParticles();
 		if (IsActive()) Deactivate();
+		SetVisibility(false);
+		PushRenderStateToProxy();
 		if (bAutoDestroy && bIsGame && GetOwner())
 			GetOwner()->Destroy();
 	}

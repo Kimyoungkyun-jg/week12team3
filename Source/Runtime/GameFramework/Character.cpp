@@ -95,6 +95,16 @@ float ACharacter::PlayAnimMontage(const FString& MontagePath, float InPlayRate, 
 	return AnimGraph ? AnimGraph->PlayMontage(MontagePath, InPlayRate, StartSection) : 0.0f;
 }
 
+void ACharacter::SetDeathParticlePath(const FString& InPath)
+{
+	DeathParticlePath = InPath;
+	if (DeathParticleComponent)
+	{
+		DeathParticleComponent->TemplatePath = InPath;
+		DeathParticleComponent->SetTemplate(nullptr);
+	}
+}
+
 void ACharacter::EnsureDeathDissolveSetup()
 {
 	if (!DeathParticleComponent)

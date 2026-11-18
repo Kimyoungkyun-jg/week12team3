@@ -688,6 +688,8 @@ class UParticleModuleCollision : public UParticleModule
 public:
 	void TickCollision(FBaseParticle& Particle, float DeltaTime, uint32 Offset, 
 		const FParticleTickContext& Context, const UParticleModuleEventGenerator* EventGenerator) const;
+	void TickSegmentCollision(FBaseParticle& Particle, const FVector& WorldStart, const FVector& WorldEnd,
+		uint32 Offset, const FParticleTickContext& Context, const UParticleModuleEventGenerator* EventGenerator) const;
 	
 	bool RunsOnUpdate() const override { return true; }
 	uint32 RequiredBytes() const override { return sizeof(FParticleCollisionPayload); }

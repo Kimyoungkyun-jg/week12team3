@@ -206,6 +206,7 @@ namespace
 
 ASwordCharacter::ASwordCharacter()
 {
+	SetDeathParticlePath("Assets/Particles/CharacterDeath.particle");
 	USkeletalMeshComponent* MeshComponent = GetSkeletalMeshComponent();
 	if (USkeletalMesh* Mesh = UAssetManager::LoadFbxSkeletalMesh(
 		"Assets/Models/SwordModel/SK_SK_Mannequin_root.fbxbin"))
@@ -231,24 +232,9 @@ ASwordCharacter::ASwordCharacter()
 		SwordRibbonComponent->SetTemplate(RibbonTemplate);
 	}
 	SwordRibbonComponent->bPreviewInEditor = false;
+	SwordRibbonComponent->SetAutoActivate(false);
 	SwordRibbonComponent->SetVisibility(false);
 	SwordRibbonComponent->Deactivate();
-	for (const auto& Effect : { std::pair{ "SwordWaveComponent", "Assets/Particles/BlueSwordWave.particle" },
-		std::pair{ "BeamParticleComponent", "Assets/Particles/DragonBallBeam.particle" } })
-	{
-		UParticleSystemComponent* Component = CreateDefaultSubobject<UParticleSystemComponent>(Effect.first);
-		Component->SetupAttachment(MeshComponent);
-		if (UParticleSystem* Template = UParticleSystem::LoadFromFile(Effect.second, Component))
-		{
-			Component->TemplatePath = Effect.second;
-			Component->SetTemplate(Template);
-		}
-		Component->bPreviewInEditor = false;
-		Component->SetVisibility(false);
-		Component->Deactivate();
-		if (FString(Effect.first) == "SwordWaveComponent") SwordWaveComponent = Component;
-		else if (FString(Effect.first) == "BeamParticleComponent") BeamParticleComponent = Component;
-	}
 
 	USpringArmComponent* SpringArm = GetSpringArmComponent();
 	SpringArm->TargetArmLength = 3.0f;
@@ -269,19 +255,6 @@ void ASwordCharacter::BeginPlay()
 	ElapsedTime = 0.0f;
 	ZombieHitCooldowns.Empty();
 	GetSpringArmComponent()->ResetCameraLag();
-	for (UActorComponent* Comp : GetComponents())
-	{
-		UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp);
-		if (!ParticleComp) continue;
-		if (!SwordWaveComponent && ParticleComp->TemplatePath == "Assets/Particles/BlueSwordWave.particle")
-			SwordWaveComponent = ParticleComp;
-		else if (!BeamParticleComponent && ParticleComp->TemplatePath == "Assets/Particles/DragonBallBeam.particle")
-			BeamParticleComponent = ParticleComp;
-	}
-	if (SwordWaveComponent)
-		SwordWaveComponent->OnParticleCollision.AddDynamic(this, &ASwordCharacter::OnAttackParticleCollision);
-	if (BeamParticleComponent)
-		BeamParticleComponent->OnParticleCollision.AddDynamic(this, &ASwordCharacter::OnAttackParticleCollision);
 	ImportSwordAnimationsIfNeeded();
 	EnsureSwordAnimationSettings();
 	USkeletalMeshComponent* MeshComponent = GetSkeletalMeshComponent();
@@ -408,7 +381,16 @@ void ASwordCharacter::ReactToHit()
 	if (IsDead())
 	{
 		bBeamMontageActive = false;
-		if (SwordRibbonComponent) SwordRibbonComponent->Deactivate();
+		// 사망 시 새 방출을 멈추고 남은 파티클을 서서히 페이드아웃시킨다
+		for (UActorComponent* Comp : GetComponents())
+		{
+			UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp);
+			if (ParticleComp && ParticleComp->GetName() != "DeathParticleComponent" && ParticleComp->IsActive())
+			{
+				ParticleComp->SetForceLooping(false);
+				ParticleComp->StopEmission(0.35f);
+			}
+		}
 		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
 			Movement->StopMovementImmediately();
 		if (AnimGraph)
@@ -423,7 +405,7 @@ void ASwordCharacter::ReactToHit()
 	}
 }
 
-void ASwordCharacter::OnAttackParticleCollision(const FParticleEventCollideData& Event)
+void ASwordCharacter::OnParticleCollide(const FParticleEventCollideData& Event)
 {
 	if (IsDead() || !Event.Component) return;
 	AZombieActor* Zombie = Cast<AZombieActor>(Event.Component->GetOwner());

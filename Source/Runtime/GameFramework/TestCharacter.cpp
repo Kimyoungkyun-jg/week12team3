@@ -59,6 +59,7 @@ namespace
 ATestCharacter::ATestCharacter()
 {
 	PrimaryActorTick.TickGroup = ETickingGroup::PostPhysics;
+	SetDeathParticlePath("Assets/Particles/CharacterDeath.particle");
 	USkeletalMeshComponent* SkeletalMeshComponent = GetSkeletalMeshComponent();
 	USkeletalMesh* Mesh = UAssetManager::LoadFbxSkeletalMesh(
 		"Assets/Models/UnrealModel/SK_SKM_Quinn_Simple_root.fbxbin");
