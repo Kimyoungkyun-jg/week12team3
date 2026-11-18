@@ -35,7 +35,10 @@ enum class EMaterialExpressionType : uint8
 	Multiply,
 	Lerp,
 	OneMinus,
-	MaterialOutput
+	MaterialOutput,
+	Subtract,
+	Step,
+	Noise
 };
 
 enum class EMaterialValueType : uint8
@@ -127,6 +130,19 @@ public:
 		return false;
 	}
 
+	bool HasOpacityMask() const
+	{
+		for (const FMaterialExpressionConnection& Connection : ExpressionConnections)
+		{
+			if (Connection.InputNodeId == OutputNodeId && Connection.InputPin == 5)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	FShaderProgram* Shader = nullptr;
 	TArray<UTexture2D*> Textures;
 	TArray<FMaterialExpressionNode> ExpressionNodes;
@@ -177,6 +193,7 @@ public:
 	void ApplyImportedProperties(const FImportedMaterialProperties& Properties);
 
 	static UMaterialInstanceDynamic* CreateDynamicInstance(UMaterialInterface* Parent);
+	static UMaterial* GetOrCreateDissolveParent(UMaterial* SourceMat);
 
 	static json SaveMaterial(const UMaterialInterface* Material);
 	static UMaterialInterface* LoadMaterial(const json& In);

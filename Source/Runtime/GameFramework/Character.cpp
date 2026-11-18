@@ -2,10 +2,16 @@
 #include "GameFramework/Character.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/CharacterMovementComponent.h"
+#include "Components/ParticleSystemComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Animation/AnimGraphInstance.h"
+#include "Particles/ParticleSystem.h"
+#include "Render/Material.h"
+#include "Render/MaterialInstance.h"
+#include "Render/SkeletalMesh.h"
+#include <algorithm>
 
 ACharacter::ACharacter()
 {
@@ -25,6 +31,13 @@ ACharacter::ACharacter()
 	CameraComponent->SetRelativeLocation(FVector::ZeroVector);
 	CameraComponent->SetExternalInputManaged(true);
 	CharacterMovement = CreateDefaultSubobject<UCharacterMovementComponent>("CharacterMovement");
+	DeathParticleComponent = CreateDefaultSubobject<UParticleSystemComponent>("DeathParticleComponent");
+	DeathParticleComponent->SetupAttachment(CapsuleComponent);
+	DeathParticleComponent->TemplatePath = DeathParticlePath;
+	DeathParticleComponent->bPreviewInEditor = false;
+	DeathParticleComponent->SetAutoActivate(false);
+	DeathParticleComponent->SetVisibility(false);
+	DeathParticleComponent->Deactivate();
 }
 
 void ACharacter::BeginPlay()
@@ -34,6 +47,8 @@ void ACharacter::BeginPlay()
 	SpringArmComponent->SetRelativeRotation(FRotator(SpawnRotation.Pitch, 0.0f, 0.0f));
 	CameraComponent->SetRelativeRotation(FRotator(0.0f, 0.0f, 0.0f));
 	SpringArmComponent->ResetCameraLag();
+	if (DeathParticleComponent && DeathParticleComponent->GetAttachParent() == SkeletalMeshComponent && CapsuleComponent)
+		DeathParticleComponent->SetupAttachment(CapsuleComponent);
 	Super::BeginPlay();
 }
 
@@ -78,4 +93,107 @@ float ACharacter::PlayAnimMontage(const FString& MontagePath, float InPlayRate, 
 {
 	UAnimGraphInstance* AnimGraph = Cast<UAnimGraphInstance>(SkeletalMeshComponent ? SkeletalMeshComponent->GetAnimInstance() : nullptr);
 	return AnimGraph ? AnimGraph->PlayMontage(MontagePath, InPlayRate, StartSection) : 0.0f;
+}
+
+void ACharacter::EnsureDeathDissolveSetup()
+{
+	if (!DeathParticleComponent)
+	{
+		for (UActorComponent* Comp : GetComponents())
+		{
+			UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp);
+			if (ParticleComp && ParticleComp->TemplatePath == DeathParticlePath)
+			{
+				DeathParticleComponent = ParticleComp;
+				break;
+			}
+		}
+	}
+	if (DeathParticleComponent && !DeathParticleComponent->GetTemplate() && !DeathParticlePath.empty())
+	{
+		if (UParticleSystem* DeathTemplate = UParticleSystem::LoadFromFile(DeathParticlePath, DeathParticleComponent))
+		{
+			DeathParticleComponent->TemplatePath = DeathParticlePath;
+			DeathParticleComponent->SetTemplate(DeathTemplate);
+		}
+		DeathParticleComponent->bPreviewInEditor = false;
+		DeathParticleComponent->SetVisibility(false);
+		DeathParticleComponent->Deactivate();
+	}
+
+	USkeletalMesh* Mesh = SkeletalMeshComponent ? SkeletalMeshComponent->GetSkeletalMesh() : nullptr;
+	if (!Mesh || !DissolveMaterials.IsEmpty())
+		return;
+
+	const int32 SlotCount = static_cast<int32>(Mesh->Materials.Num());
+	for (int32 SlotIndex = 0; SlotIndex < SlotCount; ++SlotIndex)
+	{
+		UMaterialInterface* SlotMat = SkeletalMeshComponent->GetMaterial(SlotIndex);
+		UMaterial* BaseMat = SlotMat ? SlotMat->GetBaseMaterial() : nullptr;
+		UMaterial* DissolveParent = UMaterial::GetOrCreateDissolveParent(BaseMat);
+		UMaterialInstanceDynamic* DynMat = DissolveParent ? UMaterial::CreateDynamicInstance(DissolveParent) : nullptr;
+		if (!DynMat)
+			continue;
+
+		DynMat->SetScalarParameterValue(FName("DissolveAmount"), -0.10f);
+		DynMat->SetVectorParameterValue(FName("DissolveEdgeColor"), FVector4(0.0f, 0.0f, 0.0f, 1.0f));
+		SkeletalMeshComponent->SetMaterial(SlotIndex, DynMat);
+		DissolveMaterials.Add(DynMat);
+	}
+}
+
+void ACharacter::SetDeathDissolveParams(float InDuration, const FVector4& InEdgeColor)
+{
+	if (std::isfinite(InDuration) && InDuration > 0.05f)
+		DissolveDuration = InDuration;
+	DissolveEdgeColor = InEdgeColor;
+}
+
+void ACharacter::StartDeathDissolve()
+{
+	if (bDissolveStarted)
+		return;
+	bDissolveStarted = true;
+	bDissolveCompleted = false;
+	DissolveElapsed = 0.0f;
+	EnsureDeathDissolveSetup();
+
+	if (SkeletalMeshComponent)
+		SkeletalMeshComponent->bCastShadow = false;
+
+	for (UMaterialInstanceDynamic* DynMat : DissolveMaterials)
+	{
+		if (!DynMat)
+			continue;
+		DynMat->SetScalarParameterValue(FName("DissolveAmount"), -0.05f);
+		DynMat->SetVectorParameterValue(FName("DissolveEdgeColor"), DissolveEdgeColor);
+	}
+}
+
+void ACharacter::UpdateDeathDissolve(float DeltaTime)
+{
+	if (!bDissolveStarted || bDissolveCompleted)
+		return;
+
+	DissolveElapsed += DeltaTime;
+	const float Alpha = std::clamp(DissolveElapsed / std::max(0.05f, DissolveDuration), 0.0f, 1.0f);
+	const float DissolveAmount = -0.05f + Alpha * 1.13f;
+	for (UMaterialInstanceDynamic* DynMat : DissolveMaterials)
+	{
+		if (DynMat)
+			DynMat->SetScalarParameterValue(FName("DissolveAmount"), DissolveAmount);
+	}
+	if (Alpha >= 1.0f)
+	{
+		bDissolveCompleted = true;
+		if (SkeletalMeshComponent)
+			SkeletalMeshComponent->SetDissolveHidden(true);
+	}
+}
+
+bool ACharacter::IsDeathDissolveFinished() const
+{
+	if (!bDissolveStarted || !bDissolveCompleted)
+		return false;
+	return !DeathParticleComponent || !DeathParticleComponent->IsActive();
 }

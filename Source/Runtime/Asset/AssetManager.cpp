@@ -677,11 +677,16 @@ UTexture2D* UAssetManager::LoadTexture(const FString& InPath, bool GenerateMips)
 		if (!Asset) HTR_LOG(Warning, "[FBX] {}", Error);
 		return Asset;
 	}
-	if (URenderAsset** Found{ AssetMap.Find(InPath) }) {
-		return Cast<UTexture2D>(*Found);
+	if (UTexture2D* Cached = GetAssetByPath<UTexture2D>(InPath))
+	{
+		return Cached;
 	}
 
-	const FImageData Data = ImageLoader::LoadAuto(InPath);
+	FImageData Data = ImageLoader::LoadAuto(InPath);
+	if (!Data.IsValid() && InPath.rfind("Assets/", 0) != 0)
+	{
+		Data = ImageLoader::LoadAuto("Assets/" + InPath);
+	}
 	if (!Data.IsValid())
 	{
 		return nullptr;
@@ -950,6 +955,35 @@ bool UAssetManager::SaveAnimSequence(const UAnimSequence& Sequence)
 	Data.Animation.bUseNormalizedRootMotionScale = Sequence.bUseNormalizedRootMotionScale;
 	Data.Animation.RootMotionRootLock = static_cast<uint8>(Sequence.RootMotionRootLock);
 	Data.Animation.RateScale = Sequence.RateScale;
+	if (const UAnimDataModel* Model = Sequence.GetDataModel())
+	{
+		Data.Animation.FrameRate = Model->FrameRate;
+		Data.Animation.NumberOfKeys = Model->NumberOfKeys;
+		if (Sequence.Skeleton)
+		{
+			const FReferenceSkeleton& Ref = Sequence.Skeleton->RefSkeleton;
+			const int32 BoneCount = Ref.GetNum();
+			for (FFbxBoneTrack& DstTrack : Data.Animation.Tracks)
+			{
+				int32 BoneIndex = Ref.FindBoneIndex(DstTrack.BoneName);
+				if (BoneIndex < 0)
+				{
+					const FName TrackName(DstTrack.BoneName);
+					for (int32 Index = 0; Index < BoneCount && BoneIndex < 0; ++Index)
+					{
+						if (FName(Ref.RefBoneInfo[Index].Name) == TrackName)
+						{
+							BoneIndex = Index;
+						}
+					}
+				}
+				if (BoneIndex >= 0 && Model->BoneAnimationTracks.IsValidIndex(BoneIndex))
+				{
+					DstTrack.InternalTrack = Model->BoneAnimationTracks[BoneIndex].InternalTrack;
+				}
+			}
+		}
+	}
 	Sequence.ExportNotifies(Data.Animation.Notifies);
 	// 쓰는 도중 실패해도 원본이 남도록 임시 파일에 쓰고 바꾼다.
 	const fs::path Target = FbxPath::FromString(Path);

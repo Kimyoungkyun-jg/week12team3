@@ -145,6 +145,136 @@ void USkeletalMesh::RebuildSkinningBounds()
             }
         }
     }
+
+	// 본별 주 가중치 정점 범위로 히트박스 캡슐을 미리 생성한다
+	BoneHitCapsules.Reset();
+	const int32 BoneCount = MeshData.Bones.Num();
+	const TArray<FSkeletalVertex>& BaseVertices = GetMeshData(0).SkinnedVertices;
+	if (BoneCount <= 0 || BaseVertices.IsEmpty())
+		return;
+
+	const FVector MeshExtent = MeshData.AABB.Max - MeshData.AABB.Min;
+	const float MeshScaleRef = std::max({ MeshExtent.X, MeshExtent.Y, MeshExtent.Z, 0.001f });
+	const float MinExtentThreshold = MeshScaleRef * 0.025f;
+	const float MinRadius = MeshScaleRef * 0.015f;
+	const float MaxRadius = MeshScaleRef * 0.25f;
+
+	TArray<FBox> RawBoneBounds;
+	RawBoneBounds.SetNum(BoneCount);
+	for (FBox& Box : RawBoneBounds)
+		Box = EmptyBounds;
+	TArray<int32> RawVertCounts;
+	RawVertCounts.SetNum(BoneCount);
+	for (int32& Count : RawVertCounts)
+		Count = 0;
+
+	TArray<int32> PrimaryBones;
+	PrimaryBones.SetNum(BaseVertices.Num());
+	for (int32 VertIndex = 0; VertIndex < BaseVertices.Num(); ++VertIndex)
+	{
+		const FSkeletalVertex& Vertex = BaseVertices[VertIndex];
+		int32 BestBone = -1;
+		float BestWeight = 0.0f;
+		for (int32 Influence = 0; Influence < 4; ++Influence)
+		{
+			const int32 BoneIndex = Vertex.BoneIndices[Influence];
+			const float Weight = Vertex.BoneWeights[Influence];
+			if (BoneIndex >= 0 && BoneIndex < BoneCount && Weight > BestWeight)
+			{
+				BestWeight = Weight;
+				BestBone = BoneIndex;
+			}
+		}
+		PrimaryBones[VertIndex] = BestBone;
+		if (BestBone >= 0)
+		{
+			const FVector LocalPos = MeshData.Bones[BestBone].InverseBindPose.TransformPosition(Vertex.Position);
+			RawBoneBounds[BestBone].Expand(FBox{ LocalPos, LocalPos });
+			++RawVertCounts[BestBone];
+		}
+	}
+
+	// 손가락이나 발가락처럼 아주 작은 하위 본은 부모 본으로 병합한다
+	TArray<int32> TargetBones;
+	TargetBones.SetNum(BoneCount);
+	for (int32 BoneIndex = 0; BoneIndex < BoneCount; ++BoneIndex)
+		TargetBones[BoneIndex] = BoneIndex;
+
+	for (int32 BoneIndex = 0; BoneIndex < BoneCount; ++BoneIndex)
+	{
+		if (RawVertCounts[BoneIndex] == 0)
+			continue;
+		const FVector Extent = (RawBoneBounds[BoneIndex].Max - RawBoneBounds[BoneIndex].Min) * 0.5f;
+		const float MaxExtent = std::max({ Extent.X, Extent.Y, Extent.Z });
+		const int32 ParentIndex = MeshData.Bones[BoneIndex].ParentIndex;
+		if (ParentIndex >= 0 && (RawVertCounts[BoneIndex] < 16 || MaxExtent < MinExtentThreshold))
+		{
+			int32 Ancestor = ParentIndex;
+			int32 Steps = 0;
+			while (Ancestor >= 0 && Ancestor < BoneCount && Steps < BoneCount)
+			{
+				if (TargetBones[Ancestor] == Ancestor && RawVertCounts[Ancestor] >= 16)
+				{
+					const FVector ParentExtent = (RawBoneBounds[Ancestor].Max - RawBoneBounds[Ancestor].Min) * 0.5f;
+					if (std::max({ ParentExtent.X, ParentExtent.Y, ParentExtent.Z }) >= MinExtentThreshold)
+						break;
+				}
+				const int32 NextParent = MeshData.Bones[Ancestor].ParentIndex;
+				if (NextParent < 0)
+					break;
+				Ancestor = NextParent;
+				++Steps;
+			}
+			if (Ancestor >= 0 && Ancestor < BoneCount && RawVertCounts[Ancestor] > 0)
+				TargetBones[BoneIndex] = TargetBones[Ancestor];
+		}
+	}
+
+	TArray<FBox> FinalBoneBounds;
+	FinalBoneBounds.SetNum(BoneCount);
+	for (FBox& Box : FinalBoneBounds)
+		Box = EmptyBounds;
+	TArray<int32> FinalVertCounts;
+	FinalVertCounts.SetNum(BoneCount);
+	for (int32& Count : FinalVertCounts)
+		Count = 0;
+
+	for (int32 VertIndex = 0; VertIndex < BaseVertices.Num(); ++VertIndex)
+	{
+		const int32 RawBone = PrimaryBones[VertIndex];
+		if (RawBone < 0 || RawBone >= BoneCount)
+			continue;
+		const int32 TargetBone = TargetBones[RawBone];
+		const FVector LocalPos = MeshData.Bones[TargetBone].InverseBindPose.TransformPosition(BaseVertices[VertIndex].Position);
+		FinalBoneBounds[TargetBone].Expand(FBox{ LocalPos, LocalPos });
+		++FinalVertCounts[TargetBone];
+	}
+
+	for (int32 BoneIndex = 0; BoneIndex < BoneCount; ++BoneIndex)
+	{
+		if (FinalVertCounts[BoneIndex] <= 0)
+			continue;
+		const FBox& Bounds = FinalBoneBounds[BoneIndex];
+		if (Bounds.Min.X > Bounds.Max.X)
+			continue;
+		const FVector Center = (Bounds.Min + Bounds.Max) * 0.5f;
+		const FVector Extent = (Bounds.Max - Bounds.Min) * 0.5f;
+		int32 LongAxis = 0;
+		if (Extent.Y > Extent[LongAxis]) LongAxis = 1;
+		if (Extent.Z > Extent[LongAxis]) LongAxis = 2;
+		const float PerpSum = (Extent.X + Extent.Y + Extent.Z) - Extent[LongAxis];
+		const float Radius = std::clamp(0.5f * PerpSum, MinRadius, MaxRadius);
+		const float HalfSeg = std::max(0.0f, Extent[LongAxis] - Radius);
+
+		FBoneHitCapsule Capsule;
+		Capsule.BoneIndex = BoneIndex;
+		Capsule.LocalA = Center;
+		Capsule.LocalB = Center;
+		Capsule.LocalA[LongAxis] -= HalfSeg;
+		Capsule.LocalB[LongAxis] += HalfSeg;
+		Capsule.Radius = Radius;
+		BoneHitCapsules.Add(Capsule);
+	}
 }
 
 const FBox* USkeletalMesh::GetBoneInfluenceBounds(int32 BoneIndex) const

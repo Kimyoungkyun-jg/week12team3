@@ -482,6 +482,10 @@ FUberOutput Uber_PS(VS_OUT Input)
 #ifdef MATERIAL_GRAPH
 	FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(Input.UV);
 
+#ifdef MATERIAL_GRAPH_HAS_OPACITY_MASK
+	clip(GraphOutput.OpacityMask - 0.001f);
+#endif
+
 #ifdef MATERIAL_GRAPH_HAS_SPECULAR_COLOR
 	ActiveSpecular.rgb = GraphOutput.SpecularColor;
 #endif

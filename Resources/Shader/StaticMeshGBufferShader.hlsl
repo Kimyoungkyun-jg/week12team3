@@ -119,6 +119,9 @@ GBUFFER_OUTPUT mainPS(PS_INPUT Input)
 
 #ifdef MATERIAL_GRAPH
     FMaterialGraphOutput GraphOutput = EvaluateMaterialGraph(UV);
+#ifdef MATERIAL_GRAPH_HAS_OPACITY_MASK
+    clip(GraphOutput.OpacityMask - 0.001f);
+#endif
 #endif
 
     float4 TextureColor = ColorTexture.Sample(ColorSampler, UV);

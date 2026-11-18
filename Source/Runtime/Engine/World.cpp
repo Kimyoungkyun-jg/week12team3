@@ -451,6 +451,24 @@ bool UWorld::SweepSingle(const FRay& WorldRay, float MaxDistance, float Radius, 
 				return false;
 			if (!Proxy->GetMesh())
 			{
+				if (USkeletalMeshComponent* SkelComp = Cast<USkeletalMeshComponent>(Component))
+				{
+					float T = InOutNearestT;
+					FVector Normal = -WorldRay.Direction;
+					if (!SkelComp->SweepHitboxes(WorldRay, InOutNearestT, Radius, T, Normal) || T > InOutNearestT)
+						return false;
+					OutHit.bBlockingHit = true;
+					OutHit.bStartPentrating = (T == 0.0f);
+					OutHit.HitComponent = Component;
+					OutHit.Distance = T;
+					OutHit.Time = T / MaxDistance;
+					OutHit.Location = WorldRay.PointAt(T);
+					OutHit.ImpactPoint = OutHit.Location - Normal * Radius;
+					OutHit.ImpactNormal = Normal;
+					OutHit.Normal = Normal;
+					InOutNearestT = T;
+					return true;
+				}
 				const FMatrix& WorldToLocal = Proxy->GetWorldToLocal();
 				const FRay LocalRay{
 					.Origin = WorldToLocal.TransformPosition(WorldRay.Origin),

@@ -716,6 +716,10 @@ bool FDepthPassMeshProcessor::AddMeshBatch(const FMeshBatch& Batch, const FScene
 	if (!Batch.IsOpaque() || Batch.bIsParticle)
 		return true;
 
+	// 알파 컷아웃 머티리얼은 깊이 프리패스를 건너뛰어 잘린 픽셀 뒤가 가려지지 않게 한다
+	if (Batch.Material && Batch.Material->GetBaseMaterial() && Batch.Material->GetBaseMaterial()->HasOpacityMask())
+		return true;
+
 	FVertexBuffer* VB = ResolveBatchVertexBuffer(Batch.VertexFactory, Collector);
 	if (!VB)
 		return true;

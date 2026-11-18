@@ -18,6 +18,7 @@ public:
 	int32 GetTargetStateId() const;
 	bool IsStateActiveOrPending(const FString& Name) const;
 	bool IsStateSequenceFinished(const FString& Name) const;
+	float GetStateSequenceRemainingTime(const FString& Name) const;
 	float GetSpeed() const { return Speed; }
 	float GetDirection() const { return Direction; }
 	float GetAimPitch() const { return AimPitch; }

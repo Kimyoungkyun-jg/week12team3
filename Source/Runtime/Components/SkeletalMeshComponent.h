@@ -8,6 +8,9 @@
 #include "Serialization/StructuredArchiveSlots.h"
 #include "SkeletalMeshComponent.generated.h"
 
+class UMaterialInstanceDynamic;
+class UMaterialInterface;
+
 UCLASS()
 class USkeletalMeshComponent : public USkinnedMeshComponent
 {
@@ -71,6 +74,18 @@ public:
 
 	virtual bool LineTraceComponent(const FRay& WorldRay, FHitResult& OutHit) override;
 	virtual bool LineTraceComponentLocal(const FRay& LocalRay, float& OutT) override;
+	bool SweepHitboxes(const FRay& WorldRay, float MaxDistance, float SphereRadius, float& OutDistance, FVector& OutNormal);
+	void StartPreviewDissolve(float InDuration, const FVector4& InEdgeColor);
+	void UpdatePreviewDissolve(float DeltaTime);
+	void ResetPreviewDissolve();
+	void SetDissolveHidden(bool bHidden);
+	bool IsShown(bool bGameView) const override;
+	// 스키닝된 메시 로컬 정점 좌표를 반환
+	const TArray<FVector>& GetSkinnedPickPositions()
+	{
+		UpdatePickPositions();
+		return PickPositions;
+	}
 private:
 	struct FSkinnedLOD
 	{
@@ -134,4 +149,10 @@ private:
 	FBox SkinnedBounds;
 	bool bSkinningMatricesDirty = true;
 	bool bGlobalBoneTransformsOverridden = false;
+	TArray<UMaterialInterface*> PreviewDissolveSavedMaterials;
+	TArray<UMaterialInstanceDynamic*> PreviewDissolveMaterials;
+	float PreviewDissolveDuration = 1.45f;
+	float PreviewDissolveElapsed = 0.0f;
+	bool bPreviewDissolveActive = false;
+	bool bDissolveHidden = false;
 };

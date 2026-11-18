@@ -103,14 +103,14 @@ void UAnimNotifyState_Log::NotifyEnd(const FAnimNotifyContext& Context)
 
 namespace
 {
-	UParticleSystemComponent* FindTargetParticleComponent(USkeletalMeshComponent* Mesh, const FString& ParticlePath, bool bAllowFallback)
+	UParticleSystemComponent* FindTargetParticleComponent(USkeletalMeshComponent* Mesh, const FString& ParticlePath, bool bAllowFallback, bool bCreateIfMissing)
 	{
-		ACharacter* Character = Cast<ACharacter>(Mesh->GetOwner());
-		if (!Character)
+		AActor* Owner = Mesh ? Mesh->GetOwner() : nullptr;
+		if (!Owner)
 			return nullptr;
 
 		UParticleSystemComponent* Fallback = nullptr;
-		for (UActorComponent* Comp : Character->GetComponents())
+		for (UActorComponent* Comp : Owner->GetComponents())
 		{
 			UParticleSystemComponent* ParticleComp = Cast<UParticleSystemComponent>(Comp);
 			if (!ParticleComp)
@@ -121,7 +121,22 @@ namespace
 			if (!Fallback || (Fallback->IsActive() && !ParticleComp->IsActive()))
 				Fallback = ParticleComp;
 		}
-		return bAllowFallback ? Fallback : nullptr;
+		if (bAllowFallback && Fallback)
+			return Fallback;
+		if (bCreateIfMissing)
+		{
+			if (UParticleSystemComponent* Created = Cast<UParticleSystemComponent>(
+				Owner->AddComponent(UParticleSystemComponent::StaticClass(), "NotifyParticlePreview")))
+			{
+				Created->SetupAttachment(Mesh);
+				Created->bAutoDestroy = false;
+				Created->bPreviewInEditor = false;
+				Created->SetVisibility(false);
+				Created->Deactivate();
+				return Created;
+			}
+		}
+		return nullptr;
 	}
 
 	FRotator ExtractRotationFromMatrix(const FMatrix& Matrix)
@@ -149,8 +164,14 @@ namespace
 		const FString& BaseParamName, const FString& TipParamName,
 		const FVector& BoneOffset, bool bFollowBoneRotation)
 	{
-		if (!Mesh || !ParticleComp || BoneName.empty() || !Mesh->GetSkeletalMesh())
+		if (!Mesh || !ParticleComp || !Mesh->GetSkeletalMesh())
 			return;
+
+		if (BoneName.empty())
+		{
+			ParticleComp->SetWorldLocationAndRotation(Mesh->GetWorldLocation(), Mesh->GetWorldRotation(), false);
+			return;
+		}
 
 		if (!Mesh->DoesSocketExist(BoneName))
 			return;
@@ -173,18 +194,29 @@ namespace
 			return;
 		}
 		if (bFollowBoneRotation)
+		{
 			ParticleComp->SetWorldLocationAndRotation(BonePos, ExtractRotationFromMatrix(BoneWorld), false);
+		}
 		else if (Mesh->GetOwner())
-			ParticleComp->SetWorldLocationAndRotation(BonePos, Mesh->GetOwner()->GetActorRotation(), false);
+		{
+			// 전방 방향은 캐릭터 회전을 유지하고 Roll만 소켓에서 가져온다
+			FRotator TargetRot = Mesh->GetOwner()->GetActorRotation();
+			TargetRot.Roll = ExtractRotationFromMatrix(BoneWorld).Roll;
+			ParticleComp->SetWorldLocationAndRotation(BonePos, TargetRot, false);
+		}
 		else
-			ParticleComp->SetWorldLocation(BonePos, false);
+		{
+			FRotator TargetRot = ExtractRotationFromMatrix(Mesh->GetWorldMatrix());
+			TargetRot.Roll = ExtractRotationFromMatrix(BoneWorld).Roll;
+			ParticleComp->SetWorldLocationAndRotation(BonePos, TargetRot, false);
+		}
 	}
 }
 
 void UAnimNotifyState_ParticleEffect::NotifyBegin(const FAnimNotifyContext& Context)
 {
 	if (ParticlePath.empty()) return;
-	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, true);
+	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, true, true);
 	if (!ParticleComp)
 		return;
 
@@ -211,7 +243,7 @@ void UAnimNotifyState_ParticleEffect::NotifyBegin(const FAnimNotifyContext& Cont
 
 void UAnimNotifyState_ParticleEffect::NotifyTick(const FAnimNotifyContext& Context)
 {
-	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, false);
+	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, false, false);
 	if (!ParticleComp)
 		return;
 
@@ -227,7 +259,7 @@ void UAnimNotifyState_ParticleEffect::NotifyTick(const FAnimNotifyContext& Conte
 
 void UAnimNotifyState_ParticleEffect::NotifyEnd(const FAnimNotifyContext& Context)
 {
-	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, false);
+	UParticleSystemComponent* ParticleComp = FindTargetParticleComponent(Context.MeshComponent, ParticlePath, false, false);
 	if (!ParticleComp)
 		return;
 
@@ -238,4 +270,21 @@ void UAnimNotifyState_ParticleEffect::NotifyEnd(const FAnimNotifyContext& Contex
 	}
 	ParticleComp->SetForceLooping(false);
 	ParticleComp->StopEmission(FadeOutDuration);
+}
+
+void UAnimNotify_StartDeathDissolve::Notify(const FAnimNotifyContext& Context)
+{
+	USkeletalMeshComponent* Mesh = Context.MeshComponent;
+	if (!Mesh)
+		return;
+
+	if (ACharacter* Character = Cast<ACharacter>(Mesh->GetOwner()))
+	{
+		Character->SetDeathDissolveParams(DissolveDuration, DissolveEdgeColor);
+		Character->StartDeathDissolve();
+	}
+	else
+	{
+		Mesh->StartPreviewDissolve(DissolveDuration, DissolveEdgeColor);
+	}
 }

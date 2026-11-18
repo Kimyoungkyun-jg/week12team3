@@ -55,6 +55,7 @@ namespace
 				ParticleComp->Deactivate();
 			}
 		}
+		Mesh->ResetPreviewDissolve();
 	}
 }
 
@@ -143,6 +144,7 @@ void FAnimSequenceViewerPanel::OpenSequence(const FString& InPath)
 		if (Parent >= 0 && Parent < Skeleton.GetNum()) BoneChildren[Parent].Add(Index);
 	}
 	bPlaying = true;
+	bTickEffectsAfterEnd = false;
 	PreviewRate = 1.0f;
 	PreviewWorld = UWorld::CreateWorld(EWorldType::Editor, false);
 	if (!PreviewWorld) { Release(); return; }
@@ -244,11 +246,23 @@ void FAnimSequenceViewerPanel::Tick(float DeltaTime)
 		UAssetManager::GetSkeletalMeshesForSkeleton(Sequence->Skeleton, Meshes);
 		SetPreviewMesh(Meshes.IsEmpty() ? nullptr : Meshes[0]);
 	}
-	PreviewWorld->Tick(bPlaying ? DeltaTime : 0.0f);
+	const bool bTickEffects = bPlaying || bTickEffectsAfterEnd;
+	PreviewWorld->Tick(bTickEffects ? DeltaTime : 0.0f);
+	UAnimSingleNodeInstance* Player = MeshComponent ? Cast<UAnimSingleNodeInstance>(MeshComponent->GetAnimInstance()) : nullptr;
+	const float PrevPreviewTime = Player ? Player->GetPosition() : 0.0f;
 	if (MeshComponent) MeshComponent->TickComponent(bPlaying ? DeltaTime : 0.0f);
-	TickPreviewParticles(MeshComponent, bPlaying ? DeltaTime * PreviewRate : 0.0f);
-	if (auto* Player = MeshComponent ? Cast<UAnimSingleNodeInstance>(MeshComponent->GetAnimInstance()) : nullptr)
-		if (bPlaying && !Player->IsPlaying()) bPlaying = false;
+	const float NextPreviewTime = Player ? Player->GetPosition() : 0.0f;
+	// 루프 래핑 시 잔여 파티클은 유지하고 메시 디졸브만 복원한다
+	if (bPlaying && NextPreviewTime < PrevPreviewTime && MeshComponent)
+		MeshComponent->ResetPreviewDissolve();
+	const float FxDeltaTime = bTickEffects ? (DeltaTime * PreviewRate) : 0.0f;
+	if (MeshComponent) MeshComponent->UpdatePreviewDissolve(FxDeltaTime);
+	TickPreviewParticles(MeshComponent, FxDeltaTime);
+	if (Player && bPlaying && !Player->IsPlaying())
+	{
+		bPlaying = false;
+		bTickEffectsAfterEnd = true;
+	}
 }
 
 void FAnimSequenceViewerPanel::DrawBoneTree(int32 Parent)
@@ -309,6 +323,46 @@ void FAnimSequenceViewerPanel::DrawAssetDetails()
 	ImGui::Separator();
 	if (ImGui::DragFloat("Rate Scale", &Sequence->RateScale, 0.01f, 0.01f, 8.0f, "%.2f")) MarkDirty();
 	Sequence->RateScale = std::clamp(Sequence->RateScale, 0.01f, 8.0f);
+	if (ImGui::CollapsingHeader("Frame Editing", ImGuiTreeNodeFlags_DefaultOpen))
+	{
+		ImGui::InputInt("Add Frames", &FrameInsertCount);
+		FrameInsertCount = std::clamp(FrameInsertCount, 1, 3000);
+		UAnimSingleNodeInstance* Player = MeshComponent ? Cast<UAnimSingleNodeInstance>(MeshComponent->GetAnimInstance()) : nullptr;
+		const float FPS = Model->FrameRate.AsDecimal();
+		const int32 CurrentFrame = Player ? std::clamp(static_cast<int32>(std::round(Player->GetPosition() * FPS)), 0, Model->NumberOfFrames) : 0;
+		if (ImGui::Button("Prepend Start") && Sequence->InsertDuplicateFrames(0, FrameInsertCount, false))
+		{
+			if (Player && FPS > 0.0f)
+			{
+				const float AddedSeconds = static_cast<float>(FrameInsertCount) / FPS;
+				Player->SetPosition(std::min(Model->PlayLength, Player->GetPosition() + AddedSeconds));
+				if (MeshComponent)
+				{
+					MeshComponent->TickComponent(0.0f);
+				}
+			}
+			MarkDirty();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Insert Current") && Sequence->InsertDuplicateFrames(CurrentFrame, FrameInsertCount, false))
+		{
+			if (MeshComponent)
+			{
+				MeshComponent->TickComponent(0.0f);
+			}
+			MarkDirty();
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Append End") && Sequence->InsertDuplicateFrames(Model->NumberOfKeys - 1, FrameInsertCount, true))
+		{
+			if (MeshComponent)
+			{
+				MeshComponent->TickComponent(0.0f);
+			}
+			MarkDirty();
+		}
+		ImGui::TextDisabled("Duplicates first, current, or last pose.");
+	}
 	if (ImGui::CollapsingHeader("Root Motion", ImGuiTreeNodeFlags_DefaultOpen))
 	{
 		if (ImGui::Checkbox("Enable Root Motion", &Sequence->bEnableRootMotion)) MarkDirty();
@@ -382,7 +436,11 @@ void FAnimSequenceViewerPanel::DrawTimeline()
 		Frame = std::clamp(static_cast<int>(std::round((ImGui::GetMousePos().x - RulerStart.x) /
 			RulerWidth * Model->NumberOfFrames)), 0, Model->NumberOfFrames);
 		const float NewPos = Frame / FramesPerSecond;
-		if (NewPos < PrevPos) ResetPreviewParticles(MeshComponent);
+		if (NewPos < PrevPos)
+		{
+			ResetPreviewParticles(MeshComponent);
+			bTickEffectsAfterEnd = false;
+		}
 		Player->SetPosition(NewPos);
 		MeshComponent->TickComponent(0.0f);
 	}
@@ -392,15 +450,20 @@ void FAnimSequenceViewerPanel::DrawTimeline()
 	{
 		const float PrevPos = Player->GetPosition();
 		const float NewPos = Frame / FramesPerSecond;
-		if (NewPos < PrevPos) ResetPreviewParticles(MeshComponent);
+		if (NewPos < PrevPos)
+		{
+			ResetPreviewParticles(MeshComponent);
+			bTickEffectsAfterEnd = false;
+		}
 		Player->SetPosition(NewPos);
 		if (MeshComponent) MeshComponent->TickComponent(0.0f);
 	}
-	if (ImGui::Button("|<") && Player) { Player->SetPosition(0.0f); ResetPreviewParticles(MeshComponent); MeshComponent->TickComponent(0.0f); }
+	if (ImGui::Button("|<") && Player) { Player->SetPosition(0.0f); ResetPreviewParticles(MeshComponent); bTickEffectsAfterEnd = false; MeshComponent->TickComponent(0.0f); }
 	ImGui::SameLine();
 	if (ImGui::Button(bPlaying ? "Pause" : "Play") && Player)
 	{
 		bPlaying = !bPlaying;
+		bTickEffectsAfterEnd = false;
 		if (bPlaying)
 		{
 			if (Player->GetPosition() >= Model->PlayLength) Player->SetPosition(0.0f);

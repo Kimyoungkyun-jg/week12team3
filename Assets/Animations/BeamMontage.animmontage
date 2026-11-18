@@ -16,7 +16,7 @@
           0.0
         ],
         "FadeOutDuration": 0.25,
-        "ParticlePath": "Assets/Particles/anit2beam.particle",
+        "ParticlePath": "Assets/Particles/DragonBallBeam.particle",
         "SecondBoneName": "hand_r",
         "TipParameterName": "RibbonTip",
         "bFollowBoneRotation": false,

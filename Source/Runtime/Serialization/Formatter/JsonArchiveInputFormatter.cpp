@@ -225,10 +225,15 @@ void FJsonArchiveInputFormatter::Serialize(UObject*& Value)
     if (!Read(AssetPath, "asset path"))
         return;
 
-    if (URenderAsset* Asset = UAssetManager::GetAssetByPath<URenderAsset>(AssetPath))
-        Value = Asset;
-    else
-        HTR_LOG(Warning, "Load: asset '{}' not found, keeping default", AssetPath);
+	URenderAsset* Asset = UAssetManager::GetAssetByPath<URenderAsset>(AssetPath);
+	if (!Asset && AssetPath.size() > 9 && AssetPath.rfind(".material") == AssetPath.size() - 9)
+	{
+		Asset = UAssetManager::LoadMaterialAsset(AssetPath);
+	}
+	if (Asset)
+		Value = Asset;
+	else
+		HTR_LOG(Warning, "Load: asset '{}' not found, keeping default", AssetPath);
 }
 
 void FJsonArchiveInputFormatter::Serialize(void* Data, uint64 DataSize)

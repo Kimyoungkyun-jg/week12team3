@@ -170,6 +170,23 @@ namespace
 			}
 		}
 
+		if (!Skeleton->HasSocket("SwordWaveSpawn"))
+		{
+			const FSkeletalMeshSocket* BaseSocket = Skeleton->FindSocket("SwordBaseSocket");
+			const FSkeletalMeshSocket* TipSocket = Skeleton->FindSocket("SwordTipSocket");
+			if (BaseSocket && TipSocket && BaseSocket->BoneName == TipSocket->BoneName)
+			{
+				// 검기 스폰 소켓을 검기 시작과 끝 소켓의 중앙에 배치한다
+				FSkeletalMeshSocket WaveSpawnSocket;
+				WaveSpawnSocket.SocketName = "SwordWaveSpawn";
+				WaveSpawnSocket.BoneName = BaseSocket->BoneName;
+				WaveSpawnSocket.RelativeLocation = (BaseSocket->RelativeLocation + TipSocket->RelativeLocation) * 0.5f;
+				WaveSpawnSocket.RelativeRotation = FRotator(0.0f, 0.0f, 0.0f);
+				WaveSpawnSocket.RelativeScale = FVector(1.0f, 1.0f, 1.0f);
+				bModified |= Skeleton->AddSocket(WaveSpawnSocket);
+			}
+		}
+
 		if (bModified && !UAssetManager::SaveSkeleton(*Skeleton))
 			HTR_LOG(Warning, "Failed to save sword sockets to SKEL_SK_Mannequin_root.fbxbin");
 	}
@@ -216,7 +233,7 @@ ASwordCharacter::ASwordCharacter()
 	SwordRibbonComponent->SetVisibility(false);
 	SwordRibbonComponent->Deactivate();
 	for (const auto& Effect : { std::pair{ "SwordWaveComponent", "Assets/Particles/BlueSwordWave.particle" },
-		std::pair{ "BeamParticleComponent", "Assets/Particles/anit2beam.particle" } })
+		std::pair{ "BeamParticleComponent", "Assets/Particles/DragonBallBeam.particle" } })
 	{
 		UParticleSystemComponent* Component = CreateDefaultSubobject<UParticleSystemComponent>(Effect.first);
 		Component->SetupAttachment(MeshComponent);
@@ -245,6 +262,7 @@ ASwordCharacter::ASwordCharacter()
 void ASwordCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	bBeamMontageActive = false;
 	GetSpringArmComponent()->ResetCameraLag();
 	ImportSwordAnimationsIfNeeded();
 	EnsureSwordAnimationSettings();
@@ -259,6 +277,7 @@ void ASwordCharacter::BeginPlay()
 				SwordMeshComponent->SetStaticMesh(SwordMesh);
 		}
 		SwordMeshComponent->SetupAttachmentToSocket(MeshComponent, "SwordHandSocket", EAttachmentRule::KeepRelative);
+		SwordMeshComponent->SetVisibility(true);
 		SwordMeshComponent->MarkTransformDirty();
 	}
 	EnsureSwordMaterials(MeshComponent, SwordMeshComponent);
@@ -277,18 +296,67 @@ void ASwordCharacter::BeginPlay()
 	}
 }
 
-void ASwordCharacter::Attack()
+bool ASwordCharacter::IsPlayingFullBodyMontage() const
 {
 	USkeletalMeshComponent* MeshComponent = GetSkeletalMeshComponent();
 	UAnimGraphInstance* AnimGraph = Cast<UAnimGraphInstance>(MeshComponent ? MeshComponent->GetAnimInstance() : nullptr);
-	if (AnimGraph && AnimGraph->IsPlayingMontage("FullBody")) return;
-	PlayAnimMontage("Assets/Animations/combo02.animmontage");
+	return AnimGraph && AnimGraph->IsPlayingMontage("FullBody");
+}
+
+void ASwordCharacter::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+	const bool bFullBodyMontage = IsPlayingFullBodyMontage();
+	if (bFullBodyMontage)
+	{
+		ConsumeMovementInputVector();
+		if (bBeamMontageActive)
+		{
+			if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+				Movement->StopMovementImmediately();
+		}
+	}
+	if (bBeamMontageActive && !bFullBodyMontage)
+	{
+		bBeamMontageActive = false;
+		if (SwordMeshComponent)
+			SwordMeshComponent->SetVisibility(true);
+	}
+}
+
+void ASwordCharacter::AddMovementInput(const FVector& WorldDirection, float ScaleValue)
+{
+	if (IsPlayingFullBodyMontage())
+		return;
+	Super::AddMovementInput(WorldDirection, ScaleValue);
+}
+
+void ASwordCharacter::Jump()
+{
+	if (IsPlayingFullBodyMontage())
+		return;
+	Super::Jump();
+}
+
+void ASwordCharacter::Attack()
+{
+	if (IsPlayingFullBodyMontage()) return;
+	if (PlayAnimMontage("Assets/Animations/combo02.animmontage") > 0.0f)
+	{
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+			Movement->StopMovementImmediately();
+	}
 }
 
 void ASwordCharacter::CastBeam()
 {
-	USkeletalMeshComponent* MeshComponent = GetSkeletalMeshComponent();
-	UAnimGraphInstance* AnimGraph = Cast<UAnimGraphInstance>(MeshComponent ? MeshComponent->GetAnimInstance() : nullptr);
-	if (AnimGraph && AnimGraph->IsPlayingMontage("FullBody")) return;
-	PlayAnimMontage("Assets/Animations/BeamMontage.animmontage");
+	if (IsPlayingFullBodyMontage()) return;
+	if (PlayAnimMontage("Assets/Animations/BeamMontage.animmontage") > 0.0f)
+	{
+		bBeamMontageActive = true;
+		if (SwordMeshComponent)
+			SwordMeshComponent->SetVisibility(false);
+		if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+			Movement->StopMovementImmediately();
+	}
 }

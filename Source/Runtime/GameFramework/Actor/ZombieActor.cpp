@@ -55,7 +55,9 @@ void AZombieActor::Tick(float DeltaTime)
 	{
 		GetCharacterMovement()->StopMovementImmediately();
 		RightHandHitCapsule->bGenerateOverlapEvents = false;
-		if (Anim && Anim->IsStateSequenceFinished("Death")) Destroy();
+		UpdateDeathDissolve(DeltaTime);
+		if (IsDeathDissolveFinished())
+			Destroy();
 		return;
 	}
 	const TArray<FMatrix>& Bones = MeshComponent->GetGlobalBoneTransforms();
@@ -126,6 +128,8 @@ void AZombieActor::ReactToHit()
 	if (IsDead())
 	{
 		RightHandHitCapsule->bGenerateOverlapEvents = false;
+		GetCapsuleComponent()->bBlockComponent = false;
+		GetCapsuleComponent()->bGenerateOverlapEvents = false;
 		GetCharacterMovement()->StopMovementImmediately();
 	}
 }

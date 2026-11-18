@@ -2275,6 +2275,11 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		{
 			DrawSection("INITIAL LOCATION");
 			DrawDistributionVector("Start Location", Loc->StartLocation, Loc, FVector::ZeroVector, false, 0.05f);
+			if (ImGui::Checkbox("Sample Skeletal Mesh", &Loc->bSampleSkeletalMesh))
+			{
+				MarkSelectedLODBuildDirty();
+				MarkAssetModified();
+			}
 		}
 		else if (UParticleModuleVelocity* Vel = Cast<UParticleModuleVelocity>(SelectedModule))
 		{

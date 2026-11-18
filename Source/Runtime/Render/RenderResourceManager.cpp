@@ -172,6 +172,7 @@ namespace
 		OutSource += "    float Shininess;\n";
 		OutSource += "    float3 EmissiveColor;\n";
 		OutSource += "    float EmissiveFactor;\n";
+		OutSource += "    float OpacityMask;\n";
 		OutSource += "};\n";
 
 		OutSource += "cbuffer MaterialGraphParameters : register(b4)\n";
@@ -190,6 +191,27 @@ namespace
 			return Connection ? GraphNodeVariable(Connection->OutputNodeId) : FString();
 		};
 
+		OutSource += "float MaterialGraphHash21(float2 P)\n";
+		OutSource += "{\n";
+		OutSource += "    P = frac(P * float2(123.34f, 456.21f));\n";
+		OutSource += "    P += dot(P, P + 45.32f);\n";
+		OutSource += "    return frac(P.x * P.y);\n";
+		OutSource += "}\n";
+		OutSource += "float MaterialGraphValueNoise(float2 P)\n";
+		OutSource += "{\n";
+		OutSource += "    float2 I = floor(P);\n";
+		OutSource += "    float2 F = frac(P);\n";
+		OutSource += "    F = F * F * (3.0f - 2.0f * F);\n";
+		OutSource += "    float A = MaterialGraphHash21(I);\n";
+		OutSource += "    float B = MaterialGraphHash21(I + float2(1.0f, 0.0f));\n";
+		OutSource += "    float C = MaterialGraphHash21(I + float2(0.0f, 1.0f));\n";
+		OutSource += "    float D = MaterialGraphHash21(I + float2(1.0f, 1.0f));\n";
+		OutSource += "    return lerp(lerp(A, B, F.x), lerp(C, D, F.x), F.y);\n";
+		OutSource += "}\n";
+		OutSource += "float MaterialGraphNoise2D(float2 P)\n";
+		OutSource += "{\n";
+		OutSource += "    return MaterialGraphValueNoise(P) * 0.65f + MaterialGraphValueNoise(P * 2.03f) * 0.35f;\n";
+		OutSource += "}\n";
 		OutSource += "FMaterialGraphOutput EvaluateMaterialGraph(float2 UV)\n";
 		OutSource += "{\n";
 		OutSource += "    FMaterialGraphOutput Result = (FMaterialGraphOutput)0;\n";
@@ -278,6 +300,18 @@ namespace
 				OutSource += "    " + FString(HlslType) + " " + Variable + " = 1.0f - " + A + ";\n";
 				break;
 
+			case EMaterialExpressionType::Subtract:
+				OutSource += "    " + FString(HlslType) + " " + Variable + " = " + A + " - " + B + ";\n";
+				break;
+
+			case EMaterialExpressionType::Step:
+				OutSource += "    float " + Variable + " = step(" + A + ", " + B + ");\n";
+				break;
+
+			case EMaterialExpressionType::Noise:
+				OutSource += "    float " + Variable + " = MaterialGraphNoise2D(" + A + ");\n";
+				break;
+
 			default:
 				OutError = "Unsupported Material Expression.";
 				return false;
@@ -319,12 +353,14 @@ namespace
 		OutSource += "    Result.Shininess = 32.0f;\n";
 		OutSource += "    Result.EmissiveColor = float3(0, 0, 0);\n";
 		OutSource += "    Result.EmissiveFactor = 1.0f;\n";
+		OutSource += "    Result.OpacityMask = 1.0f;\n";
 
 		EmitOutput(0, "MATERIAL_GRAPH_HAS_BASE_COLOR", "BaseColor", true, false);
 		EmitOutput(1, "MATERIAL_GRAPH_HAS_SPECULAR_COLOR", "SpecularColor", false, true);
 		EmitOutput(2, "MATERIAL_GRAPH_HAS_SHININESS", "Shininess", false, false);
 		EmitOutput(3, "MATERIAL_GRAPH_HAS_EMISSIVE_COLOR", "EmissiveColor", false, true);
 		EmitOutput(4, "MATERIAL_GRAPH_HAS_EMISSIVE_FACTOR", "EmissiveFactor", false, false);
+		EmitOutput(5, "MATERIAL_GRAPH_HAS_OPACITY_MASK", "OpacityMask", false, false);
 
 		OutSource += "    return Result;\n";
 		OutSource += "}\n";
@@ -488,8 +524,8 @@ constexpr FPipelineTableEntry PipelineTable[] =
 	{ EPSOType::Particle_Instanced, "Resources/Shader/ParticleInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
 	{ EPSOType::Particle_GpuInstanced, "Resources/Shader/ParticleGpuInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
 	{ EPSOType::Particle_MeshOpaque, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default },
-	{ EPSOType::Particle_MeshTranslucent, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
-	{ EPSOType::Particle_MeshAdditive, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Additive, EDepthStencilState::ReadOnly },
+	{ EPSOType::Particle_MeshTranslucent, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
+	{ EPSOType::Particle_MeshAdditive, "Resources/Shader/ParticleMeshInstancedShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::Additive, EDepthStencilState::ReadOnly },
 	{ EPSOType::Particle_Sprite, "Resources/Shader/ParticleSpriteShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
 	{ EPSOType::SkeletalMesh_GBuffer, "Resources/Shader/SkeletalMeshGBufferShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidBack, EBlendState::Opaque, EDepthStencilState::Default },
 	{ EPSOType::Particle_BeamTrailTranslucent, "Resources/Shader/ParticleBeamTrailShader.hlsl", EPrimitiveTopology::TriangleList, ERasterizerState::SolidNone, EBlendState::AlphaBlend, EDepthStencilState::ReadOnly },
