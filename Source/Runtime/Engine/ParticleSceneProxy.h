@@ -93,6 +93,7 @@ class FDynamicGpuSpriteEmitterData : public FDynamicEmitterDataBase
 {
 public:
 	TSharedPtr<FGpuParticleEmitterResources> GpuResources;
+	UStaticMesh* MeshAsset = nullptr;
 	UMaterialInterface* Material = nullptr;
 	mutable FGpuParticleSimParams SimParams{};
 	mutable TArray<uint8> PendingSpawnBytes;

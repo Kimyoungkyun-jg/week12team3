@@ -77,8 +77,10 @@ struct FGpuParticleSimParams
 	FMatrix ViewProj = FMatrix::Identity;
 	FMatrix InvViewProj = FMatrix::Identity;
 	FVector4 ScreenAndClip = { 0, 0, 0, 0 };
+	FVector Acceleration = FVector::ZeroVector;
+	float AccelPad = 0.0f;
 };
-static_assert(sizeof(FGpuParticleSimParams) == 480);
+static_assert(sizeof(FGpuParticleSimParams) == 496);
 
 struct FGpuParticleDrawParams
 {
@@ -236,6 +238,7 @@ enum class EVertexFactoryType : uint8
 	ParticleSprite,
 	ParticleMesh,
 	ParticleGpuSprite,
+	ParticleGpuMesh,
 	ParticleBeamTrail
 };
 

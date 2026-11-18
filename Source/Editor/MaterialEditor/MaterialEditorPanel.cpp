@@ -1784,14 +1784,17 @@ void FMaterialEditorPanel::OnRender()
 					if (Material->GetBlendState() == EBlendState::Opaque)
 					{
 						CompileVariant(EPSOType::Particle_MeshOpaque);
+						CompileVariant(EPSOType::Particle_GpuMeshOpaque);
 					}
 					else if (Material->GetBlendState() == EBlendState::Additive)
 					{
 						CompileVariant(EPSOType::Particle_MeshAdditive);
+						CompileVariant(EPSOType::Particle_GpuMeshAdditive);
 					}
 					else
 					{
 						CompileVariant(EPSOType::Particle_MeshTranslucent);
+						CompileVariant(EPSOType::Particle_GpuMeshTranslucent);
 					}
 				}
 
