@@ -83,9 +83,26 @@ try
         throw "Invalid Visual Studio settings file: $settingsPath"
     }
 
+    # 등록할 때 받은 공유폴더 경로를 VS 심볼 설정에 반영
+    $symbolPathNode = $settings.SelectSingleNode(
+        "//PropertyValue[@name='SymbolPath']"
+    )
+
+    if ($null -eq $symbolPathNode)
+    {
+        throw 'SymbolPath was not found in HitoriCrash.vssettings.'
+    }
+
+    $symbolPathNode.InnerText = $SymbolStore
+
+    # Setup의 원본 대신 사용자별로 생성한 설정 파일을 사용
+    $generatedSettingsPath = Join-Path $stateRoot 'HitoriCrash.vssettings'
+    $settings.Save($generatedSettingsPath)
+
     [ordered]@{
         VisualStudioPath = $visualStudioPath
-        SettingsPath     = $settingsPath
+        SettingsPath     = $generatedSettingsPath
+        SymbolStore      = $SymbolStore
     } | ConvertTo-Json |
         Set-Content -LiteralPath $configPath -Encoding UTF8
 
@@ -139,7 +156,7 @@ public static class HitoriAssociationNotification
 
     Write-Host 'Registration completed.'
     Write-Host "Visual Studio: $visualStudioPath"
-    Write-Host "Settings: $settingsPath"
+    Write-Host "Settings: $generatedSettingsPath"
     Write-Host 'Choose Hitori Dump Viewer from Open with for a .dmp file.'
 }
 catch
