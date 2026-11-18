@@ -316,7 +316,7 @@ void FSceneRenderer::DrawBasePassMeshes(FRenderer* Renderer, const TArray<FVisib
 
 	auto& Timing = RenderData.BaseSkeletalDrawGpu;
 	if (!Timing) Timing = std::make_shared<FGpuTimingHistory>();
-	Renderer->SubmitVisibleCommands(Commands, RenderData.GPUSceneBuffer, &RenderData.RenderStats.DrawCalls, Timing, RenderData.SkeletalDrawGpuMode);
+	Renderer->SubmitVisibleCommands(Commands, RenderData.GPUSceneBuffer, &RenderData.RenderStats.DrawCalls, Timing, RenderData.SkeletalDrawGpuMode, &RenderData.RenderStats.ParticleDrawCalls);
 }
 
 bool FSceneRenderer::PrepareDecalPasses(FRenderGraphBuilder& Graph, FRenderer* Renderer, FSceneViewTargets& Targets,

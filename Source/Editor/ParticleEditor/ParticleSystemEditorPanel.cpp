@@ -21,6 +21,7 @@
 #include "Render/SkyboxRenderer.h"
 #include "Render/Material.h"
 #include "Render/Mesh.h"
+#include "Render/MeshBatch.h"
 #include "Engine/World.h"
 #include "Serialization/JsonArchive.h"
 #include "Core/StatOverlay.h"
@@ -389,6 +390,8 @@ FParticleSystemEditorPanel::~FParticleSystemEditorPanel()
 
 void FParticleSystemEditorPanel::Release()
 {
+	FStatOverlay::ClearParticleStats();
+
 	Client.SetWorld(nullptr);
 	Skybox.reset();
 	PreviewActor = nullptr;
@@ -997,6 +1000,56 @@ void FParticleSystemEditorPanel::RenderPreview(UEditorEngine* Engine)
 
 		Engine->RenderPreviewViewport(&Client, PreviewWorld, nullptr, bShowSkybox ? Skybox.get() : nullptr, bShowGrid, bShowBounds ? PreviewComponent : nullptr, bShowOriginAxis, { BackgroundColor[0], BackgroundColor[1], BackgroundColor[2], 1.0f });
 
+		FParticleStatSnapshot ParticleStats{};
+
+		if (PreviewComponent)
+		{
+			ParticleStats.bValid = true;
+
+			const TArray<FParticleEmitterInstance>& Instances = PreviewComponent->GetEmitterInstances();
+
+			for (const FParticleEmitterInstance& Instance : Instances)
+			{
+				if (Instance.IsGpuEmitter())
+				{
+					continue;
+				}
+
+				ParticleStats.CpuActiveParticles += static_cast<uint32>(std::max(0, Instance.ActiveParticles));
+				ParticleStats.CpuCapacity += static_cast<uint32>(std::max(0, Instance.MaxActiveParticles));
+
+				if (Instance.ParticleData && Instance.ParticleIndices)
+				{
+					ParticleStats.CpuBufferBytes += static_cast<uint64>(Instance.MaxActiveParticles) * (static_cast<uint64>(Instance.ParticleStride) + sizeof(uint16));
+				}
+			}
+
+			const float StatsDeltaTime = bPaused ? 0.0f : PreviewComponent->GetStatsDeltaTime();
+
+			if (StatsDeltaTime > 0.0f)
+			{
+				ParticleStats.SpawnRequestsPerSecond = static_cast<float>(PreviewComponent->GetStatsSpawnedThisTick()) / StatsDeltaTime;
+				ParticleStats.CpuExpiredPerSecond = static_cast<float>(PreviewComponent->GetStatsExpiredThisTick()) / StatsDeltaTime;
+			}
+
+			const FSceneRenderData& RenderData = Client.GetRenderData();
+			ParticleStats.DrawCalls = RenderData.RenderStats.ParticleDrawCalls;
+
+			for (const FMeshBatch& Batch : RenderData.Collector.GetMeshBatches())
+			{
+				if (Batch.bIsParticle)
+				{
+					++ParticleStats.MeshBatches;
+				}
+			}
+		}
+
+		FStatOverlay::SetParticleStats(ParticleStats);
+
+	}
+	else
+	{
+		FStatOverlay::ClearParticleStats();
 	}
 }
 

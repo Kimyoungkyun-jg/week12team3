@@ -2364,12 +2364,15 @@ void UParticleSystemComponent::TickComponent(float DeltaTime)
 	const float ScaledDeltaTime = DeltaTime * std::max(0.0f, Template->PlayRate) * std::max(0.0f, CustomTimeDilation);
 	if (ScaledDeltaTime <= 0.0f)
 	{
-		StatsDeltaTime = ScaledDeltaTime;
 		for (FParticleEmitterInstance& Instance : EmitterInstances)
+		{
 			Instance.LastGpuDeltaTime = 0.0f;
+		}
 		CollisionEvents.Reset();
 		return;
 	}
+
+	StatsDeltaTime = ScaledDeltaTime;
 	if (bFadingOut && FadeOutDuration > 0.0f)
 	{
 		FadeOutElapsed += DeltaTime;
