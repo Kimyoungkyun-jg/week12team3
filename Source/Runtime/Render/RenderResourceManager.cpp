@@ -124,16 +124,16 @@ namespace
 			ParameterIndices[GetMaterialGraphParameterKey(GraphParameters[Index].Name, GraphParameters[Index].Type)] = Index;
 		}
 
-		for (const FMaterialExpressionNode* Node : EvaluationOrder)
+		for (const FMaterialExpressionNode& Node : Material.ExpressionNodes)
 		{
-			if (Node->Type != EMaterialExpressionType::TextureSample &&
-				Node->Type != EMaterialExpressionType::TextureSampleParameter2D)
+			if (Node.Type != EMaterialExpressionType::TextureSample &&
+				Node.Type != EMaterialExpressionType::TextureSampleParameter2D)
 			{
 				continue;
 			}
 
-			TextureIndices[Node->Id] = TextureNodeIds.Num();
-			TextureNodeIds.Add(Node->Id);
+			TextureIndices[Node.Id] = TextureNodeIds.Num();
+			TextureNodeIds.Add(Node.Id);
 		}
 
 		if (TextureNodeIds.Num() > MaxMaterialGraphTextures ||
