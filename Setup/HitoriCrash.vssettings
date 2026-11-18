@@ -1,0 +1,27 @@
+<UserSettings>
+	<ApplicationIdentity version="18.0" />
+
+	<Category
+		name="Debugger"
+		Category="{EEDBF29A-5C8B-4E01-827C-263382C18CFE}"
+		Package="{C9DD4A57-47FB-11D2-83E7-00C04F9902C1}"
+		RegisteredName="Debugger"
+		PackageName="CVSDebugPackage">
+
+		<PropertyValue name="SymbolPath">\\172.21.10.122\Symbols</PropertyValue>
+		<PropertyValue name="SymbolPathState">1</PropertyValue>
+
+		<PropertyValue name="AutoLoadFromSymbolPath">1</PropertyValue>
+		<PropertyValue name="AutomaticSymbolLoad">1</PropertyValue>
+		<PropertyValue name="SymbolUseExcludeList">1</PropertyValue>
+		<PropertyValue name="SymbolExcludeList" />
+		<PropertyValue name="SymbolExcludeListState" />
+
+		<PropertyValue name="UseSourceServer">1</PropertyValue>
+		<PropertyValue name="ShowSourceServerDiagnostics">1</PropertyValue>
+		<PropertyValue name="AllowSourceServerInPartialTrust">0</PropertyValue>
+		<PropertyValue name="AlwaysRunUntrustedSourceServerCommands">0</PropertyValue>
+
+		<PropertyValue name="UseDocumentChecksum">1</PropertyValue>
+	</Category>
+</UserSettings>
