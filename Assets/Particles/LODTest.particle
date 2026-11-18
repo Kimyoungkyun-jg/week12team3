@@ -64,14 +64,14 @@
                                                                 "Value": {
                                                                     "Properties": {
                                                                         "Max": {
-                                                                            "X": 1.0,
-                                                                            "Y": 1.0,
-                                                                            "Z": 1.0
+                                                                            "X": 2.0,
+                                                                            "Y": 2.0,
+                                                                            "Z": 2.0
                                                                         },
                                                                         "Min": {
-                                                                            "X": -1.0,
-                                                                            "Y": -1.0,
-                                                                            "Z": -1.0
+                                                                            "X": -2.0,
+                                                                            "Y": -2.0,
+                                                                            "Z": -2.0
                                                                         },
                                                                         "bLockAxes": false
                                                                     }
@@ -370,7 +370,7 @@
                                                     "Properties": {
                                                         "Bursts": [],
                                                         "LODSlotId": 0,
-                                                        "Rate": 5.0,
+                                                        "Rate": 15.0,
                                                         "bEnabled": true
                                                     }
                                                 }

@@ -59,24 +59,7 @@
                             "Name": "UStaticMeshComponent",
                             "OverrideMaterials": [
                                 {
-                                    "Instance": {
-                                        "ParameterOverrides": [
-                                            {
-                                                "ParameterName": "BaseColor",
-                                                "ScalarValue": 0.0,
-                                                "TexturePath": "",
-                                                "Type": 1,
-                                                "VectorValue": {
-                                                    "W": 1.0,
-                                                    "X": 0.425810307264328,
-                                                    "Y": 0.01141182892024517,
-                                                    "Z": 0.01141182892024517
-                                                }
-                                            }
-                                        ],
-                                        "ParentAsset": "",
-                                        "Properties": {}
-                                    }
+                                    "Asset": "Models/Hip Hop Dancing/M_Hip Hop Dancing_Alpha_Joints_MAT.fbxbin"
                                 }
                             ],
                             "Parent": "",
@@ -87,7 +70,7 @@
                                     "Location": {
                                         "X": 0.0,
                                         "Y": 0.0,
-                                        "Z": 1.3550434112548828
+                                        "Z": 1.184493064880371
                                     },
                                     "Rotation": {
                                         "Pitch": 0.0,
