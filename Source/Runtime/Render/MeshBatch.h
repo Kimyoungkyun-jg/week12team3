@@ -73,8 +73,12 @@ struct FGpuParticleSimParams
 	float CollisionRadius = 0.0f;
 	float DepthThickness = 0.0f;
 	uint32 CollisionPad[2] = {};
+
+	FMatrix ViewProj = FMatrix::Identity;
+	FMatrix InvViewProj = FMatrix::Identity;
+	FVector4 ScreenAndClip = { 0, 0, 0, 0 };
 };
-static_assert(sizeof(FGpuParticleSimParams) == 336);
+static_assert(sizeof(FGpuParticleSimParams) == 480);
 
 struct FGpuParticleDrawParams
 {

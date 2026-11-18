@@ -833,6 +833,15 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 						FParticleCurveTexture& CurveAtlas = FParticleCurveTexture::Get();
 						CurveAtlas.FlushPendingUploads();
 
+						
+						FMatrix ViewProj = View.ViewProjectionMatrix;
+						FMatrix InvViewProj = View.ViewProjectionMatrix.Inverse();
+						FVector4 ScreenAndClip = FVector4(
+							static_cast<float>(View.ViewRect.Width),
+							static_cast<float>(View.ViewRect.Height),
+							View.NearClip,
+							View.FarClip);
+
 						for (const FGpuParticleBatch& Batch : RenderData.Collector.GetGpuParticleBatches())
 						{
 							if (!Batch.GpuResources || Batch.MaxParticles == 0) continue;
@@ -845,7 +854,11 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 								Res.DrawCB = RenderCommand::CreateConstantBuffer(sizeof(FGpuParticleDrawParams));
 							if (!Res.SimCB || !Res.DrawCB) continue;
 
-							RenderCommand::UpdateBufferData(Res.SimCB.get(), &Batch.SimParams, sizeof(FGpuParticleSimParams));
+							FGpuParticleSimParams SimParams = Batch.SimParams;
+							SimParams.ViewProj = ViewProj;
+							SimParams.InvViewProj = InvViewProj;
+							SimParams.ScreenAndClip = ScreenAndClip;
+							RenderCommand::UpdateBufferData(Res.SimCB.get(), &SimParams, sizeof(SimParams));
 
 							if (Batch.SpawnCount > 0 && !Batch.PendingSpawnBytes.IsEmpty())
 							{

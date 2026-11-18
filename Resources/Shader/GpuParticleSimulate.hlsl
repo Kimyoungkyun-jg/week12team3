@@ -54,6 +54,10 @@ cbuffer SimParams : register(b0)
     float CollisionRadius;
     float DepthThickness;
     float2 CollisionPad;
+	
+    float4x4 ViewProj;
+    float4x4 InvViewProj;
+    float4 ScreenAndClip;
 };
 
 StructuredBuffer<FGpuParticle> SpawnBuffer : register(t0);
