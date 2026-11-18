@@ -2346,12 +2346,17 @@ void FParticleSystemEditorPanel::RenderDetailsPanel(float Width, float Height)
 		}
 		else if (auto* Collision = Cast<UParticleModuleCollision>(SelectedModule))
 		{
-			ImGui::DragFloat("Restitution Min", &Collision->RestitutionMin, 0.01f, 0.0f, 1.0f);
-			ImGui::DragFloat("Restitution Max", &Collision->RestitutionMax, 0.01f, 0.0f, 1.0f);
-			ImGui::DragFloat("Friction Min", &Collision->FrictionMin, 0.01f, 0.0f, 1.0f);
-			ImGui::DragFloat("Friction Max", &Collision->FrictionMax, 0.01f, 0.0f, 1.0f);
-			ImGui::DragInt("Max Collisions", &Collision->MaxCollisions, 1.0f, 0, 1000);
-			ImGui::DragFloat("Collision Radius", &Collision->CollisionRadius, 0.01f, 0.0f, 100.0f);
+			bool bChanged = false;
+			bChanged |= ImGui::DragFloat("Restitution Min", &Collision->RestitutionMin, 0.01f, 0.0f, 1.0f);
+			bChanged |= ImGui::DragFloat("Restitution Max", &Collision->RestitutionMax, 0.01f, 0.0f, 1.0f);
+			bChanged |= ImGui::DragFloat("Friction Min", &Collision->FrictionMin, 0.01f, 0.0f, 1.0f);
+			bChanged |= ImGui::DragFloat("Friction Max", &Collision->FrictionMax, 0.01f, 0.0f, 1.0f);
+			bChanged |= ImGui::DragInt("Max Collisions", &Collision->MaxCollisions, 1.0f, 0, 1000);
+			bChanged |= ImGui::DragFloat("Collision Radius", &Collision->CollisionRadius, 0.01f, 0.0f, 100.0f);
+			bChanged |= ImGui::DragFloat("Depth Thickness", &Collision->DepthThickness, 0.01f, 0.0f, 100.0f);
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("GPU only: how far behind the depth surface still counts as inside the wall.");
+			if (bChanged) { MarkSelectedLODBuildDirty(); MarkAssetModified(); }
 		}
 		else if (auto* EventGen = Cast<UParticleModuleEventGenerator>(SelectedModule))
 		{

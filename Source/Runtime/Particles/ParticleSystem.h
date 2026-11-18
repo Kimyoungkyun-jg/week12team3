@@ -140,6 +140,13 @@ struct FParticleEmitterBuildInfo
 	FGpuDistributionBuildChannel SubUV;
 	FGpuDistributionBuildChannel VelocityScale;
 	FGpuDistributionBuildChannel RotationRateScale;
+
+	bool bHasCollision = false;
+	float CollisionRestitution = 0.5f;
+	float CollisionFriction = 0.5f;
+	int32 CollisionMaxCount = 10;
+	float CollisionRadius = 1.0f;
+	float DepthThickness = 1.0f;
 };
 
 UCLASS()
@@ -650,6 +657,8 @@ public:
 	uint32 RequiredBytes() const override { return sizeof(FParticleCollisionPayload); }
 	const char* GetDisplayName() const override { return "Collision"; }
 
+	void CompileModules(FParticleEmitterBuildInfo& OutBuildInfo) const override;
+
 public:
 	UPROPERTY(EditAnywhere)
 	float RestitutionMax = 0.5f;
@@ -666,6 +675,9 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float CollisionRadius = 1.0f;
+
+	UPROPERTY(EditAnywhere)
+	float DepthThickness = 1.0f;
 };
 
 UCLASS()

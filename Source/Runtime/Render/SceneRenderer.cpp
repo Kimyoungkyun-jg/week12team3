@@ -802,6 +802,8 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 		{
 			FRenderGraphComputePassDesc ComputeDesc{};
 			ComputeDesc.Name = "GpuParticleSimulate";
+			if (Targets.Depth)
+				ComputeDesc.ReadResources.push_back(Targets.Depth->GetRawPtr());
 			for (const FGpuParticleBatch& Batch : GpuBatches)
 			{
 				if (!Batch.GpuResources || Batch.MaxParticles == 0) continue;
@@ -827,7 +829,7 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 
 			if (!ComputeDesc.WriteResources.empty())
 			{
-				Graph.AddComputePass(std::move(ComputeDesc), [this]
+				Graph.AddComputePass(std::move(ComputeDesc), [this, DepthTexture = Targets.Depth.get()]
 					{
 						FComputeShader* InjectCS = FRenderResourceManager::GetComputeShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSInjectSpawns");
 						FComputeShader* SimCS = FRenderResourceManager::GetComputeShader("Resources/Shader/GpuParticleSimulate.hlsl", "CSSimulate");
@@ -835,6 +837,16 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 
 						FParticleCurveTexture& CurveAtlas = FParticleCurveTexture::Get();
 						CurveAtlas.FlushPendingUploads();
+
+						const bool bDepthReady = DepthTexture && DepthTexture->GetSRV();
+						
+						FMatrix ViewProj = View.ViewProjectionMatrix;
+						FMatrix InvViewProj = View.ViewProjectionMatrix.Inverse();
+						FVector4 ScreenAndClip = FVector4(
+							static_cast<float>(View.ViewRect.Width),
+							static_cast<float>(View.ViewRect.Height),
+							View.NearClip,
+							View.FarClip);
 
 						for (const FGpuParticleBatch& Batch : RenderData.Collector.GetGpuParticleBatches())
 						{
@@ -848,7 +860,15 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 								Res.DrawCB = RenderCommand::CreateConstantBuffer(sizeof(FGpuParticleDrawParams));
 							if (!Res.SimCB || !Res.DrawCB) continue;
 
-							RenderCommand::UpdateBufferData(Res.SimCB.get(), &Batch.SimParams, sizeof(FGpuParticleSimParams));
+							FGpuParticleSimParams SimParams = Batch.SimParams;
+							SimParams.ViewProj = ViewProj;
+							SimParams.InvViewProj = InvViewProj;
+							SimParams.ScreenAndClip = ScreenAndClip;
+							if (!bDepthReady)
+							{
+								SimParams.HasCollision = 0;
+							}
+							RenderCommand::UpdateBufferData(Res.SimCB.get(), &SimParams, sizeof(SimParams));
 
 							if (Batch.SpawnCount > 0 && !Batch.PendingSpawnBytes.IsEmpty())
 							{
@@ -877,12 +897,14 @@ bool FSceneRenderer::AddCorePasses(FRenderGraphBuilder& Graph, FRenderer* Render
 							RenderCommand::BindComputeShader(SimCS);
 							RenderCommand::BindConstantBuffer(0, Res.SimCB.get(), EShaderBindFlagBits::Compute);
 							RenderCommand::BindShaderResource(1, CurveAtlas.GetTexture(), EShaderBindFlagBits::Compute);
+							RenderCommand::BindShaderResource(2, bDepthReady ? DepthTexture : nullptr, EShaderBindFlagBits::Compute);
 							RenderCommand::BindSamplerState(0, ESamplerState::LinearClamp, EShaderBindFlagBits::Compute);
 							RenderCommand::BindUnorderedAccess(0, Res.ParticleBuffer.get());
 							RenderCommand::Dispatch((Batch.MaxParticles + 255u) / 256u, 1, 1);
 
 							RenderCommand::UnbindUnorderedAccess(0);
 							RenderCommand::UnbindShaderResources(1, 1, EShaderBindFlagBits::Compute);
+							RenderCommand::UnbindShaderResources(2, 1, EShaderBindFlagBits::Compute);
 							RenderCommand::BindComputeShader(nullptr);
 						}
 					});

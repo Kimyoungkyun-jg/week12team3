@@ -1783,6 +1783,13 @@ FParticleDynamicData UParticleSystemComponent::BuildDynamicData()
 			GpuData->SimParams.SubUVRows = Build.SubUVRows;
 			GpuData->SimParams.SubUVPlayRate = Build.SubUVPlayRate;
 			GpuData->SimParams.SubUVLinear = Build.bSubUVLinear ? 1u : 0u;
+			GpuData->SimParams.HasCollision = Build.bHasCollision ? 1u : 0u;
+			GpuData->SimParams.CollisionRestitution = Build.CollisionRestitution ;
+			GpuData->SimParams.CollisionFriction = Build.CollisionFriction;
+			GpuData->SimParams.CollisionMaxCount = Build.CollisionMaxCount;
+			GpuData->SimParams.CollisionRadius = Build.CollisionRadius;
+			GpuData->SimParams.DepthThickness = Build.DepthThickness;
+
 
 			if (!Build.ColorParameterName.empty())
 			{
